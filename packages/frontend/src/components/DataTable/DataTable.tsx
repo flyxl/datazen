@@ -323,6 +323,12 @@ export interface DataTableProps {
     onJump?: (rowIndex: number, columnName: string, element: HTMLElement | null) => void;
   };
 
+  /**
+   * Quick Look of a cell (DBR-05): the middle-click / `Cmd/Ctrl+Shift+L`
+   * entry, handed over with the cell's own coordinates. Omitted ⇒ the grid
+   * renders exactly as before and the middle button keeps its default.
+   */
+  onCellQuickLook?: (rowIndex: number, columnName: string) => void;
   loading?: boolean;
   statusBar?: React.ReactNode;
   rowHeight?: number;
@@ -487,6 +493,7 @@ export function DataTable({
   dirtyByRow,
   onRestoreRow,
   onShowReferencingRows,
+  onCellQuickLook,
   foreignKeys,
   statusBar,
   rowHeight = DATA_TABLE_ROW_HEIGHT,
@@ -904,6 +911,7 @@ export function DataTable({
               onCellDoubleClick={handleCellDoubleClick}
               onCellEdit={handleCellEdit}
               onCellEditCancel={handleCellEditCancel}
+              onCellQuickLook={onCellQuickLook}
               cellEditing={cellEditing}
               cellTypeHints={cellTypeHints}
               onRowSelect={handleRowClick}

@@ -8,6 +8,7 @@ const pack = {
   'tableView.shortcut.moveByPage': 'PageUp/PageDown 移动一屏',
   'tableView.shortcut.moveToEdge': 'Home/End 跳到本行首尾单元格，Cmd+Home/End 跳到网格首尾',
   'tableView.shortcut.selectAllRows': 'Cmd/Ctrl+A 全选行',
+  'tableView.shortcut.quickLook': 'Cmd/Ctrl+Shift+L 快速查看焦点单元格',
   'tableView.shortcut.tabLeavesGrid': 'Tab 离开网格',
   'query.execute': '执行',
   'query.run': '运行',

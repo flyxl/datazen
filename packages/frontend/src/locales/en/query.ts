@@ -9,6 +9,7 @@ const pack = {
   'tableView.shortcut.moveByPage': 'PageUp/PageDown move one screen',
   'tableView.shortcut.moveToEdge': 'Home/End go to row edge, Cmd+Home/End to grid edge',
   'tableView.shortcut.selectAllRows': 'Cmd/Ctrl+A selects all rows',
+  'tableView.shortcut.quickLook': 'Cmd/Ctrl+Shift+L opens Quick Look of the focused cell',
   'tableView.shortcut.tabLeavesGrid': 'Tab leaves the grid',
   'query.execute': 'Execute',
   'query.run': 'Run',

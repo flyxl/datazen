@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Columns3 } from 'lucide-react';
 import { DataTable } from '../../components/DataTable/DataTable';
+import { QuickLookDialog, isQuickLookableValue } from '../../components/DataTable/QuickLookDialog';
 import { DATA_TABLE_ROW_HEIGHT, rowHeightForDensity } from '../../components/DataTable/rowHeight';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { TableColumnFilter } from './TableColumnFilter';
@@ -56,7 +57,7 @@ import { ColumnStatsDialog } from '../../components/DataTable/ColumnStatsDialog'
 import { likeCaseInsensitiveForMeta, supportedOperatorsForMeta } from '../../lib/filterOperators';
 import { expandAnyColumnFilter } from '../../lib/anyColumnFilter';
 import { valueSearchTypeGroupsFor } from '../../lib/valueSearch';
-import type { ColumnSchema, DatabaseType } from '../../types';
+import type { ColumnSchema, DatabaseType, Value } from '../../types';
 import { resolveDefaultTableSort } from '../../lib/defaultSort';
 import {
   DEFAULT_GRID_ALTERNATING_ROWS,
@@ -234,6 +235,14 @@ export function TableView({
   const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
   const [confirmCommit, confirmCommitDialog] = useConfirmDialog();
   const [previewOpen, setPreviewOpen] = useState(false);
+  /**
+   * The cell the grid's Quick Look entries (DBR-05) opened — the middle-click
+   * on a cell and the `Cmd/Ctrl+Shift+L` shortcut. `null` = closed.
+   */
+  const [quickLookCell, setQuickLookCell] = useState<{
+    rowIndex: number;
+    columnName: string;
+  } | null>(null);
   /**
    * The SQL preview dialog of the filter panel (DB-15): the statements the
    * next read of this panel would send, straight from the backend's own
@@ -629,6 +638,27 @@ export function TableView({
     [rows, displayedColumns],
   );
 
+  /**
+   * Quick Look of a grid cell (DBR-05): the viewer the middle-click and the
+   * `Cmd/Ctrl+Shift+L` shortcut open. A read gesture first — read-only panels
+   * keep it, only the dialog's save exit needs the write path.
+   *
+   * The entry opens for content that is worth a viewer — binary, structured
+   * JSON, or a long text — the same verdict the detail drawer's per-field
+   * button is built on. An empty cell keeps the browser's middle-click.
+   */
+  const openCellQuickLook = useCallback(
+    (rowIndex: number, columnName: string) => {
+      if (rowIndex < 0 || rowIndex >= rows.length) return;
+      const column = columns.find((c) => c.name === columnName);
+      if (!column) return;
+      const value = rows[rowIndex][columnName];
+      if (!isQuickLookableValue(value, column.dataType)) return;
+      setQuickLookCell({ rowIndex, columnName });
+    },
+    [rows, columns],
+  );
+
   /* ── Column tools (DB-12): reorder, freeze, width persistence. ── */
   const handleReorderColumns = useCallback(
     (from: number, to: number) => {
@@ -893,6 +923,18 @@ export function TableView({
         clipboard.copyRowsAsDrafts();
         return;
       }
+      if (mod && event.shiftKey && (event.key === 'l' || event.key === 'L')) {
+        // Quick Look of the focused cell (DBR-05). It is a read gesture — a
+        // read-only panel keeps it; the dialog's save exit is what needs the
+        // write path. A cell must be focused: the shortcut describes *this*
+        // cell, and without a focus there is nothing to look at.
+        if (isEditableTarget(event.target)) return;
+        const focus = ts?.gridSelection?.focus;
+        if (!focus) return;
+        event.preventDefault();
+        openCellQuickLook(focus.rowIndex, focus.columnName);
+        return;
+      }
       if (event.key === 'Escape') {
         // The editor owns Escape while it is open; the grid clears its own
         // selection. What is left for the panel is the drafts: the **empty**
@@ -921,8 +963,10 @@ export function TableView({
       fkNavigation,
       handleCommitPendingChanges,
       isEditable,
+      openCellQuickLook,
       pendingBusy,
       hasWork,
+      ts,
     ],
   );
 
@@ -1119,6 +1163,7 @@ export function TableView({
         onCellDoubleClick={handleCellDoubleClick}
         onCellEdit={cellWritesEnabled ? handleCellEdit : undefined}
         onCellEditCancel={actions.cancelEdit}
+        onCellQuickLook={openCellQuickLook}
         cellEditing={editing.cellEditing}
         cellTypeHints={editing.cellTypeHints}
         enableSetNull={cellWritesEnabled}
@@ -1195,6 +1240,49 @@ export function TableView({
         open={previewOpen && previewPlan != null}
         onClose={() => setPreviewOpen(false)}
       />
+      {quickLookCell &&
+        quickLookCell.rowIndex < rows.length &&
+        (() => {
+          // The Quick Look of a grid cell (DBR-05): the column definition and the
+          // value come from the same records the grid renders, so the dialog and
+          // the cell cannot tell two different stories about one value.
+          const column = columns.find((c) => c.name === quickLookCell.columnName);
+          if (!column) return null;
+          const value = rows[quickLookCell.rowIndex][quickLookCell.columnName];
+          // The save exit needs the write path of the very cell: the panel's
+          // editability and the column's own reason a cell cannot be edited.
+          // Binary stays view-only here — its write entry is the file loader.
+          const columnReadOnlyReason =
+            editing.cellEditing?.columnEditorInfo.get(quickLookCell.columnName)?.readOnlyReason ??
+            null;
+          const canCommit = cellWritesEnabled && columnReadOnlyReason === null;
+          return (
+            <QuickLookDialog
+              open
+              column={{
+                id: column.name,
+                name: column.name,
+                type: column.dataType,
+                nullable: column.nullable,
+              }}
+              value={value}
+              editable={canCommit}
+              onCommit={
+                canCommit
+                  ? (next) => {
+                      editing.cellEditing?.onCellValue?.(
+                        quickLookCell.rowIndex,
+                        quickLookCell.columnName,
+                        next as Value | null | undefined,
+                      );
+                      setQuickLookCell(null);
+                    }
+                  : undefined
+              }
+              onClose={() => setQuickLookCell(null)}
+            />
+          );
+        })()}
       <FilterSqlPreviewDialog
         open={sqlPreview.open}
         onClose={() => setSqlPreview((state) => ({ ...state, open: false }))}
