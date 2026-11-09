@@ -67,6 +67,7 @@ fn table_context(connection_id: &str, db_session_id: &str) -> RowChangeTableCont
 
 fn update_change(id: i64, original: &str, current: &str) -> PendingRowChange {
     PendingRowChange {
+        expression_values: Default::default(),
         row_identity: BTreeMap::from([("id".into(), Some(Value::Integer(id)))]),
         original_values: BTreeMap::from([("name".into(), Some(Value::String(original.into())))]),
         current_values: BTreeMap::from([("name".into(), Some(Value::String(current.into())))]),
@@ -78,6 +79,7 @@ fn update_change(id: i64, original: &str, current: &str) -> PendingRowChange {
 
 fn delete_change(id: i64) -> PendingRowChange {
     PendingRowChange {
+        expression_values: Default::default(),
         row_identity: BTreeMap::from([("id".into(), Some(Value::Integer(id)))]),
         original_values: BTreeMap::new(),
         current_values: BTreeMap::new(),
@@ -96,6 +98,7 @@ fn composite_update_change(tenant_id: i64, id: i64, next_id: Option<i64>) -> Pen
         changed_columns.push("id".into());
     }
     PendingRowChange {
+        expression_values: Default::default(),
         row_identity: BTreeMap::from([
             ("tenant_id".into(), Some(Value::Integer(tenant_id))),
             ("id".into(), Some(Value::Integer(id))),
@@ -110,6 +113,7 @@ fn composite_update_change(tenant_id: i64, id: i64, next_id: Option<i64>) -> Pen
 
 fn insert_change(values: &[(&str, Option<Value>)]) -> PendingRowChange {
     PendingRowChange {
+        expression_values: Default::default(),
         row_identity: BTreeMap::new(),
         original_values: BTreeMap::new(),
         current_values: values
@@ -140,6 +144,7 @@ fn plan_for(
 #[test]
 fn canonicalize_rejects_null_and_duplicate_composite_identities() {
     let null_identity = PendingRowChange {
+        expression_values: Default::default(),
         row_identity: BTreeMap::from([
             ("tenant_id".into(), Some(Value::Integer(1))),
             ("id".into(), None),
@@ -191,6 +196,7 @@ fn test_tester_canonicalize_sorts_by_identity_key() {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct BaselinePendingRowChange {
+    expression_values: Default::default(),
     row_identity: BTreeMap<String, Option<Value>>,
     original_values: BTreeMap<String, Option<Value>>,
     current_values: BTreeMap<String, Option<Value>>,
@@ -208,6 +214,7 @@ fn baseline_fingerprint(table: &RowChangeTableContext, changes: &[PendingRowChan
     let changes: Vec<BaselinePendingRowChange> = changes
         .iter()
         .map(|change| BaselinePendingRowChange {
+            expression_values: Default::default(),
             row_identity: change.row_identity.clone(),
             original_values: change.original_values.clone(),
             current_values: change.current_values.clone(),
@@ -377,6 +384,7 @@ fn composite_identity_missing_a_key_column_is_rejected() {
         ..table_context("w3-partial", "w3-partial-session")
     };
     let change = PendingRowChange {
+        expression_values: Default::default(),
         row_identity: BTreeMap::from([("tenant_id".into(), Some(Value::Integer(7)))]),
         original_values: BTreeMap::new(),
         current_values: BTreeMap::from([("amount".into(), Some(Value::String("9.99".into())))]),
@@ -417,6 +425,7 @@ fn composite_identity_with_an_extra_column_is_rejected() {
         ..table_context("w3-extra", "w3-extra-session")
     };
     let change = PendingRowChange {
+        expression_values: Default::default(),
         row_identity: BTreeMap::from([
             ("tenant_id".into(), Some(Value::Integer(7))),
             ("order_no".into(), Some(Value::Integer(3))),
@@ -456,6 +465,7 @@ fn composite_identity_with_the_full_key_is_accepted() {
         ..table_context("w3-full", "w3-full-session")
     };
     let change = PendingRowChange {
+        expression_values: Default::default(),
         row_identity: BTreeMap::from([
             ("tenant_id".into(), Some(Value::Integer(7))),
             ("order_no".into(), Some(Value::Integer(3))),
@@ -951,5 +961,176 @@ fn a_drifted_manual_transaction_is_coded_as_a_stale_plan() {
     assert!(
         message.contains("preview") && message.contains("commit again"),
         "got: {message}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The staged write expressions (DBR-05): typed intents, never bound literals.
+// ---------------------------------------------------------------------------
+
+/// A mock that declares the current-datetime expression, the way Postgres,
+/// MySQL, SQLite and SQL Server do in their own driver impls.
+fn expression_driver() -> Arc<MockDriver> {
+    MockDriver::new(
+        "postgres",
+        MockDriverOptions {
+            execute_rows_affected: 1,
+            parameterized_writes: true,
+            native_write_expression: Some("CURRENT_TIMESTAMP"),
+            ..MockDriverOptions::default()
+        },
+    )
+}
+
+/// One UPDATE that stages `updated_at = CURRENT_TIMESTAMP` alongside a normal
+/// literal write: the expression column carries both the map entry and the
+/// placeholder literal the three-state contract requires in `current_values`.
+fn update_change_with_expression(id: i64) -> PendingRowChange {
+    let mut change = update_change(id, "old", "new");
+    change
+        .expression_values
+        .insert(
+            "name".into(),
+            datazen_driver_api::WriteExpression::CurrentTimestamp,
+        );
+    change
+}
+
+#[test]
+fn plan_renders_staged_expression_inline_without_bound_parameter() {
+    let table = table_context("c1", "s1");
+    let plan = build_row_change_plan(
+        expression_driver().as_ref(),
+        table,
+        &[update_change_with_expression(7)],
+        &users_columns(),
+    )
+    .unwrap();
+
+    let update = &plan.updates[0];
+    // The native SQL is inlined, and the parameter summary says so in words —
+    // the preview must not read as if a literal were being written.
+    assert!(
+        update.sql_template.contains("CURRENT_TIMESTAMP"),
+        "the native SQL must be inlined, got: {}",
+        update.sql_template
+    );
+    assert!(
+        update.parameter_summary[0].contains("<expression: CURRENT_TIMESTAMP>"),
+        "the summary must name the expression, got: {:?}",
+        update.parameter_summary
+    );
+
+    // The executable statement: the expression column contributes **no**
+    // bound parameter — only the primary key of the WHERE clause does.
+    let bound = super::change_set::bound_statement_for_plan(
+        expression_driver().as_ref(),
+        "users",
+        update,
+        false,
+    )
+    .unwrap();
+    assert!(bound.sql.contains("CURRENT_TIMESTAMP"));
+    assert_eq!(bound.parameters.len(), 1, "only the PK binds, got: {bound:?}");
+    assert!(matches!(&bound.parameters[0], Value::Integer(7)));
+}
+
+#[test]
+fn plan_refuses_an_expression_the_driver_never_declared() {
+    let table = table_context("c1", "s1");
+    // The plain mock declares nothing — the expression must be refused with a
+    // readable error, never silently flattened into the literal string.
+    let error = build_row_change_plan(
+        driver().as_ref(),
+        table,
+        &[update_change_with_expression(7)],
+        &users_columns(),
+    )
+    .unwrap_err();
+    let message = error.to_string();
+    assert!(
+        message.contains("grid.write.expressionUnsupported"),
+        "the refusal must carry its contract code, got: {message}"
+    );
+    assert!(message.contains("name"), "it must name the column, got: {message}");
+}
+
+#[test]
+fn insert_drafts_stage_expressions_the_same_way() {
+    let table = table_context("c1", "s1");
+    let mut draft = insert_change(&[
+        ("name", Some(Value::String("ada".into()))),
+        ("note", Some(Value::String("n".into()))),
+    ]);
+    draft
+        .expression_values
+        .insert(
+            "note".into(),
+            datazen_driver_api::WriteExpression::CurrentTimestamp,
+        );
+    let plan = build_row_change_plan(
+        expression_driver().as_ref(),
+        table,
+        &[draft],
+        &users_columns(),
+    )
+    .unwrap();
+
+    let insert = &plan.inserts[0];
+    assert!(
+        insert.sql_template.contains("CURRENT_TIMESTAMP"),
+        "the draft's expression must render natively, got: {}",
+        insert.sql_template
+    );
+    // The rebuild keeps the expression: the executable INSERT binds only the
+    // literal column (name) — the expression column contributes no parameter.
+    let bound = super::insert_plan::bound_insert_statement_for_plan(
+        expression_driver().as_ref(),
+        "users",
+        insert,
+    )
+    .unwrap();
+    assert_eq!(bound.parameters.len(), 1, "only name binds, got: {bound:?}");
+    assert!(matches!(&bound.parameters[0], Value::String(s) if s == "ada"));
+}
+
+#[test]
+fn an_expression_changes_the_fingerprint_and_its_absence_does_not() {
+    let table = table_context("c1", "s1");
+    let literal_only = update_change(7, "old", "new");
+    // An empty expression map must serialize to the exact pre-DBR-05 payload —
+    // fingerprints of existing staged changes cannot change under the feature.
+    let same_again = update_change(7, "old", "new");
+    assert_eq!(
+        changes_fingerprint(&table, &[literal_only.clone()]).unwrap(),
+        changes_fingerprint(&table, &[same_again]).unwrap(),
+        "two identical expression-free changes must fingerprint identically"
+    );
+
+    let with_expression = update_change_with_expression(7);
+    assert_ne!(
+        changes_fingerprint(&table, &[literal_only]).unwrap(),
+        changes_fingerprint(&table, &[with_expression]).unwrap(),
+        "staging an expression must change the plan identity"
+    );
+}
+
+#[test]
+fn canonicalize_drops_an_expression_for_a_column_the_change_does_not_write() {
+    let mut change = update_change(7, "old", "new");
+    change
+        .expression_values
+        .insert(
+            "note".into(),
+            datazen_driver_api::WriteExpression::CurrentTimestamp,
+        );
+    let canonical = canonicalize_changes(&[change]).unwrap();
+    // `note` is not in changed_columns: its stray expression is dropped, not
+    // guessed into a write.
+    assert!(canonical[0].expression_values.is_empty());
+    // And the dropped expression cannot change the fingerprint of the write.
+    assert_eq!(
+        changes_fingerprint(&table_context("c1", "s1"), &canonical).unwrap(),
+        changes_fingerprint(&table_context("c1", "s1"), &[update_change(7, "old", "new")]).unwrap(),
     );
 }

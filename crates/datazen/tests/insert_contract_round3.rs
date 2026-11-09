@@ -85,6 +85,7 @@ fn update(name: &str) -> PendingRowChange {
     current.insert("id".to_string(), Some(Value::Integer(1)));
     current.insert("name".to_string(), Some(Value::String(name.into())));
     PendingRowChange {
+        expression_values: Default::default(),
         row_identity: identity,
         original_values: original,
         current_values: current,
@@ -101,6 +102,7 @@ fn delete() -> PendingRowChange {
     original.insert("id".to_string(), Some(Value::Integer(4)));
     original.insert("name".to_string(), Some(Value::String("Ada".into())));
     PendingRowChange {
+        expression_values: Default::default(),
         row_identity: identity,
         original_values: original,
         current_values: BTreeMap::new(),
@@ -123,6 +125,7 @@ fn new_row() -> PendingRowChange {
     let mut current = BTreeMap::new();
     current.insert("name".to_string(), Some(Value::String("Ada".into())));
     PendingRowChange {
+        expression_values: Default::default(),
         row_identity: BTreeMap::new(),
         original_values: BTreeMap::new(),
         current_values: current,

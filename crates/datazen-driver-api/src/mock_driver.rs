@@ -134,6 +134,11 @@ pub struct MockDriverOptions {
     /// `None` (the default) models a dialect that cannot backfill the new row's
     /// primary key; `Some("")` models the "already inlined" signal.
     pub insert_returning_clause: Option<String>,
+    /// Native SQL reported by [`DatabaseDriver::native_write_expression_sql`]
+    /// (DBR-05). `None` (the default) models a driver that never declared a
+    /// write expression — the plan refuses a staged expression with a
+    /// readable error instead of flattening it into a literal.
+    pub native_write_expression: Option<&'static str>,
     /// Fail the selected commit call to model a lost acknowledgement. When
     /// `commit_error_after_effect` is true, the transaction is removed before
     /// returning the error; otherwise it remains open and unapplied.
@@ -276,6 +281,7 @@ impl Default for MockDriverOptions {
             execute_rows_affected: 0,
             parameterized_writes: false,
             insert_returning_clause: None,
+            native_write_expression: None,
             commit_error_on_call: None,
             commit_error_after_effect: false,
             rollback_error_on_call: None,
@@ -683,6 +689,13 @@ impl DatabaseDriver for MockDriver {
 
     fn supports_raw_where_filter(&self) -> bool {
         self.opts.supports_raw_where_filter
+    }
+
+    fn native_write_expression_sql(
+        &self,
+        _expression: crate::types::WriteExpression,
+    ) -> Option<&'static str> {
+        self.opts.native_write_expression
     }
 
     fn keyset_predicate_sql(

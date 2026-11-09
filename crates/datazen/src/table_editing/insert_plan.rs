@@ -4,9 +4,9 @@
 //! columns, so these tests avoid every wire type; the INSERT branch joins the
 //! same plan object and keeps its own rules.
 
-use super::change_set::{PendingRowChange, PlannedStatement};
+use super::change_set::{native_write_expression_sql, PendingRowChange, PlannedStatement};
 use crate::table_editing::error::TableEditingError as FeatureError;
-use datazen_driver_api::{BoundSqlStatement, DatabaseDriver, Value};
+use datazen_driver_api::{BoundSqlStatement, DatabaseDriver, SetColumnValue, Value};
 use std::collections::{BTreeMap, HashSet};
 
 // New-row (INSERT) plan construction for the table change path.
@@ -69,6 +69,11 @@ pub fn canonicalize_insert(change: &PendingRowChange) -> Result<PendingRowChange
     normalized
         .current_values
         .retain(|column, _| written.contains(column.as_str()));
+    // A staged write expression may only name a column this INSERT writes
+    // (DBR-05); one that slipped past is dropped, not guessed into a value.
+    normalized
+        .expression_values
+        .retain(|column, _| written.contains(column.as_str()));
     Ok(normalized)
 }
 
@@ -82,15 +87,29 @@ pub fn planned_insert_statement(
     change: &PendingRowChange,
 ) -> Result<PlannedStatement, FeatureError> {
     let statement = driver
-        .build_insert_statement(
+        .build_insert_statement_with_expressions(
             table,
-            &insert_values(&change.changed_columns, &change.current_values)?,
+            &resolved_insert_values(
+                driver,
+                &change.changed_columns,
+                &change.current_values,
+                &change.expression_values,
+            )?,
         )
         .map_err(FeatureError::Driver)?;
     let parameter_summary = change
         .changed_columns
         .iter()
         .filter_map(|column| {
+            if let Some(expression) = change.expression_values.get(column) {
+                // The SET resolution above already refused what the driver
+                // does not declare; the summary names the native SQL and
+                // degrades to a word, never to a panic.
+                let expression_sql = driver
+                    .native_write_expression_sql(*expression)
+                    .unwrap_or("<unsupported expression>");
+                return Some(format!("INSERT {column}=<expression: {expression_sql}>"));
+            }
             change.current_values.get(column).map(|value| {
                 format!(
                     "INSERT {column}={}",
@@ -104,6 +123,7 @@ pub fn planned_insert_statement(
         original_values: BTreeMap::new(),
         current_values: change.current_values.clone(),
         changed_columns: change.changed_columns.clone(),
+        expression_values: change.expression_values.clone(),
         sql_template: statement.sql,
         parameter_summary,
     })
@@ -116,33 +136,49 @@ pub fn bound_insert_statement_for_plan(
     planned: &PlannedStatement,
 ) -> Result<BoundSqlStatement, FeatureError> {
     driver
-        .build_insert_statement(
+        .build_insert_statement_with_expressions(
             table,
-            &insert_values(&planned.changed_columns, &planned.current_values)?,
+            &resolved_insert_values(
+                driver,
+                &planned.changed_columns,
+                &planned.current_values,
+                &planned.expression_values,
+            )?,
         )
         .map_err(FeatureError::Driver)
 }
 
-/// Written columns, in the canonical (sorted) order, paired with their values.
-///
-/// A column present with `None` is SQL `NULL`; a missing column is a broken
-/// plan invariant and is rejected rather than silently turned into `NULL`.
-fn insert_values<'a>(
+/// The INSERT write list with every column resolved to its write form
+/// (DBR-05): a bound literal, or the driver's own native SQL when the draft
+/// stages a typed write expression. An expression the driver never declared
+/// is a readable refusal — never a literal string, which would insert the
+/// *text* `CURRENT_TIMESTAMP`.
+fn resolved_insert_values<'a>(
+    driver: &dyn DatabaseDriver,
     columns: &'a [String],
     values: &'a BTreeMap<String, Option<Value>>,
-) -> Result<Vec<(&'a str, Option<Value>)>, FeatureError> {
+    expressions: &'a BTreeMap<String, datazen_driver_api::WriteExpression>,
+) -> Result<Vec<(&'a str, SetColumnValue<'static>)>, FeatureError> {
     columns
         .iter()
         .map(|column| {
-            values
-                .get(column)
-                .cloned()
-                .map(|value| (column.as_str(), value))
-                .ok_or_else(|| {
-                    FeatureError::Validation(format!(
-                        "Missing current value for changed column '{column}'"
-                    ))
-                })
+            let value = match expressions.get(column) {
+                Some(expression) => SetColumnValue::Expression(native_write_expression_sql(
+                    driver, column, *expression,
+                )?),
+                None => SetColumnValue::Literal(
+                    values
+                        .get(column)
+                        .cloned()
+                        .ok_or_else(|| {
+                            FeatureError::Validation(format!(
+                                "Missing current value for changed column '{column}'"
+                            ))
+                        })?,
+                ),
+            };
+            Ok((column.as_str(), value))
         })
         .collect()
 }
+

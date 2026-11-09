@@ -208,6 +208,13 @@ impl DatabaseDriver for SqliteDriver {
         true
     }
 
+    /// The staged write expressions this driver renders natively (DBR-05).
+    /// SQLite's `CURRENT_TIMESTAMP` is the UTC wall clock — the one time
+    /// source the dialect itself provides.
+    fn native_write_expression_sql(&self, _expression: WriteExpression) -> Option<&'static str> {
+        Some("CURRENT_TIMESTAMP")
+    }
+
     fn sql_literal_dialect(&self) -> Option<SqlLiteralDialect> {
         Some(SqlLiteralDialect::Sqlite)
     }

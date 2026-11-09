@@ -7,7 +7,9 @@
 
 use crate::schema::CachedColumns;
 use crate::table_editing::error::TableEditingError as FeatureError;
-use datazen_driver_api::{BoundSqlStatement, DatabaseDriver, Value};
+use datazen_driver_api::{
+    BoundSqlStatement, DatabaseDriver, SetColumnValue, Value, WriteExpression,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -45,6 +47,12 @@ pub struct PendingRowChange {
     /// to the previous payload.
     #[serde(default, skip_serializing_if = "is_false")]
     pub insert_marked: bool,
+    /// The columns staged as a **typed write expression** (DBR-05): the plan
+    /// renders the driver's own native SQL for them instead of a bound
+    /// parameter. Never serialized when empty, so fingerprints of
+    /// expression-free changes stay byte-identical to the previous payload.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub expression_values: BTreeMap<String, WriteExpression>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,6 +62,10 @@ pub struct PlannedStatement {
     pub original_values: BTreeMap<String, Option<Value>>,
     pub current_values: BTreeMap<String, Option<Value>>,
     pub changed_columns: Vec<String>,
+    /// The changed columns staged as a typed write expression (DBR-05); the
+    /// commit rebuilds their SQL from this map, exactly like the preview did.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub expression_values: BTreeMap<String, WriteExpression>,
     /// Driver-rendered statement preview; it is not a wire-level SQL audit.
     pub sql_template: String,
     /// Human-readable value summaries for the preview UI.
@@ -143,6 +155,9 @@ pub fn canonicalize_changes(
             }
         }
         let _ = identity_key(&effective_identity(&normalized)?)?;
+        normalized
+            .expression_values
+            .retain(|column, _| normalized.changed_columns.contains(column));
         canonical.push(normalized);
     }
     canonical.sort_by(|a, b| {
@@ -312,21 +327,38 @@ pub fn build_row_change_plan(
             .iter()
             .map(|(column, value)| (column.as_str(), value.clone()))
             .collect();
-        let set_columns: Vec<(&str, Option<Value>)> = change
+        let set_columns: Vec<(&str, SetColumnValue<'static>)> = change
             .changed_columns
             .iter()
-            .filter_map(|column| {
-                change
-                    .current_values
-                    .get(column)
-                    .cloned()
-                    .map(|value| (column.as_str(), value))
+            .map(|column| {
+                let expression = change.expression_values.get(column);
+                let value = match expression {
+                    Some(expression) => SetColumnValue::Expression(native_write_expression_sql(
+                        driver, column, *expression,
+                    )?),
+                    None => SetColumnValue::Literal(
+                        change
+                            .current_values
+                            .get(column)
+                            .cloned()
+                            .unwrap_or(None),
+                    ),
+                };
+                (column.as_str(), value)
             })
             .collect();
         let parameter_summary = change
             .changed_columns
             .iter()
             .filter_map(|column| {
+                if change.expression_values.contains_key(column) {
+                    let expression_sql = native_write_expression_sql(
+                        driver,
+                        column,
+                        change.expression_values[column],
+                    )?;
+                    return Some(format!("SET {column}=<expression: {expression_sql}>"));
+                }
                 change
                     .current_values
                     .get(column)
@@ -346,7 +378,7 @@ pub fn build_row_change_plan(
                 .sql
         } else {
             driver
-                .build_update_statement(&table.table, &set_columns, &pk_columns)
+                .build_update_statement_with_expressions(&table.table, &set_columns, &pk_columns)
                 .map_err(FeatureError::Driver)?
                 .sql
         };
@@ -355,6 +387,7 @@ pub fn build_row_change_plan(
             original_values: change.original_values.clone(),
             current_values: change.current_values.clone(),
             changed_columns: change.changed_columns.clone(),
+            expression_values: change.expression_values.clone(),
             sql_template,
             parameter_summary,
         };
@@ -418,6 +451,7 @@ pub fn plan_changes(plan: &RowChangePlan) -> Vec<PendingRowChange> {
             changed_columns: statement.changed_columns.clone(),
             delete_marked: false,
             insert_marked: false,
+            expression_values: statement.expression_values.clone(),
         })
         .chain(plan.deletes.iter().map(|statement| PendingRowChange {
             row_identity: statement.row_identity.clone(),
@@ -426,6 +460,7 @@ pub fn plan_changes(plan: &RowChangePlan) -> Vec<PendingRowChange> {
             changed_columns: statement.changed_columns.clone(),
             delete_marked: true,
             insert_marked: false,
+            expression_values: statement.expression_values.clone(),
         }))
         .chain(plan.inserts.iter().map(|statement| PendingRowChange {
             // A new row's identity is only known after execution; the plan
@@ -436,6 +471,7 @@ pub fn plan_changes(plan: &RowChangePlan) -> Vec<PendingRowChange> {
             changed_columns: statement.changed_columns.clone(),
             delete_marked: false,
             insert_marked: true,
+            expression_values: statement.expression_values.clone(),
         }))
         .collect()
 }
@@ -494,23 +530,48 @@ pub fn bound_statement_for_plan(
             .map_err(FeatureError::Driver);
     }
 
-    let set_columns: Vec<(&str, Option<Value>)> = planned
+    let set_columns: Vec<(&str, SetColumnValue<'static>)> = planned
         .changed_columns
         .iter()
         .map(|column| {
-            planned
-                .current_values
-                .get(column)
-                .cloned()
-                .map(|value| (column.as_str(), value))
-                .ok_or_else(|| {
-                    FeatureError::Validation(format!(
-                        "Missing current value for changed column '{column}'"
-                    ))
-                })
+            let value = match planned.expression_values.get(column) {
+                Some(expression) => SetColumnValue::Expression(native_write_expression_sql(
+                    driver, column, *expression,
+                )?),
+                None => SetColumnValue::Literal(
+                    planned
+                        .current_values
+                        .get(column)
+                        .cloned()
+                        .ok_or_else(|| {
+                            FeatureError::Validation(format!(
+                                "Missing current value for changed column '{column}'"
+                            ))
+                        })?,
+                ),
+            };
+            Ok((column.as_str(), value))
         })
         .collect::<Result<_, _>>()?;
     driver
-        .build_update_statement(table, &set_columns, &pk_columns)
+        .build_update_statement_with_expressions(table, &set_columns, &pk_columns)
         .map_err(FeatureError::Driver)
+}
+
+/// The native SQL of one staged write expression, or the readable refusal a
+/// driver that never declared it gets (DBR-05).
+///
+/// Binding the expression's *name* as a literal instead is the silent failure
+/// this question exists to prevent: `SET at = 'CURRENT_TIMESTAMP'` writes
+/// text, not the database's time.
+pub(crate) fn native_write_expression_sql(
+    driver: &dyn DatabaseDriver,
+    column: &str,
+    expression: WriteExpression,
+) -> Result<&'static str, FeatureError> {
+    driver.native_write_expression_sql(expression).ok_or_else(|| {
+        FeatureError::Validation(format!(
+            "grid.write.expressionUnsupported: the driver does not support the '{expression:?}' write expression staged for column '{column}'"
+        ))
+    })
 }

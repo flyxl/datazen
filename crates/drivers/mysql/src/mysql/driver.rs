@@ -29,6 +29,13 @@ impl DatabaseDriver for MysqlDriver {
         true
     }
 
+    /// The staged write expressions this driver renders natively (DBR-05).
+    /// MySQL spells the current instant `CURRENT_TIMESTAMP` (its `NOW()` is
+    /// the same clock under a second name).
+    fn native_write_expression_sql(&self, _expression: WriteExpression) -> Option<&'static str> {
+        Some("CURRENT_TIMESTAMP")
+    }
+
     /// MySQL has no `DEFAULT VALUES`; an all-default row is spelled with an
     /// empty column/value list. Non-empty inserts keep the shared
     /// parameterized rendering (backtick identifiers, positional `?`).

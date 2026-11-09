@@ -95,6 +95,7 @@ fn table(name: &str) -> RowChangeTableContext {
 
 fn update(identity: &[(&str, i64)], column: &str, value: &str) -> PendingRowChange {
     PendingRowChange {
+        expression_values: Default::default(),
         row_identity: identity
             .iter()
             .map(|(name, key)| ((*name).into(), Some(Value::Integer(*key))))
@@ -109,6 +110,7 @@ fn update(identity: &[(&str, i64)], column: &str, value: &str) -> PendingRowChan
 
 fn new_row(values: &[(&str, Option<Value>)]) -> PendingRowChange {
     PendingRowChange {
+        expression_values: Default::default(),
         row_identity: BTreeMap::new(),
         original_values: BTreeMap::new(),
         current_values: values

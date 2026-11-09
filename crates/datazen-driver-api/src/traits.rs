@@ -16,6 +16,7 @@ use crate::filters::FilterOperator;
 use crate::query_stream::{emit_multi_query_as_stream, QueryStreamCallback};
 use crate::result_origin::ResultOrigin;
 use crate::schema_migration::{MigrationCapabilities, MigrationRenderer, TypeNormalizer};
+use crate::sql_builder::SetColumnValue;
 use crate::sql_target::SqlTarget;
 use crate::types::*;
 use crate::{
@@ -326,6 +327,41 @@ pub trait DatabaseDriver: Send + Sync {
         values: &[(&str, Option<Value>)],
     ) -> Result<BoundSqlStatement, DriverError> {
         sql_text::build_insert_statement(self, table, values)
+    }
+
+    /// The native SQL of a staged write expression (DBR-05).
+    ///
+    /// `None` — the default — means the driver has not declared the expression:
+    /// a change carrying it is refused at plan time with a readable error,
+    /// never silently flattened into a literal string, which would write the
+    /// *text* `CURRENT_TIMESTAMP` into the column instead of the database's
+    /// own time. A driver that returns `Some` vouches for the fragment the
+    /// same way it vouches for its raw-where filter.
+    fn native_write_expression_sql(&self, expression: WriteExpression) -> Option<&'static str> {
+        let _ = expression;
+        None
+    }
+
+    /// The expression-aware UPDATE (DBR-05): each written column is either a
+    /// bound literal or the driver's own native expression SQL. Equivalent to
+    /// [`Self::build_update_statement`] when no column carries an expression.
+    fn build_update_statement_with_expressions(
+        &self,
+        table: &str,
+        set_columns: &[(&str, SetColumnValue<'_>)],
+        pk_columns: &[(&str, Option<Value>)],
+    ) -> Result<BoundSqlStatement, DriverError> {
+        sql_text::build_update_statement_with_expressions(self, table, set_columns, pk_columns)
+    }
+
+    /// The expression-aware INSERT (DBR-05). Equivalent to
+    /// [`Self::build_insert_statement`] when no column carries an expression.
+    fn build_insert_statement_with_expressions(
+        &self,
+        table: &str,
+        values: &[(&str, SetColumnValue<'_>)],
+    ) -> Result<BoundSqlStatement, DriverError> {
+        sql_text::build_insert_statement_with_expressions(self, table, values)
     }
 
     /// Dialect clause that makes a new row's primary key available, or `None`
