@@ -25,7 +25,10 @@ import { clearClipboardSource } from '../../../lib/gridPastePlan';
 import type { TableState } from '../../../stores/tableData/types';
 
 vi.mock('../../../hooks/useI18n', () => ({
-  useI18n: () => ({ t: (key: string, params?: Record<string, unknown>) => (params ? `${key}:${JSON.stringify(params)}` : key) }),
+  useI18n: () => ({
+    t: (key: string, params?: Record<string, unknown>) =>
+      params ? `${key}:${JSON.stringify(params)}` : key,
+  }),
 }));
 vi.mock('../../../hooks/useColumnResize', () => ({
   useColumnResize: () => ({ columnWidths: [120, 200], onResizeStart: vi.fn() }),
@@ -85,7 +88,12 @@ function dirtyCells(container: HTMLElement): number {
 function StoreGrid({ editable = true }: { editable?: boolean }) {
   const ts = useTableDataStore((state) => state.byPanel.get(PANEL));
   const columns = useMemo(
-    () => (ts?.columns ?? []).map((column) => ({ id: column.name, name: column.name, type: column.dataType })),
+    () =>
+      (ts?.columns ?? []).map((column) => ({
+        id: column.name,
+        name: column.name,
+        type: column.dataType,
+      })),
     [ts],
   );
   const rows = useMemo(
@@ -97,8 +105,9 @@ function StoreGrid({ editable = true }: { editable?: boolean }) {
     panelId: PANEL,
     ts,
     actions: {
-      stagePasteWrites: (writes) =>
-        useTableDataStore.getState().stagePasteWrites(PANEL, writes),
+      stagePasteWrites: (writes) => useTableDataStore.getState().stagePasteWrites(PANEL, writes),
+      addDraftRowsFromCopy: (rows) =>
+        useTableDataStore.getState().addDraftRowsFromCopy(PANEL, rows),
     },
     isEditable: editable,
     columnOrder: columns.map((column) => column.name),
@@ -261,7 +270,9 @@ describe('DB-03 clipboard journey', () => {
     expect(change.changedColumns).toEqual(['name']);
     expect(change.currentValues).toEqual({ name: 'Zoe' });
     expect(cell(container, 0, 'name').getAttribute('data-dt-dirty')).toBe('true');
-    expect(screen.getByTestId('table-clipboard-status').textContent).toContain('dataTable.pasteResult');
+    expect(screen.getByTestId('table-clipboard-status').textContent).toContain(
+      'dataTable.pasteResult',
+    );
 
     // ③ Paste again over the same cell: still one pending entry, the newer value wins.
     // Nothing has been copied yet, so this block is still "unknown source" and asks again.
@@ -384,9 +395,7 @@ describe('DB-03 clipboard journey', () => {
     clickCell(container, 0, 'name');
     clickCell(container, 2, 'note', { shiftKey: true });
     // The embedded newline is quoted, so the three source rows stay three rows.
-    expect(copy(container)).toBe(
-      'z1\tz2\ta3\ta4\nz3\tz4\tb3\tb4\n"line1\nline2"\tc2\tc3\tc4',
-    );
+    expect(copy(container)).toBe('z1\tz2\ta3\ta4\nz3\tz4\tb3\tb4\n"line1\nline2"\tc2\tc3\tc4');
   });
 
   /** The staged value per row, restricted to the three writable columns. */

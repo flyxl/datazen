@@ -38,7 +38,7 @@ import {
  * that side, which is the point.
  */
 const NAMED_VIEW_KEYS =
-  'columnOrder,createdAt,filterLogic,filters,id,isDefault,name,scope,sorts,updatedAt,visibleColumns';
+  'columnOrder,createdAt,filterLogic,filters,id,isDefault,name,rawWhere,scope,sorts,updatedAt,visibleColumns';
 const SCOPE_KEYS = 'connectionId,database,schema,table';
 const FILTER_KEYS_WITH_CONNECTOR = 'column,connector,operator,value';
 const FILTER_KEYS_WITHOUT_CONNECTOR = 'column,operator,value';
@@ -59,6 +59,7 @@ const VIEW: NamedView = {
     { column: 'name', operator: 'eq', value: 'x' },
   ],
   filterLogic: 'and',
+  rawWhere: null,
   sorts: [{ column: 'id', descending: false }],
   visibleColumns: null,
   columnOrder: null,

@@ -27,6 +27,9 @@ fn request(connection_id: &str, conn_id: &str) -> TableReadRequest {
         page_size: 10,
         filters: None,
         sorts: None,
+        // DBR-04: the raw-predicate filter input; None = the structured
+        // filters above are the only conditions of this read.
+        raw_where: None,
         skip_count: None,
         filter_logic: None,
         count_strategy: None,

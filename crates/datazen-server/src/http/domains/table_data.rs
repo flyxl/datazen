@@ -1432,6 +1432,7 @@ async fn handler_preview_result_cell_change(
         table: relation.name.clone(),
     };
     let change = PendingRowChange {
+        expression_values: Default::default(),
         row_identity,
         original_values: std::iter::once((source_column.clone(), Some(old_value))).collect(),
         current_values: std::iter::once((source_column.clone(), Some(request.value.clone())))

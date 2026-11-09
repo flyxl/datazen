@@ -27,6 +27,8 @@ import {
   pendingCellKey,
   planPaste,
   recordClipboardSource,
+  recordRowCopy,
+  rowCopyForClipboardText,
   tableChangeKey,
   type PasteOverflow,
   type PastePlan,
@@ -41,7 +43,7 @@ import {
   type GridSelection,
 } from '../stores/tableData/gridSelection';
 import type { StagePasteWritesResult } from '../stores/tableData/pendingEditActions';
-import type { ColumnSchema } from '../types';
+import type { ColumnSchema, Value } from '../types';
 import type {
   GridClipboardHandlers,
   GridCopyTarget,
@@ -49,6 +51,35 @@ import type {
 import { useConfirmDialog } from './useConfirmDialog';
 import { useClipboardCopyFeedback } from './useClipboardCopyFeedback';
 import { useI18n } from './useI18n';
+
+/**
+ * Map a copied row matrix onto draft-row values (DBR-02).
+ *
+ * Primary-key and auto-increment columns are never copied — a new row earns
+ * its own identity — and unknown columns of the target table are skipped. A
+ * `null` cell stays an explicit NULL; the caller keeps the "absent key =
+ * don't write" invariant by only setting keys that exist in the matrix.
+ */
+export function rowsToDraftValues(
+  columnNames: readonly string[],
+  matrix: readonly (unknown | null)[][],
+  columns: readonly ColumnSchema[],
+): Record<string, Value | null>[] {
+  const writable = new Set(
+    columns
+      .filter((column) => !column.isPrimaryKey && !column.isAutoIncrement)
+      .map((column) => column.name),
+  );
+  return matrix.map((row) => {
+    const values: Record<string, Value | null> = {};
+    columnNames.forEach((name, index) => {
+      if (!writable.has(name)) return;
+      const cell = row[index];
+      if (cell !== undefined) values[name] = (cell ?? null) as Value | null;
+    });
+    return values;
+  });
+}
 
 /** How long "copied" stays visible; the grid's own window length. */
 const COPY_FEEDBACK_MS = 1200;
@@ -92,6 +123,11 @@ export interface UseGridClipboardOptions {
   onProblem?: (problem: PasteProblem) => void;
   /** "Read-only" refusal, shared with the cell editor's tip. */
   showReadOnlyTip?: () => void;
+  /**
+   * Append prefilled draft rows (DBR-02 paste-rows). Supplied by table panels;
+   * result grids omit it and "paste rows" is simply not offered there.
+   */
+  addDraftRows?: (rows: readonly Record<string, Value | null>[]) => string[];
 }
 
 export interface UseGridClipboardResult {
@@ -101,6 +137,14 @@ export interface UseGridClipboardResult {
     format: ClipboardFormat,
     options?: { includeHeader?: boolean },
   ) => Promise<boolean>;
+  /** "Copy as new rows" (DBR-02): put the covered rows on the clipboard as row data. */
+  copyRowsAsNewRows: () => Promise<boolean>;
+  /** Clipboard-free copy of the covered rows straight into drafts (⌘D, DBR-02). */
+  copyRowsAsDrafts: () => boolean;
+  /** "Paste rows" (DBR-02): turn a DataZen row copy into new draft rows. */
+  pasteRowsAsDrafts: () => Promise<boolean>;
+  /** Whether the row-level copy/paste entries may act (editable + draft-capable). */
+  canUseRowCopy: boolean;
   copyFeedback: { copied: boolean };
   /** Cells the last paste reported a problem for, as `${rowIndex}:${columnName}`. */
   cellErrors: ReadonlySet<string>;
@@ -171,6 +215,10 @@ export function describePasteProblem(
       return t('dataTable.copyFailed');
     case 'grid.clipboard.readFailed':
       return t('dataTable.pasteReadFailed', { shortcut: '⌘V' });
+    case 'grid.pasteRows.notRowData':
+      return t('dataTable.pasteRowsNotRowData');
+    case 'grid.pasteRows.noWritableColumn':
+      return t('dataTable.pasteRowsNoWritableColumn');
     default:
       // An unknown code must be shown, not swallowed (00-contracts §8.1): the raw detail is
       // the only thing the user has.
@@ -217,6 +265,7 @@ export function useGridClipboard(options: UseGridClipboardOptions): UseGridClipb
     stagePasteWrites,
     onProblem,
     showReadOnlyTip,
+    addDraftRows,
   } = options;
   const { t } = useI18n();
   const copyFeedback = useClipboardCopyFeedback(COPY_FEEDBACK_MS);
@@ -334,7 +383,22 @@ export function useGridClipboard(options: UseGridClipboardOptions): UseGridClipb
         columnNames: built.columnNames,
         includeHeader,
       });
-      if (text !== '') rememberSource(built.columnNames, text);
+      if (text !== '') {
+        rememberSource(built.columnNames, text);
+        // A row-mode copy is also the "copy as new rows" payload (DBR-02): the
+        // matrix travels alongside the text, because TSV cannot tell `null`
+        // from `''` and the drafts must carry the real values.
+        if (target.mode === 'row') {
+          recordRowCopy(
+            {
+              tableKey: tableChangeKey(context),
+              columnNames: built.columnNames,
+              rows: built.matrix,
+            },
+            text,
+          );
+        }
+      }
       return { text, target };
     },
     [buildMatrix, rememberSource],
@@ -622,6 +686,117 @@ export function useGridClipboard(options: UseGridClipboardOptions): UseGridClipb
     ],
   );
 
+  /**
+   * "Copy as new rows" (DBR-02): the covered rows go on the clipboard as row
+   * data — plain TSV for every other consumer, plus the recorded payload a
+   * later "paste rows" verifies and turns into drafts. Cell mode acts on the
+   * rows the rectangle covers, row mode on the row set; both are `coveredRows`.
+   */
+  const copyRowsAsNewRows = useCallback(async (): Promise<boolean> => {
+    if (coveredRows.size === 0) return false;
+    const target: GridCopyTarget = {
+      mode: 'row',
+      rowIndices: [...coveredRows].sort((left, right) => left - right),
+    };
+    const built = buildText(target, 'tsv');
+    if (!built) return false;
+    const ok = await copyFeedback.copy(built.text);
+    if (!ok) report({ code: 'grid.clipboard.writeFailed', row: null, column: null });
+    return ok;
+  }, [buildText, copyFeedback, coveredRows, report]);
+
+  /**
+   * The clipboard-free variant (DBR-02, ⌘D): copy the covered rows straight
+   * into drafts. ⌘D means "duplicate now" — the draft-duplicate gesture for
+   * real rows — so it must not depend on an asynchronous clipboard write.
+   */
+  const copyRowsAsDrafts = useCallback((): boolean => {
+    if (!addDraftRows || !isEditable || coveredRows.size === 0) return false;
+    const built = buildMatrix({
+      mode: 'row',
+      rowIndices: [...coveredRows].sort((left, right) => left - right),
+    });
+    if (!built) return false;
+    const drafts = rowsToDraftValues(built.columnNames, built.matrix, columns);
+    if (drafts.length === 0) {
+      report({ code: 'grid.pasteRows.noWritableColumn', row: null, column: null });
+      return false;
+    }
+    addDraftRows(drafts);
+    return true;
+  }, [addDraftRows, buildMatrix, columns, coveredRows, isEditable, report]);
+
+  /**
+   * "Paste rows" (DBR-02): a verified DataZen row copy becomes new draft rows.
+   *
+   * Primary-key and auto-increment values are never copied — a new row earns
+   * its own identity. Same-table copies paste without a confirmation; a
+   * cross-table paste shows the column mapping summary first (PRD 5.1). An
+   * unrecognized clipboard is refused with a readable message and never falls
+   * through to cell writes.
+   */
+  const pasteRowsAsDrafts = useCallback(async (): Promise<boolean> => {
+    if (!addDraftRows) return false;
+    setProblems([]);
+    setCellErrors(new Set<string>());
+    if (!isEditable) {
+      showReadOnlyTip?.();
+      report({ code: 'grid.cell.readOnly', row: null, column: null, detail: 'readOnly' });
+      return true;
+    }
+    let text: string | null = null;
+    try {
+      text = await requirePlatformServices().readClipboard();
+    } catch {
+      report({ code: 'grid.clipboard.readFailed', row: null, column: null });
+      return true;
+    }
+    const payload = text != null ? rowCopyForClipboardText(text) : null;
+    if (!payload) {
+      report({ code: 'grid.pasteRows.notRowData', row: null, column: null });
+      return true;
+    }
+    // What may be written: real target columns that are neither primary key
+    // nor auto-increment (a new row gets its own identity).
+    const writable = new Set(
+      columns
+        .filter((column) => !column.isPrimaryKey && !column.isAutoIncrement)
+        .map((column) => column.name),
+    );
+    const matchedSource = payload.columnNames.filter((name) => writable.has(name));
+    if (matchedSource.length === 0) {
+      report({ code: 'grid.pasteRows.noWritableColumn', row: null, column: null });
+      return true;
+    }
+    const droppedColumns = payload.columnNames.filter((name) => !writable.has(name));
+    const crossTable = payload.tableKey !== tableChangeKey(context);
+    if (crossTable) {
+      const confirmed = await confirm({
+        title: t('dataTable.pasteRowsCrossTableTitle'),
+        message: t('dataTable.pasteRowsCrossTableBody', {
+          source: payload.tableKey,
+          target: tableLabel,
+          matched: matchedSource.length,
+          total: payload.columnNames.length,
+        }),
+        description:
+          droppedColumns.length > 0
+            ? t('dataTable.pasteDroppedColumns', {
+                count: droppedColumns.length,
+                names: droppedColumns.slice(0, 5).join(', '),
+              })
+            : undefined,
+        confirmLabel: t('dataTable.pasteRows'),
+        cancelLabel: t('common.cancel'),
+        kind: 'warning' as const,
+      });
+      if (!confirmed) return true;
+    }
+    const drafts = rowsToDraftValues(payload.columnNames, payload.rows, columns);
+    if (drafts.length > 0) addDraftRows(drafts);
+    return true;
+  }, [addDraftRows, columns, confirm, context, isEditable, report, showReadOnlyTip, t, tableLabel]);
+
   const handlers = useMemo<GridClipboardHandlers>(
     () => ({
       buildCopyText,
@@ -657,6 +832,10 @@ export function useGridClipboard(options: UseGridClipboardOptions): UseGridClipb
   return {
     handlers,
     copySelectedCellsAs,
+    copyRowsAsNewRows,
+    copyRowsAsDrafts,
+    pasteRowsAsDrafts,
+    canUseRowCopy: isEditable && addDraftRows != null,
     copyFeedback: { copied: nativeCopied || copyFeedback.copied },
     cellErrors,
     problems,

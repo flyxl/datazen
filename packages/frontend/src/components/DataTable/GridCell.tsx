@@ -139,6 +139,13 @@ export interface GridCellProps {
    * owner may only hold a cached element from a previous mount.
    */
   onFkActivate?: (rowIndex: number, columnName: string, element: HTMLElement | null) => void;
+  /**
+   * Quick Look of this cell (DBR-05): the middle-click entry. A stable
+   * callback like `onFkActivate` — an inline closure per cell would defeat
+   * `memo`, which a virtualised grid feels immediately. Omitted ⇒ the
+   * middle-click keeps the browser's default (autoscroll), as before.
+   */
+  onCellQuickLook?: (rowIndex: number, columnName: string) => void;
   onCellDoubleClick: (rowIndex: number, columnName: string) => void;
   onCellEdit: (rowIndex: number, columnName: string, value: unknown) => void;
   onCellEditCancel: () => void;
@@ -163,6 +170,7 @@ export const GridCell = memo(function GridCell({
   dirtyAriaLabel,
   fk = null,
   onFkActivate,
+  onCellQuickLook,
   onCellDoubleClick,
   onCellEdit,
   onCellEditCancel,
@@ -242,6 +250,16 @@ export const GridCell = memo(function GridCell({
       onDoubleClick={(e) => {
         e.stopPropagation();
         onCellDoubleClick(rowIndex, column.name);
+      }}
+      // The Quick Look entry of the grid (DBR-05): the middle button opens the
+      // viewer — the detail drawer's per-field middle-click, brought to the
+      // cell itself. `preventDefault` on mousedown keeps the browser's
+      // autoscroll from starting under it.
+      onMouseDown={(e) => {
+        if (e.button === 1 && onCellQuickLook) {
+          e.preventDefault();
+          onCellQuickLook(rowIndex, column.name);
+        }
       }}
     >
       {sticky && (

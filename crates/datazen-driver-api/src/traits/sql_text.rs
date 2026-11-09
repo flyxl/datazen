@@ -250,6 +250,47 @@ pub(crate) fn build_insert_statement<D: DatabaseDriver + ?Sized>(
     )
 }
 
+/// The expression-aware parameterized `UPDATE` (DBR-05): each written column
+/// is either a bound literal or the driver's own inlined expression SQL.
+pub(crate) fn build_update_statement_with_expressions<D: DatabaseDriver + ?Sized>(
+    driver: &D,
+    table: &str,
+    set_columns: &[(&str, crate::sql_builder::SetColumnValue<'_>)],
+    pk_columns: &[(&str, Option<Value>)],
+) -> Result<BoundSqlStatement, DriverError> {
+    if !driver.supports_bound_writes() {
+        return Err(DriverError::Unsupported(
+            "parameterized row writes are not supported".into(),
+        ));
+    }
+    crate::sql_builder::build_update_statement_resolved(
+        &LegacySqlDialect::new(driver),
+        driver.max_bound_parameters(),
+        table,
+        set_columns,
+        pk_columns,
+    )
+}
+
+/// The expression-aware parameterized `INSERT` (DBR-05).
+pub(crate) fn build_insert_statement_with_expressions<D: DatabaseDriver + ?Sized>(
+    driver: &D,
+    table: &str,
+    values: &[(&str, crate::sql_builder::SetColumnValue<'_>)],
+) -> Result<BoundSqlStatement, DriverError> {
+    if !driver.supports_bound_writes() {
+        return Err(DriverError::Unsupported(
+            "parameterized row writes are not supported".into(),
+        ));
+    }
+    crate::sql_builder::build_insert_statement_resolved(
+        &LegacySqlDialect::new(driver),
+        driver.max_bound_parameters(),
+        table,
+        values,
+    )
+}
+
 /// The dialect clause that makes a new row's primary key available, or `None`
 /// when this dialect cannot return it.
 ///

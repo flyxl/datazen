@@ -173,6 +173,9 @@ fn the_probe_sql_of_a_qualified_target_quotes_the_dotted_name_as_one_identifier(
         51,
         0,
         Some("and"),
+        // The FK probe has no raw filter channel (DBR-04); the raw predicate
+        // belongs to the table read the api module serves.
+        None,
     )
     .expect("the probe SQL is expressible");
 

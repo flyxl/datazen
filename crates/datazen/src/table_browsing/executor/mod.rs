@@ -16,6 +16,7 @@ use crate::table_browsing::browsing;
 use crate::table_browsing::paging::{cursor_from_row, keyset_decision, resolve_order_spec_multi};
 
 pub mod filter_sql;
+pub mod raw_where;
 pub mod table_read_sql;
 
 #[cfg(test)]
@@ -26,6 +27,7 @@ pub use datazen_driver_api::filters::{
     FilterCondition, FilterConnector, FilterOperator, SortCondition,
 };
 pub use filter_sql::{FilterRejection, MAX_REGEX_PATTERN_LENGTH};
+pub use raw_where::{validate_raw_where, RawWhereRejection, MAX_RAW_WHERE_LENGTH};
 pub use table_read_sql::PagedSelectSql;
 
 #[derive(Debug, Clone)]
@@ -172,6 +174,10 @@ impl QueryExecutor {
             page_size as u64,
             (page as u64).saturating_mul(page_size as u64),
             filter_logic,
+            // The executor's read path has no raw channel (DBR-04); the
+            // target-bound read of the api module is the only caller that
+            // carries one.
+            None,
         )
         .map_err(|rejection| DriverError::NotSupported(rejection.contract_message()))?;
 
@@ -228,6 +234,10 @@ impl QueryExecutor {
                     &filters,
                     &dialect,
                     filter_logic,
+                    // The executor's read path has no raw channel (DBR-04);
+                    // the target-bound read of the api module is the only
+                    // caller that carries one.
+                    None,
                 )
                 .map_err(|rejection| DriverError::NotSupported(rejection.contract_message()))?;
                 tracing::info!(%table, "query_executor: count query");
@@ -334,6 +344,9 @@ impl QueryExecutor {
                             &filters,
                             &dialect,
                             filter_logic,
+                            // The executor's read path has no raw channel
+                            // (DBR-04); see the Exact arm above.
+                            None,
                         )
                         .map_err(|rejection| {
                             DriverError::NotSupported(rejection.contract_message())
@@ -421,15 +434,26 @@ impl QueryExecutor {
     /// The statement that counts the rows of a table.
     ///
     /// The text lives in [`table_read_sql`]; this is the address the rest of
-    /// the tree already uses.
+    /// the tree uses. `raw_where` is the validated raw predicate (DBR-04);
+    /// the executor's own read paths carry none — the raw channel belongs to
+    /// the target-bound read the api module serves — so every call from here
+    /// passes `None`.
     pub fn build_count_sql(
         table_name: &str,
         columns: &[ColumnSchema],
         filters: &Option<Vec<FilterCondition>>,
         dialect: &dyn SqlDialect,
         filter_logic: Option<&str>,
+        raw_where: Option<&str>,
     ) -> Result<String, FilterRejection> {
-        table_read_sql::build_count_sql(table_name, columns, filters, dialect, filter_logic)
+        table_read_sql::build_count_sql(
+            table_name,
+            columns,
+            filters,
+            dialect,
+            filter_logic,
+            raw_where,
+        )
     }
 
     /// Build the statement that reads one page of a table.
@@ -456,6 +480,7 @@ impl QueryExecutor {
         limit: u64,
         offset: u64,
         filter_logic: Option<&str>,
+        raw_where: Option<&str>,
     ) -> Result<String, FilterRejection> {
         table_read_sql::build_select_sql(
             table_name,
@@ -467,6 +492,7 @@ impl QueryExecutor {
             limit,
             offset,
             filter_logic,
+            raw_where,
         )
     }
 

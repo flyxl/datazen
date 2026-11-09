@@ -39,6 +39,63 @@ export interface StageCellValueInput {
   readonly rowIndex: number;
 }
 
+export interface StageExpressionValueInput {
+  /** The change staged for that row today, if any. */
+  readonly existing: PendingRowChange | undefined;
+  /** The column the expression is staged for. */
+  readonly column: string;
+  /** The value before the staging — what "revert this cell" goes back to. */
+  readonly originalValue: Value | null;
+  /** The identity the change is filed under. */
+  readonly rowIdentity: RowIdentity;
+  /** The row index — a UI hint only, never part of the identity. */
+  readonly rowIndex: number;
+}
+
+/**
+ * The next version of a row's staged change after one cell was staged as a
+ * **typed write expression** (DBR-05).
+ *
+ * The column enters `changedColumns` like any write, and `currentValues`
+ * carries the original as the channel's placeholder — the expression, not
+ * the placeholder, decides what the statement renders. A literal staged on
+ * the same column afterwards replaces the expression (one write intent per
+ * column), and `undefined` (revert) clears both.
+ */
+export function computeStageExpressionValueResult(
+  input: StageExpressionValueInput,
+): StageCellValueResult {
+  const existing = input.existing;
+  const expressionValues = { ...(existing?.expressionValues ?? {}) };
+  expressionValues[input.column] = 'currentTimestamp';
+  const originalValues = { ...(existing?.originalValues ?? {}) };
+  const currentValues = { ...(existing?.currentValues ?? {}) };
+  const changedColumns = existing
+    ? Array.from(new Set([...existing.changedColumns, input.column]))
+    : [input.column];
+  if (!(input.column in originalValues)) originalValues[input.column] = input.originalValue;
+  // The placeholder keeps the plan invariant ("every changed column has a
+  // current value") while the expression owns what the SQL renders.
+  currentValues[input.column] =
+    existing?.currentValues[input.column] === undefined
+      ? input.originalValue
+      : (existing?.currentValues[input.column] ?? null);
+  return {
+    change: {
+      ...(existing ?? {
+        rowIdentity: input.rowIdentity,
+        rowIndex: input.rowIndex,
+        deleteMarked: false,
+      }),
+      originalValues,
+      currentValues,
+      changedColumns,
+      expressionValues,
+    },
+    changedColumns,
+  };
+}
+
 export interface StageCellValueResult {
   /**
    * The next version of the row's staged change, or `null` when the row has
@@ -58,7 +115,7 @@ export interface StageCellValueResult {
  */
 export function computeStageCellValueResult(input: StageCellValueInput): StageCellValueResult {
   if (input.value !== undefined) {
-    return computeStageResult({
+    const staged = computeStageResult({
       existing: input.existing,
       column: input.column,
       originalValue: input.originalValue,
@@ -66,6 +123,13 @@ export function computeStageCellValueResult(input: StageCellValueInput): StageCe
       rowIdentity: input.rowIdentity,
       rowIndex: input.rowIndex,
     });
+    // One write intent per column: a literal (or a NULL) replaces a staged
+    // expression — the newest intent is the only one the commit renders.
+    if (staged.change?.expressionValues?.[input.column] !== undefined && staged.change) {
+      const { [input.column]: _replaced, ...rest } = staged.change.expressionValues;
+      staged.change.expressionValues = Object.keys(rest).length > 0 ? rest : undefined;
+    }
+    return staged;
   }
 
   const existing = input.existing;
@@ -76,6 +140,12 @@ export function computeStageCellValueResult(input: StageCellValueInput): StageCe
   delete originalValues[input.column];
   delete currentValues[input.column];
   const changedColumns = existing.changedColumns.filter((column) => column !== input.column);
+  // The revert clears a staged expression with the write it belongs to.
+  let expressionValues = existing.expressionValues;
+  if (expressionValues?.[input.column] !== undefined) {
+    const { [input.column]: _reverted, ...rest } = expressionValues;
+    expressionValues = Object.keys(rest).length > 0 ? rest : undefined;
+  }
 
   // A row that is marked for deletion keeps its entry: the delete mark is a
   // fact of its own.
@@ -83,12 +153,15 @@ export function computeStageCellValueResult(input: StageCellValueInput): StageCe
     return { change: null, changedColumns };
   }
 
+  const nextExpressionValues = expressionValues === undefined ? undefined : { ...expressionValues };
+
   return {
     change: {
       ...existing,
       originalValues,
       currentValues,
       changedColumns,
+      ...(nextExpressionValues === undefined ? {} : { expressionValues: nextExpressionValues }),
     },
     changedColumns,
   };
@@ -122,5 +195,9 @@ export function hasPendingColumnChange(
 ): boolean {
   if (!existing) return false;
   if (!existing.changedColumns.includes(column)) return false;
+  // A staged expression is a pending change even when the placeholder happens
+  // to equal the original (e.g. NULL → expression): the expression is the
+  // intent, and the revert entry answers it.
+  if (existing.expressionValues?.[column] !== undefined) return true;
   return !valuesEqual(existing.originalValues[column], existing.currentValues[column]);
 }

@@ -19,6 +19,7 @@ export function GridKeyboardHints({ id }: { id: string }) {
         <li>{t('tableView.shortcut.moveByPage')}</li>
         <li>{t('tableView.shortcut.moveToEdge')}</li>
         <li>{t('tableView.shortcut.selectAllRows')}</li>
+        <li>{t('tableView.shortcut.quickLook')}</li>
         <li>{t('tableView.shortcut.tabLeavesGrid')}</li>
       </ul>
     </div>

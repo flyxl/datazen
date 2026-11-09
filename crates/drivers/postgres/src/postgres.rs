@@ -72,6 +72,22 @@ impl DatabaseDriver for PostgresDriver {
         true
     }
 
+    /// The raw `WHERE` filter (DBR-04): a validated boolean fragment spliced
+    /// into the `WHERE` of the host-built read. PostgreSQL's expression
+    /// grammar covers everything the validator lets through (subqueries
+    /// included), so the channel is open — the validator is what keeps the
+    /// data-modifying CTEs out, not the driver.
+    fn supports_raw_where_filter(&self) -> bool {
+        true
+    }
+
+    /// The staged write expressions this driver renders natively (DBR-05).
+    /// PostgreSQL's own current-datetime expression; inlined into the SET
+    /// clause by the shared expression-aware builder, never a bound parameter.
+    fn native_write_expression_sql(&self, _expression: WriteExpression) -> Option<&'static str> {
+        Some("CURRENT_TIMESTAMP")
+    }
+
     fn sql_literal_dialect(&self) -> Option<SqlLiteralDialect> {
         Some(SqlLiteralDialect::Postgres)
     }

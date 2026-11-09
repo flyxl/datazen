@@ -41,20 +41,32 @@ pub struct PagedSelectSql {
 /// The statement that counts the rows of a table.
 ///
 /// The column list is not part of it: a count does not name columns.
+/// `raw_where` is the validated raw predicate (DBR-04): the caller has
+/// already run it through [`super::raw_where::validate_raw_where`], so this
+/// builder only places it, in parentheses, as the first condition of the
+/// `WHERE` — the count must ask the same question the page read asks.
 pub fn build_count_sql(
     table_name: &str,
     columns: &[ColumnSchema],
     filters: &Option<Vec<super::FilterCondition>>,
     dialect: &dyn SqlDialect,
     filter_logic: Option<&str>,
+    raw_where: Option<&str>,
 ) -> Result<String, FilterRejection> {
     let _ = columns;
     let mut sql = format!("SELECT COUNT(*) FROM {}", dialect.quote_ident(table_name));
 
+    let mut has_where = false;
+    if let Some(raw) = raw_where {
+        sql.push_str(" WHERE (");
+        sql.push_str(raw);
+        sql.push(')');
+        has_where = true;
+    }
     if let Some(conditions) = filters {
         let parts = filter_sql::render_filter_parts(conditions, dialect)?;
         if !parts.is_empty() {
-            sql.push_str(" WHERE ");
+            sql.push_str(if has_where { " AND " } else { " WHERE " });
             sql.push_str(&filter_sql::join_filters(&parts, filter_logic));
         }
     }
@@ -82,6 +94,7 @@ pub fn build_select_sql(
     limit: u64,
     offset: u64,
     filter_logic: Option<&str>,
+    raw_where: Option<&str>,
 ) -> Result<String, FilterRejection> {
     // The explicit sort list is ordered (DB-11); its positions are the ORDER
     // BY positions. An empty list falls back to the driver's default order,
@@ -99,6 +112,7 @@ pub fn build_select_sql(
         limit,
         offset,
         filter_logic,
+        raw_where,
     )?;
     Ok(paged.sql)
 }
@@ -130,6 +144,7 @@ pub fn build_paged_select_sql(
     limit: u64,
     offset: u64,
     filter_logic: Option<&str>,
+    raw_where: Option<&str>,
 ) -> Result<PagedSelectSql, FilterRejection> {
     let by_seek = mode == PagingMode::Keyset;
     // A seek reads the rows after the boundary: there is nothing to skip.
@@ -142,6 +157,7 @@ pub fn build_paged_select_sql(
         predicate_sql,
         dialect,
         filter_logic,
+        raw_where,
     )?;
 
     // Dialects whose pagination clause is only legal after `ORDER BY`
@@ -191,6 +207,7 @@ pub fn build_unbounded_select_sql(
     order: &OrderSpec,
     dialect: &dyn SqlDialect,
     filter_logic: Option<&str>,
+    raw_where: Option<&str>,
 ) -> Result<String, FilterRejection> {
     let (sql, _has_order_by) = select_body(
         table_name,
@@ -202,6 +219,7 @@ pub fn build_unbounded_select_sql(
         None,
         dialect,
         filter_logic,
+        raw_where,
     )?;
     Ok(sql)
 }
@@ -225,6 +243,7 @@ fn select_body(
     predicate_sql: Option<&str>,
     dialect: &dyn SqlDialect,
     filter_logic: Option<&str>,
+    raw_where: Option<&str>,
 ) -> Result<(String, bool), FilterRejection> {
     let qi = |name: &str| dialect.quote_ident(name);
     // The filters are only grouped when a condition is placed next to them:
@@ -248,12 +267,26 @@ fn select_body(
 
     sql.push_str(&format!(" FROM {}", qi(table_name)));
 
+    // The raw predicate (DBR-04) is placed first and in parentheses: it is
+    // user text, and the parentheses keep its boolean shape whatever it
+    // contains. It is joined with `AND` to the structured conditions — a raw
+    // predicate and a structured list are two statements of the same
+    // question, and the page the user sees must answer both.
     let mut has_filters = false;
+    if raw_where.is_some_and(|raw| !raw.is_empty()) {
+        sql.push_str(" WHERE (");
+        sql.push_str(raw_where.unwrap_or_default());
+        sql.push(')');
+        has_filters = true;
+    }
     if let Some(conditions) = filters {
         let parts = filter_sql::render_filter_parts(conditions, dialect)?;
         if !parts.is_empty() {
-            has_filters = true;
-            sql.push_str(" WHERE ");
+            if has_filters {
+                sql.push_str(" AND ");
+            } else {
+                sql.push_str(" WHERE ");
+            }
             if with_predicate {
                 // The filters become one group, so that the `AND` below binds
                 // the whole group and not only its last condition.
@@ -263,6 +296,7 @@ fn select_body(
             } else {
                 sql.push_str(&filter_sql::join_filters(&parts, filter_logic));
             }
+            has_filters = true;
         }
     }
 

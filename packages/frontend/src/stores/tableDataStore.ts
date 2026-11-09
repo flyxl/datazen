@@ -107,6 +107,30 @@ interface TableDataStore
   removeFilter: (panelId: string, index: number) => void;
   clearFilters: (panelId: string) => void;
   applyFilters: (panelId: string) => void;
+  /**
+   * Switch the filter panel's editor pane (DBR-04). Render-only: switching a
+   * mode never runs a query and never discards a draft — each mode keeps its
+   * own.
+   */
+  setFilterMode: (panelId: string, mode: 'structured' | 'anyColumn' | 'rawSql') => void;
+  /** Edit the Any Column draft; applying is a separate, explicit act. */
+  setAnyColumnDraft: (panelId: string, value: string) => void;
+  /** Edit the Raw SQL draft; applying is a separate, explicit act. */
+  setRawWhereDraft: (panelId: string, value: string) => void;
+  /**
+   * Apply the Any Column draft: it expands into structured `contains`
+   * conditions (the expansion is computed by the caller, which knows the
+   * driver's searchable-type declaration) and replaces the applied filter,
+   * exactly like any other structured apply.
+   */
+  applyAnyColumn: (panelId: string, expansion: { conditions: FilterCondition[] }) => void;
+  /**
+   * Apply the Raw SQL draft: the predicate replaces the applied filter
+   * (structured conditions are cleared — at most one channel is applied at a
+   * time), the page resets to the first, and the read carries it. An empty
+   * predicate clears the filter instead of sending one.
+   */
+  applyRawWhere: (panelId: string, predicate: string) => void;
   setFilterPanelOpen: (panelId: string, open: boolean) => void;
   setVisibleColumns: (panelId: string, columns: string[] | null) => void;
   setSort: (panelId: string, sort: SortCondition) => void;
@@ -346,7 +370,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     const requestRevision = existing.requestRevision;
     if (existing.loading && existing.loadingRevision === requestRevision) return;
 
-    const { page, filters, sorts, filterLogic } = existing;
+    const { page, filters, sorts, filterLogic, rawWhere } = existing;
     const driverPageSize = DB_REGISTRY[context.driverType as DatabaseType]?.defaultPageSize;
     const settingsPageSize = useSettingsStore.getState().settings.defaultPageSize;
     const pageSize =
@@ -388,6 +412,11 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         // `grid.filter.incomplete`, which is a visible, actionable error
         // instead of a silent widening.
         filters,
+        // The applied raw predicate (DBR-04): `null` sends nothing, which is
+        // the request every read always served. The host validates the
+        // fragment on every read — a stored draft the driver later stops
+        // declaring is refused visibly, never silently dropped.
+        rawWhere: rawWhere ?? null,
         // The default order override ("primary key, descending") is an
         // **explicit sort** — `defaultOrderColumns` carries no direction — so
         // the request must carry `order.sorts`, not the raw list.
@@ -504,6 +533,10 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       draftFilters: cloneFilters(next),
       filterLogic: logic,
       draftFilterLogic: logic,
+      // Applying a structured list replaces the raw predicate (DBR-04): at
+      // most one channel is applied at a time, so the question the query
+      // answers is always the one the panel shows.
+      rawWhere: null,
       page: 0,
       filterPanelOpen: true,
       keyset: invalidatedKeyset(ts.keyset),
@@ -533,6 +566,14 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       draftFilters: [],
       filterLogic: 'and',
       draftFilterLogic: 'and',
+      // Clearing restores the original data range (DBR-04): every filter
+      // channel goes idle together, and the drafts of the modes go with
+      // them — "clear" starts fresh, it does not leave a typed-but-unapplied
+      // value that the next Apply would resurrect by surprise.
+      rawWhere: null,
+      rawWhereDraft: '',
+      anyColumnDraft: '',
+      filterMode: 'structured',
       page: 0,
       keyset: invalidatedKeyset(ts.keyset),
     }));
@@ -558,8 +599,71 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     patchPanelForReload(get, set, panelId, (cur) => ({
       filters: cloneFilters(cur.draftFilters),
       filterLogic: cur.draftFilterLogic,
+      // The structured Apply replaces the raw predicate (DBR-04): one
+      // applied channel at a time.
+      rawWhere: null,
       page: 0,
       keyset: invalidatedKeyset(cur.keyset),
+    }));
+    get().reloadPanel(panelId);
+  },
+
+  setFilterMode: (panelId, mode) => {
+    // Render-only: no reload, no revision bump — the modes are three editors
+    // over one panel, and a draft is never executed by looking at it.
+    patchPanel(get, set, panelId, () => ({ filterMode: mode }));
+  },
+
+  setAnyColumnDraft: (panelId, value) => {
+    patchPanel(get, set, panelId, () => ({ anyColumnDraft: value }));
+  },
+
+  setRawWhereDraft: (panelId, value) => {
+    patchPanel(get, set, panelId, () => ({ rawWhereDraft: value }));
+  },
+
+  applyAnyColumn: (panelId, expansion) => {
+    if (expansion.conditions.length === 0) {
+      // An empty expansion is the clear signal: the value matched nothing to
+      // search, so the panel asks the whole-table question again.
+      get().clearFilters(panelId);
+      return;
+    }
+    patchPanelForReload(get, set, panelId, (ts) => ({
+      // The expansion arrives ready-made (the caller knows the driver's
+      // searchable types); the store only applies it as a structured list
+      // with OR logic — the one question "does the value appear in any
+      // column".
+      filters: cloneFilters(expansion.conditions),
+      draftFilters: cloneFilters(expansion.conditions),
+      filterLogic: 'or',
+      draftFilterLogic: 'or',
+      rawWhere: null,
+      page: 0,
+      filterPanelOpen: true,
+      keyset: invalidatedKeyset(ts.keyset),
+    }));
+    get().reloadPanel(panelId);
+  },
+
+  applyRawWhere: (panelId, predicate) => {
+    const trimmed = predicate.trim();
+    if (!trimmed) {
+      // An empty predicate is the clear signal, not a question.
+      get().clearFilters(panelId);
+      return;
+    }
+    patchPanelForReload(get, set, panelId, (ts) => ({
+      rawWhere: trimmed,
+      // The raw predicate replaces the structured list (DBR-04): at most one
+      // channel is applied at a time.
+      filters: [],
+      draftFilters: [],
+      filterLogic: 'and',
+      draftFilterLogic: 'and',
+      page: 0,
+      filterPanelOpen: true,
+      keyset: invalidatedKeyset(ts.keyset),
     }));
     get().reloadPanel(panelId);
   },

@@ -41,7 +41,12 @@ export const fileCommands = {
 
   finishSave: (token: string) => invoke<void>('finish_save', { token }),
 
-  abortSave: (token: string) => invoke<void>('abort_save', { token }),
+  /**
+   * Abort a save session: the in-progress `.datazen-part` sibling is removed
+   * and the picked path is left untouched (DBR-06). Resolves to whether the
+   * partial file was actually deleted, so the UI can report it honestly.
+   */
+  abortSave: (token: string) => invoke<boolean>('abort_save', { token }),
 
   /**
    * Stream selected tables to a single file or ZIP entirely on the Rust side

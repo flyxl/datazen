@@ -14,7 +14,7 @@ use datazen_driver_api::{
     async_trait, BoundSqlStatement, ColumnSchema, ConnectionConfig, ConnectionHandle,
     DatabaseDriver, DatabaseType, DriverError, MultiQueryResult, QueryResult, ResultColumnOrigin,
     ResultObjectKind, ResultOrigin, ResultOriginDetail, ResultShape, ResultTableRef, ServerInfo,
-    TableInfo, TableSchema, Value,
+    SetColumnValue, TableInfo, TableSchema, Value,
 };
 
 use super::*;
@@ -500,6 +500,43 @@ impl DatabaseDriver for CountingDriver {
         for (column, value) in set_columns {
             sets.push(format!("{column} = ?{}", parameters.len() + 1));
             parameters.push(value.clone().unwrap_or(Value::Null));
+        }
+        let mut wheres = Vec::new();
+        for (column, value) in pk_columns {
+            wheres.push(format!("{column} = ?{}", parameters.len() + 1));
+            parameters.push(value.clone().unwrap_or(Value::Null));
+        }
+        Ok(BoundSqlStatement {
+            sql: format!(
+                "UPDATE {table} SET {} WHERE {}",
+                sets.join(", "),
+                wheres.join(" AND ")
+            ),
+            parameters,
+        })
+    }
+
+    /// The expression-aware counterpart (DBR-05): the plan path calls this one
+    /// now, and the mock must keep counting the render it answers.
+    fn build_update_statement_with_expressions(
+        &self,
+        table: &str,
+        set_columns: &[(&str, SetColumnValue<'_>)],
+        pk_columns: &[(&str, Option<Value>)],
+    ) -> Result<BoundSqlStatement, DriverError> {
+        self.rendered.fetch_add(1, Ordering::Relaxed);
+        let mut parameters = Vec::new();
+        let mut sets = Vec::new();
+        for (column, value) in set_columns {
+            match value {
+                SetColumnValue::Literal(value) => {
+                    sets.push(format!("{column} = ?{}", parameters.len() + 1));
+                    parameters.push(value.clone().unwrap_or(Value::Null));
+                }
+                // The result-cell write path never stages an expression;
+                // the arm keeps the mock's shape honest instead of refusing.
+                SetColumnValue::Expression(sql) => sets.push(format!("{column} = {sql}")),
+            }
         }
         let mut wheres = Vec::new();
         for (column, value) in pk_columns {

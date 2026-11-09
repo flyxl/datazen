@@ -37,8 +37,10 @@ export interface ConnectionContextMenuParams {
   safeMode: boolean;
   /** Open the export dialog for a table/view: set the target name and open it. */
   requestExport: (name: string, schema: string | null, database: string) => void;
-  /** Open the import dialog; `isTable` selects the table-target vs database import. */
-  requestImport: (isTable: boolean, name: string) => void;
+  /** Open the import dialog; `isTable` selects the table-target vs database import.
+   * The schema/database context of the clicked node travels with the request so
+   * the wizard can resolve the target table's columns (DBR-01). */
+  requestImport: (isTable: boolean, name: string, schema: string | null, database: string) => void;
 }
 
 export interface ConnectionContextMenuResult {
@@ -238,7 +240,7 @@ export function useConnectionContextMenu({
             },
             onImport:
               !ctxIsReadOnly && (kind === 'table' || kind === 'database' || kind === 'blank')
-                ? () => requestImport(kind === 'table', name)
+                ? () => requestImport(kind === 'table', name, schema ?? null, database)
                 : undefined,
             onRefresh: handlers.handleRefresh,
             onNewQuery: () => {

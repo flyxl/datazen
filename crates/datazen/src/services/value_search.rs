@@ -20,6 +20,22 @@
 //!   declares an escape character **and** its `ESCAPE` clause — the pair must
 //!   exist together, or an escaped `%` degrades back into a wildcard and the
 //!   answer lies.
+//!
+//! # The match definitions the PRD asks to write down (DBR-03)
+//!
+//! * **Empty value** — refused before any statement is built
+//!   ([`ValueSearchError::Shape`]): an empty pattern would mean "matches
+//!   everything", which is a question nobody asked.
+//! * **Case** — the statement carries no case override, so `LIKE` answers
+//!   under the driver's own collation: case-insensitive under MySQL's
+//!   default `utf8mb4_0900_ai_ci`, case-sensitive under PostgreSQL. The
+//!   statement never spells `COLLATE` — that would second-guess the column's
+//!   own collation.
+//! * **NULL** — SQL's three-valued logic, untouched: `NULL LIKE p` is
+//!   unknown, so a NULL cell matches neither `contains` nor `notContains`.
+//!   A row counts as `notContains` only when every searched column
+//!   *verifiably* lacks the value — a NULL is an absence of an answer, not an
+//!   answer of absence.
 
 use datazen_driver_api::{
     ConnectionHandle, DatabaseDriver, DriverError, LegacySqlDialect, SqlDialect, SqlTarget, Value,
@@ -39,6 +55,18 @@ pub enum SearchMode {
     Prefix,
     /// The column ends with the value (`%value`).
     Suffix,
+    /// The value appears nowhere in the column (`NOT LIKE %value%`, DBR-03).
+    ///
+    /// The negation is **per column** (`NOT LIKE`), and it distributes over
+    /// the columns the way negation distributes over a disjunction: a row
+    /// matches only when **every** searched column lacks the value, so the
+    /// conditions join with `AND` — `NOT (a LIKE p OR b LIKE p)` is
+    /// `a NOT LIKE p AND b NOT LIKE p`, never an `OR` of negations (that
+    /// would count a row whose `a` holds the value because its `b` does not).
+    /// A NULL cell is not an answer (three-valued logic): such a row does not
+    /// count as "lacking" the value either.
+    #[serde(rename = "notContains")]
+    NotContains,
 }
 
 /// The request: one table, the columns to search, the value and its mode.
@@ -115,7 +143,7 @@ fn like_pattern(dialect: &dyn SqlDialect, value: &str, mode: SearchMode) -> Stri
         None => value.to_string(),
     };
     match mode {
-        SearchMode::Contains => format!("%{escaped}%"),
+        SearchMode::Contains | SearchMode::NotContains => format!("%{escaped}%"),
         SearchMode::Prefix => format!("{escaped}%"),
         SearchMode::Suffix => format!("%{escaped}"),
         SearchMode::Exact => escaped,
@@ -181,27 +209,49 @@ pub(crate) fn build_search_statement(
             (mode, Some(placeholder)) => {
                 let pattern = like_pattern(dialect, value, mode);
                 params.push(Value::String(pattern));
+                // `NotContains` negates the LIKE itself (`NOT LIKE`), never
+                // the whole chain — see the mode's doc comment for why the
+                // negation distributes into an AND of `NOT LIKE`s.
+                let not = if matches!(mode, SearchMode::NotContains) {
+                    "NOT "
+                } else {
+                    ""
+                };
                 match &escape_clause {
-                    Some(clause) => format!("{name} LIKE {placeholder} {clause}"),
-                    None => format!("{name} LIKE {placeholder}"),
+                    Some(clause) => format!("{name} {not}LIKE {placeholder} {clause}"),
+                    None => format!("{name} {not}LIKE {placeholder}"),
                 }
             }
             (mode, None) => {
                 let pattern = like_pattern(dialect, value, mode);
                 let literal = dialect.try_format_sql_literal(&Some(Value::String(pattern)))?;
+                let not = if matches!(mode, SearchMode::NotContains) {
+                    "NOT "
+                } else {
+                    ""
+                };
                 match &escape_clause {
-                    Some(clause) => format!("{name} LIKE {literal} {clause}"),
-                    None => format!("{name} LIKE {literal}"),
+                    Some(clause) => format!("{name} {not}LIKE {literal} {clause}"),
+                    None => format!("{name} {not}LIKE {literal}"),
                 }
             }
         };
         conditions.push(condition);
     }
 
+    // A negation distributes over the disjunction: `contains` ORs its
+    // columns (a hit in any column counts), `notContains` ANDs its negated
+    // columns (only a row lacking the value in every column counts).
+    let joiner = if matches!(mode, SearchMode::NotContains) {
+        " AND "
+    } else {
+        " OR "
+    };
+
     let sql = format!(
         "SELECT COUNT(*) FROM {} WHERE {}",
         quote(table),
-        conditions.join(" OR ")
+        conditions.join(joiner)
     );
     Ok(match placeholders {
         Some(_) => SearchStatement::Bound { sql, params },
@@ -222,7 +272,10 @@ pub async fn search_table_values(
             "a value search needs at least one column".to_string(),
         ));
     }
-    if request.value.is_empty() {
+    // The host command trims before this check already; the service answers
+    // for itself too, so a whitespace-only value can never become a pattern
+    // that "matches everything".
+    if request.value.trim().is_empty() {
         return Err(ValueSearchError::Shape(
             "the search value is empty".to_string(),
         ));

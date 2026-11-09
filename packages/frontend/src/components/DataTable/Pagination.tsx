@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef } from 'react';
 import { useI18n } from '../../hooks/useI18n';
 import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
@@ -152,8 +152,6 @@ export interface PaginationProps {
    * to give, and the read fell back to counting.
    */
   estimateUnavailable?: boolean;
-  /** Extra controls rendered next to the pager (the panel's order override). */
-  footerExtras?: ReactNode;
   /** What the back end said about the paging of this page. */
   pagingHint?: PagingHint;
 }
@@ -174,7 +172,6 @@ export function Pagination({
   counting = false,
   unstablePaging = false,
   estimateUnavailable = false,
-  footerExtras,
   pagingHint,
 }: PaginationProps) {
   const { t } = useI18n();
@@ -248,8 +245,7 @@ export function Pagination({
           })}`
         : `${from}-${to} / ${t('pagination.rowCountUnknown')}`;
 
-  const estimateTooltip =
-    view.kind === 'estimated' ? t('pagination.estimateTooltip') : undefined;
+  const estimateTooltip = view.kind === 'estimated' ? t('pagination.estimateTooltip') : undefined;
 
   // The estimate may be smaller than the real count, so the user can walk past
   // the end of the data. Say so instead of showing an empty grid.
@@ -345,7 +341,6 @@ export function Pagination({
             {t('pagination.hint.drift')}
           </span>
         )}
-        {footerExtras}
         {view.kind === 'estimated' && onCountExact && (
           <Button
             variant="secondary"
@@ -378,9 +373,7 @@ export function Pagination({
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <div className="w-[120px] truncate text-center tabular-nums">
-            {pageLabel}
-          </div>
+          <div className="w-[120px] truncate text-center tabular-nums">{pageLabel}</div>
           <Button
             variant="secondary"
             className="h-8 w-8 px-0"

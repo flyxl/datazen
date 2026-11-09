@@ -37,6 +37,7 @@ mod default_order_sources {
             50,
             0,
             None,
+            None,
         )
         .unwrap();
         assert!(
@@ -67,6 +68,7 @@ mod default_order_sources {
             &DEFAULT,
             50,
             0,
+            None,
             None,
         )
         .unwrap();
@@ -101,6 +103,7 @@ mod default_order_sources {
             50,
             0,
             None,
+            None,
         )
         .unwrap();
         assert!(
@@ -118,6 +121,7 @@ mod default_order_sources {
             &TSQL,
             50,
             0,
+            None,
             None,
         )
         .unwrap();
@@ -147,6 +151,7 @@ mod default_order_sources {
             50,
             0,
             None,
+            None,
         )
         .unwrap();
         assert!(!sql.contains("ORDER BY"), "got: {sql}");
@@ -170,6 +175,7 @@ mod default_order_sources {
             &DEFAULT,
             50,
             0,
+            None,
             None,
         )
         .unwrap();

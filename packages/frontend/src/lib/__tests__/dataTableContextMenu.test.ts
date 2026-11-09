@@ -1032,3 +1032,93 @@ describe('buildDataTableContextMenuItems column stats entry (DB-12)', () => {
     expect(rootItemIds(items)).not.toContain('column-stats');
   });
 });
+
+describe('row copy/paste entries (DBR-02)', () => {
+  const rowHandlers = {
+    onCopySelectedRows: vi.fn(),
+    onCopyRowsAsNewRows: vi.fn(),
+    onPasteRows: vi.fn(),
+  };
+  const rowLabels = {
+    ...labels,
+    copyRowsAsNewRows: 'Copy as New Rows',
+    pasteRows: 'Paste Rows',
+  };
+
+  it('the selection layout offers copy-as-new-rows and paste-rows when wired', () => {
+    const items = buildDataTableContextMenuItems({
+      labels: rowLabels,
+      handlers: rowHandlers,
+      hasCellContext: true,
+      multiRowSelection: true,
+      hasSelectedRows: true,
+      canPasteRows: true,
+    });
+    expect(rootItemIds(items)).toEqual([
+      'copy-selected-rows',
+      'copy-rows-as-new-rows',
+      'paste-rows',
+    ]);
+    const pasteEntry = items.find((i) => i.kind === 'item' && i.id === 'paste-rows');
+    // Enabled by default: the key is absent, not false.
+    expect(pasteEntry && 'enabled' in pasteEntry ? pasteEntry.enabled : undefined).toBeUndefined();
+  });
+
+  it('paste-rows stays visible but disabled when the panel cannot take rows', () => {
+    const items = buildDataTableContextMenuItems({
+      labels: rowLabels,
+      handlers: rowHandlers,
+      hasCellContext: true,
+      multiRowSelection: true,
+      hasSelectedRows: true,
+      canPasteRows: false,
+    });
+    const pasteEntry = items.find((i) => i.kind === 'item' && i.id === 'paste-rows');
+    expect(pasteEntry).toMatchObject({ enabled: false });
+    // The copy entry is unaffected by the paste gate.
+    expect(rootItemIds(items)).toContain('copy-rows-as-new-rows');
+  });
+
+  it('without handlers the selection layout keeps its exact pre-DBR-02 shape', () => {
+    const items = buildDataTableContextMenuItems({
+      labels: rowLabels,
+      handlers: { onCopySelectedRows: vi.fn() },
+      hasCellContext: true,
+      multiRowSelection: true,
+      hasSelectedRows: true,
+    });
+    expect(rootItemIds(items)).toEqual(['copy-selected-rows']);
+  });
+
+  it('the selected-cell clipboard block renders once the DB-03 handlers are wired', () => {
+    const items = buildDataTableContextMenuItems({
+      labels: {
+        ...labels,
+        copySelectedCells: 'Copy Selected Cells',
+        pasteSelectedCells: 'Paste to Selected Cells',
+      },
+      handlers: {
+        onCopy: vi.fn(),
+        onCopyRow: vi.fn(),
+        onCopySelectedCells: vi.fn(),
+        onPasteSelectedCells: vi.fn(),
+      },
+      hasCellContext: true,
+      hasCellRange: true,
+      canCopySelection: true,
+      canPasteSelection: true,
+      canFilterByValue: false,
+    });
+    expect(rootItemIds(items)).toEqual([
+      'copy',
+      'copy-row',
+      'copy-selected-cells',
+      'paste-selected-cells',
+    ]);
+    const copyAs = findSubmenu(items, 'copy-selected-cells-as');
+    expect(copyAs).toBeTruthy();
+    expect(copyAs?.items.filter((i) => i.kind === 'item').map((i) => i.id)).toContain(
+      'copy-selected-cells-as-tsv',
+    );
+  });
+});

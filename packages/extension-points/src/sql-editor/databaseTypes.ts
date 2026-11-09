@@ -256,6 +256,42 @@ export interface DataGridCapabilities {
    * this one.
    */
   countStrategy?: CountStrategy;
+  /**
+   * Cell-type groups the full-database value search may include beyond the
+   * safe text set (text / enum / unknown), as **text-representation
+   * matches** (DBR-03).
+   *
+   * `'number'` adds numeric columns, `'datetime'` adds date/time/datetime
+   * columns — both matched by the driver's own `LIKE` cast of the value to
+   * its text rendering (`42` matches `42`, `2023-01-02` matches `2023-`),
+   * never as typed comparisons. Declare a group only when the dialect's
+   * `LIKE` really accepts a non-text operand — MySQL/MariaDB/SQLite cast
+   * implicitly, PostgreSQL rejects the statement outright, so it declares
+   * nothing and the type options stay hidden there. Undeclared means the
+   * safe text set only, which is what every driver had before DBR-03.
+   */
+  valueSearchExtraTypes?: readonly ('number' | 'datetime')[];
+  /**
+   * The raw `WHERE` filter channel (DBR-04): the panel's Raw SQL mode,
+   * where the user types one boolean predicate and the backend validates
+   * and splices it into the read.
+   *
+   * Unset means `false` — the mode stays hidden for that driver, exactly
+   * as it did before the channel existed. The back end refuses a raw
+   * fragment from a driver that has not declared the channel
+   * (`grid.filter.rawWhere.unsupported`), so this flag hides an entry the
+   * database would refuse; it never widens what may run.
+   */
+  rawWhereFilter?: boolean;
+  /**
+   * The driver renders a current-datetime write expression natively (DBR-05):
+   * PostgreSQL/MySQL/SQLite `CURRENT_TIMESTAMP`, SQL Server `SYSDATETIME()`.
+   * Unset means `false` — the "Set to current time" entry stays hidden, and
+   * the back end refuses the staged expression anyway
+   * (`grid.write.expressionUnsupported`), so this flag hides an entry the
+   * database would refuse; it never widens what may run.
+   */
+  currentDatetimeWrite?: boolean;
 }
 
 export interface DatabaseTypeMeta {
@@ -496,6 +532,42 @@ export interface DataGridCapabilities {
    * this one.
    */
   countStrategy?: CountStrategy;
+  /**
+   * Cell-type groups the full-database value search may include beyond the
+   * safe text set (text / enum / unknown), as **text-representation
+   * matches** (DBR-03).
+   *
+   * `'number'` adds numeric columns, `'datetime'` adds date/time/datetime
+   * columns — both matched by the driver's own `LIKE` cast of the value to
+   * its text rendering (`42` matches `42`, `2023-01-02` matches `2023-`),
+   * never as typed comparisons. Declare a group only when the dialect's
+   * `LIKE` really accepts a non-text operand — MySQL/MariaDB/SQLite cast
+   * implicitly, PostgreSQL rejects the statement outright, so it declares
+   * nothing and the type options stay hidden there. Undeclared means the
+   * safe text set only, which is what every driver had before DBR-03.
+   */
+  valueSearchExtraTypes?: readonly ('number' | 'datetime')[];
+  /**
+   * The raw `WHERE` filter channel (DBR-04): the panel's Raw SQL mode,
+   * where the user types one boolean predicate and the backend validates
+   * and splices it into the read.
+   *
+   * Unset means `false` — the mode stays hidden for that driver, exactly
+   * as it did before the channel existed. The back end refuses a raw
+   * fragment from a driver that has not declared the channel
+   * (`grid.filter.rawWhere.unsupported`), so this flag hides an entry the
+   * database would refuse; it never widens what may run.
+   */
+  rawWhereFilter?: boolean;
+  /**
+   * The driver renders a current-datetime write expression natively (DBR-05):
+   * PostgreSQL/MySQL/SQLite `CURRENT_TIMESTAMP`, SQL Server `SYSDATETIME()`.
+   * Unset means `false` — the "Set to current time" entry stays hidden, and
+   * the back end refuses the staged expression anyway
+   * (`grid.write.expressionUnsupported`), so this flag hides an entry the
+   * database would refuse; it never widens what may run.
+   */
+  currentDatetimeWrite?: boolean;
 }
 
 export interface DatabaseTypeMeta {

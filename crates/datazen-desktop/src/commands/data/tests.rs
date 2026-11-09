@@ -95,6 +95,7 @@ async fn preview_rejects_changes_without_primary_key_identity() {
         app.state(),
         table_context("preview-no-pk", &conn_id),
         vec![PendingRowChange {
+            expression_values: Default::default(),
             row_identity: BTreeMap::new(),
             original_values: BTreeMap::new(),
             current_values: BTreeMap::from([(

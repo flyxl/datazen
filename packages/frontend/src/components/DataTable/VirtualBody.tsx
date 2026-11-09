@@ -46,6 +46,12 @@ export interface VirtualBodyProps {
   onCellDoubleClick: (row: number, col: string) => void;
   onCellEdit: (row: number, col: string, value: unknown) => void;
   onCellEditCancel: () => void;
+  /**
+   * Quick Look of a cell (DBR-05): the middle-click entry, threaded to every
+   * real-row cell as one stable callback. Omitted ⇒ the grid renders exactly
+   * as before and the middle button keeps the browser default.
+   */
+  onCellQuickLook?: (rowIndex: number, columnName: string) => void;
   /** The editing context of the grid (DB-05). */
   cellEditing?: CellEditingContext;
   /**
@@ -186,6 +192,8 @@ interface VirtualRowProps {
   activeColumnName: string | null;
   cellIdPrefix?: string;
   onCellDoubleClick: (row: number, col: string) => void;
+  /** Quick Look of a cell (DBR-05): the middle-click entry. */
+  onCellQuickLook?: (rowIndex: number, columnName: string) => void;
   onCellEdit: (row: number, col: string, value: unknown) => void;
   onCellEditCancel: () => void;
   cellEditing?: CellEditingContext;
@@ -242,6 +250,7 @@ const VirtualRow = memo(function VirtualRow({
   activeColumnName,
   cellIdPrefix,
   onCellDoubleClick,
+  onCellQuickLook,
   onCellEdit,
   onCellEditCancel,
   cellEditing,
@@ -496,10 +505,16 @@ const VirtualRow = memo(function VirtualRow({
             dirty={dirtyCell !== undefined}
             error={errorColumns?.has(col.name) === true}
             dirtyTooltip={
-              dirtyCell ? dirtyCellTooltip(dirtyCell.original, dirtyCell.next) : undefined
+              // The staged write expression (DBR-05) rides along so the
+              // tooltip says what the write *is*, not the placeholder value.
+              dirtyCell
+                ? dirtyCellTooltip(dirtyCell.original, dirtyCell.next, dirtyCell.expression)
+                : undefined
             }
             dirtyAriaLabel={
-              dirtyCell ? dirtyCellAriaLabel(dirtyCell.original, dirtyCell.next) : undefined
+              dirtyCell
+                ? dirtyCellAriaLabel(dirtyCell.original, dirtyCell.next, dirtyCell.expression)
+                : undefined
             }
             // The cell renders the arrow only when it is not occupied by an
             // editor, so the affordance itself stays a stable object.
@@ -515,6 +530,7 @@ const VirtualRow = memo(function VirtualRow({
             editor={cellEditing}
             gridSemantics={cellSelectionEnabled}
             onCellDoubleClick={onCellDoubleClick}
+            onCellQuickLook={onCellQuickLook}
             onCellEdit={onCellEdit}
             onCellEditCancel={onCellEditCancel}
           />
@@ -534,6 +550,7 @@ export const VirtualBody = memo(function VirtualBody({
   scrollElement,
   columnWidths,
   onCellDoubleClick,
+  onCellQuickLook,
   onCellEdit,
   onCellEditCancel,
   cellEditing,
@@ -708,6 +725,7 @@ export const VirtualBody = memo(function VirtualBody({
             activeColumnName={activeCell?.columnName ?? null}
             cellIdPrefix={cellIdPrefix}
             onCellDoubleClick={onCellDoubleClick}
+            onCellQuickLook={onCellQuickLook}
             onCellEdit={onCellEdit}
             onCellEditCancel={onCellEditCancel}
             cellEditing={cellEditing}

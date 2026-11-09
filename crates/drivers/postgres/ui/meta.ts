@@ -72,6 +72,12 @@ export const postgresqlMeta = {
   supportsCreateUser: true,
   sqlDialectStrategy: postgresqlDialect,
   sqlDialectProfile: postgresqlDialectProfile,
+  /**
+   * DBR-04: the raw `WHERE` filter channel. PostgreSQL's expression grammar
+   * covers everything the host validator lets through (subqueries included);
+   * the validator is what keeps the data-modifying CTEs out, not the driver.
+   */
+  dataGrid: { rawWhereFilter: true, currentDatetimeWrite: true },
 } satisfies DatabaseTypeMeta;
 
 export const questdbMeta = {

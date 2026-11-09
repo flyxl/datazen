@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { ArrowDown, ArrowUp, Filter } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, Filter } from 'lucide-react';
+import { useI18n } from '../../hooks/useI18n';
+import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import type { SortCondition } from '../../types';
 import { cn } from '../../lib/cn';
 import { dataTypeTextClass } from '../../lib/dataTypeColors';
@@ -24,6 +26,15 @@ export interface TableHeaderProps {
   columns: ColumnDef[];
   sorts: SortCondition[];
   onSort: (sort: SortCondition) => void;
+  /**
+   * Remove one column from the sort list — the third state of the header's
+   * click cycle (DBR-SORT, Navicat-aligned).
+   *
+   * Omitted ⇒ the cycle stays two-state (asc ⇄ desc), exactly as grids that
+   * cannot remove a sort rendered before; the header menu greys the entry out
+   * rather than offering an action it cannot take.
+   */
+  onRemoveSort?: (column: string) => void;
   columnWidths?: number[];
   onResizeStart?: (colIndex: number, startX: number) => void;
   sortable?: boolean;
@@ -66,6 +77,7 @@ export function TableHeader({
   columns,
   sorts,
   onSort,
+  onRemoveSort,
   columnWidths,
   onResizeStart,
   sortable = true,
@@ -76,9 +88,51 @@ export function TableHeader({
   frozenColumns = 0,
   showRowNumbers = true,
 }: TableHeaderProps) {
+  const { t } = useI18n();
   /** Where a drag came from and where it currently hovers (DB-12). */
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
+
+  /**
+   * The header's own sort menu (DBR-SORT): three single-column entries, opened
+   * from the chevron every sortable column carries. The entries are **replace**
+   * semantics — the Navicat behaviour the click cycle also implements — while
+   * the right-click menu keeps its multi-column builder; the two never mix.
+   */
+  const openSortMenu = (
+    event: React.MouseEvent<HTMLButtonElement>,
+    column: string,
+    sorted: 'asc' | 'desc' | 'none',
+  ) => {
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    void showNativeContextMenu(
+      [
+        {
+          kind: 'item',
+          id: 'sort-ascending',
+          label: t('dataTable.sortColumnAscending'),
+          action: () => onSort({ column, descending: false }),
+        },
+        {
+          kind: 'item',
+          id: 'sort-descending',
+          label: t('dataTable.sortColumnDescending'),
+          action: () => onSort({ column, descending: true }),
+        },
+        {
+          kind: 'item',
+          id: 'remove-sort',
+          label: t('dataTable.removeSort'),
+          // A column that is not part of the sort has nothing to remove — the
+          // entry answers "how do I undo this", so it is greyed, not hidden.
+          enabled: onRemoveSort != null && sorted !== 'none',
+          action: () => onRemoveSort?.(column),
+        },
+      ],
+      { x: rect.left, y: rect.bottom + 2 },
+    );
+  };
 
   // The left offsets of the frozen headers (DB-12): whatever pins first
   // (the `#` gutter, or the first column itself when the gutter is off,
@@ -124,6 +178,15 @@ export function TableHeader({
             key={col.id}
             role={gridSemantics ? 'columnheader' : undefined}
             data-col-header={col.name}
+            aria-sort={
+              gridSemantics
+                ? sorted === 'asc'
+                  ? 'ascending'
+                  : sorted === 'desc'
+                    ? 'descending'
+                    : undefined
+                : undefined
+            }
             draggable={onReorderColumns != null}
             onDragStart={(e) => {
               if (onReorderColumns == null) return;
@@ -159,7 +222,7 @@ export function TableHeader({
               setDropIndex(null);
             }}
             className={cn(
-              'relative flex h-10 shrink-0 items-center justify-between gap-2 border-r border-edge px-3',
+              'group relative flex h-10 shrink-0 select-none items-center justify-between gap-2 border-r border-edge px-3',
               // The frozen edge (DB-12): the last pinned column needs a
               // visible seam so the scroll boundary reads as intentional.
               lastFrozen && 'border-r-2 border-r-accent/40',
@@ -173,11 +236,22 @@ export function TableHeader({
               width,
               ...(frozen ? { position: 'sticky', left: frozenLefts[colIdx], zIndex: 20 } : {}),
             }}
-            onDoubleClick={() => {
+            onClick={() => {
               if (!sortable) return;
-              if (sorted === 'none') onSort({ column: col.name, descending: false });
-              else if (sorted === 'asc') onSort({ column: col.name, descending: true });
-              else onSort({ column: col.name, descending: false });
+              // The Navicat cycle (DBR-SORT): unsorted → ascending →
+              // descending → removed. Removing falls back to the default
+              // order — an explicit sort the user made is what cycles, the
+              // table's implicit order is not theirs to lose here. A grid
+              // without a remove channel wraps back to ascending instead.
+              if (sorted === 'none') {
+                onSort({ column: col.name, descending: false });
+              } else if (sorted === 'asc') {
+                onSort({ column: col.name, descending: true });
+              } else if (onRemoveSort) {
+                onRemoveSort(col.name);
+              } else {
+                onSort({ column: col.name, descending: false });
+              }
             }}
           >
             <div data-col-label className="min-w-0 flex-1 truncate text-left">
@@ -219,22 +293,31 @@ export function TableHeader({
               </span>
             )}
             {sortable && sorted !== 'none' && (
-              <button
-                type="button"
-                data-sort-icon
-                className={cn(
-                  'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-accent hover:bg-surface hover:text-accent/80',
-                )}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSort({ column: col.name, descending: sorted === 'asc' });
-                }}
+              <span
+                data-sort-indicator
+                aria-hidden
+                className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-accent"
               >
                 {sorted === 'asc' ? (
-                  <ArrowUp className="h-4 w-4" />
+                  <ArrowUp className="h-3.5 w-3.5" />
                 ) : (
-                  <ArrowDown className="h-4 w-4" />
+                  <ArrowDown className="h-3.5 w-3.5" />
                 )}
+              </span>
+            )}
+            {sortable && (
+              <button
+                type="button"
+                data-sort-menu
+                className={cn(
+                  'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-muted opacity-0 transition-opacity hover:bg-surface hover:text-accent',
+                  'focus-visible:opacity-100 group-hover:opacity-100',
+                )}
+                onClick={(e) => openSortMenu(e, col.name, sorted)}
+                aria-label={t('dataTable.sortMenuLabel')}
+                title={t('dataTable.sortMenuLabel')}
+              >
+                <ChevronDown className="h-3.5 w-3.5" />
               </button>
             )}
             {onResizeStart && (
@@ -244,6 +327,10 @@ export function TableHeader({
                   e.preventDefault();
                   onResizeStart(colIdx, e.clientX);
                 }}
+                // A resize drag starts with a pointer down on this strip; the
+                // click that follows must not sort the column the strip belongs
+                // to (DBR-SORT made the whole cell click-sensitive).
+                onClick={(e) => e.stopPropagation()}
               />
             )}
           </div>

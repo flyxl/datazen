@@ -56,6 +56,8 @@ fn record(name: &str) -> NamedView {
         scope: scope(),
         filters: Vec::new(),
         filter_logic: "and".into(),
+        // DBR-04: no raw predicate stored on this view.
+        raw_where: None,
         sorts: Vec::new(),
         visible_columns: None,
         column_order: None,

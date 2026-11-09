@@ -27,6 +27,7 @@ import {
   type GridSelection,
 } from '../../stores/tableData/gridSelection';
 import type { GridClipboardHandlers } from './gridClipboardBridge';
+import type { SerializeCellsOptions } from '../../lib/gridClipboard';
 import { useDataTableClipboardDom } from './useDataTableClipboardDom';
 import { ROW_MODE_GRID_SELECTION } from '../../stores/tableData/selectionActions';
 import type { DirtyRowEntry } from '../../stores/tableData/dirtyIndex';
@@ -34,8 +35,6 @@ import type { FkGroupAffordance } from '../../lib/fkNavigation';
 import { FilterBar } from '../FilterBar';
 import { FilterEditor } from '../FilterEditor';
 import { Pagination, type PagingHint } from './Pagination';
-import { DefaultOrderSelect } from './DefaultOrderSelect';
-import type { DefaultOrderOverride } from '../../lib/defaultSort';
 import { TableHeader, type ColumnDef } from './TableHeader';
 import { VirtualBody, type DraftRowViewModel } from './VirtualBody';
 import { GridKeyboardHints } from './GridKeyboardHints';
@@ -86,10 +85,6 @@ export interface DataTableProps {
    * says why. The grid renders the reason the back end gave.
    */
   pagingHint?: PagingHint;
-  /** The panel's temporary override of the global default order. */
-  defaultOrderOverride?: DefaultOrderOverride;
-  /** Change the panel's temporary override of the global default order. */
-  onDefaultOrderOverrideChange?: (value: DefaultOrderOverride) => void;
 
   sorts?: SortCondition[];
   onSort?: (sort: SortCondition) => void;
@@ -161,6 +156,25 @@ export interface DataTableProps {
   onUpdateFilter?: (index: number, filter: FilterCondition) => void;
   onFilterLogicChange?: (logic: 'and' | 'or') => void;
   onApplyFilters?: () => void;
+  /* ── The DBR-04 filter modes. All optional pass-throughs: a caller that
+      passes none keeps the panel it always had. ── */
+  /** The pane the filter panel shows; absent keeps the structured editor. */
+  filterMode?: 'structured' | 'anyColumn' | 'rawSql';
+  onFilterModeChange?: (mode: 'structured' | 'anyColumn' | 'rawSql') => void;
+  /** Whether the Raw SQL pane is offered (the driver's declaration). */
+  filterRawWhereSupported?: boolean;
+  anyColumnValue?: string;
+  onAnyColumnValueChange?: (value: string) => void;
+  onApplyAnyColumn?: (value: string) => void;
+  anyColumnSkippedCount?: number;
+  anyColumnSearchableCount?: number;
+  rawWhereValue?: string;
+  onRawWhereValueChange?: (value: string) => void;
+  onApplyRawWhere?: (value: string) => void;
+  /** The applied raw predicate; it lights the panel up like applied filters. */
+  appliedRawWhere?: string | null;
+  /** Where the raw predicate runs (`database · schema`); shown in the pane. */
+  filterRawWhereContext?: string | null;
 
   editingCell?: { row: number; col: string } | null;
   onCellDoubleClick?: (row: number, col: string) => void;
@@ -201,6 +215,24 @@ export interface DataTableProps {
    * today's behaviour; every consumer that does not opt in keeps byte-identical behaviour.
    */
   clipboard?: GridClipboardHandlers;
+  /* ── Clipboard menu entries (DB-03 wiring + DBR-02). The DOM gestures stay
+     on `clipboard`; these are the right-click entries, supplied by owners so
+     grids without them keep their exact pre-DBR-02 menu. ── */
+  /** "Copy Selected Cells" (no-as): the plain TSV copy of the selection. */
+  onCopySelectedCells?: () => void;
+  /** "Copy Selected Cells As …": the format submenu actions. */
+  onCopySelectedCellsAs?: (
+    format: SerializeCellsOptions['format'],
+    options?: { includeHeader?: boolean },
+  ) => void;
+  /** "Paste to Selected Cells": paste the system clipboard at the selection. */
+  onPasteSelectedCells?: () => void;
+  /** "Copy as new rows" (DBR-02): copy the covered rows as row data. */
+  onCopyRowsAsNewRows?: () => void;
+  /** "Paste rows" (DBR-02): turn a DataZen row copy into new drafts. */
+  onPasteRows?: () => void;
+  /** Whether "Paste rows" may act; the entry stays visible when `false`. */
+  canPasteRows?: boolean;
   /**
    * Cells the owner wants marked as rejected, keyed `${rowIndex}:${columnName}`.
    *
@@ -291,6 +323,12 @@ export interface DataTableProps {
     onJump?: (rowIndex: number, columnName: string, element: HTMLElement | null) => void;
   };
 
+  /**
+   * Quick Look of a cell (DBR-05): the middle-click / `Cmd/Ctrl+Shift+L`
+   * entry, handed over with the cell's own coordinates. Omitted ⇒ the grid
+   * renders exactly as before and the middle button keeps its default.
+   */
+  onCellQuickLook?: (rowIndex: number, columnName: string) => void;
   loading?: boolean;
   statusBar?: React.ReactNode;
   rowHeight?: number;
@@ -390,6 +428,12 @@ export function DataTable({
   onSort,
   onAddSort,
   onRemoveSort,
+  onCopySelectedCells,
+  onCopySelectedCellsAs,
+  onPasteSelectedCells,
+  onCopyRowsAsNewRows,
+  onPasteRows,
+  canPasteRows = true,
   onClearSorts,
   onReorderColumns,
   frozenColumns = 0,
@@ -407,6 +451,19 @@ export function DataTable({
   onUpdateFilter,
   onFilterLogicChange,
   onApplyFilters,
+  filterMode,
+  onFilterModeChange,
+  filterRawWhereSupported,
+  anyColumnValue,
+  onAnyColumnValueChange,
+  onApplyAnyColumn,
+  anyColumnSkippedCount,
+  anyColumnSearchableCount,
+  rawWhereValue,
+  onRawWhereValueChange,
+  onApplyRawWhere,
+  appliedRawWhere,
+  filterRawWhereContext,
   onPageChange,
   onPageSizeChange,
   totalRowsKind,
@@ -415,8 +472,6 @@ export function DataTable({
   unstablePaging,
   estimateUnavailable,
   pagingHint,
-  defaultOrderOverride,
-  onDefaultOrderOverrideChange,
   onCellDoubleClick,
   onCellEdit,
   onCellEditCancel,
@@ -438,6 +493,7 @@ export function DataTable({
   dirtyByRow,
   onRestoreRow,
   onShowReferencingRows,
+  onCellQuickLook,
   foreignKeys,
   statusBar,
   rowHeight = DATA_TABLE_ROW_HEIGHT,
@@ -675,6 +731,17 @@ export function DataTable({
     onFreezeThrough,
     onUnfreezeColumns,
     onColumnStats,
+    // DB-03 wiring + DBR-02: the selected-cell entries and the row-level
+    // copy/paste pair of the right-click menu.
+    hasCellRange: hasCellSelection,
+    canCopySelection: clipboard?.canCopy ?? false,
+    canPasteSelection: clipboard?.canPaste ?? false,
+    onCopySelectedCells,
+    onCopySelectedCellsAs,
+    onPasteSelectedCells,
+    onCopyRowsAsNewRows,
+    onPasteRows,
+    canPasteRows,
     t,
   });
 
@@ -734,6 +801,19 @@ export function DataTable({
           loading={loading}
           onPreviewSql={onPreviewSql}
           onExportFiltered={onExportFiltered}
+          mode={filterMode}
+          onModeChange={onFilterModeChange}
+          rawWhereSupported={filterRawWhereSupported}
+          anyColumnValue={anyColumnValue}
+          onAnyColumnValueChange={onAnyColumnValueChange}
+          onApplyAnyColumn={onApplyAnyColumn}
+          anyColumnSkippedCount={anyColumnSkippedCount}
+          anyColumnSearchableCount={anyColumnSearchableCount}
+          rawWhereValue={rawWhereValue}
+          onRawWhereValueChange={onRawWhereValueChange}
+          onApplyRawWhere={onApplyRawWhere}
+          appliedRawWhere={appliedRawWhere}
+          rawWhereContext={filterRawWhereContext}
         />
       ) : hasFilters ? (
         <FilterBar
@@ -798,6 +878,7 @@ export function DataTable({
               columns={columns}
               sorts={sorts}
               onSort={onSort ?? NOOP}
+              onRemoveSort={onRemoveSort}
               columnWidths={columnWidths}
               onResizeStart={onResizeStart}
               sortable={onSort != null}
@@ -830,6 +911,7 @@ export function DataTable({
               onCellDoubleClick={handleCellDoubleClick}
               onCellEdit={handleCellEdit}
               onCellEditCancel={handleCellEditCancel}
+              onCellQuickLook={onCellQuickLook}
               cellEditing={cellEditing}
               cellTypeHints={cellTypeHints}
               onRowSelect={handleRowClick}
@@ -895,15 +977,6 @@ export function DataTable({
           unstablePaging={unstablePaging}
           estimateUnavailable={estimateUnavailable}
           pagingHint={pagingHint}
-          footerExtras={
-            onDefaultOrderOverrideChange ? (
-              <DefaultOrderSelect
-                value={defaultOrderOverride ?? 'inherit'}
-                onChange={onDefaultOrderOverrideChange}
-                primaryKeyCount={primaryKeyColumns?.length ?? 0}
-              />
-            ) : undefined
-          }
         />
       )}
 

@@ -48,6 +48,7 @@ vi.mock('../../../commands/file', () => ({
 vi.mock('../../../commands/query', () => ({
   queryCommands: {
     executeQueryStream: (...args: unknown[]) => executeQueryStream(...args),
+    cancelQuery: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -66,7 +67,8 @@ beforeEach(() => {
   beginSaveWithDialog.mockResolvedValue('save-token');
   appendSaveText.mockResolvedValue(undefined);
   finishSave.mockResolvedValue(undefined);
-  abortSave.mockResolvedValue(undefined);
+  // DBR-06: abort answers whether the partial file was deleted.
+  abortSave.mockResolvedValue(true);
   // The stream query: immediately end-of-stream, no rows.
   executeQueryStream.mockImplementation(
     (_dbSessionId: string, _sql: string, onData: (event: unknown) => void) => {
@@ -331,5 +333,226 @@ describe('DataExportDialog filtered scope (DB-15)', () => {
     // No dbSessionId and no builder: the scope must not point at a missing option.
     const range = document.querySelectorAll('select')[1]!;
     expect(range).toHaveValue('current_page');
+  });
+});
+
+describe('DataExportDialog column selection (DBR-06)', () => {
+  it('selects every column by default and exports all of them', async () => {
+    const { getByText } = render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[
+          [1, 'a'],
+          [2, 'b'],
+        ]}
+        tableName="users"
+      />,
+    );
+    // Default = every column: both checkboxes are checked.
+    expect(
+      (document.querySelector('[data-testid="export-column-id"]') as HTMLInputElement).checked,
+    ).toBe(true);
+    expect(
+      (document.querySelector('[data-testid="export-column-name"]') as HTMLInputElement).checked,
+    ).toBe(true);
+    fireEvent.click(getByText('export.export'));
+    await waitFor(() => expect(saveTextWithDialog).toHaveBeenCalled());
+    const content = (saveTextWithDialog.mock.calls[0] as unknown[])[0] as string;
+    expect(content.startsWith('id,name')).toBe(true);
+  });
+
+  it('exports only the picked columns, in display order', async () => {
+    const { getByText } = render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+      />,
+    );
+    fireEvent.click(document.querySelector('[data-testid="export-column-id"]') as HTMLInputElement);
+    fireEvent.click(getByText('export.export'));
+    await waitFor(() => expect(saveTextWithDialog).toHaveBeenCalled());
+    const content = (saveTextWithDialog.mock.calls[0] as unknown[])[0] as string;
+    expect(content.trim()).toBe('name\na');
+  });
+
+  it('disables the export button when every column is cleared, reset restores them', async () => {
+    const { getByText, getByRole } = render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+      />,
+    );
+    fireEvent.click(screen.getByTestId('export-columns-clear-all'));
+    expect(getByRole('button', { name: 'export.export' })).toBeDisabled();
+    // 恢复默认：every column again.
+    fireEvent.click(screen.getByTestId('export-columns-reset-default'));
+    expect(getByRole('button', { name: 'export.export' })).toBeEnabled();
+    fireEvent.click(getByText('export.export'));
+    await waitFor(() => expect(saveTextWithDialog).toHaveBeenCalled());
+    const content = (saveTextWithDialog.mock.calls[0] as unknown[])[0] as string;
+    expect(content.startsWith('id,name')).toBe(true);
+  });
+
+  it('streams only the picked columns of the filtered statement', async () => {
+    const filteredSql = 'SELECT "id", "name" FROM "users" WHERE "status" = \'active\';';
+    render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+        initialScope="filtered_table"
+        onBuildFilteredExportSql={vi.fn().mockResolvedValue(filteredSql)}
+      />,
+    );
+    // Keep only `name`; the streamed statement still selects both columns.
+    fireEvent.click(document.querySelector('[data-testid="export-column-id"]') as HTMLInputElement);
+    fireEvent.click(screen.getByText('export.export'));
+    await waitFor(() => expect(executeQueryStream).toHaveBeenCalledOnce());
+    const streamedSql = (executeQueryStream.mock.calls[0] as unknown[])[1];
+    expect(streamedSql).toBe(filteredSql);
+    await waitFor(() => expect(finishSave).toHaveBeenCalled());
+  });
+});
+
+describe('DataExportDialog format gating (DBR-06)', () => {
+  it('disables xlsx with its reason for the entire-table scope, not by removal', () => {
+    render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+        totalRows={100}
+      />,
+    );
+    const selects = document.querySelectorAll('select');
+    fireEvent.change(selects[1], { target: { value: 'entire_table' } });
+    const format = selects[0]!;
+    const xlsx = Array.from(format.options).find((o) => o.value === 'xlsx')!;
+    expect(xlsx).toBeDefined();
+    expect(xlsx.disabled).toBe(true);
+    // The reason is rendered, not guessed at.
+    expect(screen.getByText('export.formatDisabledStream')).toBeInTheDocument();
+  });
+
+  it('disables sql_update without a primary key column', () => {
+    render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+      />,
+    );
+    const format = document.querySelectorAll('select')[0]!;
+    const sqlUpdate = Array.from(format.options).find((o) => o.value === 'sql_update')!;
+    expect(sqlUpdate.disabled).toBe(true);
+    expect(screen.getByText('export.formatDisabledNoKey')).toBeInTheDocument();
+  });
+
+  it('offers sql_update once a primary key column is declared', () => {
+    render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        primaryKeyColumns={['id']}
+      />,
+    );
+    const format = document.querySelectorAll('select')[0]!;
+    const sqlUpdate = Array.from(format.options).find((o) => o.value === 'sql_update')!;
+    expect(sqlUpdate.disabled).toBe(false);
+    // The grid marks the key column for the picker too.
+    expect(screen.getByText('PK')).toBeInTheDocument();
+  });
+});
+
+describe('DataExportDialog streaming cancel and progress (DBR-06)', () => {
+  it('cancels a streaming run and reports the partial file as deleted', async () => {
+    let releaseStream: (() => void) | undefined;
+    executeQueryStream.mockImplementation(
+      (_dbSessionId: string, _sql: string, onData: (event: unknown) => void) => {
+        onData({ type: 'executionStarted', executionId: 'exec-9' });
+        onData({
+          type: 'statementStart',
+          index: 0,
+          sql: 'SELECT id FROM users',
+          columns: [{ name: 'id', dataType: 'int', nullable: false }],
+        });
+        onData({ type: 'rows', index: 0, rows: [[1], [2]] });
+        return new Promise<void>((resolve) => {
+          releaseStream = resolve;
+        });
+      },
+    );
+    render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+        totalRows={100}
+      />,
+    );
+    fireEvent.change(document.querySelectorAll('select')[1], { target: { value: 'entire_table' } });
+    fireEvent.click(screen.getByText('export.export'));
+    // Progress of the streamed rows is visible while exporting.
+    await waitFor(() => expect(screen.getByTestId('export-progress')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('export.cancelExport'));
+    expect(releaseStream).toBeDefined();
+    releaseStream!();
+    await waitFor(() => expect(screen.getByTestId('export-aborted-panel')).toBeInTheDocument());
+    expect(screen.getByText('export.cancelledPartialDeleted')).toBeInTheDocument();
+    expect(finishSave).not.toHaveBeenCalled();
+    expect(abortSave).toHaveBeenCalledWith('save-token');
+  });
+
+  it('reports a kept partial file when the abort could not delete it', async () => {
+    abortSave.mockResolvedValue(false);
+    let releaseStream: (() => void) | undefined;
+    executeQueryStream.mockImplementation(
+      (_dbSessionId: string, _sql: string, onData: (event: unknown) => void) => {
+        onData({ type: 'executionStarted', executionId: 'exec-10' });
+        return new Promise<void>((resolve) => {
+          releaseStream = resolve;
+        });
+      },
+    );
+    render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+        totalRows={100}
+      />,
+    );
+    fireEvent.change(document.querySelectorAll('select')[1], { target: { value: 'entire_table' } });
+    fireEvent.click(screen.getByText('export.export'));
+    await waitFor(() => expect(screen.getByText('export.exporting')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('export.cancelExport'));
+    releaseStream!();
+    await waitFor(() => expect(screen.getByTestId('export-aborted-panel')).toBeInTheDocument());
+    expect(screen.getByText('export.cancelledPartialKept')).toBeInTheDocument();
   });
 });

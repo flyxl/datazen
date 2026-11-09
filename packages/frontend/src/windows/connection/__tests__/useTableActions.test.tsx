@@ -59,6 +59,14 @@ const tableStore = vi.hoisted(() => {
     // DB-12: the render-only column tools.
     setColumnOrder: record('setColumnOrder'),
     setFrozenColumnCount: record('setFrozenColumnCount'),
+    // DBR-02: paste rows as new drafts.
+    addDraftRowsFromCopy: record('addDraftRowsFromCopy'),
+    // DBR-04: the filter-mode actions.
+    applyAnyColumn: record('applyAnyColumn'),
+    applyRawWhere: record('applyRawWhere'),
+    setAnyColumnDraft: record('setAnyColumnDraft'),
+    setFilterMode: record('setFilterMode'),
+    setRawWhereDraft: record('setRawWhereDraft'),
     removeFilter: record('removeFilter'),
     clearFilters: record('clearFilters'),
     addFilter: record('addFilter'),
@@ -105,10 +113,16 @@ const CONTEXT: TableChangeContext = {
 
 /** Every binding the panel owns. A new chapter adds its entry here. */
 const ACTION_NAMES = [
+  // DBR-02: paste rows as new drafts.
+  'addDraftRowsFromCopy',
   'addFilter',
   // DB-11: the multi-column sort actions of the header context menu.
   'addSort',
+  // DBR-04: applying the Any Column expansion.
+  'applyAnyColumn',
   'applyFilters',
+  // DBR-04: applying the raw WHERE predicate.
+  'applyRawWhere',
   'cancelEdit',
   'clearFilters',
   'clearSorts',
@@ -122,17 +136,23 @@ const ACTION_NAMES = [
   'removeSort',
   'rollbackPendingChanges',
   'selectRow',
+  // DBR-04: the Any Column draft — render-only.
+  'setAnyColumnDraft',
   // DB-12: the render-only column tools.
   'setColumnOrder',
   'setDefaultOrderOverride',
   'setDetailRow',
   'setFilterLogic',
+  // DBR-04: the pane switch — render-only.
+  'setFilterMode',
   'setFilterPanelOpen',
   'setFilters',
   'setFrozenColumnCount',
   'setGridSelection',
   'setPage',
   'setPageSize',
+  // DBR-04: the Raw SQL draft — render-only.
+  'setRawWhereDraft',
   'setSort',
   'setVisibleColumns',
   'stageCellChange',
@@ -149,7 +169,11 @@ const ACTION_NAMES = [
  */
 const NOTICE_INVALIDATING = [
   'addSort',
+  // DBR-04: both applies reset the page and reload, so they drop the notice
+  // like every other page-moving binding.
+  'applyAnyColumn',
   'applyFilters',
+  'applyRawWhere',
   'clearFilters',
   'clearSorts',
   'countExact',
@@ -233,6 +257,46 @@ const BINDING_CASES: readonly BindingCase[] = [
     method: 'clearSorts',
     args: [],
     trigger: (actions) => actions.clearSorts(),
+  },
+  {
+    // DBR-02: paste a DataZen row copy as new draft rows.
+    action: 'addDraftRowsFromCopy',
+    method: 'addDraftRowsFromCopy',
+    args: [[{ name: 'alpha' }]],
+    trigger: (actions) => actions.addDraftRowsFromCopy([{ name: 'alpha' }]),
+  },
+  {
+    // DBR-04: apply the Any Column expansion (conditions precomputed).
+    action: 'applyAnyColumn',
+    method: 'applyAnyColumn',
+    args: [{ conditions: [] }],
+    trigger: (actions) => actions.applyAnyColumn({ conditions: [] }),
+  },
+  {
+    // DBR-04: apply the raw WHERE predicate.
+    action: 'applyRawWhere',
+    method: 'applyRawWhere',
+    args: ['total > 100'],
+    trigger: (actions) => actions.applyRawWhere('total > 100'),
+  },
+  {
+    // DBR-04: the three render-only mode bindings.
+    action: 'setAnyColumnDraft',
+    method: 'setAnyColumnDraft',
+    args: ['gold'],
+    trigger: (actions) => actions.setAnyColumnDraft('gold'),
+  },
+  {
+    action: 'setFilterMode',
+    method: 'setFilterMode',
+    args: ['rawSql'],
+    trigger: (actions) => actions.setFilterMode('rawSql'),
+  },
+  {
+    action: 'setRawWhereDraft',
+    method: 'setRawWhereDraft',
+    args: ['total > 100'],
+    trigger: (actions) => actions.setRawWhereDraft('total > 100'),
   },
   {
     // DB-12: render-only column tools — no navigation guard, no notice.

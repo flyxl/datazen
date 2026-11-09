@@ -48,6 +48,12 @@ export interface DirtyCell {
   readonly original: Value | null;
   /** The value the change would write (`null` means SQL NULL). */
   readonly next: Value | null;
+  /**
+   * The staged write expression of this column (DBR-05), when the write is a
+   * typed database expression rather than a value. The tooltip renders it in
+   * words instead of the placeholder the wire invariant requires.
+   */
+  readonly expression?: import('../../lib/tableChanges').WriteExpressionId;
 }
 
 /** The dirty state of one row, resolved by row identity. */
@@ -139,7 +145,11 @@ export const EMPTY_DIRTY_INDEX: DirtyIndex = Object.freeze({
  */
 function reallyChangedColumns(change: PendingRowChange): string[] {
   return change.changedColumns.filter(
-    (column) => !valuesEqual(change.originalValues[column], change.currentValues[column]),
+    (column) =>
+      // A staged expression is a change even when its placeholder equals the
+      // original — the intent is the expression, not the placeholder value.
+      change.expressionValues?.[column] !== undefined ||
+      !valuesEqual(change.originalValues[column], change.currentValues[column]),
   );
 }
 
@@ -216,6 +226,9 @@ function rowEntry(
     columnName,
     original: change.originalValues[columnName] ?? null,
     next: change.currentValues[columnName] ?? null,
+    ...(change.expressionValues?.[columnName] !== undefined
+      ? { expression: change.expressionValues[columnName] }
+      : {}),
   }));
 
   const previous = previousByIdentity.get(identityKey);
@@ -276,8 +289,7 @@ export function buildDirtyIndex(ts: TableState, previous?: DirtyIndex | null): D
        * the row the user edited.
        */
       const anchoredKey = ts.rowIdentityAnchors.get(rowIndex);
-      const anchored =
-        anchoredKey !== undefined ? pendingChanges.get(anchoredKey) : undefined;
+      const anchored = anchoredKey !== undefined ? pendingChanges.get(anchoredKey) : undefined;
       const key = anchored !== undefined && anchoredKey !== undefined ? anchoredKey : identityKey;
       const change = anchored ?? pendingChanges.get(identityKey);
       if (!change) continue;

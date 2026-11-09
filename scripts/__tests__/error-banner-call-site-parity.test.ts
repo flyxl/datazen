@@ -163,9 +163,11 @@ const SITES: readonly Site[] = [
     // `plain` + `basis-full px-1 py-1` — layout only, no colour override.
     // Two call sites since 08 Step 10: the caller's apply error and the
     // "condition has no value" reason that blocks Apply. Same class set.
+    // Four since DBR-04: the Any Column pane and the Raw SQL pane show the
+    // same apply error, with the same class set.
     label: 'FilterEditor',
     file: 'packages/frontend/src/components/FilterEditor.tsx',
-    count: 2,
+    count: 4,
     base: 'basis-full px-1 py-1 text-xs text-red-400',
     colour: 'text-danger',
   },
@@ -283,9 +285,10 @@ function renderTag(tag: string): string[] {
 }
 
 describe('ErrorBanner call-site class-set parity', () => {
-  it('covers exactly the 15 production call sites', () => {
-    // 11 files, some of which hold more than one call site.
-    expect(SITES.reduce((n, s) => n + s.count, 0)).toBe(15);
+  it('covers exactly the 17 production call sites', () => {
+    // 11 files, some of which hold more than one call site. 17 since DBR-04
+    // added the two filter-pane banners.
+    expect(SITES.reduce((n, s) => n + s.count, 0)).toBe(17);
   });
 
   for (const site of SITES) {

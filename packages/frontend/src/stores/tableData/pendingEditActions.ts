@@ -28,7 +28,11 @@ import {
   rowIdentityIsUnique,
 } from './pendingChanges';
 import { computeUnstageDeleteResult } from './stageEdit';
-import { computeStageCellValueResult, restoredCellValue } from './stageCellValue';
+import {
+  computeStageCellValueResult,
+  computeStageExpressionValueResult,
+  restoredCellValue,
+} from './stageCellValue';
 import { stagePasteWritesInto, type PasteCellProblem } from './stagePasteWrites';
 import type { CellPasteWrite } from '../../lib/tableChanges';
 import type { TableState } from './types';
@@ -58,6 +62,13 @@ export interface PendingEditStoreSlice {
     col: string,
     value: Value | null | undefined,
   ) => void;
+  /**
+   * Stage one cell as a **typed write expression** (DBR-05): the commit
+   * renders the driver's own native SQL (e.g. `CURRENT_TIMESTAMP`) instead
+   * of a bound literal. The cell keeps displaying its current value — the
+   * dirty mark and its tooltip tell the story.
+   */
+  stageCellExpression: (panelId: string, row: number, col: string) => void;
   /** Stage the same value in one column of many rows (one call per cell). */
   applyColumnToRows: (panelId: string, col: string, value: unknown, rows: number[]) => void;
   /**
@@ -129,6 +140,62 @@ export function createPendingEditSlice(
 
     patch(panelId, () => ({
       rows: nextRows,
+      pendingChanges,
+      rowIdentityAnchors,
+      previewPlan: null,
+      pendingStatus: 'idle',
+      editingCell: null,
+      error: null,
+    }));
+  };
+
+  const stageCellExpression = (panelId: string, row: number, col: string): void => {
+    const ts = read(panelId);
+    if (!ts) return;
+    const rowObj = ts.rows[row];
+    if (!rowObj) return;
+    const pkCols = ts.columns.filter((c) => c.isPrimaryKey);
+    if (pkCols.length === 0) {
+      patch(panelId, () => ({ error: t('tableData.noPrimaryKey') }));
+      return;
+    }
+    const rowIdentity = buildRowIdentity(rowObj, pkCols);
+    if (!rowIdentity || !rowIdentityIsUnique(ts, row, rowIdentity, pkCols)) {
+      patch(panelId, () => ({ error: AMBIGUOUS_ROW_IDENTITY_ERROR }));
+      return;
+    }
+    const match = findPendingForRow(ts, row, rowObj, pkCols);
+    const identity = match?.change.rowIdentity ?? rowIdentity;
+    if (!identity) {
+      patch(panelId, () => ({ error: AMBIGUOUS_ROW_IDENTITY_ERROR }));
+      return;
+    }
+    const existing = match?.change;
+    const key = match?.key ?? rowIdentityKey(identity);
+    if (hasPendingIdentityCollision(ts, key, identity, pkCols)) {
+      patch(panelId, () => ({ error: AMBIGUOUS_ROW_IDENTITY_ERROR }));
+      return;
+    }
+    const hasOriginalValue =
+      existing !== undefined && Object.prototype.hasOwnProperty.call(existing.originalValues, col);
+    const originalValue = hasOriginalValue
+      ? existing.originalValues[col]
+      : toCellValue(rowObj[col]);
+    const staged = computeStageExpressionValueResult({
+      existing,
+      column: col,
+      originalValue,
+      rowIdentity: identity,
+      rowIndex: row,
+    });
+    const pendingChanges = new Map(ts.pendingChanges);
+    if (staged.change !== null) pendingChanges.set(key, staged.change);
+    const rowIdentityAnchors = new Map(ts.rowIdentityAnchors);
+    rowIdentityAnchors.set(row, key);
+    // The cell keeps displaying its current value: the expression is the
+    // write intent, and the dirty mark + tooltip tell its story — a fake
+    // literal in the grid would read as a staged value.
+    patch(panelId, () => ({
       pendingChanges,
       rowIdentityAnchors,
       previewPlan: null,
@@ -234,12 +301,7 @@ export function createPendingEditSlice(
     }));
   };
 
-  const stageCellChange = (
-    panelId: string,
-    row: number,
-    col: string,
-    value: unknown,
-  ): void => {
+  const stageCellChange = (panelId: string, row: number, col: string, value: unknown): void => {
     // The old entry point keeps its behaviour byte for byte: an absent value
     // was a `NULL`, and it still is.
     stageCellValue(panelId, row, col, toCellValue(value));
@@ -304,6 +366,7 @@ export function createPendingEditSlice(
 
   return {
     stageCellChange,
+    stageCellExpression,
     stageCellValue,
 
     stagePasteWrites: (panelId, writes) => {

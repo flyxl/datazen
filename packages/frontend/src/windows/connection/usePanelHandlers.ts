@@ -168,7 +168,14 @@ export function usePanelHandlers({
       );
       if (isView) {
         const existing = currentPanels.find(
-          (p) => p.type === 'view' && p.viewName === table && p.database === database,
+          (p) =>
+            p.type === 'view' &&
+            p.viewName === table &&
+            p.database === database &&
+            // A caller that knows the schema must not land on another
+            // schema's tab (DBR-03: same-name relations across schemas); a
+            // caller without schema knowledge keeps the legacy match.
+            (schema == null || p.viewSchema === schema),
         );
         if (existing) {
           if (subTab) {
@@ -190,7 +197,15 @@ export function usePanelHandlers({
         return;
       }
       const existing = currentPanels.find(
-        (p) => p.type === 'table' && p.tableName === table && p.database === database,
+        (p) =>
+          p.type === 'table' &&
+          p.tableName === table &&
+          p.database === database &&
+          // Same rule as the view branch above: an explicit schema never
+          // reuses another schema's tab (DBR-03 — the value search's
+          // "open and locate" must not cross schemas); a null schema (the
+          // caller does not know) keeps the legacy name+database match.
+          (schema == null || p.tableSchema === schema),
       );
       if (existing) {
         if (subTab) {

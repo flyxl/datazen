@@ -66,6 +66,7 @@ mod offset_statement_is_unchanged {
                 &DEFAULT,
                 50,
                 0,
+                None,
                 None
             )
             .unwrap(),
@@ -83,6 +84,7 @@ mod offset_statement_is_unchanged {
                 &DEFAULT,
                 50,
                 150,
+                None,
                 None
             )
             .unwrap(),
@@ -91,7 +93,7 @@ mod offset_statement_is_unchanged {
 
         // 3. The T-SQL shape.
         assert_eq!(
-            QueryExecutor::build_select_sql("users", &columns, None, None, &[], &TSQL, 25, 50, None)
+            QueryExecutor::build_select_sql("users", &columns, None, None, &[], &TSQL, 25, 50, None, None)
                 .unwrap(),
             "SELECT \"id\", \"name\" FROM \"users\" ORDER BY (SELECT NULL) OFFSET 50 ROWS FETCH NEXT 25 ROWS ONLY"
         );
@@ -107,6 +109,7 @@ mod offset_statement_is_unchanged {
                 &LIMIT_ONLY,
                 50,
                 0,
+                None,
                 None
             )
             .unwrap(),
@@ -127,6 +130,7 @@ mod offset_statement_is_unchanged {
             50,
             0,
             None,
+            None,
         )
         .unwrap();
         assert_eq!(
@@ -142,6 +146,7 @@ mod offset_statement_is_unchanged {
             &DEFAULT,
             50,
             0,
+            None,
             None,
         )
         .unwrap();
@@ -172,6 +177,7 @@ mod offset_statement_is_unchanged {
             50,
             0,
             Some("or"),
+            None,
         )
         .unwrap();
         assert_eq!(
@@ -214,6 +220,8 @@ mod seek_statement {
             50,
             0,
             Some("or"),
+            // The raw filter channel (DBR-04) has no part in these fixtures.
+            None,
         )
         .unwrap();
         assert_eq!(
@@ -248,6 +256,8 @@ mod seek_statement {
             50,
             0,
             None,
+            // The raw filter channel (DBR-04) has no part in these fixtures.
+            None,
         )
         .unwrap();
         assert!(
@@ -272,6 +282,8 @@ mod seek_statement {
             50,
             1500,
             None,
+            // The raw filter channel (DBR-04) has no part in these fixtures.
+            None,
         )
         .unwrap();
         assert!(
@@ -295,6 +307,8 @@ mod seek_statement {
             &TSQL,
             50,
             0,
+            None,
+            // The raw filter channel (DBR-04) has no part in these fixtures.
             None,
         )
         .unwrap();
