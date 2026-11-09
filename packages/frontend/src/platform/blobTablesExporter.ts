@@ -271,10 +271,9 @@ export function createBlobTablesExporter(
           const columns = table.source.columns;
           const rows = table.source.rows;
           if (request.dataFormat === 'csv') {
+            // No DDL prefix here: `buildFilePlans` only ever prefixes DDL
+            // to a SQL-format data plan, so a CSV plan never carries one.
             const chunks: string[] = [];
-            if (plan.ddlPrefix !== undefined) {
-              chunks.push(`${plan.ddlPrefix}\n\n`);
-            }
             chunks.push(columns.map((c) => csvCell(c.name)).join(',') + '\n');
             for (const row of rows) {
               chunks.push(row.map((cell) => csvCell(cell)).join(',') + '\n');
