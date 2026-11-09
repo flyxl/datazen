@@ -8,10 +8,9 @@
  * source validation in `TableDataSource::validate` (`mod.rs`).
  *
  * The Rust side used to mirror the provided-data half of that validation
- * too (`validate_provided_data` in `fetcher.rs`); it went away with the
- * Rust provided source (task 5), so `validateTableSource` below is now
- * the only copy of the provided check — do not re-add a second one
- * elsewhere, and do not cite the deleted Rust function.
+ * too; it went away with the Rust provided source (task 5), so
+ * `validateTableSource` below is now the only copy of the provided check
+ * — do not re-add a second one elsewhere.
  *
  * The Rust module is the single source of truth for export file layout;
  * this file exists because the web exporter cannot call Rust — it must
@@ -115,9 +114,9 @@ export function ddlForStructure(table: ExportTableInput): string {
  * Fail fast on a malformed source, before any file is planned or written.
  * The SQL half mirrors the Rust `TableDataSource::validate`
  * (`export/mod.rs`); the provided half has no Rust counterpart any more
- * — the Rust provided source and its `validate_provided_data` were
- * deleted in task 5, so this is the only copy of the provided check
- * (`ProvidedDataFetcher` calls it before formatting).
+ * — the Rust provided source was deleted in task 5, so this is the only
+ * copy of the provided check (`ProvidedDataFetcher` calls it before
+ * formatting).
  */
 export function validateTableSource(table: ExportTableInput): void {
   const source = table.source;

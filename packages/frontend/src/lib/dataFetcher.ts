@@ -115,8 +115,9 @@ export class ProvidedDataFetcher implements DataFetcher {
   async fetch(): Promise<'saved' | 'cancelled'> {
     const { tableName, columns = [], rows = [], dataFormat } = this.ctx;
 
-    // 1. Validate — the TS mirror of the retired Rust
-    // `validate_provided_data`; the only copy of this check from now on.
+    // 1. Validate — the only copy of the provided check (the Rust
+    // provided source was deleted in task 5, so there is no second copy
+    // of this check to drift from).
     // `rows` is `unknown[][]` while the source type carries the wire
     // `(Value | null)[][]`; validation only reads lengths and names, so
     // the cast is shape-only.

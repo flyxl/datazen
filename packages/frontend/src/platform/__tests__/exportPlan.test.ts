@@ -201,7 +201,7 @@ describe('validateTableSource', () => {
   });
 
   it('is the only provided check: planning funnels malformed provided data through it (task 6)', () => {
-    // The Rust `validate_provided_data` is gone (task 5); `buildFilePlans`
+    // The Rust provided source is gone (task 5); `buildFilePlans`
     // must reject here, with this message, not somewhere downstream.
     expect(() =>
       buildFilePlans(

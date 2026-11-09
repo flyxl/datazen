@@ -29,9 +29,8 @@ export type ExportTextFormat = Exclude<ExportFormat, 'xlsx'>;
 
 /**
  * One column of already-loaded rows. `ColumnInfo` is the current provided
- * shape (`batchExportJob.ts` `ProvidedRowsExportOptions`); `isPrimaryKey`
- * is the `ColumnSchema` carry-over the SQL UPDATE branch reads — a column
- * list built from either type fits.
+ * shape; `isPrimaryKey` is the `ColumnSchema` carry-over the SQL UPDATE
+ * branch reads — a column list built from either type fits.
  */
 export type ExportColumn = ColumnInfo & { isPrimaryKey?: boolean };
 
@@ -209,7 +208,7 @@ function formatSqlUpdateScript(
  * JSON-safe cell: `bigint` cannot go through `JSON.stringify` (and loses
  * precision past 2^53), so a safe bigint stays a number and a big one
  * becomes a string — the same rule the Rust XLSX writer applies to i64.
- * `Uint8Array` becomes a plain number array, as in `toExportWireValue`.
+ * `Uint8Array` becomes a plain number array.
  */
 function toJsonValue(value: unknown): unknown {
   if (typeof value === 'bigint') {
@@ -248,7 +247,7 @@ function escapeTsvField(value: unknown): string {
 
 /**
  * Format already-loaded rows as text. Row values are the `unknown[][]`
- * positional shape from `ProvidedRowsExportOptions`; a missing cell reads
+ * positional shape over `columns`; a missing cell reads
  * as `null`, an over-long row's extras are ignored.
  */
 export function formatRowsAsText(options: FormatRowsTextOptions): TextExportResult {
