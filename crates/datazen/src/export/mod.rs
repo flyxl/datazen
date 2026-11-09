@@ -443,6 +443,21 @@ pub fn unique_filename(seen: &mut HashSet<String>, name: String) -> String {
     }
 }
 
+/// Extension of the file [`default_export_name`] produces — decided by the
+/// actual product, not by the data format alone. A structure-only export
+/// is always DDL text (see [`build_file_plans`]: every plan is
+/// `{base}.sql`), so it is `.sql` whatever the data format says; a zip
+/// container is `.zip`; everything else keeps the data format's extension.
+pub fn default_export_extension(request: &ExportTablesRequest, use_zip: bool) -> &'static str {
+    if use_zip {
+        "zip"
+    } else if matches!(request.mode, ExportMode::StructureOnly) {
+        "sql"
+    } else {
+        request.data_format.extension()
+    }
+}
+
 pub fn default_export_name(request: &ExportTablesRequest, use_zip: bool) -> String {
     let ts = chrono::Utc::now().format("%Y-%m-%d-%H-%M-%S");
     let prefix = match request.mode {
@@ -450,11 +465,7 @@ pub fn default_export_name(request: &ExportTablesRequest, use_zip: bool) -> Stri
         ExportMode::DataOnly => "export_data",
         ExportMode::DataAndStructure => "export_full",
     };
-    let ext = if use_zip {
-        "zip"
-    } else {
-        request.data_format.extension()
-    };
+    let ext = default_export_extension(request, use_zip);
     format!("{prefix}_{ts}.{ext}")
 }
 
