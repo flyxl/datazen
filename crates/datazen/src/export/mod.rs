@@ -29,6 +29,8 @@ use std::sync::{Arc, Mutex};
 use datazen_driver_api::{ColumnInfo, DatabaseDriver, QueryStreamCallback, QueryStreamEvent};
 use serde::{Deserialize, Serialize};
 
+use crate::jobs::CancelToken;
+
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
@@ -182,6 +184,12 @@ pub enum OutputMode {
 #[serde(rename_all = "camelCase")]
 pub struct ExportTablesRequest {
     pub db_session_id: String,
+    /// Opaque per-run cancellation token (frontend `crypto.randomUUID`),
+    /// carried only by SQL-path requests. The desktop host registers it
+    /// before the save dialog; `cancel_export_tables` flips it. Provided
+    /// exports never reach Rust, so they never carry one.
+    #[serde(default)]
+    pub cancel_token: Option<String>,
     pub database_type: Option<String>,
     /// Database to read from. The session's own database is only a fallback:
     /// the tree lets the user export a table from any database it lists.
@@ -201,6 +209,12 @@ pub struct ExportTablesRequest {
 pub enum ExportTablesResult {
     Saved(u64),
     Cancelled,
+    /// The run was cancelled mid-flight; `partial_deleted` says whether
+    /// the in-progress output was removed (an abort that could not delete
+    /// it is reported instead of assumed).
+    Aborted {
+        partial_deleted: bool,
+    },
 }
 
 /// Progress events emitted while streaming the export to disk. The frontend
@@ -493,11 +507,16 @@ pub async fn write_data_file(
     format: DataFormat,
     ddl_prefix: Option<&str>,
     dest: &Path,
+    cancel: &CancelToken,
 ) -> Result<u64, CommandError> {
     if format.is_binary() {
         return Err(CommandError::Validation(format!(
             "{format:?} is a binary format; use write_binary_file"
         )));
+    }
+    // A cancel that landed before the first byte: never create the file.
+    if cancel.is_cancelled() {
+        return Err(CommandError::Cancelled);
     }
     let (sql, database, schema) = fetcher::resolve_sql_source(request, table)?;
 
@@ -538,6 +557,9 @@ pub async fn write_data_file(
     let cb_tail = Arc::clone(&tail_stated);
     let cb_last_emit = Arc::clone(&last_emit_rows);
     let cb_format_error = Arc::clone(&format_error);
+    // The stream callback is `Fn` and `'static`, so it polls the shared
+    // atomic bit behind the token (`CancelToken::flag`), not the token.
+    let cb_cancel_flag = cancel.flag();
     let cb_app = app.progress_callback();
     let cb_table = table.table_name.clone();
 
@@ -554,6 +576,12 @@ pub async fn write_data_file(
             ensure_header(&cb_cols, &cb_fmt, &cb_sink, &cb_header, true);
         }
         QueryStreamEvent::Rows { rows, .. } => {
+            // A source that keeps delivering after the cancel must not get
+            // its rows written: stop here; the post-stream check below
+            // turns the run into `Cancelled`.
+            if cb_cancel_flag.load(Ordering::Relaxed) {
+                return;
+            }
             ensure_header(&cb_cols, &cb_fmt, &cb_sink, &cb_header, false);
             let cols = lock_export_stream(&cb_cols).clone();
             match lock_export_stream(&cb_fmt).rows(&rows, &cols) {
@@ -578,6 +606,9 @@ pub async fn write_data_file(
             }
         }
         QueryStreamEvent::Done { .. } => {
+            if cb_cancel_flag.load(Ordering::Relaxed) {
+                return;
+            }
             // Final progress so the last row count is always delivered.
             let total = cb_rows.load(Ordering::Relaxed);
             cb_app(ExportProgressEvent {
@@ -604,7 +635,7 @@ pub async fn write_data_file(
 
     // Capture column type errors from formatting writes if the driver is not
     // streaming rows (they are written inside the callback above).
-    fetcher::stream_sql_source(
+    if let Err(error) = fetcher::stream_sql_source(
         state,
         &request.db_session_id,
         &sql,
@@ -612,7 +643,19 @@ pub async fn write_data_file(
         schema.as_deref(),
         &callback,
     )
-    .await?;
+    .await
+    {
+        // Cancel wins over the stream's own error: the run stopped because
+        // the user asked it to, and the caller removes the partial file.
+        if cancel.is_cancelled() {
+            return Err(CommandError::Cancelled);
+        }
+        return Err(error);
+    }
+
+    if cancel.is_cancelled() {
+        return Err(CommandError::Cancelled);
+    }
 
     if let Some(error) = lock_export(&format_error)?.take() {
         return Err(CommandError::Validation(format!(
@@ -646,11 +689,16 @@ pub async fn write_binary_file(
     table: &TableExportInput,
     format: DataFormat,
     dest: &Path,
+    cancel: &CancelToken,
 ) -> Result<u64, CommandError> {
     if !format.is_binary() {
         return Err(CommandError::Validation(format!(
             "{format:?} is a text format; use write_data_file"
         )));
+    }
+    // A cancel that landed before the first byte: never create the file.
+    if cancel.is_cancelled() {
+        return Err(CommandError::Cancelled);
     }
     let (sql, database, schema) = fetcher::resolve_sql_source(request, table)?;
 
@@ -680,6 +728,9 @@ pub async fn write_binary_file(
     let cb_rows = Arc::clone(&rows_written);
     let cb_last_emit = Arc::clone(&last_emit_rows);
     let cb_format_error = Arc::clone(&format_error);
+    // The stream callback is `Fn` and `'static`, so it polls the shared
+    // atomic bit behind the token (`CancelToken::flag`), not the token.
+    let cb_cancel_flag = cancel.flag();
     let cb_app = app.progress_callback();
     let cb_table = table.table_name.clone();
     let cb_fallback_cols = table.columns.clone();
@@ -704,6 +755,12 @@ pub async fn write_binary_file(
             }
         }
         QueryStreamEvent::Rows { rows, .. } => {
+            // A source that keeps delivering after the cancel must not get
+            // its rows written: stop here; the post-stream check below
+            // turns the run into `Cancelled`.
+            if cb_cancel_flag.load(Ordering::Relaxed) {
+                return;
+            }
             // A stream that skips StatementStart still gets a header: fall
             // back to the requested column names, as the text path does.
             if !*lock_export_stream(&cb_begun) {
@@ -749,6 +806,9 @@ pub async fn write_binary_file(
             }
         }
         QueryStreamEvent::Done { .. } => {
+            if cb_cancel_flag.load(Ordering::Relaxed) {
+                return;
+            }
             let total = cb_rows.load(Ordering::Relaxed);
             cb_app(ExportProgressEvent {
                 table: cb_table.clone(),
@@ -763,7 +823,7 @@ pub async fn write_binary_file(
         QueryStreamEvent::StatementEnd { .. } => {}
     });
 
-    fetcher::stream_sql_source(
+    if let Err(error) = fetcher::stream_sql_source(
         state,
         &request.db_session_id,
         &sql,
@@ -771,7 +831,19 @@ pub async fn write_binary_file(
         schema.as_deref(),
         &callback,
     )
-    .await?;
+    .await
+    {
+        // Cancel wins over the stream's own error: the run stopped because
+        // the user asked it to, and the caller removes the partial file.
+        if cancel.is_cancelled() {
+            return Err(CommandError::Cancelled);
+        }
+        return Err(error);
+    }
+
+    if cancel.is_cancelled() {
+        return Err(CommandError::Cancelled);
+    }
 
     if let Some(error) = lock_export(&format_error)?.take() {
         return Err(CommandError::Validation(format!(
@@ -800,6 +872,7 @@ pub async fn write_plan_data_file(
     format: DataFormat,
     ddl_prefix: Option<&str>,
     dest: &Path,
+    cancel: &CancelToken,
 ) -> Result<u64, CommandError> {
     if format.is_binary() {
         if ddl_prefix.is_some() {
@@ -807,9 +880,9 @@ pub async fn write_plan_data_file(
                 "{format:?} export cannot carry a DDL prefix"
             )));
         }
-        write_binary_file(app, state, request, table, format, dest).await
+        write_binary_file(app, state, request, table, format, dest, cancel).await
     } else {
-        write_data_file(app, state, request, table, format, ddl_prefix, dest).await
+        write_data_file(app, state, request, table, format, ddl_prefix, dest, cancel).await
     }
 }
 
@@ -848,7 +921,12 @@ pub async fn run_zip_export(
     request: &ExportTablesRequest,
     plans: &[FilePlan<'_>],
     target: &Path,
+    cancel: &CancelToken,
 ) -> Result<u64, CommandError> {
+    // A cancel that landed before the first byte: never create the temp dir.
+    if cancel.is_cancelled() {
+        return Err(CommandError::Cancelled);
+    }
     let temp_dir = temp_export_dir();
     std::fs::create_dir_all(&temp_dir).map_err(CommandError::Io)?;
 
@@ -857,6 +935,12 @@ pub async fn run_zip_export(
     let mut build_err: Option<CommandError> = None;
 
     for plan in plans {
+        // Stop the batch between tables: a cancel ends the whole run, not
+        // just the table in flight.
+        if cancel.is_cancelled() {
+            build_err = Some(CommandError::Cancelled);
+            break;
+        }
         let dest = temp_dir.join(plan.filename());
         match plan {
             FilePlan::Ddl { text, .. } => {
@@ -878,6 +962,7 @@ pub async fn run_zip_export(
                 *format,
                 ddl_prefix.as_deref(),
                 &dest,
+                cancel,
             )
             .await
             {
@@ -892,10 +977,21 @@ pub async fn run_zip_export(
     }
 
     if build_err.is_none() {
+        // A cancel that landed while the last table finished must not
+        // assemble a zip the user asked to stop.
+        if cancel.is_cancelled() {
+            build_err = Some(CommandError::Cancelled);
+        }
+    }
+    if build_err.is_none() {
         let file = std::fs::File::create(target).map_err(CommandError::Io)?;
         let mut zip = ZipWriter::new(file);
         let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
         for (name, path) in &entries {
+            if cancel.is_cancelled() {
+                build_err = Some(CommandError::Cancelled);
+                break;
+            }
             if let Err(e) = zip.start_file(name, options) {
                 build_err = Some(CommandError::Io(e.into()));
                 break;
@@ -917,6 +1013,11 @@ pub async fn run_zip_export(
     let _ = std::fs::remove_dir_all(&temp_dir);
 
     if let Some(e) = build_err {
+        // A cancelled zip leaves no partial archive behind: the staging
+        // dir is gone above, and the half-written target goes here.
+        if matches!(e, CommandError::Cancelled) {
+            let _ = std::fs::remove_file(target);
+        }
         return Err(e);
     }
     Ok(rows_total)
@@ -947,10 +1048,18 @@ pub async fn run_single_export(
     request: &ExportTablesRequest,
     plans: &[FilePlan<'_>],
     target: &Path,
+    cancel: &CancelToken,
 ) -> Result<u64, CommandError> {
+    // A cancel that landed before the first byte: never create the file.
+    if cancel.is_cancelled() {
+        return Err(CommandError::Cancelled);
+    }
     if plans.len() == 1 {
         return match &plans[0] {
             FilePlan::Ddl { text, .. } => {
+                if cancel.is_cancelled() {
+                    return Err(CommandError::Cancelled);
+                }
                 std::fs::write(target, text.as_bytes()).map_err(CommandError::Io)?;
                 Ok(0)
             }
@@ -960,7 +1069,7 @@ pub async fn run_single_export(
                 ddl_prefix,
                 ..
             } => {
-                write_plan_data_file(
+                match write_plan_data_file(
                     app,
                     state,
                     request,
@@ -968,8 +1077,30 @@ pub async fn run_single_export(
                     *format,
                     ddl_prefix.as_deref(),
                     target,
+                    cancel,
                 )
                 .await
+                {
+                    Ok(n) => {
+                        if cancel.is_cancelled() {
+                            let _ = std::fs::remove_file(target);
+                            Err(CommandError::Cancelled)
+                        } else {
+                            Ok(n)
+                        }
+                    }
+                    Err(e) => {
+                        // Only a cancel removes the partial file: a real
+                        // failure keeps today's behaviour (the partial
+                        // file stays for inspection).
+                        if cancel.is_cancelled() {
+                            let _ = std::fs::remove_file(target);
+                            Err(CommandError::Cancelled)
+                        } else {
+                            Err(e)
+                        }
+                    }
+                }
             }
         };
     }
@@ -993,6 +1124,12 @@ pub async fn run_single_export(
     let mut sink = FileSink::create(target)?;
     let mut rows_total: u64 = 0;
     for plan in plans {
+        // Stop the batch between tables: a cancel ends the whole run, not
+        // just the table in flight.
+        if cancel.is_cancelled() {
+            let _ = std::fs::remove_file(target);
+            return Err(CommandError::Cancelled);
+        }
         sink.append_str(&format!("-- ===== {} =====\n\n", plan.filename()))?;
         match plan {
             FilePlan::Ddl { text, .. } => {
@@ -1013,12 +1150,17 @@ pub async fn run_single_export(
                     *format,
                     ddl_prefix.as_deref(),
                     &tmp,
+                    cancel,
                 )
                 .await
                 {
                     Ok(n) => n,
                     Err(e) => {
                         let _ = std::fs::remove_file(&tmp);
+                        if cancel.is_cancelled() {
+                            let _ = std::fs::remove_file(target);
+                            return Err(CommandError::Cancelled);
+                        }
                         return Err(e);
                     }
                 };
@@ -1028,6 +1170,10 @@ pub async fn run_single_export(
             }
         }
         sink.append_str("\n\n")?;
+    }
+    if cancel.is_cancelled() {
+        let _ = std::fs::remove_file(target);
+        return Err(CommandError::Cancelled);
     }
     sink.flush()?;
     Ok(rows_total)

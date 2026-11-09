@@ -132,6 +132,10 @@ pub fn run() {
     #[cfg(feature = "webdriver")]
     let builder = builder.manage(crate::commands::DialogInjectionQueue::default());
 
+    // Live export cancellation tokens (see commands/export.rs): one
+    // registry for the app, keyed by the frontend's per-run `cancelToken`.
+    let builder = builder.manage(crate::commands::ExportCancelRegistry::default());
+
     let builder = driver_init::register_drivers(builder);
 
     // `datazen://` plugin asset service + deep links (F2). Windows exposes
@@ -413,6 +417,7 @@ pub fn run() {
             crate::commands::get_driver_commands,
             // ── 导出 ──
             crate::commands::export_tables_stream,
+            crate::commands::cancel_export_tables,
             // ── 备份 ──
             crate::commands::backup_database,
             // ── 恢复 ──

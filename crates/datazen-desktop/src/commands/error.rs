@@ -26,6 +26,10 @@ pub enum CommandError {
     DataSyncOutcomeUnknown(String),
     Internal(String),
     RestoreOutcome(Box<datazen::jobs::domain::job::JobDetails>),
+    /// A file job ended cancelled (the user asked to stop it). The command
+    /// that owns the job maps this to its own cancelled outcome; it is never
+    /// shown as a failure.
+    FileJobCancelled,
 }
 
 impl std::fmt::Display for CommandError {
@@ -35,6 +39,7 @@ impl std::fmt::Display for CommandError {
                 && details.domain_results.iter().any(|result| result.result_code == "restoreUnsupported") => write!(f, "Restore Unsupported: no verified retained-resource binding; no database write was submitted; inspect Job {}; automatic retry is forbidden", details.job.job_id.as_str()),
             Self::RestoreOutcome(details) => write!(f, "Restore ended {:?}, effects {:?}; inspect Job {} before creating a new restore; automatic retry is forbidden", details.job.state, details.job.effect_outcome, details.job.job_id.as_str()),
             Self::DataSyncPartiallyApplied(count) => write!(f, "{count} rows committed before execution stopped; compare current data before continuing"),
+            Self::FileJobCancelled => write!(f, "file job cancelled"),
             Self::Store(e) => write!(f, "{e}"),
             Self::Driver(e) => write!(f, "{e}"),
             Self::Ai(e) => write!(f, "{e}"),
@@ -368,6 +373,7 @@ mod tests {
             CommandError::NotConfigured("nc".into()),
             CommandError::Validation("v".into()),
             CommandError::Internal("i".into()),
+            CommandError::FileJobCancelled,
         ];
         for err in cases {
             let s = err.to_string();
@@ -556,6 +562,9 @@ impl From<datazen::export::ExportError> for CommandError {
             ExportError::Driver(error) => Self::from(error),
             ExportError::Io(error) => Self::Io(error),
             ExportError::Json(error) => Self::Json(error),
+            // A cancelled export never surfaces as a failure to the user;
+            // the owning command maps the job state, not this error.
+            ExportError::Cancelled => Self::FileJobCancelled,
         }
     }
 }

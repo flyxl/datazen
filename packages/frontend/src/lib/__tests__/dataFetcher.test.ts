@@ -389,6 +389,8 @@ describe('SqlDataFetcher.fetch (plan §2.3, task 3)', () => {
     expect(exportTablesMock).toHaveBeenCalledTimes(1);
     expect(request()).toEqual({
       dbSessionId: 's1',
+      // One per-run token (minted at construction; the value is opaque).
+      cancelToken: expect.any(String),
       databaseType: 'postgres',
       database: undefined,
       schema: undefined,

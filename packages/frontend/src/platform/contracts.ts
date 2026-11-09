@@ -269,6 +269,13 @@ export function inertHostSettingsPort(): HostSettingsPort {
 export interface TablesExporterPort {
   exportTables(request: TablesExportRequest): Promise<TablesExportResult | null>;
   /**
+   * Flip the cancellation token of a running export (`cancelToken` from
+   * the request). Optional: a form without a Rust run to cancel (web)
+   * simply has no cancellation to offer, and the SQL dialogs hide the
+   * cancel button there.
+   */
+  cancelExportTables?(token: string): Promise<boolean>;
+  /**
    * Writer progress while streaming (row counts per table). Optional: a form
    * without a streaming writer simply has no progress to report.
    */

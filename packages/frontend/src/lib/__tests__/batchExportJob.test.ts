@@ -131,7 +131,7 @@ describe('exportSingleTableViaRust (item 3b)', () => {
 
   it('sends a single-table request with a table source for entire tables', async () => {
     const result = await exportSingleTableViaRust(base());
-    expect(result).toBe('saved');
+    expect(result).toEqual({ status: 'saved' });
     expect(exportTables).toHaveBeenCalledTimes(1);
     const request = exportTables.mock.calls[0]![0] as ExportTablesRequest;
     expect(request.mode).toBe('data_only');
@@ -164,9 +164,9 @@ describe('exportSingleTableViaRust (item 3b)', () => {
 
   it('reports cancelled when the Rust command returns Cancelled or null', async () => {
     exportTables.mockResolvedValue({ Cancelled: null });
-    await expect(exportSingleTableViaRust(base())).resolves.toBe('cancelled');
+    await expect(exportSingleTableViaRust(base())).resolves.toEqual({ status: 'cancelled' });
     exportTables.mockResolvedValue(null);
-    await expect(exportSingleTableViaRust(base())).resolves.toBe('cancelled');
+    await expect(exportSingleTableViaRust(base())).resolves.toEqual({ status: 'cancelled' });
   });
 
   it('throws when dbSessionId is missing', async () => {
@@ -304,13 +304,16 @@ describe('default tables exporter (platform binding)', () => {
 describe('ExportTablesRequest IPC contract guard (BUG-006)', () => {
   // Mirrors `ExportTablesRequest` in src-tauri/src/commands/export.rs:
   // #[serde(rename_all = "camelCase")] over
-  //   db_session_id / database_type / database / schema / mode / data_format /
-  //   output_mode / tables.
+  //   db_session_id / cancel_token / database_type / database / schema /
+  //   mode / data_format / output_mode / tables.
+  // `cancel_token` is optional and carried only by SQL-path requests
+  // (the per-run cancellation token); provided exports never reach Rust.
   // serde has NO aliases and NO deny_unknown_fields: an unexpected key is
   // silently dropped and a missing required key is a hard rejection — so the
   // wire key set must match exactly, neither more nor less.
   const BACKEND_WIRE_KEYS = [
     'dbSessionId',
+    'cancelToken',
     'databaseType',
     'database',
     'schema',

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
@@ -77,14 +77,25 @@ export function DataExportDialog({
   const allowFiltered = !exportLocked && Boolean(dbSessionId) && onBuildFilteredExportSql != null;
   const [format, setFormat] = useState<ExportFormat>('csv');
   const [scope, setScope] = useState<ExportScope>('current_page');
-  const [status, setStatus] = useState<'form' | 'exporting' | 'success'>('form');
+  const [status, setStatus] = useState<'form' | 'exporting' | 'success' | 'aborted'>('form');
   const [exporting, setExporting] = useState(false);
+  /** The cancel was asked for; the run is winding down (DBR-06, restored). */
+  const [cancelling, setCancelling] = useState(false);
+  /** Whether the aborted run's partial file was deleted (reported honestly). */
+  const [partialDeleted, setPartialDeleted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Cancel handle of the running SQL export; null on the provided path (no cancel there). */
+  const cancelExportRef = useRef<(() => void) | null>(null);
+
+  const isStreamingScope = scope === 'entire_table' || scope === 'filtered_table';
 
   useEffect(() => {
     if (!open) return;
     setStatus('form');
     setError(null);
+    setCancelling(false);
+    setPartialDeleted(false);
+    cancelExportRef.current = null;
     // The caller's preferred scope (DB-15) — reset on every open, so a
     // manual export after a filter-panel export starts from the same default.
     setScope(initialScope ?? 'current_page');
@@ -146,11 +157,20 @@ export function DataExportDialog({
     setScope(v as ExportScope);
   }, []);
 
+  const handleCancelExport = useCallback(() => {
+    if (cancelling) return;
+    setCancelling(true);
+    cancelExportRef.current?.();
+  }, [cancelling]);
+
   const handleExport = useCallback(async () => {
     if (exportLocked) return;
     setError(null);
     setExporting(true);
     setStatus('exporting');
+    setCancelling(false);
+    setPartialDeleted(false);
+    cancelExportRef.current = null;
     try {
       const columnNames = columns.map((c) => c.name);
       if (scope === 'entire_table' || scope === 'filtered_table') {
@@ -165,6 +185,8 @@ export function DataExportDialog({
         // Item 3b: entire/filtered rows stream through the Rust batch
         // exporter (single-table request; filtered passes the backend's
         // own statement as a SQL source) — no frontend streaming path.
+        // The run is cancellable mid-flight (DBR-06, restored): the
+        // handle arrives before the export starts.
         const result = await exportSingleTableViaRust({
           dbSessionId,
           tableName,
@@ -173,10 +195,19 @@ export function DataExportDialog({
           databaseType,
           primaryKey: primaryKeyColumns?.[0],
           ...(sql ? { sql } : {}),
+          onCancelHandle: (cancel) => {
+            cancelExportRef.current = cancel;
+          },
         });
-        if (result === 'cancelled') {
+        if (result.status === 'cancelled') {
           setStatus('form');
           setExporting(false);
+          return;
+        }
+        if (result.status === 'aborted') {
+          setPartialDeleted(result.partialDeleted);
+          setCancelling(false);
+          setStatus('aborted');
           return;
         }
         setStatus('success');
@@ -241,12 +272,21 @@ export function DataExportDialog({
       description={tableName !== 'data' ? t('export.description', { table: tableName }) : undefined}
       onClose={onClose}
       footer={
-        status === 'success' ? (
+        status === 'success' || status === 'aborted' ? (
           <Button variant="primary" onClick={onClose}>
             {t('common.close')}
           </Button>
         ) : (
           <>
+            {isStreamingScope && IS_DESKTOP_BUILD && (
+              <Button
+                variant="secondary"
+                onClick={handleCancelExport}
+                disabled={!exporting || cancelling}
+              >
+                {cancelling ? t('export.cancelling') : t('export.cancelExport')}
+              </Button>
+            )}
             <Button variant="secondary" onClick={onClose} disabled={exporting}>
               {t('common.cancel')}
             </Button>
@@ -268,6 +308,17 @@ export function DataExportDialog({
     >
       {status === 'success' ? (
         <ExportSuccessPanel message={t('export.success')} />
+      ) : status === 'aborted' ? (
+        // DBR-06, restored: the cancel reports what happened to the partial
+        // file, as the backend answered — deleted or kept are two different
+        // messages. Only the SQL path reaches this state; provided exports
+        // are one-shot and have no cancel button.
+        <div
+          data-testid="export-aborted-panel"
+          className="rounded-md border border-edge bg-surface px-3 py-2 text-xs text-fg-secondary"
+        >
+          {partialDeleted ? t('export.cancelledPartialDeleted') : t('export.cancelledPartialKept')}
+        </div>
       ) : (
         <div className="space-y-4">
           {exportLocked && (

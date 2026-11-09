@@ -91,6 +91,7 @@ export type LegacyCommandName =
   | 'begin_save_with_dialog'
   | 'begin_session_transaction'
   | 'cancel_data_transfer'
+  | 'cancel_export_tables'
   | 'cancel_query'
   | 'cancel_schema_diff_deploy'
   | 'classify_transfer_pair'

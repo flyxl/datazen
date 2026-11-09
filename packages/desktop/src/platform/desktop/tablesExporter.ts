@@ -22,6 +22,10 @@ export function createDesktopTablesExporter(): TablesExporterPort {
       return invoke<TablesExportResult | null>('export_tables_stream', { request });
     },
 
+    cancelExportTables(token: string): Promise<boolean> {
+      return invoke<boolean>('cancel_export_tables', { token });
+    },
+
     async onExportProgress(handler: (event: TablesExportProgressEvent) => void) {
       // Host broadcast — the same rail the menu and cross-window events ride.
       return requirePlatform().events.listenCrossWindow('batch-export-progress', (payload) =>

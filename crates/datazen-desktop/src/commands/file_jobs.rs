@@ -88,6 +88,9 @@ pub(crate) async fn run_output_job(
         .await
         .map_err(unavailable)?;
     let _ = app.emit("file-job-finished", &details.job);
+    if details.job.state == JobState::Cancelled {
+        return Err(CommandError::FileJobCancelled);
+    }
     if details.job.state != JobState::Succeeded {
         return Err(CommandError::Validation(
             "file job did not complete; inspect its durable status".into(),

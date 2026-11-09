@@ -102,6 +102,7 @@ mod tests {
         ExportMode, ExportProgressEvent, ExportSource, ExportTablesRequest, FilePlan, OutputMode,
         TableDataSource, TableExportInput,
     };
+    use crate::jobs::CancelToken;
     use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
     use datazen_driver_api::{
         ColumnInfo, DatabaseDriver, QueryStreamCallback, QueryStreamEvent, Value,
@@ -260,6 +261,7 @@ mod tests {
     ) -> ExportTablesRequest {
         ExportTablesRequest {
             db_session_id: "s".into(),
+            cancel_token: None,
             database_type: Some("sqlite".into()),
             database: None,
             schema: None,
@@ -576,6 +578,7 @@ mod tests {
             DataFormat::Csv,
             None,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap();
@@ -609,6 +612,7 @@ mod tests {
             &req.tables[0],
             DataFormat::Xlsx,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap();
@@ -841,6 +845,7 @@ mod tests {
             DataFormat::Csv,
             None,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap();
@@ -946,6 +951,7 @@ mod tests {
             DataFormat::Csv,
             None,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap();
@@ -978,6 +984,7 @@ mod tests {
             DataFormat::Json,
             None,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap();
@@ -1019,6 +1026,7 @@ mod tests {
             DataFormat::SqlInsert,
             None,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap();
@@ -1086,6 +1094,7 @@ mod tests {
             DataFormat::Json,
             None,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap();
@@ -1165,6 +1174,7 @@ mod tests {
             DataFormat::Csv,
             None,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap();
@@ -1193,6 +1203,7 @@ mod tests {
             DataFormat::Csv,
             None,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap();
@@ -1230,6 +1241,7 @@ mod tests {
             DataFormat::Csv,
             None,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap_err();
@@ -1279,6 +1291,7 @@ mod tests {
             DataFormat::Tsv,
             None,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap();
@@ -1320,6 +1333,7 @@ mod tests {
             DataFormat::Markdown,
             None,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap();
@@ -1350,6 +1364,7 @@ mod tests {
             DataFormat::SqlUpdate,
             None,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap();
@@ -1387,6 +1402,7 @@ mod tests {
             DataFormat::SqlUpdate,
             None,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap();
@@ -1426,6 +1442,7 @@ mod tests {
             DataFormat::SqlUpdate,
             None,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap_err();
@@ -1455,6 +1472,7 @@ mod tests {
             DataFormat::Xlsx,
             None,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap_err();
@@ -1481,6 +1499,7 @@ mod tests {
             &req.tables[0],
             DataFormat::Csv,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap_err();
@@ -1512,6 +1531,7 @@ mod tests {
             &req.tables[0],
             DataFormat::Xlsx,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap();
@@ -1552,9 +1572,16 @@ mod tests {
         assert_eq!(plans.len(), 2);
         let source = StubSource::new(false, false, two_cols(), two_rows());
         let dest = temp_file("out.xlsx");
-        let err = crate::export::run_single_export(&NoopEvents, &source, &req, &plans, &dest)
-            .await
-            .unwrap_err();
+        let err = crate::export::run_single_export(
+            &NoopEvents,
+            &source,
+            &req,
+            &plans,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap_err();
         assert!(
             matches!(err, ExportError::Validation(ref m) if m.contains("zip")),
             "unexpected error: {err:?}"
@@ -1575,9 +1602,16 @@ mod tests {
         let plans = build_file_plans(&req).unwrap();
         let source = StubSource::new(false, false, two_cols(), two_rows());
         let dest = temp_file("out.zip");
-        let n = crate::export::run_zip_export(&NoopEvents, &source, &req, &plans, &dest)
-            .await
-            .unwrap();
+        let n = crate::export::run_zip_export(
+            &NoopEvents,
+            &source,
+            &req,
+            &plans,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap();
         assert_eq!(n, 4);
         let file = std::fs::File::open(&dest).unwrap();
         let zip = zip::ZipArchive::new(file).unwrap();
@@ -1610,6 +1644,7 @@ mod tests {
             DataFormat::SqlUpdate,
             None,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap();
@@ -1653,6 +1688,7 @@ mod tests {
             &req.tables[0],
             DataFormat::Xlsx,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap_err();
@@ -1691,6 +1727,7 @@ mod tests {
             &req.tables[0],
             DataFormat::Xlsx,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap();
@@ -1736,6 +1773,7 @@ mod tests {
             &req2.tables[0],
             DataFormat::Xlsx,
             &dest2,
+            &CancelToken::new(),
         )
         .await
         .unwrap();
@@ -1776,6 +1814,7 @@ mod tests {
             &req.tables[0],
             DataFormat::Xlsx,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap_err();
@@ -1803,6 +1842,7 @@ mod tests {
             DataFormat::Xlsx,
             Some("CREATE TABLE t (id INT);"),
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap_err();
@@ -1823,9 +1863,16 @@ mod tests {
         let plans = build_file_plans(&req).unwrap();
         let source = StubSource::new(false, false, two_cols(), two_rows());
         let dest = temp_file("out.csv");
-        let n = crate::export::run_single_export(&NoopEvents, &source, &req, &plans, &dest)
-            .await
-            .unwrap();
+        let n = crate::export::run_single_export(
+            &NoopEvents,
+            &source,
+            &req,
+            &plans,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap();
         assert_eq!(n, 2);
         assert_eq!(
             std::fs::read_to_string(&dest).unwrap(),
@@ -1847,9 +1894,16 @@ mod tests {
         let plans = build_file_plans(&req).unwrap();
         let source = StubSource::new(false, false, two_cols(), two_rows());
         let dest = temp_file("out.csv");
-        let n = crate::export::run_single_export(&NoopEvents, &source, &req, &plans, &dest)
-            .await
-            .unwrap();
+        let n = crate::export::run_single_export(
+            &NoopEvents,
+            &source,
+            &req,
+            &plans,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap();
         assert_eq!(n, 4);
         let text = std::fs::read_to_string(&dest).unwrap();
         assert!(text.contains("-- ===== a.csv ====="), "{text}");
@@ -1867,9 +1921,16 @@ mod tests {
         assert_eq!(plans.len(), 1);
         let source = StubSource::new(false, false, two_cols(), two_rows());
         let dest = temp_file("out.sql");
-        let n = crate::export::run_single_export(&NoopEvents, &source, &req, &plans, &dest)
-            .await
-            .unwrap();
+        let n = crate::export::run_single_export(
+            &NoopEvents,
+            &source,
+            &req,
+            &plans,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap();
         assert_eq!(n, 0);
         assert_eq!(
             std::fs::read_to_string(&dest).unwrap(),
@@ -1891,9 +1952,16 @@ mod tests {
         let plans = build_file_plans(&req).unwrap();
         let source = StubSource::new(false, false, two_cols(), two_rows());
         let dest = temp_file("out.zip");
-        let n = crate::export::run_zip_export(&NoopEvents, &source, &req, &plans, &dest)
-            .await
-            .unwrap();
+        let n = crate::export::run_zip_export(
+            &NoopEvents,
+            &source,
+            &req,
+            &plans,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap();
         assert_eq!(n, 4);
         let file = std::fs::File::open(&dest).unwrap();
         let mut zip = zip::ZipArchive::new(file).unwrap();

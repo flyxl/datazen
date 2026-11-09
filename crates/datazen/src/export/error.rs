@@ -28,6 +28,11 @@ pub enum ExportError {
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+    /// The export was cancelled mid-flight (the caller asked to stop).
+    /// The partial output is removed by the caller; this variant only
+    /// carries the fact, never a partial path.
+    #[error("export cancelled")]
+    Cancelled,
 }
 
 impl From<String> for ExportError {
@@ -49,6 +54,10 @@ impl From<ExportError> for crate::feature_error::FeatureError {
             ExportError::Driver(error) => Self::Driver(error),
             ExportError::Io(error) => Self::Io(error),
             ExportError::Json(error) => Self::Json(error),
+            // The shared envelope has no cancelled variant: a cancelled
+            // export never surfaces as a failure to the user, so it maps
+            // to the plain internal message on this (non-export) path.
+            ExportError::Cancelled => Self::Internal("export cancelled".into()),
         }
     }
 }
