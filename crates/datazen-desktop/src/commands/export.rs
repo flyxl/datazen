@@ -388,6 +388,7 @@ mod tests {
             columns: vec!["id".into()],
             ddl,
             source: TableDataSource::Table,
+            primary_key: None,
         };
         // data_and_structure + csv -> structure.sql + data.csv
         let req = ExportTablesRequest {
@@ -423,6 +424,7 @@ mod tests {
             columns: vec![],
             ddl: None,
             source: TableDataSource::Table,
+            primary_key: None,
         };
         assert!(resolve_ddl(&t).contains("DDL unavailable"));
         let t2 = TableExportInput {
@@ -431,6 +433,7 @@ mod tests {
             columns: vec![],
             ddl: Some("CREATE TABLE;".into()),
             source: TableDataSource::Table,
+            primary_key: None,
         };
         assert_eq!(resolve_ddl(&t2), "CREATE TABLE;");
     }

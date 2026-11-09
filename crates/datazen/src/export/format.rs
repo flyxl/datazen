@@ -53,6 +53,32 @@ pub fn escape_csv_field(value: &Option<Value>) -> String {
     s
 }
 
+/// TSV cell text (export cleanup item 3a): the gridClipboard TSV rule —
+/// tabs / line breaks inside a value are flattened to spaces, never quoted.
+/// The cell text itself is [`value_as_string`], so bytes keep the same
+/// `datazen:bytes:hex:` marker as CSV.
+pub fn escape_tsv_field(value: &Option<Value>) -> String {
+    value_as_string(value)
+        .replace('\t', " ")
+        .replace('\n', " ")
+        .replace('\r', "")
+}
+
+/// Markdown table cell text (item 3a): the gridClipboard Markdown rule —
+/// `|` ends the cell and a line break ends the row, so `\|` / `<br>` stand
+/// in for them (backslash doubled first, as in `escapeMarkdownCellText`).
+pub fn escape_markdown_text(text: &str) -> String {
+    text.replace('\\', "\\\\")
+        .replace('|', "\\|")
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .replace('\n', "<br>")
+}
+
+pub fn escape_markdown_field(value: &Option<Value>) -> String {
+    escape_markdown_text(&value_as_string(value))
+}
+
 pub fn is_bytes_json_marker(value: &serde_json::Value) -> bool {
     value
         .as_object()
@@ -103,8 +129,11 @@ pub fn build_select_sql(table: &str, columns: &[String], db_type: Option<&str>) 
 #[derive(Clone)]
 pub enum FormatterState {
     Csv,
+    Tsv,
+    Markdown,
     Json { started: bool },
     SqlInsert { pending: Vec<Vec<Option<Value>>> },
+    SqlUpdate,
 }
 
 /// Formats row batches to text, preserving streaming state across calls.
@@ -113,6 +142,9 @@ pub struct StreamFormatter {
     table: String,
     database_type: Option<String>,
     driver: Arc<dyn DatabaseDriver>,
+    /// UPDATE key column (item 3a): the caller's primary key, else the first
+    /// column — the same fallback the frontend `sql_update` branch uses.
+    primary_key: Option<String>,
     state: FormatterState,
 }
 
@@ -125,25 +157,43 @@ impl StreamFormatter {
     ) -> Self {
         let state = match format {
             DataFormat::Csv => FormatterState::Csv,
+            DataFormat::Tsv => FormatterState::Tsv,
+            DataFormat::Markdown => FormatterState::Markdown,
             DataFormat::Json => FormatterState::Json { started: false },
             DataFormat::SqlInsert => FormatterState::SqlInsert {
                 pending: Vec::new(),
             },
+            DataFormat::SqlUpdate => FormatterState::SqlUpdate,
+            DataFormat::Xlsx => {
+                // Binary formats never go through the text formatter; a
+                // caller that routes one here is a programming error, caught
+                // at the write_*_file dispatch instead. Keep a harmless
+                // state so construction itself cannot panic.
+                FormatterState::Csv
+            }
         };
         StreamFormatter {
             format,
             table,
             database_type,
             driver,
+            primary_key: None,
             state,
         }
+    }
+
+    /// Key column for `SqlUpdate` output (`UPDATE … SET … WHERE <pk> = …`).
+    /// Defaults to the first column when unset or not among the columns.
+    pub fn with_primary_key(mut self, primary_key: Option<String>) -> Self {
+        self.primary_key = primary_key;
+        self
     }
 
     /// Text to write at the very start of a table (JSON `[`, SQL `BEGIN`).
     pub fn header(&mut self, columns: &[String]) -> String {
         match self.format {
             DataFormat::Json => "[".into(),
-            DataFormat::SqlInsert => {
+            DataFormat::SqlInsert | DataFormat::SqlUpdate => {
                 let re = if matches!(self.database_type.as_deref(), Some("sqlserver")) {
                     "BEGIN TRANSACTION;"
                 } else {
@@ -162,6 +212,31 @@ impl StreamFormatter {
                 out.push('\n');
                 out
             }
+            DataFormat::Tsv => {
+                let mut out = String::new();
+                for (i, c) in columns.iter().enumerate() {
+                    if i > 0 {
+                        out.push('\t');
+                    }
+                    out.push_str(&escape_tsv_field(&Some(Value::String(c.clone()))));
+                }
+                out.push('\n');
+                out
+            }
+            DataFormat::Markdown => {
+                let head = columns
+                    .iter()
+                    .map(|c| escape_markdown_text(c))
+                    .collect::<Vec<_>>()
+                    .join(" | ");
+                let separator = columns
+                    .iter()
+                    .map(|_| "---")
+                    .collect::<Vec<_>>()
+                    .join(" | ");
+                format!("| {head} |\n| {separator} |\n")
+            }
+            DataFormat::Xlsx => String::new(),
         }
     }
 
@@ -182,6 +257,72 @@ impl StreamFormatter {
                         out.push_str(&escape_csv_field(cell));
                     }
                     out.push('\n');
+                }
+                Ok(out)
+            }
+            FormatterState::Tsv => {
+                let mut out = String::new();
+                for row in rows {
+                    for (i, cell) in row.iter().enumerate() {
+                        if i > 0 {
+                            out.push('\t');
+                        }
+                        out.push_str(&escape_tsv_field(cell));
+                    }
+                    out.push('\n');
+                }
+                Ok(out)
+            }
+            FormatterState::Markdown => {
+                let mut out = String::new();
+                for row in rows {
+                    out.push_str("| ");
+                    for (i, cell) in row.iter().enumerate() {
+                        if i > 0 {
+                            out.push_str(" | ");
+                        }
+                        out.push_str(&escape_markdown_field(cell));
+                    }
+                    out.push_str(" |\n");
+                }
+                Ok(out)
+            }
+            FormatterState::SqlUpdate => {
+                let Some(pk) = self.update_key(columns) else {
+                    return Err(datazen_driver_api::DriverError::QueryFailed(
+                        "sql_update export needs at least one column".into(),
+                    ));
+                };
+                let pk_index = columns.iter().position(|c| c == &pk).unwrap_or(0);
+                let set_cols: Vec<usize> = (0..columns.len()).filter(|i| *i != pk_index).collect();
+                if set_cols.is_empty() {
+                    return Err(datazen_driver_api::DriverError::QueryFailed(
+                        "sql_update export needs at least one non-key column to SET".into(),
+                    ));
+                }
+                let driver: &dyn DatabaseDriver = self.driver.as_ref();
+                let dialect = LegacySqlDialect::new(driver);
+                let mut out = String::new();
+                for row in rows {
+                    let set = set_cols
+                        .iter()
+                        .map(|i| {
+                            let literal =
+                                dialect.try_format_sql_literal(row.get(*i).unwrap_or(&None))?;
+                            Ok(format!(
+                                "{} = {literal}",
+                                fmt_ident(&columns[*i], self.database_type.as_deref())
+                            ))
+                        })
+                        .collect::<Result<Vec<_>, _>>()?
+                        .join(", ");
+                    let key_literal =
+                        dialect.try_format_sql_literal(row.get(pk_index).unwrap_or(&None))?;
+                    out.push_str(&format!(
+                        "UPDATE {} SET {set} WHERE {} = {key_literal};\n",
+                        fmt_ident(&self.table, self.database_type.as_deref()),
+                        fmt_ident(&pk, self.database_type.as_deref()),
+                    ));
                 }
                 Ok(out)
             }
@@ -207,6 +348,16 @@ impl StreamFormatter {
                 pending.extend(rows.iter().cloned());
                 self.flush_sql(columns)
             }
+        }
+    }
+
+    /// Key column for `SqlUpdate`: the caller-supplied primary key when it
+    /// is among the exported columns, else the first column (the frontend
+    /// `sql_update` fallback). `None` when there are no columns at all.
+    fn update_key(&self, columns: &[String]) -> Option<String> {
+        match &self.primary_key {
+            Some(pk) if columns.iter().any(|c| c == pk) => Some(pk.clone()),
+            _ => columns.first().cloned(),
         }
     }
 
@@ -267,7 +418,10 @@ impl StreamFormatter {
                 let batched = self.flush_sql(columns);
                 Ok(format!("{}COMMIT;\n", batched?))
             }
-            DataFormat::Csv => Ok(String::new()),
+            DataFormat::SqlUpdate => Ok("COMMIT;\n".into()),
+            DataFormat::Csv | DataFormat::Tsv | DataFormat::Markdown | DataFormat::Xlsx => {
+                Ok(String::new())
+            }
         }
     }
 }

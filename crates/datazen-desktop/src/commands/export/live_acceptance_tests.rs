@@ -250,6 +250,7 @@ async fn journey(prefix: &str, driver_id: &str) {
                     columns: vec!["id".into()],
                     ddl: None,
                     source: TableDataSource::Table,
+                    primary_key: None,
                 }],
             };
             let operation = Arc::new(Operation {

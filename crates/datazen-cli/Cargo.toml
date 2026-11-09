@@ -4,7 +4,9 @@ version = "0.2.3"
 description = "DataZen headless CLI for read-only connection and query access"
 authors = ["DataZen"]
 edition = "2021"
-rust-version = "1.85"
+# Export cleanup item 3a: raised 1.85 -> 1.88 for rust_xlsxwriter 0.102
+# (zip v9, MSRV 1.88). CI uses the stable toolchain; local toolchain is 1.99.
+rust-version = "1.88"
 license = "GPL-3.0-or-later"
 
 [[bin]]

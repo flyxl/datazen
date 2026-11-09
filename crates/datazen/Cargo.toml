@@ -111,6 +111,7 @@ language_packs = [
 export = [
     "dep:serde_json",
     "dep:zip",
+    "dep:rust_xlsxwriter",
     "dep:tokio",
     "dep:tokio-util",
     "dep:tracing",
@@ -391,6 +392,9 @@ cbc = { version = "0.1", optional = true }
 dirs = { workspace = true, optional = true }
 # D6 item 5 切片 a：export 模块的多文件归档（仅 deflate，与 modules 同款）。
 zip = { workspace = true, optional = true }
+# Export cleanup item 3a: XLSX writer (BinaryFormatter). Only dependency is
+# its own zip v9 — coexists with the workspace zip v2 (see root Cargo.toml).
+rust_xlsxwriter = { workspace = true, optional = true }
 # D5 data_transfer：sql_file 的 gzip 读写（.sql.gz 导入导出）。
 flate2 = { version = "1.1.9", optional = true }
 hmac = { workspace = true, optional = true }

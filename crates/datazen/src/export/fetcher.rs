@@ -461,6 +461,7 @@ mod tests {
             columns: vec![],
             ddl: None,
             source,
+            primary_key: None,
         }
     }
 
@@ -685,6 +686,7 @@ mod tests {
                 columns: vec!["id".into(), "name".into()],
                 ddl: None,
                 source: TableDataSource::Table,
+                primary_key: None,
             }],
         );
         let mut req = req;
@@ -757,6 +759,7 @@ mod tests {
                 columns: vec!["id".into()],
                 ddl: Some("CREATE TABLE users (id INT);".into()),
                 source: TableDataSource::Table,
+                primary_key: None,
             }],
         );
         let plans = build_file_plans(&req).unwrap();
