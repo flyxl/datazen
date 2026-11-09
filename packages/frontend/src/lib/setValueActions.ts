@@ -39,7 +39,8 @@ export type SetValueActionId =
   | 'setDefault'
   | 'revertCell'
   | 'pickDate'
-  | 'loadBinaryFromFile';
+  | 'loadBinaryFromFile'
+  | 'setCurrentDatetime';
 
 export interface SetValueState {
   /** The column accepts SQL `NULL`. */
@@ -64,6 +65,13 @@ export interface SetValueState {
    * refuses it (`binaryColumn`).
    */
   readonly canLoadBinary?: boolean;
+  /**
+   * The driver declares the current-datetime write expression and the column
+   * is a writable datetime (DBR-05): the one staged write that is a typed
+   * **expression**, rendered by the driver's own SQL — `CURRENT_TIMESTAMP`,
+   * `NOW()`, `SYSDATETIME()` — never a bound literal.
+   */
+  readonly canSetCurrentDatetime?: boolean;
 }
 
 export interface SetValueAction {
@@ -80,6 +88,7 @@ const ACTION_LABEL_KEYS: Record<SetValueActionId, string> = {
   revertCell: 'cellEditor.revertCell',
   pickDate: 'dataTable.pickDate',
   loadBinaryFromFile: 'dataTable.loadBinaryFromFile',
+  setCurrentDatetime: 'dataTable.setCurrentDatetime',
 };
 
 /** The label key of the "load candidate values" entry. */
@@ -117,6 +126,14 @@ export function resolveSetValueActions(state: SetValueState): readonly SetValueA
   }
   if (state.canLoadBinary === true) {
     actions.push({ id: 'loadBinaryFromFile', labelKey: ACTION_LABEL_KEYS.loadBinaryFromFile });
+  }
+  // The expression entry reads as an answer, not a tool: it names the value
+  // the database itself will produce (DBR-05).
+  if (state.canSetCurrentDatetime === true) {
+    actions.push({
+      id: 'setCurrentDatetime',
+      labelKey: ACTION_LABEL_KEYS.setCurrentDatetime,
+    });
   }
   return actions;
 }

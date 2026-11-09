@@ -108,6 +108,7 @@ const STORE_ACTIONS = [
   'setSort',
   'setVisibleColumns',
   'stageCellChange',
+  'stageCellExpression',
   // DB-05: the three-state write (undefined = do not write the column).
   'stageCellValue',
   // DB-03: the batch write of a paste (one `set()` for the whole block).

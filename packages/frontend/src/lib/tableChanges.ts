@@ -1,3 +1,4 @@
+import type { WriteExpressionId } from '@datazen/backend-client';
 import type { ColumnSchema, Value } from '../types';
 
 /** The immutable values that identify a row for an UPDATE or DELETE. */
@@ -11,6 +12,16 @@ export interface TableChangeContext {
   schema: string | null;
   table: string;
 }
+
+/**
+ * The typed write expressions a grid may stage (DBR-05) — the mirror of the
+ * back end's closed set (`WriteExpressionId` from the backend-client wire).
+ * A staged expression renders the driver's own native SQL at commit time;
+ * it is never a literal value.
+ */
+// Re-exported so the mirror and the wire share one name; the import above is
+// what puts the name in this file's own scope (the field below uses it).
+export type { WriteExpressionId };
 
 export interface PendingRowChange {
   /** UI-only hint for keeping a PK edit associated with its original row. */
@@ -29,6 +40,8 @@ export interface PendingRowChange {
    * fingerprints of insert-free plans byte-identical.
    */
   insertMarked?: boolean;
+  /** The changed columns staged as a typed write expression (DBR-05). */
+  expressionValues?: Record<string, WriteExpressionId>;
 }
 
 /**
@@ -72,6 +85,8 @@ export interface PlannedStatement {
   originalValues: Record<string, Value | null>;
   currentValues: Record<string, Value | null>;
   changedColumns: string[];
+  /** The changed columns staged as a typed write expression (DBR-05). */
+  expressionValues?: Record<string, WriteExpressionId>;
   /** Driver-rendered SQL preview. This is not a wire-level SQL audit record. */
   sqlTemplate: string;
   /** Human-readable summaries of the values used by the statement. */
@@ -325,6 +340,11 @@ export function clonePendingRowChange(change: PendingRowChange): PendingRowChang
     currentValues: { ...change.currentValues },
     changedColumns: [...change.changedColumns],
     deleteMarked: change.deleteMarked,
+    // Same conditional shape as `insertMarked`: an absent map must stay an
+    // absent key, so expression-free plans keep their byte-identical payload.
+    ...(change.expressionValues === undefined
+      ? {}
+      : { expressionValues: { ...change.expressionValues } }),
   };
 }
 

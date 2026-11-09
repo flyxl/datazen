@@ -58,6 +58,13 @@ export interface TableEditingContext {
   readonly relationKind: TableType;
   /** `DatabaseTypeMeta.dataGrid?.editable`; absent means editable. */
   readonly capabilityEditable?: boolean;
+  /**
+   * `DatabaseTypeMeta.dataGrid?.currentDatetimeWrite` (DBR-05): the driver
+   * renders a current-datetime write expression natively. Absent means the
+   * "Set to current time" entry is not offered at all — the back end would
+   * refuse the staged expression, so the menu must not suggest it.
+   */
+  readonly currentDatetimeWrite?: boolean;
   /** The table has a primary key. */
   readonly hasPrimaryKey: boolean;
   /** The table has columns at all (an unloaded panel has none). */
@@ -350,6 +357,12 @@ export function resolveSetValueState(
     rowKind: 'update',
     hasPending,
     canLoadCandidates: info?.cellType === 'enum' && !candidates,
+    // The typed current-datetime expression (DBR-05): only a driver that
+    // declares it, only a datetime column, only a writable panel. The
+    // zoned-datetime exclusion does not apply — the database renders the
+    // expression in its own zone, which is exactly what the column wants.
+    canSetCurrentDatetime:
+      context.currentDatetimeWrite === true && info?.cellType === 'datetime' && panelWritable,
     // The picker (DBR-05): a plain date/datetime column. A zoned column keeps
     // its text editor — the picker cannot hold an offset (05 §7 #8).
     canPickDate:
@@ -394,6 +407,11 @@ export function applySetValueAction(
     case 'setDefault':
     case 'revertCell':
       store.stageCellValue(panelId, rowIndex, columnName, undefined);
+      return;
+    case 'setCurrentDatetime':
+      // The typed write expression (DBR-05): staged as an intent, rendered as
+      // the driver's own native SQL at commit — never a literal string.
+      store.stageCellExpression(panelId, rowIndex, columnName);
       return;
   }
 }
@@ -482,6 +500,7 @@ export function useTableEditing(options: UseTableEditingOptions): TableEditing {
   const driverMeta = databaseType ? DB_REGISTRY[databaseType as DatabaseType] : undefined;
   const hints: CellTypeHints | undefined = driverMeta?.cellTypes;
   const capabilityEditable = driverMeta?.dataGrid?.editable;
+  const currentDatetimeWrite: boolean | undefined = driverMeta?.dataGrid?.currentDatetimeWrite;
 
   const context = useMemo<TableEditingContext>(
     () => ({
@@ -490,12 +509,21 @@ export function useTableEditing(options: UseTableEditingOptions): TableEditing {
       mountReason,
       relationKind: 'table',
       capabilityEditable,
+      currentDatetimeWrite: driverMeta?.dataGrid?.currentDatetimeWrite,
       hasPrimaryKey: columns.some((column) => column.isPrimaryKey),
       hasColumns: columns.length > 0,
       columns,
       hints,
     }),
-    [capabilityEditable, columns, connectionReadOnly, hints, mountReason, panelId],
+    [
+      capabilityEditable,
+      columns,
+      connectionReadOnly,
+      currentDatetimeWrite,
+      hints,
+      mountReason,
+      panelId,
+    ],
   );
 
   // The context is registered so that the entry points (`requestEdit`, the

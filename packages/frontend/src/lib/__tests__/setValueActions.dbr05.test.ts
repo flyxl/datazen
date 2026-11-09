@@ -50,3 +50,38 @@ describe('resolveSetValueActions — the dialog entries (DBR-05)', () => {
     expect(ids).not.toContain('loadBinaryFromFile');
   });
 });
+
+/**
+ * The typed expression entry (DBR-05 3/3): "Set to current time" is an
+ * *answer*, not a tool — the database itself produces the value — so it reads
+ * as a value intent, right after the two dialog entries.
+ */
+describe('resolveSetValueActions — the typed expression entry (DBR-05)', () => {
+  it('offers the expression when the driver declared it and the column is writable datetime', () => {
+    const ids = resolveSetValueActions({ ...BASE, canSetCurrentDatetime: true }).map((a) => a.id);
+    expect(ids).toContain('setCurrentDatetime');
+  });
+
+  it('places the expression after the dialog entries', () => {
+    const ids = resolveSetValueActions({
+      ...BASE,
+      hasPending: true,
+      canPickDate: true,
+      canLoadBinary: true,
+      canSetCurrentDatetime: true,
+    }).map((a) => a.id);
+    expect(ids).toEqual([
+      'setNull',
+      'setEmpty',
+      'revertCell',
+      'pickDate',
+      'loadBinaryFromFile',
+      'setCurrentDatetime',
+    ]);
+  });
+
+  it('does not offer the expression when the driver never declared it', () => {
+    const ids = resolveSetValueActions({ ...BASE, canSetCurrentDatetime: false }).map((a) => a.id);
+    expect(ids).not.toContain('setCurrentDatetime');
+  });
+});

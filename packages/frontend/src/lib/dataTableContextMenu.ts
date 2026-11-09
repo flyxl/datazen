@@ -50,6 +50,8 @@ export type DataTableContextMenuLabels = {
   pickDate?: string;
   /** "Load from file…" — the binary write entry (DBR-05). */
   loadBinaryFromFile?: string;
+  /** "Set to current time" — the typed expression entry (DBR-05). */
+  setCurrentDatetime?: string;
   /** "Load candidate values". */
   loadCandidates?: string;
   /* ── Selected-cell clipboard (DB-03). All optional: a caller that does not offer the
@@ -471,6 +473,8 @@ function setValueActionLabel(id: SetValueActionId, labels: DataTableContextMenuL
       return labels.pickDate ?? '';
     case 'loadBinaryFromFile':
       return labels.loadBinaryFromFile ?? '';
+    case 'setCurrentDatetime':
+      return labels.setCurrentDatetime ?? '';
   }
 }
 

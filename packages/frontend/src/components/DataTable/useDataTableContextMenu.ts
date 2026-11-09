@@ -307,6 +307,7 @@ export function useDataTableContextMenu(
             // The dialog entries of the submenu (DBR-05).
             pickDate: t('dataTable.pickDate'),
             loadBinaryFromFile: t('dataTable.loadBinaryFromFile'),
+            setCurrentDatetime: t('dataTable.setCurrentDatetime'),
             loadCandidates: t('cellEditor.loadCandidates'),
             copySelectedCells: t('dataTable.copySelectedCells'),
             copySelectedCellsAs: t('dataTable.copySelectedCellsAs'),

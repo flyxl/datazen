@@ -287,6 +287,8 @@ const pack = {
   'tableData.pendingOffPage': '其他页面还有 {count} 个单元格已更改',
   'tableData.dirtyCellAria': '已更改的单元格：{original} → {next}',
   'tableData.dirtyValueNull': 'NULL 值',
+  // 脏单元格提示中暂存写表达式的措辞（DBR-05）。
+  'tableData.dirtyValueExpression': '数据库当前时间（表达式）',
   'tableData.dirtyValueEmpty': '（空字符串）',
   'tableData.dirtyDeletedRow': '已标记为删除',
   'tableData.restoreRow': '恢复此行',
@@ -354,6 +356,8 @@ const pack = {
   // “设为值”子菜单的两个对话框入口（DBR-05）：普通日期/时间列的选择器，与二进制的“从文件加载”。
   'dataTable.pickDate': '选择日期…',
   'dataTable.loadBinaryFromFile': '从文件加载…',
+  // 类型化当前时间表达式入口（DBR-05）：值由数据库自己产生，绝非手输字面量。
+  'dataTable.setCurrentDatetime': '设为当前时间',
   'dataTable.binaryFileFilterName': '可作为二进制的文件',
   'dataTable.binaryLoadConfirm': '将该文件加载到列“{column}”？',
 

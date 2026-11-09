@@ -305,6 +305,8 @@ const pack = {
   'tableData.pendingOffPage': '{count} more cells changed on other pages',
   'tableData.dirtyCellAria': 'Changed cell: {original} → {next}',
   'tableData.dirtyValueNull': 'NULL',
+  // The staged write expression a dirty tooltip renders in words (DBR-05).
+  'tableData.dirtyValueExpression': 'the database current time (expression)',
   'tableData.dirtyValueEmpty': '(empty string)',
   'tableData.dirtyDeletedRow': 'Marked for deletion',
   'tableData.restoreRow': 'Restore This Row',
@@ -378,6 +380,9 @@ const pack = {
   // a plain date/datetime column, and the binary "load from file".
   'dataTable.pickDate': 'Pick a Date…',
   'dataTable.loadBinaryFromFile': 'Load from File…',
+  // The typed current-datetime expression entry (DBR-05): the value comes
+  // from the database itself, never a typed literal.
+  'dataTable.setCurrentDatetime': 'Set to Current Time',
   'dataTable.binaryFileFilterName': 'Binary-capable files',
   'dataTable.binaryLoadConfirm': 'Load this file into the column "{column}"?',
 

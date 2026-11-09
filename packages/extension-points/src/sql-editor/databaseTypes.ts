@@ -283,6 +283,15 @@ export interface DataGridCapabilities {
    * database would refuse; it never widens what may run.
    */
   rawWhereFilter?: boolean;
+  /**
+   * The driver renders a current-datetime write expression natively (DBR-05):
+   * PostgreSQL/MySQL/SQLite `CURRENT_TIMESTAMP`, SQL Server `SYSDATETIME()`.
+   * Unset means `false` — the "Set to current time" entry stays hidden, and
+   * the back end refuses the staged expression anyway
+   * (`grid.write.expressionUnsupported`), so this flag hides an entry the
+   * database would refuse; it never widens what may run.
+   */
+  currentDatetimeWrite?: boolean;
 }
 
 export interface DatabaseTypeMeta {
@@ -550,6 +559,15 @@ export interface DataGridCapabilities {
    * database would refuse; it never widens what may run.
    */
   rawWhereFilter?: boolean;
+  /**
+   * The driver renders a current-datetime write expression natively (DBR-05):
+   * PostgreSQL/MySQL/SQLite `CURRENT_TIMESTAMP`, SQL Server `SYSDATETIME()`.
+   * Unset means `false` — the "Set to current time" entry stays hidden, and
+   * the back end refuses the staged expression anyway
+   * (`grid.write.expressionUnsupported`), so this flag hides an entry the
+   * database would refuse; it never widens what may run.
+   */
+  currentDatetimeWrite?: boolean;
 }
 
 export interface DatabaseTypeMeta {

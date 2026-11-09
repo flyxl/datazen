@@ -95,6 +95,14 @@ export interface TableChangeContext {
  * omitted when it is unset, which keeps the fingerprint of an insert-free plan
  * byte-identical to the payload that predates the flag.
  */
+/** The typed write expressions a grid may stage (DBR-05), mirrored from Rust.
+ *
+ * The closed set the back end renders natively (`currentTimestamp` is the
+ * dialect's own current-datetime expression). Never a literal: binding the
+ * string 'CURRENT_TIMESTAMP' as a parameter would write its text.
+ */
+export type WriteExpressionId = 'currentTimestamp';
+
 export interface PendingRowChange {
   /** UI-only hint for keeping a PK edit associated with its original row. */
   rowIndex?: number;
@@ -112,6 +120,13 @@ export interface PendingRowChange {
    * fingerprints of insert-free plans byte-identical.
    */
   insertMarked?: boolean;
+  /**
+   * The changed columns staged as a typed write expression (DBR-05): the
+   * back end renders the driver's own native SQL for them instead of a bound
+   * parameter. Never serialized when empty, so fingerprints of expression-free
+   * plans stay byte-identical to the payload that predates the field.
+   */
+  expressionValues?: Record<string, WriteExpressionId>;
 }
 
 /** One statement of a change plan, with its driver-rendered preview. */
@@ -120,6 +135,8 @@ export interface PlannedStatement {
   originalValues: Record<string, TableValue | null>;
   currentValues: Record<string, TableValue | null>;
   changedColumns: string[];
+  /** The changed columns staged as a typed write expression (DBR-05). */
+  expressionValues?: Record<string, WriteExpressionId>;
   /** Driver-rendered SQL preview. This is not a wire-level SQL audit record. */
   sqlTemplate: string;
   /** Human-readable summaries of the values used by the statement. */

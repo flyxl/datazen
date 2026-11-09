@@ -119,6 +119,7 @@ export type {
   TableReadPreviewRequest,
   TableReadPreviewSql,
   TableValue,
+  WriteExpressionId,
 } from './tableData';
 export { toTableValue } from './tableData';
 

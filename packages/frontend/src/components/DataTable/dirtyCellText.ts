@@ -21,9 +21,23 @@ export function formatDirtyValue(value: Value | null): string {
   return String(value);
 }
 
+/**
+ * The word a staged write expression reads as in a dirty tooltip (DBR-05):
+ * the intent in the user's words, not the placeholder value the wire
+ * invariant keeps in `currentValues`.
+ */
+export function formatDirtyExpression(): string {
+  return t('tableData.dirtyValueExpression');
+}
+
 /** The tooltip of a dirty cell: the original value and the value it becomes. */
-export function dirtyCellTooltip(original: Value | null, next: Value | null): string {
-  return `${formatDirtyValue(original)} \u2192 ${formatDirtyValue(next)}`;
+export function dirtyCellTooltip(
+  original: Value | null,
+  next: Value | null,
+  expression?: string,
+): string {
+  const to = expression === 'currentTimestamp' ? formatDirtyExpression() : formatDirtyValue(next);
+  return `${formatDirtyValue(original)} \u2192 ${to}`;
 }
 
 /**
@@ -33,9 +47,13 @@ export function dirtyCellTooltip(original: Value | null, next: Value | null): st
  * per cell, per render, and handing a translate function down to every row
  * would make each row subscribe to the locale.
  */
-export function dirtyCellAriaLabel(original: Value | null, next: Value | null): string {
+export function dirtyCellAriaLabel(
+  original: Value | null,
+  next: Value | null,
+  expression?: string,
+): string {
   return t('tableData.dirtyCellAria', {
     original: formatDirtyValue(original),
-    next: formatDirtyValue(next),
+    next: expression === 'currentTimestamp' ? formatDirtyExpression() : formatDirtyValue(next),
   });
 }

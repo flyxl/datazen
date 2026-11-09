@@ -505,10 +505,16 @@ const VirtualRow = memo(function VirtualRow({
             dirty={dirtyCell !== undefined}
             error={errorColumns?.has(col.name) === true}
             dirtyTooltip={
-              dirtyCell ? dirtyCellTooltip(dirtyCell.original, dirtyCell.next) : undefined
+              // The staged write expression (DBR-05) rides along so the
+              // tooltip says what the write *is*, not the placeholder value.
+              dirtyCell
+                ? dirtyCellTooltip(dirtyCell.original, dirtyCell.next, dirtyCell.expression)
+                : undefined
             }
             dirtyAriaLabel={
-              dirtyCell ? dirtyCellAriaLabel(dirtyCell.original, dirtyCell.next) : undefined
+              dirtyCell
+                ? dirtyCellAriaLabel(dirtyCell.original, dirtyCell.next, dirtyCell.expression)
+                : undefined
             }
             // The cell renders the arrow only when it is not occupied by an
             // editor, so the affordance itself stays a stable object.

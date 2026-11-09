@@ -77,7 +77,7 @@ export const postgresqlMeta = {
    * covers everything the host validator lets through (subqueries included);
    * the validator is what keeps the data-modifying CTEs out, not the driver.
    */
-  dataGrid: { rawWhereFilter: true },
+  dataGrid: { rawWhereFilter: true, currentDatetimeWrite: true },
 } satisfies DatabaseTypeMeta;
 
 export const questdbMeta = {
