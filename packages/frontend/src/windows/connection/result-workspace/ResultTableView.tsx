@@ -409,6 +409,10 @@ export function ResultTableView({
           onRowClick={(row) => onRowDetail?.(toOriginal(row))}
           highlightedRow={fromOriginal(rowDetailIndex)}
           exportTableName="query_result"
+          // Item 3c: the export dialog routes every scope through the Rust
+          // batch exporter, which needs the live session that produced
+          // these rows — without it Export fails with 'Missing connection'.
+          dbSessionId={result.runtimeBinding?.handle.dbSessionId}
           dataExportCapability={dataExportCapability}
           className="mr-1 min-h-[9rem] rounded-b-md rounded-t-none border-x border-b border-t-0"
         />

@@ -51,19 +51,40 @@ const COLS = [
   { id: 'name', name: 'name', type: 'varchar' },
 ];
 
-const saveTextWithDialog = vi.fn().mockResolvedValue(true);
-
+// The file commands stay stubbed for DetailPanel; the export path no longer
+// uses them (item 3c routes through the Rust batch exporter instead).
 vi.mock('../../../commands/file', () => ({
   fileCommands: {
-    saveTextWithDialog: (...args: unknown[]) => saveTextWithDialog(...args),
+    saveTextWithDialog: vi.fn().mockResolvedValue(true),
     saveBase64WithDialog: vi.fn().mockResolvedValue(true),
   },
 }));
 
-afterEach(cleanup);
+// Item 3c: the export dialog calls the bound tables exporter
+// (`export_tables_stream`). Bind the fake over the suite platform so the
+// context-menu export journey exercises the converged path.
+const exportTablesStream = vi.fn();
+
+import { configurePlatform, testPlatform } from '../../../test/setup';
+
+function bindFakeExporter(): void {
+  configurePlatform({
+    ...testPlatform,
+    tablesExporter: {
+      exportTables: (...args: unknown[]) => exportTablesStream(...(args as [never])),
+    },
+  });
+}
+
+afterEach(() => {
+  cleanup();
+  configurePlatform(testPlatform);
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
+  bindFakeExporter();
+  exportTablesStream.mockResolvedValue({ Saved: 2 });
 });
 
 describe('DataTable', () => {
@@ -250,6 +271,7 @@ describe('DataTable', () => {
         onCellEdit={onCellEdit}
         enableSetNull
         exportTableName="users"
+        dbSessionId="session-1"
       />,
     );
     const cell = container.querySelector('[data-dt-row="0"][data-dt-col="name"]');
@@ -283,7 +305,35 @@ describe('DataTable', () => {
     await waitFor(() => expect(getByText('common.exportData')).toBeInTheDocument());
     const dialogExportBtns = getAllByText('export.export');
     fireEvent.click(dialogExportBtns[dialogExportBtns.length - 1]);
-    await waitFor(() => expect(saveTextWithDialog).toHaveBeenCalled());
+    // Item 3c: the dialog no longer writes the file itself — the loaded
+    // rows travel to the Rust batch exporter as a `provided` source, so the
+    // old `saveTextWithDialog` expectation is gone with the old path.
+    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+    const request = exportTablesStream.mock.calls[0]![0] as {
+      dbSessionId: string;
+      dataFormat: string;
+      tables: unknown[];
+    };
+    expect(request.dbSessionId).toBe('session-1');
+    expect(request.dataFormat).toBe('csv');
+    expect(request.tables).toEqual([
+      {
+        tableName: 'users',
+        columns: ['id', 'name'],
+        source: {
+          type: 'provided',
+          columns: [
+            { name: 'id', dataType: 'integer', nullable: true },
+            { name: 'name', dataType: 'varchar', nullable: true },
+          ],
+          rows: [
+            [1, 'Alice'],
+            [2, 'Bob'],
+          ],
+        },
+      },
+    ]);
+    await waitFor(() => expect(getByText('export.success')).toBeInTheDocument());
   });
 
   it('copies selected rows without cell hit', async () => {
