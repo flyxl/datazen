@@ -1962,6 +1962,7 @@ mod tests {
             &req.tables[0],
             DataFormat::Xlsx,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap();
@@ -2001,6 +2002,7 @@ mod tests {
             &req.tables[0],
             DataFormat::Xlsx,
             &dest,
+            &CancelToken::new(),
         )
         .await
         .unwrap();

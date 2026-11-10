@@ -1225,6 +1225,7 @@ mod tests {
     fn request(mode: ExportMode, data_format: DataFormat) -> ExportTablesRequest {
         ExportTablesRequest {
             db_session_id: "sess-1".into(),
+            cancel_token: None,
             database_type: None,
             database: None,
             schema: None,
