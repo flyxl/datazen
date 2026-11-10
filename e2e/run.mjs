@@ -23,6 +23,7 @@ import { createConnection } from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
+import os from 'node:os';
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -128,23 +129,60 @@ const isCaptureRun = () =>
   screenshotTrace ||
   args.some((a) => /demo-recording|screenshot/i.test(a));
 const keepAppData = args.includes('--keep-app-data');
+
+const portArg = args.find((a, i) => args[i - 1] === '--port');
+const instancesArg = args.find((a, i) => args[i - 1] === '--instances');
+const requestedInstances = instancesArg ? parseInt(instancesArg, 10) : undefined;
+const WD_PORT = portArg ? parseInt(portArg, 10) : parseInt(process.env.E2E_WD_PORT || '4445', 10);
+
+const hasExplicitSpecArg = args.some((a, i) => a === '--spec' || args[i - 1] === '--spec');
+const hasExplicitSuiteArg = args.some((a, i) => a === '--suite' || args[i - 1] === '--suite');
+const isFullRun =
+  !hasExplicitSpecArg &&
+  !hasExplicitSuiteArg &&
+  !args.includes('--attach') &&
+  !args.includes('--hold');
+
+function defaultFullRunInstances() {
+  const cpu = typeof os.availableParallelism === 'function' ? os.availableParallelism() : os.cpus().length;
+  // Full runs default to parallel to reduce wall time, but never exceed 4 to
+  // avoid CPU/memory pressure destabilizing the Tauri/WebDriver/DB stack.
+  return Math.min(4, Math.max(2, Math.floor(cpu / 2) || 2));
+}
+
+let INSTANCE_COUNT;
+if (isFullRun) {
+  const base = Number.isFinite(requestedInstances) ? requestedInstances : defaultFullRunInstances();
+  INSTANCE_COUNT = Math.max(1, Math.min(4, base));
+  if (Number.isFinite(requestedInstances) && requestedInstances > 4) {
+    console.warn('\x1b[33m[e2e-runner]\x1b[0m Full E2E run caps concurrency at 4 instances; using 4.');
+  }
+} else {
+  INSTANCE_COUNT = Number.isFinite(requestedInstances) ? requestedInstances : 1;
+  if (Number.isFinite(requestedInstances) && requestedInstances > 4) {
+    console.warn('\x1b[33m[e2e-runner]\x1b[0m Requested instances > 4; continuing as requested for targeted runs.');
+  }
+}
+
 /**
  * 每个 spec 文件独占一次应用进程（见下方 isolated 分支）。整包串跑时 spec 之间会
  * 共享运行时会话、连接池和 config_revision：前一个 spec 留下的会话会让后一个
  * spec 的 `connect` 撞上连接额度（"connection runtime operation failed"），
  * 串扰会掩盖真实的 UI 回归，所以整包验证默认走隔离模式。
+ *
+ * Full runs (no --spec/--suite) now default to phased parallel execution
+ * (safe specs in parallel, shared-fixture suites serial) unless explicitly
+ * forced back to serial isolate mode.
  */
-const isolateSpecs = args.includes('--isolate-specs')
+const forceSerialIsolated = args.includes('--serial') || args.includes('--isolate-specs');
+const forceNoSerialIsolated = args.includes('--no-isolate-specs') || args.includes('--parallel-full');
+const isolateSpecs = forceSerialIsolated
   ? true
-  : args.includes('--no-isolate-specs')
+  : forceNoSerialIsolated
     ? false
     : process.env.E2E_ISOLATE_SPECS === '1'
       ? true
-      : !args.includes('--spec') && !args.includes('--suite');
-const portArg = args.find((a, i) => args[i - 1] === '--port');
-const instancesArg = args.find((a, i) => args[i - 1] === '--instances');
-const WD_PORT = portArg ? parseInt(portArg, 10) : parseInt(process.env.E2E_WD_PORT || '4445', 10);
-const INSTANCE_COUNT = instancesArg ? parseInt(instancesArg, 10) : 1;
+      : (!args.includes('--spec') && !args.includes('--suite') && !(isFullRun && INSTANCE_COUNT > 1));
 const minimalDrivers =
   process.env.DATAZEN_DRIVERS === 'basic' || args.includes('--minimal-drivers');
 const isPro =
@@ -199,7 +237,7 @@ if (windowSizeArg) {
  * `--capture` re-admits the specs wdio.conf.ts normally excludes
  * (zz-screenshots / demo-recording / zz-diag). They are excluded by default
  * because they are slow, need seeded demo data and rewrite files in
- * site/assets/screenshots/. It pairs with --window-size: the whole point of a
+ * e2e/screenshots/site/. It pairs with --window-size: the whole point of a
  * capture run is a uniform set, which needs both.
  */
 if (args.includes('--capture')) {
@@ -485,17 +523,7 @@ function onAppOutput(chunk) {
 }
 
 /** @type {import('node:child_process').ChildProcess[]} */
-const appProcesses = attachMode
-  ? []
-  : wdPorts.map((port, i) =>
-      startAppInstance({
-        binaryPath: appBinary,
-        dataDir: dataDirs[i],
-        port,
-        workerIndex: i,
-        onOutput: onAppOutput,
-      }),
-    );
+const appProcesses = [];
 
 function cleanup() {
   for (const proc of appProcesses) {
@@ -523,70 +551,113 @@ process.on('SIGTERM', () => {
   process.exit(143);
 });
 
-try {
-  await Promise.all(wdPorts.map((port) => waitForPort(port)));
-
-  /**
-   * `--hold` opens the app and stops there, leaving the window up so a human can
-   * size it by hand, then drives it with a follow-up `--attach` run.
-   *
-   * The screenshot geometry is not something a spec can pick: the webdriver
-   * captures 1:1 in CSS pixels and ignores devicePixelRatio, so the only way to
-   * land on a window that is both fully visible and the right density is to set
-   * it once, by eye, on the real display.
-   */
-  if (holdMode) {
-    log('Hold mode: app is up. Size the window, then run the capture with --attach.');
-    await new Promise((resolve) => {
-      appProcesses.forEach((p) => p.on('close', resolve));
-      process.on('SIGINT', resolve);
-      process.on('SIGTERM', resolve);
-    });
-    cleanup();
-    runEnvTeardown();
-    process.exit(0);
-  }
-
-  if (INSTANCE_COUNT > 1) {
-    log(`All ${INSTANCE_COUNT} WebDriver plugin(s) ready on ports ${wdPorts.join(', ')}.`);
-  } else {
-    log(`WebDriver plugin is ready on port ${WD_PORT}.`);
-  }
-} catch (err) {
-  console.error(err.message);
-  if (sawAssetMissing) {
+async function startAndWaitManagedInstances(ports, dirs, label = 'app') {
+  const procs = attachMode
+    ? []
+    : ports.map((port, i) =>
+        startAppInstance({
+          binaryPath: appBinary,
+          dataDir: dirs[i],
+          port,
+          workerIndex: i,
+          onOutput: onAppOutput,
+        }),
+      );
+  appProcesses.push(...procs);
+  try {
+    await Promise.all(ports.map((port) => waitForPort(port)));
+  } catch (err) {
+    for (const p of procs) {
+      try { p.kill('SIGTERM'); } catch {}
+    }
+    for (const p of procs) {
+      const idx = appProcesses.indexOf(p);
+      if (idx >= 0) appProcesses.splice(idx, 1);
+    }
+    console.error(err.message);
+    if (sawAssetMissing) {
+      die(
+        [
+          'App failed with "asset not found: index.html".',
+          'Cause: binary was likely built with bare `cargo build`, which skips Tauri asset embedding.',
+          `Fix: ${BUILD_CMD}`,
+          'Then: pnpm e2e:skip-build -- --spec <your-spec>',
+          'See docs/development/e2e-testing.md',
+        ].join('\n'),
+      );
+    }
     die(
       [
-        'App failed with "asset not found: index.html".',
-        'Cause: binary was likely built with bare `cargo build`, which skips Tauri asset embedding.',
-        `Fix: ${BUILD_CMD}`,
-        'Then: pnpm e2e:skip-build -- --spec <your-spec>',
+        `WebDriver port(s) did not open: ${ports.join(', ')}`,
+        'Common causes:',
+        '  1. Binary built WITHOUT --features webdriver',
+        '  2. Used cargo build instead of `pnpm tauri build --debug --features webdriver`',
+        `  3. Another process already holds one of ${ports.join(', ')}`,
         'See docs/development/e2e-testing.md',
       ].join('\n'),
     );
   }
-  die(
-    [
-      `WebDriver port(s) did not open: ${wdPorts.join(', ')}`,
-      'Common causes:',
-      '  1. Binary built WITHOUT --features webdriver',
-      '  2. Used cargo build instead of `pnpm tauri build --debug --features webdriver`',
-      `  3. Another process already holds one of ${wdPorts.join(', ')}`,
-      'See docs/development/e2e-testing.md',
-    ].join('\n'),
-  );
+  if (sawAssetMissing) {
+    for (const p of procs) {
+      try { p.kill('SIGTERM'); } catch {}
+    }
+    cleanup();
+    die(
+      [
+        'App reported "asset not found: index.html" — frontend is broken.',
+        `Rebuild with: ${BUILD_CMD}`,
+        'Do NOT use: cargo build -p datazen_desktop --features webdriver',
+        'See docs/development/e2e-testing.md',
+      ].join('\n'),
+    );
+  }
+  if (procs.length > 1) {
+    log(`${label}: all ${procs.length} WebDriver plugin(s) ready on ports ${ports.join(', ')}.`);
+  } else if (procs.length === 1) {
+    log(`${label}: WebDriver plugin ready on port ${ports[0]}.`);
+  } else if (attachMode) {
+    log(`${label}: attach mode (no app process started).`);
+  }
+  return procs;
 }
 
-if (sawAssetMissing) {
+const usesPhasedParallelFullRun = isFullRun && INSTANCE_COUNT > 1 && !forceSerialIsolated;
+const usesManagedMultiInstance = INSTANCE_COUNT > 1 && !usesPhasedParallelFullRun;
+const usesManagedSerialLifecycle = isolateSpecs || usesPhasedParallelFullRun;
+// Modes that need a pre-started app here: --hold, or standard single-instance run.
+const needsPrestartedSingleApp =
+  !attachMode &&
+  !usesPhasedParallelFullRun &&
+  !usesManagedMultiInstance &&
+  !usesManagedSerialLifecycle &&
+  !holdMode
+    ? false
+    : holdMode;
+
+if (holdMode) {
+  await startAndWaitManagedInstances([WD_PORT], [dataDirs[0]], 'hold');
+  log('Hold mode: app is up. Size the window, then run the capture with --attach.');
+  await new Promise((resolve) => {
+    appProcesses.forEach((p) => p.on('close', resolve));
+    process.on('SIGINT', resolve);
+    process.on('SIGTERM', resolve);
+  });
   cleanup();
-  die(
-    [
-      'App reported "asset not found: index.html" — frontend is broken.',
-      `Rebuild with: ${BUILD_CMD}`,
-      'Do NOT use: cargo build -p datazen_desktop --features webdriver',
-      'See docs/development/e2e-testing.md',
-    ].join('\n'),
-  );
+  runEnvTeardown();
+  process.exit(0);
+}
+
+// For the plain single-instance, non-isolated, non-managed run we start the app now.
+// All other modes manage app lifecycle themselves (phased parallel, multi-instance helper,
+// isolated serial per-spec) to avoid duplicate instances / port conflicts.
+if (
+  !usesPhasedParallelFullRun &&
+  !usesManagedMultiInstance &&
+  !isolateSpecs &&
+  !holdMode
+) {
+  // Single-instance standard WDIO run (or attach mode)
+  await startAndWaitManagedInstances([WD_PORT], [dataDirs[0]], 'single');
 }
 
 // Step 3: Run WDIO
@@ -595,101 +666,117 @@ if (screenshotTrace) {
 }
 log('Running E2E tests...');
 
-if (INSTANCE_COUNT > 1) {
-  // Multi-instance: launch N independent WDIO processes, each with its own port/dataDir
-  // and a round-robin slice of the spec files. This avoids WDIO's capability duplication.
-  // Resolve spec files to split across workers.
-  let allSpecs = [];
+function collectFullRunSpecs() {
+  const capture = Boolean(process.env.E2E_CAPTURE);
+  const excluded = capture
+    ? []
+    : [
+        /\/specs\/zz-screenshots\.ts$/,
+        /\/specs\/demo-recording[^/]*\.ts$/,
+        /\/specs\/zz-diag\.ts$/,
+        /\/specs\/[^/]*screenshot[^/]*\.ts$/,
+      ];
+  const out = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!entry.name.endsWith('.ts') || entry.name.endsWith('.d.ts')) continue;
+      const rel = path.relative(ROOT, full);
+      if (excluded.some((re) => re.test(rel))) continue;
+      const source = fs.readFileSync(full, 'utf8');
+      if (!/\b(describe|it)\s*\(/.test(source)) continue;
+      out.push(rel);
+    }
+  };
+  walk(path.join(ROOT, 'e2e', 'specs'));
+  return out.sort();
+}
 
-  /**
-   * Parse suite definitions from wdio.conf.ts by reading the file and extracting
-   * the named suite's file list via regex. Returns absolute spec paths.
-   */
-  function parseSuiteFromConfig(suiteName) {
-    const confPath = path.join(ROOT, 'e2e', 'wdio.conf.ts');
-    const confText = fs.readFileSync(confPath, 'utf8');
-    // Match: suiteName: [\n  './specs/...', ...]
-    const re = new RegExp(`['"]?${suiteName}['"]?\\s*:\\s*\\[([^\\]]+)\\]`, 's');
-    const m = confText.match(re);
-    if (!m) {
-      die(`Suite "${suiteName}" not found in wdio.conf.ts`);
-    }
-    const files = [];
-    for (const line of m[1].split('\n')) {
-      const fm = line.match(/'([^']+\.ts)'/);
-      if (fm) files.push(fm[1].replace(/^\.\//, 'e2e/'));
-    }
-    return files;
+function normalizeSpecPath(spec) {
+  return spec.replace(/\\/g, '/').replace(/^\.\//, '');
+}
+
+function parseSuiteFromConfig(suiteName) {
+  const confPath = path.join(ROOT, 'e2e', 'wdio.conf.ts');
+  const confText = fs.readFileSync(confPath, 'utf8');
+  const re = new RegExp(`['"]?${suiteName}['"]?\\s*:\\s*\\[([^\\]]+)\\]`, 's');
+  const m = confText.match(re);
+  if (!m) {
+    die(`Suite "${suiteName}" not found in wdio.conf.ts`);
+  }
+  const files = [];
+  for (const line of m[1].split('\n')) {
+    const fm = line.match(/'([^']+\.ts)'/);
+    if (fm) files.push(normalizeSpecPath(fm[1].replace(/^\.\//, 'e2e/')));
+  }
+  return files;
+}
+
+const SHARED_FIXTURE_SERIAL_SUITES = ['data-sync', 'data-transfer', 'schema-diff'];
+const SERIAL_ONLY_FULL_RUN_SPECS = new Set(
+  SHARED_FIXTURE_SERIAL_SUITES.flatMap((s) => parseSuiteFromConfig(s)),
+);
+
+async function runMultiInstanceSpecs(specList, instanceCount, options = {}) {
+  const {
+    skipSharedFixtureReset = false,
+    label = 'multi-instance',
+  } = options;
+
+  const ports = resolvePorts(WD_PORT, instanceCount);
+  const dirs = resolveDataDirs(instanceCount);
+  if (!attachMode) {
+    for (const dir of dirs) resetAppDataDir(dir, keepAppData);
   }
 
-  // Collect suite args (--suite may appear multiple times)
-  const suiteNames = [];
-  for (let i = 0; i < wdioArgs.length; i++) {
-    if (wdioArgs[i] === '--suite' && wdioArgs[i + 1]) {
-      suiteNames.push(wdioArgs[i + 1]);
-      i++;
-    }
-  }
+  /** @type {import('node:child_process').ChildProcess[]} */
+  const procs = attachMode
+    ? []
+    : ports.map((port, i) =>
+        startAppInstance({
+          binaryPath: appBinary,
+          dataDir: dirs[i],
+          port,
+          workerIndex: i,
+          onOutput: onAppOutput,
+        }),
+      );
+  appProcesses.push(...procs);
 
-  if (suiteNames.length > 0) {
-    for (const name of suiteNames) {
-      allSpecs.push(...parseSuiteFromConfig(name));
+  try {
+    await Promise.all(ports.map((port) => waitForPort(port)));
+  } catch (err) {
+    for (const p of procs) {
+      try { p.kill('SIGTERM'); } catch {}
     }
-    log(`Resolved ${suiteNames.join('+')} suite(s): ${allSpecs.length} specs`);
-  } else {
-    const specIdx = wdioArgs.indexOf('--spec');
-    if (specIdx >= 0 && wdioArgs[specIdx + 1]) {
-      allSpecs = wdioArgs[specIdx + 1].split(',').map((s) => s.trim());
-    } else {
-      // Recursively find all .ts spec files
-      const specsDir = path.join(ROOT, 'e2e', 'specs');
-      const walk = (dir) => {
-        const entries = fs.readdirSync(dir, { withFileTypes: true });
-        const files = [];
-        for (const entry of entries) {
-          const full = path.join(dir, entry.name);
-          if (entry.isDirectory()) {
-            files.push(...walk(full));
-          } else if (entry.name.endsWith('.ts')) {
-            files.push(path.relative(ROOT, full));
-          }
-        }
-        return files;
-      };
-      allSpecs = walk(specsDir)
-        .filter(
-          (f) =>
-            !f.includes('zz-screenshots') &&
-            !f.includes('demo-recording') &&
-            !f.includes('zz-diag'),
-        )
-        .sort();
-    }
+    throw err;
   }
-
-  const chunks = Array.from({ length: INSTANCE_COUNT }, () => []);
-  allSpecs.forEach((spec, i) => chunks[i % INSTANCE_COUNT].push(spec));
 
   log(
-    `Splitting ${allSpecs.length} specs across ${INSTANCE_COUNT} processes: ` +
-      `${chunks.map((c) => c.length).join(' / ')}`,
+    `[${label}] ${specList.length} spec(s) across ${instanceCount} process(es) on ports ${ports.join(', ')}`,
   );
+
+  const chunks = Array.from({ length: instanceCount }, () => []);
+  specList.forEach((spec, i) => chunks[i % instanceCount].push(spec));
+  log(`[${label}] split: ${chunks.map((c) => c.length).join(' / ')}`);
 
   const wdioProcesses = chunks.map((specChunk, i) => {
     if (specChunk.length === 0) return null;
     const workerSchema = `e2e_worker_${i}`;
     const env = {
       ...process.env,
-      DATAZEN_DATA_DIR: dataDirs[i],
-      E2E_WD_PORT: String(wdPorts[i]),
+      DATAZEN_DATA_DIR: dirs[i],
+      E2E_WD_PORT: String(ports[i]),
       E2E_WORKER_INDEX: String(i),
       E2E_WORKER_SCHEMA: workerSchema,
+      ...(skipSharedFixtureReset ? { E2E_SKIP_SHARED_FIXTURE_RESET: '1' } : {}),
     };
     const specArgs = [];
-    for (const s of specChunk) {
-      specArgs.push('--spec', s);
-    }
-    // Remove --spec and --suite from original wdioArgs since we're providing explicit spec list
+    for (const s of specChunk) specArgs.push('--spec', s);
     const filteredWdioArgs = wdioArgs.filter(
       (a, idx) =>
         a !== '--spec' &&
@@ -697,16 +784,12 @@ if (INSTANCE_COUNT > 1) {
         a !== '--suite' &&
         wdioArgs[idx - 1] !== '--suite',
     );
-    const proc = spawn(
-      'npx',
-      ['wdio', 'run', 'e2e/wdio.conf.ts', ...filteredWdioArgs, ...specArgs],
-      {
-        stdio: ['inherit', 'pipe', 'pipe'],
-        cwd: ROOT,
-        env,
-      },
-    );
-    const prefix = `\x1b[3${2 + i}m[worker-${i}]\x1b[0m `;
+    const proc = spawn('npx', ['wdio', 'run', 'e2e/wdio.conf.ts', ...filteredWdioArgs, ...specArgs], {
+      stdio: ['inherit', 'pipe', 'pipe'],
+      cwd: ROOT,
+      env,
+    });
+    const prefix = `\x1b[3${2 + (i % 6)}m[worker-${i}]\x1b[0m `;
     proc.stdout.on('data', (chunk) => {
       for (const line of chunk.toString().split('\n')) {
         if (line) process.stdout.write(prefix + line + '\n');
@@ -726,86 +809,137 @@ if (INSTANCE_COUNT > 1) {
       .map((proc) => new Promise((resolve) => proc.on('close', (code) => resolve(code ?? 1)))),
   );
 
-  cleanup();
-  runEnvTeardown();
-  const maxCode = Math.max(...exitCodes);
+  // Stop only this phase's app processes
+  for (const p of procs) {
+    if (!p.killed) {
+      try { p.kill('SIGTERM'); } catch {}
+    }
+  }
+  for (const p of procs) {
+    const idx = appProcesses.indexOf(p);
+    if (idx >= 0) appProcesses.splice(idx, 1);
+  }
+
+  const maxCode = exitCodes.length ? Math.max(...exitCodes) : 0;
   const passed = exitCodes.filter((c) => c === 0).length;
   log(
-    `${passed}/${exitCodes.length} workers passed. ` +
-      (maxCode === 0
-        ? 'All tests passed!'
-        : `Some workers failed (codes: ${exitCodes.join(', ')})`),
+    `[${label}] ${passed}/${exitCodes.length} worker(s) passed` +
+      (maxCode === 0 ? '' : ` (codes: ${exitCodes.join(', ')})`),
   );
-  process.exit(maxCode);
-} else if (isolateSpecs) {
-  // 隔离模式：一个 spec 文件 = 一次应用进程 + 一次 WDIO 会话。
-  //
-  // 串跑（同一进程跑全部 spec）会把前一个 spec 的运行时会话、连接池、
-  // config_revision 和 WebDriver 会话留给下一个 spec：seeded 连接在 spec 之间
-  // 被改写后，旧会话仍占着连接额度，后一个 spec 的 `connect` 直接收到
-  // "connection runtime operation failed"，失败被记在无辜的 spec 头上。
-  // 隔离后失败只属于当前 spec，整包结果才有判读价值。
-  const collectIsolatedSpecs = () => {
-    const fromArgs = [];
-    for (let i = 0; i < wdioArgs.length; i++) {
-      if (wdioArgs[i] === '--spec' && wdioArgs[i + 1]) fromArgs.push(wdioArgs[i + 1]);
-    }
-    if (fromArgs.length > 0) return [...new Set(fromArgs)];
-    // 只收「真的有用例」的 spec 文件，规则与 wdio.conf.ts 的 exclude 对齐：
-    // 截图/录屏 spec 是刻意不进默认套件的（会重写 site/ 下已提交的截图二进制，
-    // 还需要人工摆好的窗口与种子数据），把它们的「0 个用例」当成失败毫无意义。
-    const capture = Boolean(process.env.E2E_CAPTURE);
-    const excluded = capture
-      ? []
-      : [
-          /\/specs\/zz-screenshots\.ts$/,
-          /\/specs\/demo-recording[^/]*\.ts$/,
-          /\/specs\/zz-diag\.ts$/,
-          /\/specs\/[^/]*screenshot[^/]*\.ts$/,
-        ];
-    const out = [];
-    const walk = (dir) => {
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          walk(full);
-          continue;
-        }
-        if (!entry.name.endsWith('.ts') || entry.name.endsWith('.d.ts')) continue;
-        const rel = path.relative(ROOT, full);
-        if (excluded.some((re) => re.test(rel))) continue;
-        // 纯 helper 文件（journeys/*Helpers.ts 这类）不是 spec，跑它只会得到
-        // 「0 个用例」；按内容判别比按文件名猜更可靠。
-        const source = fs.readFileSync(full, 'utf8');
-        if (!/\b(describe|it)\s*\(/.test(source)) continue;
-        out.push(rel);
+  return { maxCode, exitCodes };
+}
+
+async function runIsolatedSerialSpecs(specList, options = {}) {
+  const { label = 'serial-isolated', resetSharedFixtures = true } = options;
+
+  // Single app instance for serial isolated mode (current behavior)
+  const dataDir = dataDirs[0];
+  const port = WD_PORT;
+
+  // Ensure data dir exists/reset for this phase start
+  if (!attachMode) resetAppDataDir(dataDir, keepAppData);
+
+  // Local helpers mirroring previous isolateSpecs implementation
+  const portOpen = () =>
+    new Promise((resolve) => {
+      const sock = createConnection({ port, host: '127.0.0.1' }, () => {
+        sock.destroy();
+        resolve(true);
+      });
+      sock.on('error', () => resolve(false));
+    });
+
+  const killPortHolders = () => {
+    try {
+      const out = execSync(`lsof -nP -iTCP:${port} -sTCP:LISTEN -t`, {
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
+        .toString()
+        .trim();
+      for (const pid of out.split('\n').filter(Boolean)) {
+        log(`port ${port} still held by pid ${pid}; killing it`);
+        try { process.kill(Number(pid), 'SIGKILL'); } catch {}
       }
-    };
-    walk(path.join(ROOT, 'e2e', 'specs'));
-    return out.sort();
+    } catch {}
+  };
+
+  const stopAppInstance = async (proc) => {
+    if (!proc || proc.exitCode !== null) return;
+    const closed = new Promise((resolve) =>
+      proc.once('close', (code, signal) => resolve({ code, signal })),
+    );
+    try { proc.kill('SIGTERM'); } catch {}
+    const outcome = await Promise.race([
+      closed,
+      new Promise((resolve) => setTimeout(() => resolve(null), 8000)),
+    ]);
+    if (outcome === null) {
+      log('app did not exit within 8s of SIGTERM; sending SIGKILL');
+      try { proc.kill('SIGKILL'); } catch {}
+      await closed;
+    }
+    const started = Date.now();
+    while (Date.now() - started < 15000) {
+      if (!(await portOpen())) return;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    log(`port ${port} is still listening 15s after the app exited`);
+    killPortHolders();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  };
+
+  const startAppVerified = async (phaseLabel) => {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const proc = startAppInstance({
+        binaryPath: appBinary,
+        dataDir,
+        port,
+        workerIndex: 0,
+        onOutput: (chunk) => {
+          if (chunk.toString().includes('Failed to bind to address')) proc.__bindFailed = true;
+          onAppOutput(chunk);
+        },
+      });
+      appProcesses.push(proc);
+      try {
+        await waitForPort(port, '127.0.0.1', 30000);
+      } catch (err) {
+        log(`${phaseLabel}: app did not open port ${port}: ${err.message}`);
+        await stopAppInstance(proc);
+        const idx = appProcesses.indexOf(proc);
+        if (idx >= 0) appProcesses.splice(idx, 1);
+        continue;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      if (!proc.__bindFailed) return proc;
+      log(
+        `${phaseLabel}: port ${port} was still owned by a previous app (attempt ${attempt}); ` +
+          'killing the leftovers and retrying',
+      );
+      killPortHolders();
+      await stopAppInstance(proc);
+      const idx = appProcesses.indexOf(proc);
+      if (idx >= 0) appProcesses.splice(idx, 1);
+    }
+    die(`${phaseLabel}: could not obtain port ${port} for a fresh app process`);
+    return null;
   };
 
   const otherWdioArgs = [];
   for (let i = 0; i < wdioArgs.length; i++) {
-    if (wdioArgs[i] === '--spec') {
-      i++;
-      continue;
-    }
+    if (wdioArgs[i] === '--spec') { i++; continue; }
     otherWdioArgs.push(wdioArgs[i]);
   }
 
   const baseEnv = {
     ...process.env,
-    DATAZEN_DATA_DIR: dataDirs[0],
-    E2E_WD_PORT: String(WD_PORT),
+    DATAZEN_DATA_DIR: dataDir,
+    E2E_WD_PORT: String(port),
     E2E_WORKER_INDEX: '0',
     E2E_WORKER_SCHEMA: process.env.E2E_WORKER_SCHEMA || 'e2e_worker_0',
-    // 共享夹具库由本进程在每个 spec 前重置，wdio service 不必重复。
-    E2E_SHARED_FIXTURE_RESET: 'runner',
+    E2E_SHARED_FIXTURE_RESET: resetSharedFixtures ? 'runner' : 'runner',
   };
 
-  // 单个 spec 的超时上限：挂了就杀掉，记 FAIL 继续下一个，否则一个卡死的 spec
-  // 会把整包验证拖成无限等待。
   const SPEC_TIMEOUT_MS = Number(
     process.env.E2E_SPEC_TIMEOUT_MS || args.find((a) => a.startsWith('--spec-timeout='))?.split('=')[1],
   ) || 4 * 60 * 1000;
@@ -818,8 +952,6 @@ if (INSTANCE_COUNT > 1) {
         { stdio: ['ignore', 'pipe', 'pipe'], cwd: ROOT, env: baseEnv },
       );
       let timedOut = false;
-      // 有些 spec 文件只在专项开关下才有用例（例如截图 spec）。WDIO 对「一个用例
-      // 都没跑」仍返回非零，那等于把「跳过」记成「失败」，会把整包结论搞脏。
       let zeroTests = false;
       let tail = '';
       const forward = (chunk, stream) => {
@@ -833,11 +965,7 @@ if (INSTANCE_COUNT > 1) {
       const timer = setTimeout(() => {
         timedOut = true;
         log(`spec timed out after ${Math.round(SPEC_TIMEOUT_MS / 1000)}s, killing: ${spec}`);
-        try {
-          proc.kill('SIGKILL');
-        } catch {
-          /* already gone */
-        }
+        try { proc.kill('SIGKILL'); } catch {}
       }, SPEC_TIMEOUT_MS);
       proc.on('close', (code) => {
         clearTimeout(timer);
@@ -846,126 +974,14 @@ if (INSTANCE_COUNT > 1) {
       });
     });
 
-  /**
-   * SIGTERM → （必要时）SIGKILL，并等到端口真的释放。
-   *
-   * 关键不是「发了信号」，而是「下一个 spec 起来时 4445 已经没有别人在听」：
-   * 旧进程只要还占着端口，新进程的 WebDriver 线程就会 bind 失败（AddrInUse），
-   * 于是 WDIO 连到的是**上一个 spec 的旧进程**——串扰原样回来，而且失败会被
-   * 记在当前这个无辜的 spec 头上。
-   */
-  const portOpen = () =>
-    new Promise((resolve) => {
-      const sock = createConnection({ port: WD_PORT, host: '127.0.0.1' }, () => {
-        sock.destroy();
-        resolve(true);
-      });
-      sock.on('error', () => resolve(false));
-    });
-
-  const killPortHolders = () => {
-    // 兜底：进程杀了但端口仍被占时，把监听者找出来杀掉。lsof 不在也只是一条日志。
-    try {
-      const out = execSync(`lsof -nP -iTCP:${WD_PORT} -sTCP:LISTEN -t`, {
-        stdio: ['ignore', 'pipe', 'ignore'],
-      })
-        .toString()
-        .trim();
-      for (const pid of out.split('\n').filter(Boolean)) {
-        log(`port ${WD_PORT} still held by pid ${pid}; killing it`);
-        try {
-          process.kill(Number(pid), 'SIGKILL');
-        } catch {
-          /* already gone */
-        }
-      }
-    } catch {
-      /* lsof missing or nothing to kill */
-    }
-  };
-
-  const stopAppInstance = async (proc) => {
-    if (!proc || proc.exitCode !== null) return;
-    const closed = new Promise((resolve) =>
-      proc.once('close', (code, signal) => resolve({ code, signal })),
-    );
-    try {
-      proc.kill('SIGTERM');
-    } catch {
-      /* already gone */
-    }
-    const outcome = await Promise.race([
-      closed,
-      new Promise((resolve) => setTimeout(() => resolve(null), 8000)),
-    ]);
-    if (outcome === null) {
-      log('app did not exit within 8s of SIGTERM; sending SIGKILL');
-      try {
-        proc.kill('SIGKILL');
-      } catch {
-        /* already gone */
-      }
-      await closed;
-    }
-    const started = Date.now();
-    while (Date.now() - started < 15000) {
-      if (!(await portOpen())) return;
-      await new Promise((resolve) => setTimeout(resolve, 200));
-    }
-    log(`port ${WD_PORT} is still listening 15s after the app exited`);
-    killPortHolders();
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  };
-
-  /**
-   * 起一个应用进程，并确认 WebDriver 端口真的是**这个**进程在听。
-   *
-   * 旧进程没退干净时，新进程会 bind 失败而旧进程继续服务；这种错位必须在这里
-   * 被抓住并重试，不能让整个 spec 悄悄跑在上一轮的进程上。
-   */
-  const startAppVerified = async (label) => {
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      const proc = startAppInstance({
-        binaryPath: appBinary,
-        dataDir: dataDirs[0],
-        port: WD_PORT,
-        workerIndex: 0,
-        onOutput: (chunk) => {
-          if (chunk.toString().includes('Failed to bind to address')) proc.__bindFailed = true;
-          onAppOutput(chunk);
-        },
-      });
-      appProcesses.push(proc);
-      try {
-        await waitForPort(WD_PORT, '127.0.0.1', 30000);
-      } catch (err) {
-        log(`${label}: app did not open port ${WD_PORT}: ${err.message}`);
-        await stopAppInstance(proc);
-        continue;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      if (!proc.__bindFailed) return proc;
-      log(
-        `${label}: port ${WD_PORT} was still owned by a previous app (attempt ${attempt}); ` +
-          'killing the leftovers and retrying',
-      );
-      killPortHolders();
-      await stopAppInstance(proc);
-    }
-    die(`${label}: could not obtain port ${WD_PORT} for a fresh app process`);
-    return null;
-  };
-
-  const specs = collectIsolatedSpecs();
-  log(`Isolated mode: ${specs.length} spec file(s), one app process each`);
+  log(`[${label}] ${specList.length} spec file(s), one app process each`);
   const failures = [];
   const skipped = [];
-  for (let i = 0; i < specs.length; i++) {
-    const spec = specs[i];
-    log(`[${i + 1}/${specs.length}] ${spec}`);
-    if (i > 0) resetAppDataDir(dataDirs[0], false);
-    // 先清共享夹具库再起应用：应用一起来就会连库，晚了会撞上自己的进行中会话。
-    resetSharedFixtureDbs(spec);
+  for (let i = 0; i < specList.length; i++) {
+    const spec = specList[i];
+    log(`[${label}] [${i + 1}/${specList.length}] ${spec}`);
+    if (i > 0 && !attachMode) resetAppDataDir(dataDir, false);
+    if (resetSharedFixtures) resetSharedFixtureDbs(spec);
     const proc = await startAppVerified(spec);
     let result = { code: 1, skipped: false };
     try {
@@ -977,19 +993,182 @@ if (INSTANCE_COUNT > 1) {
     }
     if (result.skipped) skipped.push(spec);
     else if (result.code !== 0) failures.push(spec);
-    const label = result.skipped ? 'SKIP' : result.code === 0 ? 'PASS' : 'FAIL';
-    log(`[${i + 1}/${specs.length}] ${label} ${spec}`);
+    const status = result.skipped ? 'SKIP' : result.code === 0 ? 'PASS' : 'FAIL';
+    log(`[${label}] [${i + 1}/${specList.length}] ${status} ${spec}`);
+  }
+
+  if (skipped.length > 0) log(`[${label}] ${skipped.length} spec file(s) had no runnable case (skipped)`);
+  if (sharedFixtureResetFailures.length > 0) {
+    log(
+      `[${label}] ${sharedFixtureResetFailures.length} spec file(s) ran without a clean shared fixture DB ` +
+        '(resets failed; see WARNING lines above)',
+    );
+  }
+  return { failures, skipped };
+}
+
+function resolveExplicitSpecList() {
+  // --suite support for targeted runs in non-full modes: resolve via config
+  const suiteNames = [];
+  for (let i = 0; i < wdioArgs.length; i++) {
+    if (wdioArgs[i] === '--suite' && wdioArgs[i + 1]) {
+      suiteNames.push(wdioArgs[i + 1]);
+      i++;
+    }
+  }
+  if (suiteNames.length > 0) {
+    const out = [];
+    for (const name of suiteNames) out.push(...parseSuiteFromConfig(name));
+    return [...new Set(out)];
+  }
+  const fromArgs = [];
+  for (let i = 0; i < wdioArgs.length; i++) {
+    if (wdioArgs[i] === '--spec' && wdioArgs[i + 1]) fromArgs.push(normalizeSpecPath(wdioArgs[i + 1]));
+  }
+  if (fromArgs.length > 0) return [...new Set(fromArgs)];
+  // default: all specs (respecting excludes)
+  const capture = Boolean(process.env.E2E_CAPTURE);
+  const excluded = capture
+    ? []
+    : [
+        /\/specs\/zz-screenshots\.ts$/,
+        /\/specs\/demo-recording[^/]*\.ts$/,
+        /\/specs\/zz-diag\.ts$/,
+        /\/specs\/[^/]*screenshot[^/]*\.ts$/,
+      ];
+  const out = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) { walk(full); continue; }
+      if (!entry.name.endsWith('.ts') || entry.name.endsWith('.d.ts')) continue;
+      const rel = path.relative(ROOT, full);
+      if (excluded.some((re) => re.test(rel))) continue;
+      out.push(rel);
+    }
+  };
+  walk(path.join(ROOT, 'e2e', 'specs'));
+  return out.sort();
+}
+
+if (isFullRun && INSTANCE_COUNT > 1 && !forceSerialIsolated) {
+  // Full E2E: parallel-safe specs run in parallel (<=4 workers), shared-fixture
+  // suites (data-sync/data-transfer/schema-diff) run serially to avoid conflicts.
+  const allSpecs = collectFullRunSpecs();
+  const parallelSpecs = allSpecs.filter((s) => !SERIAL_ONLY_FULL_RUN_SPECS.has(normalizeSpecPath(s)));
+  const serialSpecs = allSpecs.filter((s) => SERIAL_ONLY_FULL_RUN_SPECS.has(normalizeSpecPath(s)));
+
+  log(
+    `Full E2E (phased): ${allSpecs.length} spec(s) total → ` +
+      `${parallelSpecs.length} parallel-safe + ${serialSpecs.length} serial-only ` +
+      `(instances=${INSTANCE_COUNT}, cap=4)`,
+  );
+
+  let overallFailed = false;
+
+  if (parallelSpecs.length > 0) {
+    // Parallel phase does not depend on shared sync/transfer/diff fixture DBs.
+    const { maxCode } = await runMultiInstanceSpecs(parallelSpecs, INSTANCE_COUNT, {
+      skipSharedFixtureReset: true,
+      label: 'phase-parallel',
+    });
+    if (maxCode !== 0) overallFailed = true;
+  }
+
+  if (serialSpecs.length > 0) {
+    // Run setup scripts for transfer/schema-diff environments if present? The
+    // dedicated package scripts do this; full run goes through setup-e2e-env.sh
+    // already. Ensure serial phase uses clean isolated app per spec.
+    const { failures } = await runIsolatedSerialSpecs(serialSpecs, {
+      label: 'phase-serial',
+      resetSharedFixtures: true,
+    });
+    if (failures.length > 0) {
+      overallFailed = true;
+      log(`Serial-only phase failures:`);
+      for (const spec of failures) log(`  - ${spec}`);
+    }
   }
 
   cleanup();
   runEnvTeardown();
-  if (skipped.length > 0) log(`${skipped.length} spec file(s) had no runnable case (skipped)`);
-  if (sharedFixtureResetFailures.length > 0) {
-    log(
-      `${sharedFixtureResetFailures.length} spec file(s) ran without a clean shared fixture DB ` +
-        '(resets failed; see WARNING lines above)',
-    );
+  if (overallFailed) {
+    log('Full E2E completed with failures.');
+    process.exit(1);
   }
+  log('Full E2E passed (parallel + serial phases).');
+  process.exit(0);
+}
+
+if (INSTANCE_COUNT > 1) {
+  // Targeted multi-instance run (suite/spec) — preserve existing behavior.
+  let allSpecs = [];
+  const suiteNames = [];
+  for (let i = 0; i < wdioArgs.length; i++) {
+    if (wdioArgs[i] === '--suite' && wdioArgs[i + 1]) {
+      suiteNames.push(wdioArgs[i + 1]);
+      i++;
+    }
+  }
+
+  if (suiteNames.length > 0) {
+    for (const name of suiteNames) allSpecs.push(...parseSuiteFromConfig(name));
+    log(`Resolved ${suiteNames.join('+')} suite(s): ${allSpecs.length} specs`);
+  } else {
+    const specIdx = wdioArgs.indexOf('--spec');
+    if (specIdx >= 0 && wdioArgs[specIdx + 1]) {
+      allSpecs = wdioArgs[specIdx + 1].split(',').map((s) => normalizeSpecPath(s.trim()));
+    } else {
+      allSpecs = resolveExplicitSpecList();
+    }
+  }
+
+  const { maxCode, exitCodes } = await runMultiInstanceSpecs(allSpecs, INSTANCE_COUNT, {
+    skipSharedFixtureReset: false,
+    label: 'multi-instance',
+  });
+  cleanup();
+  runEnvTeardown();
+  if (maxCode === 0) {
+    log('All tests passed!');
+    process.exit(0);
+  }
+  log(`Some workers failed (codes: ${exitCodes.join(', ')})`);
+  process.exit(maxCode);
+}
+
+if (isolateSpecs) {
+  // Isolated serial mode (targeted runs, or forced serial full run)
+  let specs;
+  if (isFullRun) {
+    specs = collectFullRunSpecs();
+  } else {
+    // Targeted: respect --spec args as given; if none, fall back to suite/all resolution
+    const fromArgs = [];
+    for (let i = 0; i < wdioArgs.length; i++) {
+      if (wdioArgs[i] === '--spec' && wdioArgs[i + 1]) fromArgs.push(normalizeSpecPath(wdioArgs[i + 1]));
+    }
+    if (fromArgs.length > 0) {
+      specs = [...new Set(fromArgs)];
+    } else if (hasExplicitSuiteArg) {
+      const suiteNames = [];
+      for (let i = 0; i < wdioArgs.length; i++) {
+        if (wdioArgs[i] === '--suite' && wdioArgs[i + 1]) { suiteNames.push(wdioArgs[i + 1]); i++; }
+      }
+      const out = [];
+      for (const name of suiteNames) out.push(...parseSuiteFromConfig(name));
+      specs = [...new Set(out)];
+    } else {
+      specs = collectFullRunSpecs();
+    }
+  }
+
+  const { failures, skipped } = await runIsolatedSerialSpecs(specs, {
+    label: 'isolated',
+    resetSharedFixtures: true,
+  });
+  cleanup();
+  runEnvTeardown();
   if (failures.length === 0) {
     log(`All ${specs.length} isolated spec files passed!`);
     process.exit(0);
@@ -997,8 +1176,10 @@ if (INSTANCE_COUNT > 1) {
   log(`${specs.length - failures.length}/${specs.length} isolated spec files passed; failing:`);
   for (const spec of failures) log(`  - ${spec}`);
   process.exit(1);
-} else {
-  // Single-instance: standard WDIO run
+}
+
+// Single-instance: standard WDIO run (targeted suites/specs when not isolated)
+{
   const wdioEnv = {
     ...process.env,
     DATAZEN_DATA_DIR: dataDirs[0],

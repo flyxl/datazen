@@ -3,7 +3,7 @@ import { dbSessionIdOf } from '../helpers.js';
 /**
  * Site screenshot generator (temporary tooling, not a regression spec).
  * Drives the webdriver-enabled app and captures marketing screenshots
- * directly into site/assets/screenshots/ via the WebDriver screenshot API.
+ * directly into e2e/screenshots/site/ via the WebDriver screenshot API.
  */
 import { browser, $ } from '@wdio/globals';
 import { assertGallerySize, ensureMaximized } from '../lib/capture-window';
@@ -12,7 +12,7 @@ import path from 'node:path';
 import url from 'node:url';
 
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..', '..');
-const OUT = path.join(ROOT, 'site', 'assets', 'screenshots');
+const OUT = path.join(ROOT, 'e2e', 'screenshots', 'site');
 
 /** Isolated demo databases — see e2e/setup-demo-data.sh */
 const DEMO_PG_DB = process.env.E2E_DEMO_PG_DB || 'datazen_demo';

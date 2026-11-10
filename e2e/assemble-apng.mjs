@@ -25,8 +25,8 @@ function argOf(flag, dflt) {
 }
 const hasFlag = (flag) => args.includes(flag);
 
-const DIR = path.resolve(argOf('--dir', 'e2e/.demo-recording'));
-const OUT = path.resolve(argOf('--out', 'e2e/demo-recording.png'));
+const DIR = path.resolve(argOf('--dir', 'e2e/screenshots/demo/frames'));
+const OUT = path.resolve(argOf('--out', 'e2e/screenshots/demo/demo-recording.png'));
 const CONCAT_OUT = argOf('--concat', null);
 const FALLBACK_FPS = Number(argOf('--fps', '6'));
 const MP4_ONLY = hasFlag('--concat-only');
@@ -127,17 +127,18 @@ const delays = mtimes.map((t, i) => {
 
 // ── Optional: emit ffconcat file (for ffmpeg mp4 conversion with true pacing) ──
 if (CONCAT_OUT) {
+  fs.mkdirSync(path.dirname(CONCAT_OUT), { recursive: true });
   const lines = ['ffconcat version 1.0'];
   frames.forEach((f, i) => {
-    lines.push(`file '${f}'`);
+    lines.push(`file '${path.join(DIR, f)}'`);
     lines.push(`duration ${(delays[i] / 1000).toFixed(3)}`);
   });
   // concat demuxer ignores the final duration unless the last file repeats
-  lines.push(`file '${frames[frames.length - 1]}'`);
+  lines.push(`file '${path.join(DIR, frames[frames.length - 1])}'`);
   fs.writeFileSync(CONCAT_OUT, `${lines.join('\n')}\n`);
-  const total = delays.reduce((a, b) => a + b, 0);
+  const concatTotal = delays.reduce((a, b) => a + b, 0);
   console.log(
-    `ffconcat written: ${CONCAT_OUT} (${frames.length} frames, ${(total / 1000).toFixed(1)}s)`,
+    `ffconcat written: ${CONCAT_OUT} (${frames.length} frames, ${(concatTotal / 1000).toFixed(1)}s)`,
   );
   if (MP4_ONLY) process.exit(0);
 }
@@ -176,6 +177,7 @@ for (let i = 1; i < parsed.length; i++) {
 }
 parts.push(chunk('IEND', Buffer.alloc(0)));
 
+fs.mkdirSync(path.dirname(OUT), { recursive: true });
 fs.writeFileSync(OUT, Buffer.concat(parts));
 
 const total = delays.reduce((a, b) => a + b, 0);

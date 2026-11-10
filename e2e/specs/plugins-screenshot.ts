@@ -27,7 +27,7 @@ import path from 'node:path';
 import url from 'node:url';
 
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..', '..');
-const OUT = path.join(ROOT, 'site', 'assets', 'screenshots');
+const OUT = path.join(ROOT, 'e2e', 'screenshots', 'site');
 
 const TARGET = '22-plugins.png';
 

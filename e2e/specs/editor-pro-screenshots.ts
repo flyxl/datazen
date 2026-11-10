@@ -13,7 +13,7 @@
  *   9. SQL linter feedback
  *  10. Format SQL
  *
- * Outputs to site/assets/screenshots/
+ * Outputs to e2e/screenshots/site/
  */
 import { browser, $ } from '@wdio/globals';
 import { assertGallerySize, ensureMaximized } from '../lib/capture-window';
@@ -22,7 +22,7 @@ import path from 'node:path';
 import url from 'node:url';
 
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..', '..');
-const OUT = path.join(ROOT, 'site', 'assets', 'screenshots');
+const OUT = path.join(ROOT, 'e2e', 'screenshots', 'site');
 
 async function invoke<T = unknown>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   return browser.executeAsync(

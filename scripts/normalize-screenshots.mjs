@@ -5,7 +5,7 @@
  * ## Why this exists
  *
  * Screenshots used to be captured at whatever size the host monitor happened
- * to report — `site/assets/screenshots/` accumulated 12 different resolutions
+ * to report — `e2e/screenshots/site/` accumulated 12 different resolutions
  * (1280x820, 1920x1080, 1920x1440, 2560x1640, 2560x1648, 2880x1800, 3200x1648,
  * 2200x1440, 2000x1400, 2000x1440, 1500x1040, 1280x900). A still-image gallery
  * shrugs that off; a video does not, because every clip that does not match the
@@ -39,7 +39,7 @@
  *   node scripts/normalize-screenshots.mjs --target 2560x1440
  *
  *   # the 16:9 video set, written ALONGSIDE the stills
- *   node scripts/normalize-screenshots.mjs --target 1920x1080 --out site/assets/screenshots-video
+ *   node scripts/normalize-screenshots.mjs --target 1920x1080 --out e2e/screenshots/site-video
  *
  * ## `--out` matters more than it looks
  *
@@ -60,7 +60,7 @@ import path from 'node:path';
 import url from 'node:url';
 
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
-const SITE_DIR = path.join(ROOT, 'site', 'assets', 'screenshots');
+const SITE_DIR = path.join(ROOT, 'e2e', 'screenshots', 'site');
 
 const argv = process.argv.slice(2);
 const checkOnly = argv.includes('--check');
@@ -192,7 +192,7 @@ for (const f of files) {
 }
 
 const target_ = `${TARGET_W}x${TARGET_H}`;
-console.log(`${files.length} file(s) in site/assets/screenshots`);
+console.log(`${files.length} file(s) in e2e/screenshots/site`);
 console.log(`${files.length - offSize.length - unreadable.length} already ${target_}`);
 if (offSize.length) {
   console.log(`\n${offSize.length} need normalising:`);

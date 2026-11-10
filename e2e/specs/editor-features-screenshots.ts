@@ -7,7 +7,7 @@ import { dbSessionIdOf } from '../helpers.js';
  * screenshots of the latest SQL Editor features in DataZen v0.2.0.
  *
  * Outputs directly to:
- * - site/assets/screenshots/
+ * - e2e/screenshots/site/
  *
  * That directory is the single source of truth for every still used by the
  * website, the release posts and `posts/`; the release posts link to it by
@@ -20,7 +20,7 @@ import path from 'node:path';
 import url from 'node:url';
 
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..', '..');
-const OUT_SITE = path.join(ROOT, 'site', 'assets', 'screenshots');
+const OUT_SITE = path.join(ROOT, 'e2e', 'screenshots', 'site');
 
 const DEMO_PG_DB = process.env.E2E_DEMO_PG_DB || 'datazen_demo';
 const DEMO_PG_USER = process.env.E2E_DEMO_PG_USER || 'datazen_demo';
