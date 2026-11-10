@@ -158,6 +158,10 @@ mod tests {
         /// preceding `StatementStart`, so the exporter's header fallback
         /// (item 3a) can be exercised.
         emit_start: bool,
+        /// Test seam: when false, `stream_query` emits `StatementEnd`
+        /// without a trailing `Done`, so the exporter's finish fallback
+        /// (the tail of `write_binary_file`) can be exercised.
+        emit_done: bool,
     }
 
     impl StubSource {
@@ -177,6 +181,7 @@ mod tests {
                 streamed_targets: Arc::new(std::sync::Mutex::new(Vec::new())),
                 stream_calls: Arc::new(AtomicUsize::new(0)),
                 emit_start: true,
+                emit_done: true,
             }
         }
     }
@@ -222,7 +227,9 @@ mod tests {
                 execution_time_ms: 0,
                 truncated: false,
             });
-            callback(QueryStreamEvent::Done { total_time_ms: 0 });
+            if self.emit_done {
+                callback(QueryStreamEvent::Done { total_time_ms: 0 });
+            }
             Ok(())
         }
     }
@@ -1890,6 +1897,119 @@ mod tests {
             "col_N header: {text}"
         );
         let _ = std::fs::remove_dir_all(dest2.parent().unwrap());
+    }
+
+    /// Read back a `write_binary_file` product for table "t": it must be a
+    /// valid zip containing the sheet XML, and calamine must read exactly
+    /// header ["id", "name"] plus the two canned rows.
+    fn assert_xlsx_has_two_rows(dest: &std::path::Path) {
+        assert!(dest.exists(), "xlsx file written");
+        let file = std::fs::File::open(dest).unwrap();
+        let mut zip = zip::ZipArchive::new(file).unwrap();
+        assert!(zip.by_name("xl/worksheets/sheet1.xml").is_ok());
+        drop(zip);
+        let mut workbook: calamine::Xlsx<_> =
+            calamine::open_workbook(dest).expect("calamine opens the produced file");
+        use calamine::{DataType, Reader};
+        let range = workbook.worksheet_range("t").expect("sheet t exists");
+        let rows: Vec<&[calamine::Data]> = range.rows().collect();
+        assert_eq!(rows.len(), 3, "header + two data rows");
+        let header: Vec<String> = rows[0]
+            .iter()
+            .map(|c| c.as_string().expect("header is a string"))
+            .collect();
+        assert_eq!(header, ["id", "name"]);
+        assert_eq!(rows[1][0], calamine::Data::Float(1.0), "integer read back");
+        assert_eq!(
+            rows[1][1],
+            calamine::Data::String("a".to_string()),
+            "string read back"
+        );
+        assert_eq!(
+            rows[2][0],
+            calamine::Data::Float(2.0),
+            "second row read back"
+        );
+        assert_eq!(rows[2][1], calamine::Data::Empty, "null reads back empty");
+    }
+
+    #[tokio::test]
+    async fn write_binary_file_without_done_still_finishes_xlsx() {
+        // The Done event never arrives: only the finish() fallback at the
+        // end of write_binary_file can save the workbook — without it no
+        // file would exist at all, since XlsxFormatter only writes on
+        // finish(). A Provided source cannot exercise this: its fetcher
+        // always emits Done and never touches the backend, so the stream
+        // is withheld here through StubSource behind a SQL source, the
+        // same seam as the emit_start fallback test above.
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Xlsx,
+            vec![table_item(
+                "t",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        let mut source = StubSource::new(false, false, two_cols(), two_rows());
+        source.emit_done = false;
+        let dest = temp_file("no-done.xlsx");
+        let n = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Xlsx,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(source.stream_calls.load(Ordering::Relaxed), 1);
+        assert_xlsx_has_two_rows(&dest);
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn write_binary_file_done_arriving_finishes_xlsx_once() {
+        // Control for the fallback test: same stream with Done delivered,
+        // so finish() runs in the Done handler and the end-of-function
+        // fallback must not run it again. "Once" is enforced by the
+        // `finished` counter gate in write_binary_file (Done handler only
+        // on fetch_add == 0, fallback only on load == 0), which has no
+        // external probe without instrumenting production code; what this
+        // pins is the observable contract — Ok and exactly one valid,
+        // complete workbook with the exact contents.
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Xlsx,
+            vec![table_item(
+                "t",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        assert!(source.emit_done, "emit_done defaults to true");
+        let dest = temp_file("done.xlsx");
+        let n = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Xlsx,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(source.stream_calls.load(Ordering::Relaxed), 1);
+        assert_xlsx_has_two_rows(&dest);
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
     #[tokio::test]

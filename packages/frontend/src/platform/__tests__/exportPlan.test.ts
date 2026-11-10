@@ -361,9 +361,18 @@ describe('defaultExportName', () => {
     expect(defaultExportName(REQUEST(), false, PINNED_NOW)).toBe(
       'export_data_2026-11-09-05-00-00.csv',
     );
+    // A structure-only export is DDL text whatever the data format says,
+    // so it is always named .sql — never .csv / .xlsx after the format.
     expect(defaultExportName(REQUEST({ mode: 'structure_only' }), false, PINNED_NOW)).toBe(
-      'export_structure_2026-11-09-05-00-00.csv',
+      'export_structure_2026-11-09-05-00-00.sql',
     );
+    expect(
+      defaultExportName(
+        REQUEST({ mode: 'structure_only', dataFormat: 'xlsx' }),
+        false,
+        PINNED_NOW,
+      ),
+    ).toBe('export_structure_2026-11-09-05-00-00.sql');
     expect(defaultExportName(REQUEST({ mode: 'data_and_structure' }), false, PINNED_NOW)).toBe(
       'export_full_2026-11-09-05-00-00.csv',
     );
@@ -376,5 +385,12 @@ describe('defaultExportName', () => {
     expect(defaultExportName(REQUEST(), true, PINNED_NOW)).toBe(
       'export_data_2026-11-09-05-00-00.zip',
     );
+    expect(
+      defaultExportName(
+        REQUEST({ mode: 'structure_only', dataFormat: 'xlsx' }),
+        true,
+        PINNED_NOW,
+      ),
+    ).toBe('export_structure_2026-11-09-05-00-00.zip');
   });
 });

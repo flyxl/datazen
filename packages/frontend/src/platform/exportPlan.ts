@@ -255,10 +255,31 @@ export function prepareExport(request: ExportTablesRequest): {
 }
 
 /**
+ * Extension of the file `defaultExportName` produces — `default_export_extension`:
+ * decided by the actual product, not by the data format alone. A
+ * structure-only export is always DDL text (`buildFilePlans` emits only
+ * `{table}.sql` plans), so it is `.sql` whatever the data format says; a
+ * zip container is `.zip`; everything else keeps the data format's extension.
+ */
+export function defaultExportExtension(
+  request: ExportTablesRequest,
+  useZip: boolean,
+): string {
+  if (useZip) {
+    return 'zip';
+  }
+  if (request.mode === 'structure_only') {
+    return 'sql';
+  }
+  return formatExtension(request.dataFormat);
+}
+
+/**
  * Default output name — `default_export_name`: `{prefix}_{UTC timestamp}.{ext}`
  * with `export_structure` / `export_data` / `export_full` by mode and
- * `zip` (or the data format's extension) as the extension. `now` is
- * injectable so tests can pin the timestamp; production passes the
+ * `defaultExportExtension` as the extension (`zip` for a zip container,
+ * `sql` for a structure-only export, else the data format's extension).
+ * `now` is injectable so tests can pin the timestamp; production passes the
  * current time (UTC, as `chrono::Utc` does on the Rust side).
  */
 export function defaultExportName(
@@ -276,6 +297,6 @@ export function defaultExportName(
       : request.mode === 'data_only'
         ? 'export_data'
         : 'export_full';
-  const ext = useZip ? 'zip' : formatExtension(request.dataFormat);
+  const ext = defaultExportExtension(request, useZip);
   return `${prefix}_${ts}.${ext}`;
 }
