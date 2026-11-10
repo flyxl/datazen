@@ -523,17 +523,7 @@ function onAppOutput(chunk) {
 }
 
 /** @type {import('node:child_process').ChildProcess[]} */
-const appProcesses = attachMode
-  ? []
-  : wdPorts.map((port, i) =>
-      startAppInstance({
-        binaryPath: appBinary,
-        dataDir: dataDirs[i],
-        port,
-        workerIndex: i,
-        onOutput: onAppOutput,
-      }),
-    );
+const appProcesses = [];
 
 function cleanup() {
   for (const proc of appProcesses) {
@@ -561,70 +551,113 @@ process.on('SIGTERM', () => {
   process.exit(143);
 });
 
-try {
-  await Promise.all(wdPorts.map((port) => waitForPort(port)));
-
-  /**
-   * `--hold` opens the app and stops there, leaving the window up so a human can
-   * size it by hand, then drives it with a follow-up `--attach` run.
-   *
-   * The screenshot geometry is not something a spec can pick: the webdriver
-   * captures 1:1 in CSS pixels and ignores devicePixelRatio, so the only way to
-   * land on a window that is both fully visible and the right density is to set
-   * it once, by eye, on the real display.
-   */
-  if (holdMode) {
-    log('Hold mode: app is up. Size the window, then run the capture with --attach.');
-    await new Promise((resolve) => {
-      appProcesses.forEach((p) => p.on('close', resolve));
-      process.on('SIGINT', resolve);
-      process.on('SIGTERM', resolve);
-    });
-    cleanup();
-    runEnvTeardown();
-    process.exit(0);
-  }
-
-  if (INSTANCE_COUNT > 1) {
-    log(`All ${INSTANCE_COUNT} WebDriver plugin(s) ready on ports ${wdPorts.join(', ')}.`);
-  } else {
-    log(`WebDriver plugin is ready on port ${WD_PORT}.`);
-  }
-} catch (err) {
-  console.error(err.message);
-  if (sawAssetMissing) {
+async function startAndWaitManagedInstances(ports, dirs, label = 'app') {
+  const procs = attachMode
+    ? []
+    : ports.map((port, i) =>
+        startAppInstance({
+          binaryPath: appBinary,
+          dataDir: dirs[i],
+          port,
+          workerIndex: i,
+          onOutput: onAppOutput,
+        }),
+      );
+  appProcesses.push(...procs);
+  try {
+    await Promise.all(ports.map((port) => waitForPort(port)));
+  } catch (err) {
+    for (const p of procs) {
+      try { p.kill('SIGTERM'); } catch {}
+    }
+    for (const p of procs) {
+      const idx = appProcesses.indexOf(p);
+      if (idx >= 0) appProcesses.splice(idx, 1);
+    }
+    console.error(err.message);
+    if (sawAssetMissing) {
+      die(
+        [
+          'App failed with "asset not found: index.html".',
+          'Cause: binary was likely built with bare `cargo build`, which skips Tauri asset embedding.',
+          `Fix: ${BUILD_CMD}`,
+          'Then: pnpm e2e:skip-build -- --spec <your-spec>',
+          'See docs/development/e2e-testing.md',
+        ].join('\n'),
+      );
+    }
     die(
       [
-        'App failed with "asset not found: index.html".',
-        'Cause: binary was likely built with bare `cargo build`, which skips Tauri asset embedding.',
-        `Fix: ${BUILD_CMD}`,
-        'Then: pnpm e2e:skip-build -- --spec <your-spec>',
+        `WebDriver port(s) did not open: ${ports.join(', ')}`,
+        'Common causes:',
+        '  1. Binary built WITHOUT --features webdriver',
+        '  2. Used cargo build instead of `pnpm tauri build --debug --features webdriver`',
+        `  3. Another process already holds one of ${ports.join(', ')}`,
         'See docs/development/e2e-testing.md',
       ].join('\n'),
     );
   }
-  die(
-    [
-      `WebDriver port(s) did not open: ${wdPorts.join(', ')}`,
-      'Common causes:',
-      '  1. Binary built WITHOUT --features webdriver',
-      '  2. Used cargo build instead of `pnpm tauri build --debug --features webdriver`',
-      `  3. Another process already holds one of ${wdPorts.join(', ')}`,
-      'See docs/development/e2e-testing.md',
-    ].join('\n'),
-  );
+  if (sawAssetMissing) {
+    for (const p of procs) {
+      try { p.kill('SIGTERM'); } catch {}
+    }
+    cleanup();
+    die(
+      [
+        'App reported "asset not found: index.html" — frontend is broken.',
+        `Rebuild with: ${BUILD_CMD}`,
+        'Do NOT use: cargo build -p datazen_desktop --features webdriver',
+        'See docs/development/e2e-testing.md',
+      ].join('\n'),
+    );
+  }
+  if (procs.length > 1) {
+    log(`${label}: all ${procs.length} WebDriver plugin(s) ready on ports ${ports.join(', ')}.`);
+  } else if (procs.length === 1) {
+    log(`${label}: WebDriver plugin ready on port ${ports[0]}.`);
+  } else if (attachMode) {
+    log(`${label}: attach mode (no app process started).`);
+  }
+  return procs;
 }
 
-if (sawAssetMissing) {
+const usesPhasedParallelFullRun = isFullRun && INSTANCE_COUNT > 1 && !forceSerialIsolated;
+const usesManagedMultiInstance = INSTANCE_COUNT > 1 && !usesPhasedParallelFullRun;
+const usesManagedSerialLifecycle = isolateSpecs || usesPhasedParallelFullRun;
+// Modes that need a pre-started app here: --hold, or standard single-instance run.
+const needsPrestartedSingleApp =
+  !attachMode &&
+  !usesPhasedParallelFullRun &&
+  !usesManagedMultiInstance &&
+  !usesManagedSerialLifecycle &&
+  !holdMode
+    ? false
+    : holdMode;
+
+if (holdMode) {
+  await startAndWaitManagedInstances([WD_PORT], [dataDirs[0]], 'hold');
+  log('Hold mode: app is up. Size the window, then run the capture with --attach.');
+  await new Promise((resolve) => {
+    appProcesses.forEach((p) => p.on('close', resolve));
+    process.on('SIGINT', resolve);
+    process.on('SIGTERM', resolve);
+  });
   cleanup();
-  die(
-    [
-      'App reported "asset not found: index.html" — frontend is broken.',
-      `Rebuild with: ${BUILD_CMD}`,
-      'Do NOT use: cargo build -p datazen_desktop --features webdriver',
-      'See docs/development/e2e-testing.md',
-    ].join('\n'),
-  );
+  runEnvTeardown();
+  process.exit(0);
+}
+
+// For the plain single-instance, non-isolated, non-managed run we start the app now.
+// All other modes manage app lifecycle themselves (phased parallel, multi-instance helper,
+// isolated serial per-spec) to avoid duplicate instances / port conflicts.
+if (
+  !usesPhasedParallelFullRun &&
+  !usesManagedMultiInstance &&
+  !isolateSpecs &&
+  !holdMode
+) {
+  // Single-instance standard WDIO run (or attach mode)
+  await startAndWaitManagedInstances([WD_PORT], [dataDirs[0]], 'single');
 }
 
 // Step 3: Run WDIO
