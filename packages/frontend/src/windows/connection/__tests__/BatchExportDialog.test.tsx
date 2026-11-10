@@ -48,6 +48,7 @@ vi.mock('../../../platform/env', () => ({
 // Form-split F4: the export flow rides the dual-flow port; the test binds a
 // fake exporter through the platform bindings exactly like an assembly does.
 const exportTablesStream = vi.fn();
+const cancelExportTablesMock = vi.fn();
 
 import { configurePlatform, clearPlatform } from '../../../platform/contracts';
 
@@ -61,6 +62,8 @@ function bindFakeExporter(): void {
     },
     tablesExporter: {
       exportTables: (...args: unknown[]) => exportTablesStream(...(args as [never])),
+      cancelExportTables: (...args: unknown[]) =>
+        cancelExportTablesMock(...(args as [never])),
     },
   });
 }
@@ -86,6 +89,7 @@ beforeEach(() => {
   envState.desktop = true;
   bindFakeExporter();
   exportTablesStream.mockResolvedValue({ Saved: 1 });
+  cancelExportTablesMock.mockResolvedValue(true);
 });
 
 describe('BatchExportDialog formats (item 3d)', () => {
@@ -374,6 +378,84 @@ describe('BatchExportDialog', () => {
       expect(screen.queryByText('batchExport.success')).not.toBeInTheDocument();
       expect(onClose).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('BatchExportDialog cancellation (item 1b)', () => {
+  function renderDialog() {
+    const loadTableExportData = vi.fn(async (name: string) => mockTable(name));
+    render(
+      <BatchExportDialog
+        open
+        onClose={vi.fn()}
+        dbSessionId="c1"
+        databaseType="postgres"
+        tables={['users']}
+        initialSelected={['users']}
+        loadTableExportData={loadTableExportData}
+      />,
+    );
+  }
+
+  it('cancels mid-flight and reports the partial file deleted', async () => {
+    let resolveExport!: (result: unknown) => void;
+    exportTablesStream.mockImplementation(
+      () => new Promise((resolve) => { resolveExport = resolve; }),
+    );
+    renderDialog();
+    fireEvent.click(screen.getByText('batchExport.export'));
+    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+
+    const cancelButton = screen.getByText('export.cancelExport');
+    expect(cancelButton).toBeEnabled();
+    fireEvent.click(cancelButton);
+    expect(screen.getByText('export.cancelling')).toBeInTheDocument();
+    expect(screen.getByText('export.cancelling')).toBeDisabled();
+    const request = exportTablesStream.mock.calls[0]![0] as {
+      cancelToken?: string;
+    };
+    expect(cancelExportTablesMock).toHaveBeenCalledTimes(1);
+    expect(cancelExportTablesMock).toHaveBeenCalledWith(request.cancelToken);
+
+    resolveExport({ Aborted: { partialDeleted: true } });
+    await waitFor(() =>
+      expect(screen.getByTestId('export-aborted-panel')).toBeInTheDocument(),
+    );
+    expect(screen.getByText('export.cancelledPartialDeleted')).toBeInTheDocument();
+    expect(screen.queryByText('batchExport.success')).not.toBeInTheDocument();
+  });
+
+  it('reports the partial file kept when the backend could not delete it', async () => {
+    let resolveExport!: (result: unknown) => void;
+    exportTablesStream.mockImplementation(
+      () => new Promise((resolve) => { resolveExport = resolve; }),
+    );
+    renderDialog();
+    fireEvent.click(screen.getByText('batchExport.export'));
+    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByText('export.cancelExport'));
+    resolveExport({ Aborted: { partialDeleted: false } });
+    await waitFor(() =>
+      expect(screen.getByTestId('export-aborted-panel')).toBeInTheDocument(),
+    );
+    expect(screen.getByText('export.cancelledPartialKept')).toBeInTheDocument();
+  });
+
+  it('offers no cancel button when the onExport override is provided', () => {
+    const onExport = vi.fn().mockResolvedValue(undefined);
+    render(
+      <BatchExportDialog
+        open
+        onClose={vi.fn()}
+        dbSessionId="c1"
+        tables={['users']}
+        initialSelected={['users']}
+        loadTableExportData={vi.fn(async (name: string) => mockTable(name))}
+        onExport={onExport}
+      />,
+    );
+    // The override path has no Rust run to cancel.
+    expect(screen.queryByText('export.cancelExport')).not.toBeInTheDocument();
   });
 });
 

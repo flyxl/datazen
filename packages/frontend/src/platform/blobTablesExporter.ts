@@ -50,7 +50,11 @@
  */
 
 import { escapeCsvField } from '../lib/gridClipboard';
-import { formatRowsAsText, formatRowsAsXlsx } from '../lib/exportFormat';
+import {
+  applyCsvFormulaGuard,
+  formatRowsAsText,
+  formatRowsAsXlsx,
+} from '../lib/exportFormat';
 import type { TablesExporterPort, TablesExportRequest } from './contracts';
 import { defaultExportName, prepareExport, type ExportFilePlan } from './exportPlan';
 
@@ -91,22 +95,14 @@ export type TablePageReader = (
 /**
  * One cell as a CSV field: the standard escaping from `gridClipboard`
  * (`escapeCsvField` — RFC 4180 quoting, objects via JSON, null as empty),
- * plus the formula-injection guard this exporter has always applied and the
- * standard does not: a field whose text starts with `=`, `+`, `-` or `@`
- * would reach a spreadsheet as a live formula, so it is quoted even when it
- * contains no delimiter. The guard runs on the escaped text, so a value the
- * standard already quoted (delimiter, quote or line break inside) is left
- * alone, and negative numbers keep the quoting the previous hand-rolled rule
- * gave them. Dropping the guard would silently turn exported data into
- * executable spreadsheet formulas — that is why it stays here instead of in
- * the shared kernel, where copy/paste treats a formula prefix as inert text.
+ * plus the formula-injection guard shared with the other two CSV paths
+ * (`applyCsvFormulaGuard` in `exportFormat.ts` — also the Rust
+ * `StreamFormatter` rule). The guard stays out of the shared escaping
+ * kernel, where copy/paste treats a formula prefix as inert text; it
+ * belongs to the CSV export layer only.
  */
 function csvCell(value: unknown): string {
-  const escaped = escapeCsvField(value);
-  if (/^[=+\-@]/.test(escaped) && !escaped.startsWith('"')) {
-    return `"${escaped}"`;
-  }
-  return escaped;
+  return applyCsvFormulaGuard(escapeCsvField(value));
 }
 
 /**
@@ -259,10 +255,11 @@ export function createBlobTablesExporter(
       // rows, not just a wrong format). Every format is available here
       // (plan §2.8), with one exception kept local: CSV still goes through
       // the `csvCell` emission below instead of `formatRowsAsText`, because
-      // only this exporter applies the formula-injection guard — the shared
-      // formatter does not quote `=SUM(...)` cells, and routing provided
-      // CSV through it would silently turn exported data into executable
-      // spreadsheet formulas.
+      // this exporter writes `\n`-terminated lines (the streaming shape the
+      // Rust writer produces) while `formatRowsAsText` joins lines with no
+      // trailing newline. The formula-injection guard is no longer the
+      // reason: it now lives in `exportFormat.ts` (`applyCsvFormulaGuard`)
+      // and all three CSV paths share it.
       const emitDataPlan = async (
         plan: Extract<ExportFilePlan, { kind: 'data' }>,
       ): Promise<{ content: BlobPart; mimeType: string }> => {

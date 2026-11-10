@@ -525,6 +525,8 @@ const pack = {
   'export.formatDisabledStream':
     'XLSX는 모든 행을 메모리에 로드해야 하므로 스트리밍 내보내기(전체 테이블/필터 결과)에서는 사용할 수 없습니다.',
   'export.formatDisabledNoKey': 'SQL UPDATE는 WHERE 절을 만들 기본 키 열이 필요합니다.',
+  'export.formatDisabledWebSqlScope':
+    '웹에서는 전체 테이블/필터 결과 내보내기가 CSV만 지원되며, SQL 내보내기 경로가 없습니다.',
   'export.progressRows': '{rows}행 기록됨…',
   'export.cancelExport': '내보내기 취소',
   'export.cancelling': '취소 중…',

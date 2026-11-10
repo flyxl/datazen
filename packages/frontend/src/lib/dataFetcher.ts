@@ -23,6 +23,13 @@
  *   touches rows in JS, never formats, never runs the guard — all of that
  *   stays in Rust.
  *
+ * Cancellation (mid-flight, SQL path only): the fetcher mints one token
+ * per run (`crypto.randomUUID`), carries it on the request, and
+ * `cancel()` flips it through the port's `cancelExportTables`
+ * (`cancel_export_tables` on desktop). An `Aborted` result maps to
+ * `'aborted'` and records whether the partial file was deleted
+ * (`abortedPartialDeleted`). Provided fetchers never mint a token.
+ *
  * Progress is a single start/end pair (`rowsWritten: 0` then `total`,
  * `rowsTotal` known from `rows.length`); a cancelled save emits no end
  * event, because nothing was written.
@@ -59,8 +66,18 @@ export interface DataFetcher {
   readonly needsBackend: boolean;
   /** Subscribe to progress; returns an unsubscribe function (same shape as `onExportProgress`). */
   onProgress(handler: (p: ExportProgress) => void): () => void;
-  /** Run the export. Returns `'saved' | 'cancelled'`. */
-  fetch(): Promise<'saved' | 'cancelled'>;
+  /**
+   * Run the export. Returns `'saved' | 'cancelled' | 'aborted'`
+   * (`'aborted'` only on the SQL path, when the run was cancelled
+   * mid-flight; provided exports are one-shot and never abort).
+   */
+  fetch(): Promise<'saved' | 'cancelled' | 'aborted'>;
+  /**
+   * Ask a running export to stop (SQL path only). Provided fetchers have
+   * no run to stop and leave this unset; dialogs only offer cancel when
+   * it exists.
+   */
+  cancel?(): void;
 }
 
 /**
@@ -220,6 +237,12 @@ export interface SqlDataFetcherDeps {
   subscribeProgress?: (
     handler: (event: ExportProgressEvent) => void,
   ) => Promise<() => void>;
+  /**
+   * Injectable cancel for tests; defaults to the tables-exporter port's
+   * `cancelExportTables` (desktop). A form without one (web) has no
+   * cancellation to offer, so `cancel()` is a no-op there.
+   */
+  cancelExport?: (token: string) => Promise<boolean>;
 }
 
 /**
@@ -228,7 +251,7 @@ export interface SqlDataFetcherDeps {
  * `exportSingleTableViaRust` built, subscribes to `onExportProgress` and
  * forwards it as `ExportProgress` (`rowsTotal` unknown — streaming), then
  * invokes `export_tables_stream` and maps the result to
- * `'saved' | 'cancelled'`. No rows are touched in JS, no formatting, no
+ * `'saved' | 'cancelled' | 'aborted'`. No rows are touched in JS, no formatting, no
  * guard — all of that stays in Rust. The subscription is released in a
  * `finally`, whether the export saves, cancels, or throws.
  */
@@ -243,13 +266,24 @@ export class SqlDataFetcher implements DataFetcher {
   private readonly subscribeProgress: (
     handler: (event: ExportProgressEvent) => void,
   ) => Promise<() => void>;
+  /** Per-run cancellation token, minted at construction so `cancel()` works as soon as the fetcher exists. */
+  private readonly cancelToken: string;
+  private readonly cancelExport: (token: string) => Promise<boolean>;
+  /** Whether the aborted run's partial file was deleted (set by `fetch()` on `'aborted'`). */
+  abortedPartialDeleted: boolean | null = null;
+  private cancelRequested = false;
 
   constructor(ctx: ExportContext, deps: SqlDataFetcherDeps = {}) {
     this.ctx = ctx;
+    this.cancelToken = crypto.randomUUID();
     this.exportTables =
       deps.exportTables ??
       ((request: ExportTablesRequest) => requireTablesExporter().exportTables(request));
     this.subscribeProgress = deps.subscribeProgress ?? onExportProgress;
+    this.cancelExport =
+      deps.cancelExport ??
+      (async (token: string) =>
+        (await requireTablesExporter().cancelExportTables?.(token)) ?? false);
   }
 
   onProgress(handler: (p: ExportProgress) => void): () => void {
@@ -265,7 +299,20 @@ export class SqlDataFetcher implements DataFetcher {
     }
   }
 
-  async fetch(): Promise<'saved' | 'cancelled'> {
+  /**
+   * Ask the running Rust export to stop. Idempotent; safe to call more
+   * than once, and safe to call before `fetch()` starts (the token is
+   * already minted, so a pre-registered cancel still aborts the run).
+   * Best effort: a `false` answer (no live run, web form) only means the
+   * Rust side had nothing to stop.
+   */
+  cancel(): void {
+    if (this.cancelRequested) return;
+    this.cancelRequested = true;
+    void this.cancelExport(this.cancelToken).catch(() => undefined);
+  }
+
+  async fetch(): Promise<'saved' | 'cancelled' | 'aborted'> {
     const {
       dbSessionId,
       databaseType,
@@ -284,6 +331,7 @@ export class SqlDataFetcher implements DataFetcher {
     const columns = this.ctx.columnNames ?? this.ctx.columns?.map((c) => c.name) ?? [];
     const request: ExportTablesRequest = {
       dbSessionId,
+      cancelToken: this.cancelToken,
       databaseType: databaseType ?? undefined,
       database: database ?? undefined,
       schema: schema ?? undefined,
@@ -311,6 +359,10 @@ export class SqlDataFetcher implements DataFetcher {
     );
     try {
       const result = await this.exportTables(request);
+      if (result && 'Aborted' in result) {
+        this.abortedPartialDeleted = result.Aborted.partialDeleted;
+        return 'aborted';
+      }
       return result && 'Saved' in result ? 'saved' : 'cancelled';
     } finally {
       unlisten();

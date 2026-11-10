@@ -99,6 +99,13 @@ export interface ExportTableInput {
 export interface ExportTablesRequest {
   /** Runtime db session id (backend `ExportTablesRequest.db_session_id`). */
   dbSessionId: string;
+  /**
+   * Opaque per-run cancellation token (frontend `crypto.randomUUID`),
+   * carried only by SQL-path requests. The desktop host registers it
+   * before the save dialog; `cancel_export_tables` flips it. Provided
+   * exports never reach Rust, so they never carry one.
+   */
+  cancelToken?: string | null;
   databaseType?: string | null;
   /** Database to read from; the session's own database is only a fallback. */
   database?: string | null;
@@ -110,7 +117,10 @@ export interface ExportTablesRequest {
   tables: ExportTableInput[];
 }
 
-export type ExportTablesResult = { Saved: number } | { Cancelled: null };
+export type ExportTablesResult =
+  | { Saved: number }
+  | { Cancelled: null }
+  | { Aborted: { partialDeleted: boolean } };
 
 /** Progress emitted by the Rust exporter while streaming a table to disk. */
 export interface ExportProgressEvent {

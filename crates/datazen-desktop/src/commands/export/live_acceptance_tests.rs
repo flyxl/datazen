@@ -113,7 +113,8 @@ impl FileJobOperation for Operation {
         };
         let plans = prepare_export(&self.request)?.0;
         let path = self.staging.path().join("staged.json");
-        let rows = run_single_export(&Events, &source, &self.request, &plans, &path).await?;
+        let rows =
+            run_single_export(&Events, &source, &self.request, &plans, &path, cancel).await?;
         Ok(FileJobOutput { path, rows })
     }
 }
@@ -238,6 +239,7 @@ async fn journey(prefix: &str, driver_id: &str) {
             let staging_path = staging.path().to_owned();
             let request = ExportTablesRequest {
                 db_session_id: handle.db_session_id.as_str().into(),
+                cancel_token: None,
                 database_type: Some(driver_id.into()),
                 database: Some(database.clone()),
                 schema: config.schema.clone(),

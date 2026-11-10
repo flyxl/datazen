@@ -1,10 +1,63 @@
 //! Desktop file picker and source/event bindings for the portable export service.
 use super::{error::CommandError, AppState};
 pub use datazen::export::*;
+use datazen::jobs::CancelToken;
 use datazen_driver_api::DatabaseDriver;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, State};
 mod stream;
+
+/// Live export cancellation tokens: `export_tables_stream` registers one
+/// per run (keyed by the frontend-supplied `cancelToken`);
+/// `cancel_export_tables` flips it. A token cancelled before its run
+/// registers is kept — the run picks up the already-cancelled token
+/// instead of racing past the cancel. Entries are removed when the run ends.
+#[derive(Default)]
+pub struct ExportCancelRegistry {
+    tokens: Mutex<HashMap<String, CancelToken>>,
+}
+
+impl ExportCancelRegistry {
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, CancelToken>> {
+        self.tokens
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// The token for this run: an already-cancelled one if the frontend
+    /// asked to cancel before the run registered, else a fresh token.
+    pub fn register(&self, token: &str) -> CancelToken {
+        self.lock()
+            .entry(token.to_string())
+            .or_insert_with(CancelToken::new)
+            .clone()
+    }
+
+    /// Flip the token of a running (or not-yet-registered) export.
+    /// Returns whether a live run was found — `false` also covers a token
+    /// cancelled before registration (still recorded, so the run aborts
+    /// when it starts).
+    pub fn cancel(&self, token: &str) -> bool {
+        let mut tokens = self.lock();
+        match tokens.get(token) {
+            Some(found) => {
+                found.cancel();
+                true
+            }
+            None => {
+                let fresh = CancelToken::new();
+                fresh.cancel();
+                tokens.insert(token.to_string(), fresh);
+                false
+            }
+        }
+    }
+
+    pub fn unregister(&self, token: &str) {
+        self.lock().remove(token);
+    }
+}
 struct DesktopExportSource {
     platform: crate::platform::PlatformEntry,
     runtime: crate::services::runtime_command_source::RuntimeCommandSource,
@@ -52,6 +105,12 @@ struct ExportOperation {
     request: ExportTablesRequest,
     app: AppHandle,
     staging: tempfile::TempDir,
+    /// Frontend cancellation token for this run (from the request's
+    /// `cancelToken`; a fresh never-cancelled token when absent).
+    cancel: CancelToken,
+    /// Honest partial-file outcome, filled in when a cancel stops the run;
+    /// unset means no partial file ever existed.
+    partial_deleted: Arc<Mutex<Option<bool>>>,
 }
 #[async_trait::async_trait]
 impl datazen::file_job::FileJobOperation for ExportOperation {
@@ -65,6 +124,13 @@ impl datazen::file_job::FileJobOperation for ExportOperation {
         } else {
             format!("export.{}", self.request.data_format.extension())
         });
+        // A cancel that landed before the job started (admission, save
+        // dialog): nothing was written, so there is no partial file.
+        if self.cancel.is_cancelled() {
+            cancel.cancel();
+            self.set_partial_deleted(true);
+            return Err(datazen::export::ExportError::Cancelled);
+        }
         let source = DesktopExportSource {
             platform: self.platform.clone(),
             runtime: crate::services::runtime_command_source::RuntimeCommandSource::new(
@@ -73,15 +139,42 @@ impl datazen::file_job::FileJobOperation for ExportOperation {
                 self.platform.clone(),
             ),
             registry: self.registry.clone(),
-            cancel: cancel.clone(),
+            // The stream polls the frontend token directly, so the
+            // physical query is cancelled promptly; the job token is
+            // flipped below so the stage maps to Cancelled, not Failed.
+            cancel: self.cancel.clone(),
         };
         let events = DesktopExportEvents(self.app.clone());
         let rows = if zip {
-            run_zip_export(&events, &source, &self.request, &plans, &path).await?
+            run_zip_export(&events, &source, &self.request, &plans, &path, &self.cancel).await
         } else {
-            run_single_export(&events, &source, &self.request, &plans, &path).await?
+            run_single_export(&events, &source, &self.request, &plans, &path, &self.cancel).await
         };
-        Ok(datazen::file_job::FileJobOutput { path, rows })
+        match rows {
+            Ok(rows) => Ok(datazen::file_job::FileJobOutput { path, rows }),
+            Err(error) => {
+                if self.cancel.is_cancelled() {
+                    // Flip the job token so the stage maps to Cancelled,
+                    // then remove the staging partial and record the
+                    // honest outcome: deleted iff no partial file remains.
+                    cancel.cancel();
+                    let _ = std::fs::remove_file(&path);
+                    self.set_partial_deleted(!path.exists());
+                    return Err(datazen::export::ExportError::Cancelled);
+                }
+                Err(error)
+            }
+        }
+    }
+}
+
+impl ExportOperation {
+    fn set_partial_deleted(&self, deleted: bool) {
+        let mut slot = self
+            .partial_deleted
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *slot = Some(deleted);
     }
 }
 struct DesktopExportEvents(AppHandle);
@@ -97,8 +190,21 @@ impl ExportEvents for DesktopExportEvents {
 pub async fn export_tables_stream(
     app: AppHandle,
     state: State<'_, AppState>,
+    cancel_registry: State<'_, ExportCancelRegistry>,
     request: ExportTablesRequest,
 ) -> Result<ExportTablesResult, CommandError> {
+    // Register before the save dialog: a cancel clicked while the native
+    // dialog is open must not be lost — the run picks up the
+    // already-cancelled token below.
+    let cancel_token = request.cancel_token.clone();
+    let export_cancel = cancel_token
+        .as_deref()
+        .map(|token| cancel_registry.register(token));
+    let _registration = CancelRegistration {
+        registry: &cancel_registry,
+        token: cancel_token.clone(),
+    };
+
     let use_zip = prepare_export(&request)?.1;
 
     let ext = if use_zip {
@@ -117,8 +223,22 @@ pub async fn export_tables_stream(
     };
     validate_export_path(&target)?;
 
+    // A cancel that landed while the dialog was open: nothing was written,
+    // so there is no partial file to report.
+    if export_cancel
+        .as_ref()
+        .is_some_and(CancelToken::is_cancelled)
+    {
+        return Ok(ExportTablesResult::Aborted {
+            partial_deleted: true,
+        });
+    }
+
     let session = request.db_session_id.clone();
     let database = request.database.clone();
+    // Honest partial-file outcome, filled in by the operation when a
+    // cancel stops the run; unset means no partial file ever existed.
+    let partial_deleted = Arc::new(Mutex::new(None::<bool>));
     let operation = ExportOperation {
         store: state.store.clone(),
         registry: state.driver_registry.clone(),
@@ -126,8 +246,10 @@ pub async fn export_tables_stream(
         request,
         app: app.clone(),
         staging: tempfile::tempdir()?,
+        cancel: export_cancel.clone().unwrap_or_else(CancelToken::new),
+        partial_deleted: Arc::clone(&partial_deleted),
     };
-    let rows_total = super::file_jobs::run_output_job(
+    match super::file_jobs::run_output_job(
         &state,
         &app,
         &session,
@@ -136,9 +258,43 @@ pub async fn export_tables_stream(
         Arc::new(operation),
         target,
     )
-    .await?;
+    .await
+    {
+        Ok(rows_total) => Ok(ExportTablesResult::Saved(rows_total)),
+        Err(CommandError::FileJobCancelled) => Ok(ExportTablesResult::Aborted {
+            partial_deleted: partial_deleted
+                .lock()
+                .map(|slot| slot.unwrap_or(true))
+                .unwrap_or(true),
+        }),
+        Err(error) => Err(error),
+    }
+}
 
-    Ok(ExportTablesResult::Saved(rows_total))
+/// Removes a run's token from the registry when the command returns, on
+/// every path (saved, cancelled, aborted, failed).
+struct CancelRegistration<'a> {
+    registry: &'a ExportCancelRegistry,
+    token: Option<String>,
+}
+
+impl Drop for CancelRegistration<'_> {
+    fn drop(&mut self) {
+        if let Some(token) = self.token.take() {
+            self.registry.unregister(&token);
+        }
+    }
+}
+
+/// Flip the cancellation token of a running export (`cancelToken` from the
+/// `ExportTablesRequest`). Returns whether a live run was found; a token
+/// cancelled before its run registers still aborts that run when it starts.
+#[tauri::command]
+pub async fn cancel_export_tables(
+    registry: State<'_, ExportCancelRegistry>,
+    token: String,
+) -> Result<bool, CommandError> {
+    Ok(registry.cancel(&token))
 }
 
 #[cfg(test)]
@@ -393,6 +549,7 @@ mod tests {
         // data_and_structure + csv -> structure.sql + data.csv
         let req = ExportTablesRequest {
             db_session_id: "c".into(),
+            cancel_token: None,
             database_type: Some("postgres".into()),
             database: None,
             schema: None,

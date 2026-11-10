@@ -627,6 +627,8 @@ const pack = {
     'XLSX benötigt alle Zeilen im Speicher und ist für Streaming-Exporte (gesamte Tabelle / Filterergebnisse) nicht verfügbar.',
   'export.formatDisabledNoKey':
     'SQL UPDATE benötigt eine Primärschllüsselspalte für die WHERE-Klausel.',
+  'export.formatDisabledWebSqlScope':
+    'Im Web unterstützen Exporte der gesamten Tabelle und gefilterter Ergebnisse nur CSV — es gibt keinen SQL-Exportpfad.',
   'export.progressRows': '{rows} Zeilen geschrieben…',
   'export.cancelExport': 'Export abbrechen',
   'export.cancelling': 'Wird abgebrochen…',

@@ -500,6 +500,7 @@ const pack = {
   'export.formatDisabledStream':
     'XLSX 需要將全部行載入記憶體，因此不支援串流匯出（整表 / 篩選結果）。',
   'export.formatDisabledNoKey': 'SQL UPDATE 需要主鍵欄位來建構 WHERE 子句。',
+  'export.formatDisabledWebSqlScope': '網頁端整表 / 篩選結果匯出僅支援 CSV，沒有 SQL 匯出通道。',
   'export.progressRows': '已寫入 {rows} 行…',
   'export.cancelExport': '取消匯出',
   'export.cancelling': '正在取消…',

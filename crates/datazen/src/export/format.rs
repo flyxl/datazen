@@ -53,6 +53,31 @@ pub fn escape_csv_field(value: &Option<Value>) -> String {
     s
 }
 
+/// CSV formula-injection guard — the same rule the frontend applies
+/// (`applyCsvFormulaGuard` in `packages/frontend/src/lib/exportFormat.ts`,
+/// shared by `formatRowsAsText` and the web blob exporter).
+///
+/// Runs on the already-escaped field text, just before writing: a field
+/// whose text starts with `=`, `+`, `-` or `@` would reach a spreadsheet
+/// as a live formula, so it is quoted even when it contains no delimiter.
+/// A value the standard rule already quoted (delimiter, quote or line
+/// break inside) starts with `"` and is left alone — no double wrap.
+/// Negative numbers (`-5`) keep the quoting the rule gives them; that is
+/// deliberate, matching the web exporter byte for byte. Desktop CSV bytes
+/// change on purpose here: cells starting with `=`, `+`, `-` or `@` are
+/// now quoted instead of reaching the spreadsheet as live formulas.
+pub fn apply_csv_formula_guard(escaped: &str) -> String {
+    if matches!(
+        escaped.chars().next(),
+        Some('=') | Some('+') | Some('-') | Some('@')
+    ) && !escaped.starts_with('"')
+    {
+        format!("\"{escaped}\"")
+    } else {
+        escaped.to_string()
+    }
+}
+
 /// TSV cell text (export cleanup item 3a): the gridClipboard TSV rule —
 /// tabs / line breaks inside a value are flattened to spaces, never quoted.
 /// The cell text itself is [`value_as_string`], so bytes keep the same
@@ -207,7 +232,9 @@ impl StreamFormatter {
                     if i > 0 {
                         out.push(',');
                     }
-                    out.push_str(&escape_csv_field(&Some(Value::String(c.clone()))));
+                    out.push_str(&apply_csv_formula_guard(&escape_csv_field(&Some(
+                        Value::String(c.clone()),
+                    ))));
                 }
                 out.push('\n');
                 out
@@ -254,7 +281,7 @@ impl StreamFormatter {
                         if i > 0 {
                             out.push(',');
                         }
-                        out.push_str(&escape_csv_field(cell));
+                        out.push_str(&apply_csv_formula_guard(&escape_csv_field(cell)));
                     }
                     out.push('\n');
                 }

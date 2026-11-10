@@ -530,6 +530,8 @@ const pack = {
   'export.formatDisabledStream':
     'XLSX は全行をメモリに読み込む必要があるため、ストリーミングエクスポート（全テーブル／フィルター結果）では利用できません。',
   'export.formatDisabledNoKey': 'SQL UPDATE には WHERE 句を構成する主キー列が必要です。',
+  'export.formatDisabledWebSqlScope':
+    'Web では、全テーブル／フィルター結果のエクスポートは CSV のみ対応で、SQL エクスポート経路はありません。',
   'export.progressRows': '{rows} 行を書き込みました…',
   'export.cancelExport': 'エクスポートをキャンセル',
   'export.cancelling': 'キャンセル中…',

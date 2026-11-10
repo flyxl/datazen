@@ -28,6 +28,7 @@ vi.mock('../../ui/Select', () => ({
 }));
 
 const exportTablesStream = vi.fn();
+const cancelExportTablesMock = vi.fn();
 
 const downloadBlobMock = vi.hoisted(() => vi.fn());
 vi.mock('../../../platform/blobTablesExporter', async (importOriginal) => {
@@ -59,6 +60,8 @@ function bindFakeExporter(): void {
     },
     tablesExporter: {
       exportTables: (...args: unknown[]) => exportTablesStream(...(args as [never])),
+      cancelExportTables: (...args: unknown[]) =>
+        cancelExportTablesMock(...(args as [never])),
     },
   });
 }
@@ -78,6 +81,7 @@ beforeEach(() => {
   envState.desktop = false;
   bindFakeExporter();
   exportTablesStream.mockResolvedValue({ Saved: 2 });
+  cancelExportTablesMock.mockResolvedValue(true);
 });
 
 describe('DataExportDialog', () => {
@@ -589,6 +593,96 @@ describe('DataExportDialog entire-table scope (item 3b)', () => {
   });
 });
 
+describe('DataExportDialog cancellation (item 1b)', () => {
+  function renderEntireTable() {
+    envState.desktop = true;
+    return render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+        totalRows={100}
+        initialScope="entire_table"
+      />,
+    );
+  }
+
+  it('disables the cancel button before the export starts', () => {
+    const { getByText } = renderEntireTable();
+    expect(getByText('export.cancelExport')).toBeInTheDocument();
+    expect(getByText('export.cancelExport')).toBeDisabled();
+  });
+
+  it('cancels mid-flight and reports the partial file deleted', async () => {
+    let resolveExport!: (result: unknown) => void;
+    exportTablesStream.mockImplementation(
+      () => new Promise((resolve) => { resolveExport = resolve; }),
+    );
+    const { getByText, getByTestId, queryByText } = renderEntireTable();
+    fireEvent.click(getByText('export.export'));
+    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+
+    const cancelButton = getByText('export.cancelExport');
+    expect(cancelButton).toBeEnabled();
+    fireEvent.click(cancelButton);
+    // While the cancel is in flight the button shows the cancelling
+    // label and cannot be pressed again.
+    expect(getByText('export.cancelling')).toBeInTheDocument();
+    expect(getByText('export.cancelling')).toBeDisabled();
+    const request = exportTablesStream.mock.calls[0]![0] as {
+      cancelToken?: string;
+    };
+    expect(cancelExportTablesMock).toHaveBeenCalledTimes(1);
+    expect(cancelExportTablesMock).toHaveBeenCalledWith(request.cancelToken);
+
+    resolveExport({ Aborted: { partialDeleted: true } });
+    await waitFor(() =>
+      expect(getByTestId('export-aborted-panel')).toBeInTheDocument(),
+    );
+    expect(getByText('export.cancelledPartialDeleted')).toBeInTheDocument();
+    expect(queryByText('export.success')).not.toBeInTheDocument();
+    // The aborted panel leaves only Close in the footer.
+    expect(getByText('common.close')).toBeInTheDocument();
+    expect(queryByText('export.export')).not.toBeInTheDocument();
+  });
+
+  it('reports the partial file kept when the backend could not delete it', async () => {
+    let resolveExport!: (result: unknown) => void;
+    exportTablesStream.mockImplementation(
+      () => new Promise((resolve) => { resolveExport = resolve; }),
+    );
+    const { getByText, getByTestId } = renderEntireTable();
+    fireEvent.click(getByText('export.export'));
+    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+    fireEvent.click(getByText('export.cancelExport'));
+    resolveExport({ Aborted: { partialDeleted: false } });
+    await waitFor(() =>
+      expect(getByTestId('export-aborted-panel')).toBeInTheDocument(),
+    );
+    expect(getByText('export.cancelledPartialKept')).toBeInTheDocument();
+  });
+
+  it('offers no cancel button for the provided (current-page) scope', () => {
+    envState.desktop = true;
+    const { queryByText } = render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+      />,
+    );
+    // Current page is a one-shot provided export — nothing to cancel.
+    expect(queryByText('export.cancelExport')).not.toBeInTheDocument();
+    expect(queryByText('export.cancelling')).not.toBeInTheDocument();
+  });
+});
+
 describe('DataExportDialog web format supply (task 6, plan §2.8)', () => {
   /** Format is the first `<select>`, scope the second (mock renders both). */
   function formatSelect(): HTMLSelectElement {
@@ -629,19 +723,50 @@ describe('DataExportDialog web format supply (task 6, plan §2.8)', () => {
     ]);
   });
 
-  it('offers CSV only for the entire-table scope on web', () => {
+  it('disables every non-CSV format with its reasons for the entire-table scope on web', () => {
     renderWebDialog({ initialScope: 'entire_table' });
     expect(scopeSelect()).toHaveValue('entire_table');
-    expect(formatValues()).toEqual(['csv']);
+    expect(formatValues()).toEqual([
+      'csv',
+      'tsv',
+      'json',
+      'markdown',
+      'xlsx',
+      'sql_insert',
+      'sql_update',
+    ]);
+    const disabled = new Map(
+      Array.from(formatSelect().options).map((o) => [o.value, o.disabled]),
+    );
+    expect(disabled.get('csv')).toBe(false);
+    for (const value of ['tsv', 'json', 'markdown', 'xlsx', 'sql_insert', 'sql_update']) {
+      expect(disabled.get(value)).toBe(true);
+    }
+    // No key column is passed here, so both reasons show: the web rule for
+    // the streaming scope and the no-key rule for SQL UPDATE.
+    expect(
+      screen.getAllByTestId('export-format-disabled-reason').map((el) => el.textContent),
+    ).toEqual(['export.formatDisabledWebSqlScope', 'export.formatDisabledNoKey']);
   });
 
-  it('offers CSV only for the filtered scope on web', () => {
+  it('disables every non-CSV format with its reasons for the filtered scope on web', () => {
     renderWebDialog({
       initialScope: 'filtered_table',
       onBuildFilteredExportSql: vi.fn().mockResolvedValue('SELECT id, name FROM users;'),
     });
     expect(scopeSelect()).toHaveValue('filtered_table');
-    expect(formatValues()).toEqual(['csv']);
+    expect(formatValues()).toEqual([
+      'csv',
+      'tsv',
+      'json',
+      'markdown',
+      'xlsx',
+      'sql_insert',
+      'sql_update',
+    ]);
+    expect(
+      screen.getAllByTestId('export-format-disabled-reason').map((el) => el.textContent),
+    ).toEqual(['export.formatDisabledWebSqlScope', 'export.formatDisabledNoKey']);
   });
 
   it('resets a non-CSV format to CSV when switching to an entire-table scope on web', () => {
@@ -651,7 +776,19 @@ describe('DataExportDialog web format supply (task 6, plan §2.8)', () => {
     fireEvent.change(scopeSelect(), { target: { value: 'entire_table' } });
     expect(scopeSelect()).toHaveValue('entire_table');
     expect(formatSelect()).toHaveValue('csv');
-    expect(formatValues()).toEqual(['csv']);
+    // The disabled formats stay listed (greyed out) instead of vanishing.
+    expect(formatValues()).toEqual([
+      'csv',
+      'tsv',
+      'json',
+      'markdown',
+      'xlsx',
+      'sql_insert',
+      'sql_update',
+    ]);
+    expect(
+      Array.from(formatSelect().options).find((o) => o.value === 'xlsx')?.disabled,
+    ).toBe(true);
   });
 
   it('exports the current page as JSON on web via the frontend formatter', async () => {
@@ -670,5 +807,179 @@ describe('DataExportDialog web format supply (task 6, plan §2.8)', () => {
     expect(mimeType).toBe('application/json');
     expect(exportTablesStream).not.toHaveBeenCalled();
     await waitFor(() => expect(getByText('export.success')).toBeInTheDocument());
+  });
+});
+
+describe('DataExportDialog column selection (item 1a)', () => {
+  function renderDialog(extra: Partial<Parameters<typeof DataExportDialog>[0]> = {}) {
+    return render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[
+          [1, 'a'],
+          [2, 'b'],
+        ]}
+        tableName="users"
+        dbSessionId="c1"
+        primaryKeyColumns={['id']}
+        {...extra}
+      />,
+    );
+  }
+
+  it('renders the shared picker with the columns in display order and a PK badge', () => {
+    renderDialog();
+    const list = screen.getByTestId('export-columns-list');
+    const labels = Array.from(list.querySelectorAll('label')).map(
+      (label) => label.textContent,
+    );
+    expect(labels).toEqual(['idPKinteger', 'namevarchar']);
+    expect(screen.getByTestId('export-column-id')).toBeChecked();
+    expect(screen.getByTestId('export-column-name')).toBeChecked();
+  });
+
+  it('exports only the checked columns on the provided path', async () => {
+    const { getByText } = renderDialog();
+    fireEvent.click(screen.getByTestId('export-column-name'));
+    fireEvent.click(getByText('export.export'));
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1));
+    expect(downloadBlobMock).toHaveBeenCalledWith('id\n1\n2', 'users.csv', 'text/csv');
+    expect(exportTablesStream).not.toHaveBeenCalled();
+  });
+
+  it('clear-all disables the export button and reset-to-default re-enables it', () => {
+    renderDialog();
+    const exportBtn = screen.getByRole('button', { name: 'export.export' });
+    expect(exportBtn).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId('export-columns-clear-all'));
+    expect(exportBtn).toBeDisabled();
+    fireEvent.click(screen.getByTestId('export-columns-reset-default'));
+    expect(exportBtn).not.toBeDisabled();
+    expect(screen.getByTestId('export-column-id')).toBeChecked();
+    expect(screen.getByTestId('export-column-name')).toBeChecked();
+  });
+
+  it('sends only the picked columns to Rust for the entire-table scope', async () => {
+    envState.desktop = true;
+    const { getByText } = renderDialog({
+      totalRows: 100,
+      initialScope: 'entire_table',
+    });
+    fireEvent.click(screen.getByTestId('export-column-name'));
+    fireEvent.click(getByText('export.export'));
+    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+    const request = exportTablesStream.mock.calls[0]![0] as {
+      tables: { columns: string[] }[];
+    };
+    expect(request.tables[0]!.columns).toEqual(['id']);
+  });
+
+  it('resets the selection to every column when the dialog re-opens', () => {
+    const { rerender } = renderDialog();
+    fireEvent.click(screen.getByTestId('export-column-name'));
+    expect(screen.getByTestId('export-column-name')).not.toBeChecked();
+    rerender(
+      <DataExportDialog
+        open={false}
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+        primaryKeyColumns={['id']}
+      />,
+    );
+    rerender(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+        primaryKeyColumns={['id']}
+      />,
+    );
+    expect(screen.getByTestId('export-column-id')).toBeChecked();
+    expect(screen.getByTestId('export-column-name')).toBeChecked();
+  });
+});
+
+describe('DataExportDialog format availability (item 1c)', () => {
+  /** Format is the first `<select>`, scope the second (mock renders both). */
+  function formatSelect(): HTMLSelectElement {
+    return document.querySelectorAll('select')[0] as HTMLSelectElement;
+  }
+  function formatOption(value: string): HTMLOptionElement {
+    return Array.from(formatSelect().options).find((o) => o.value === value)!;
+  }
+
+  function renderDialog(extra: Partial<Parameters<typeof DataExportDialog>[0]> = {}) {
+    return render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+        {...extra}
+      />,
+    );
+  }
+
+  it('disables SQL UPDATE with its reason when no key column exists', () => {
+    renderDialog();
+    expect(formatOption('sql_update').disabled).toBe(true);
+    expect(formatOption('csv').disabled).toBe(false);
+    expect(formatOption('xlsx').disabled).toBe(false);
+    expect(screen.getByTestId('export-format-disabled-reason')).toHaveTextContent(
+      'export.formatDisabledNoKey',
+    );
+  });
+
+  it('enables SQL UPDATE and shows no reason when a key column exists', () => {
+    renderDialog({ primaryKeyColumns: ['id'] });
+    expect(formatOption('sql_update').disabled).toBe(false);
+    expect(screen.queryByTestId('export-format-disabled-reason')).not.toBeInTheDocument();
+  });
+
+  it('ignores selecting a disabled format', () => {
+    renderDialog();
+    fireEvent.change(formatSelect(), { target: { value: 'sql_update' } });
+    expect(formatSelect()).toHaveValue('csv');
+  });
+
+  it('falls back to CSV when the key column disappears', () => {
+    const { rerender } = renderDialog({ primaryKeyColumns: ['id'] });
+    fireEvent.change(formatSelect(), { target: { value: 'sql_update' } });
+    expect(formatSelect()).toHaveValue('sql_update');
+    rerender(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+      />,
+    );
+    expect(formatSelect()).toHaveValue('csv');
+    expect(screen.getByTestId('export-format-disabled-reason')).toHaveTextContent(
+      'export.formatDisabledNoKey',
+    );
+  });
+
+  it('never disables XLSX for a streaming scope on desktop', () => {
+    envState.desktop = true;
+    renderDialog({
+      primaryKeyColumns: ['id'],
+      totalRows: 100,
+      initialScope: 'entire_table',
+    });
+    expect(formatOption('xlsx').disabled).toBe(false);
+    expect(screen.queryByTestId('export-format-disabled-reason')).not.toBeInTheDocument();
   });
 });

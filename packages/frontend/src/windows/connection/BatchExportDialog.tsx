@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dialog } from '../../components/ui/Dialog';
 import { CopyableError } from '../../components/ui/CopyableError';
 import { Button } from '../../components/ui/Button';
@@ -82,7 +82,13 @@ export function BatchExportDialog({
   const [outputMode, setOutputMode] = useState<BatchExportOutputMode>(
     IS_DESKTOP_BUILD ? 'zip' : 'single',
   );
-  const [status, setStatus] = useState<'form' | 'exporting' | 'success'>('form');
+  const [status, setStatus] = useState<'form' | 'exporting' | 'success' | 'aborted'>('form');
+  /** The cancel was asked for; the run is winding down (DBR-06, restored). */
+  const [cancelling, setCancelling] = useState(false);
+  /** Whether the aborted run's partial file was deleted (reported honestly). */
+  const [partialDeleted, setPartialDeleted] = useState(false);
+  /** Cancel handle of the running batch export; null on the `onExport` override path. */
+  const cancelExportRef = useRef<(() => void) | null>(null);
   const [progress, setProgress] = useState<{
     current: number;
     total: number;
@@ -102,6 +108,9 @@ export function BatchExportDialog({
     setStatus('form');
     setProgress(null);
     setError(null);
+    setCancelling(false);
+    setPartialDeleted(false);
+    cancelExportRef.current = null;
   }, [open, initialSelected]);
 
   const allSelected = tables.length > 0 && selected.size === tables.length;
@@ -140,9 +149,18 @@ export function BatchExportDialog({
     ? DATA_FORMAT_OPTIONS
     : DATA_FORMAT_OPTIONS.filter((option) => option.value === 'csv');
 
+  const handleCancelExport = useCallback(() => {
+    if (cancelling) return;
+    setCancelling(true);
+    cancelExportRef.current?.();
+  }, [cancelling]);
+
   const handleExport = useCallback(async () => {
     if (batchExportLocked) return;
     setError(null);
+    setCancelling(false);
+    setPartialDeleted(false);
+    cancelExportRef.current = null;
     if (selected.size === 0) {
       setError(t('batchExport.noTablesSelected'));
       return;
@@ -182,6 +200,12 @@ export function BatchExportDialog({
           database,
           schema,
           loadTableExportData,
+          // The run is cancellable mid-flight (DBR-06, restored): one
+          // token covers the whole batch, so cancelling interrupts the
+          // table in flight and stops the batch.
+          onCancelHandle: (cancel) => {
+            cancelExportRef.current = cancel;
+          },
           onProgress: ({ tableName }) => {
             const idx = selectedTables.indexOf(tableName);
             setProgress((prev) => ({
@@ -195,6 +219,13 @@ export function BatchExportDialog({
         if (result.status === 'cancelled') {
           // User dismissed the native save dialog; return to the form.
           setStatus('form');
+          setProgress(null);
+          return;
+        }
+        if (result.status === 'aborted') {
+          setPartialDeleted(result.partialDeleted);
+          setCancelling(false);
+          setStatus('aborted');
           setProgress(null);
           return;
         }
@@ -237,12 +268,21 @@ export function BatchExportDialog({
       onClose={exporting ? () => undefined : onClose}
       className="max-w-lg"
       footer={
-        status === 'success' ? (
+        status === 'success' || status === 'aborted' ? (
           <Button variant="primary" onClick={onClose}>
             {t('common.close')}
           </Button>
         ) : (
           <>
+            {IS_DESKTOP_BUILD && !onExport && (
+              <Button
+                variant="secondary"
+                onClick={handleCancelExport}
+                disabled={!exporting || cancelling}
+              >
+                {cancelling ? t('export.cancelling') : t('export.cancelExport')}
+              </Button>
+            )}
             <Button variant="secondary" onClick={onClose} disabled={exporting}>
               {t('common.cancel')}
             </Button>
@@ -271,6 +311,16 @@ export function BatchExportDialog({
             </svg>
           </span>
           <span className="text-sm font-medium text-fg">{t('batchExport.success')}</span>
+        </div>
+      ) : status === 'aborted' ? (
+        // DBR-06, restored: the cancel reports what happened to the partial
+        // file, as the backend answered — deleted or kept are two different
+        // messages.
+        <div
+          data-testid="export-aborted-panel"
+          className="rounded-md border border-edge bg-surface px-3 py-2 text-xs text-fg-secondary"
+        >
+          {partialDeleted ? t('export.cancelledPartialDeleted') : t('export.cancelledPartialKept')}
         </div>
       ) : status === 'exporting' ? (
         <div className="flex flex-col items-center gap-3 py-6 text-center">

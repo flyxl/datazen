@@ -29,6 +29,7 @@ vi.mock('../../platform/env', () => ({
 const saveTextMock = vi.hoisted(() => vi.fn());
 const saveBase64Mock = vi.hoisted(() => vi.fn());
 const exportTablesMock = vi.hoisted(() => vi.fn());
+const cancelExportTablesMock = vi.hoisted(() => vi.fn());
 const unlistenMock = vi.hoisted(() => vi.fn());
 const progressHandlerSlot = vi.hoisted(() => ({
   current: null as ((event: { table: string; rowsWritten: number }) => void) | null,
@@ -44,6 +45,7 @@ vi.mock('../../commands/file', () => ({
 vi.mock('../../platform/contracts', () => ({
   requireTablesExporter: () => ({
     exportTables: (...args: unknown[]) => exportTablesMock(...args),
+    cancelExportTables: (...args: unknown[]) => cancelExportTablesMock(...args),
   }),
 }));
 
@@ -389,6 +391,8 @@ describe('SqlDataFetcher.fetch (plan §2.3, task 3)', () => {
     expect(exportTablesMock).toHaveBeenCalledTimes(1);
     expect(request()).toEqual({
       dbSessionId: 's1',
+      // One per-run token (minted at construction; the value is opaque).
+      cancelToken: expect.any(String),
       databaseType: 'postgres',
       database: undefined,
       schema: undefined,
@@ -513,5 +517,113 @@ describe('SqlDataFetcher.fetch (plan §2.3, task 3)', () => {
     await expect(fetcher.fetch()).resolves.toBe('saved');
     expect(dropped).toEqual([]);
     expect(kept).toEqual([{ table: 'users', rowsWritten: 1 }]);
+  });
+});
+
+describe('SqlDataFetcher cancellation (item 1b)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    exportTablesMock.mockResolvedValue({ Saved: 3 });
+    cancelExportTablesMock.mockResolvedValue(true);
+    subscribeProgressMock.mockImplementation(async () => unlistenMock);
+  });
+
+  function sqlContext(extra: Partial<ExportContext> = {}): ExportContext {
+    return {
+      tableName: 'users',
+      scope: 'entire_table',
+      dbSessionId: 's1',
+      databaseType: 'postgres',
+      columnNames: ['id', 'name'],
+      dataFormat: 'csv',
+      ...extra,
+    };
+  }
+
+  function request(): ExportTablesRequest {
+    return exportTablesMock.mock.calls[0]![0] as ExportTablesRequest;
+  }
+
+  it('mints a distinct token per fetcher and carries it on the request', async () => {
+    const first = new SqlDataFetcher(sqlContext());
+    const second = new SqlDataFetcher(sqlContext());
+    await first.fetch();
+    await second.fetch();
+    const firstToken = (exportTablesMock.mock.calls[0]![0] as ExportTablesRequest)
+      .cancelToken;
+    const secondToken = (exportTablesMock.mock.calls[1]![0] as ExportTablesRequest)
+      .cancelToken;
+    expect(typeof firstToken).toBe('string');
+    expect(firstToken).not.toBe(secondToken);
+  });
+
+  it('cancel() calls cancelExportTables with the request token', async () => {
+    let resolveExport!: (result: unknown) => void;
+    exportTablesMock.mockImplementation(
+      () => new Promise((resolve) => { resolveExport = resolve; }),
+    );
+    const fetcher = new SqlDataFetcher(sqlContext());
+    const pending = fetcher.fetch();
+    // fetch() subscribes to progress first; wait until the request is
+    // in flight before cancelling, so the token under test is the one
+    // carried on the request.
+    await vi.waitFor(() => expect(exportTablesMock).toHaveBeenCalled());
+    expect(cancelExportTablesMock).not.toHaveBeenCalled();
+    fetcher.cancel();
+    expect(cancelExportTablesMock).toHaveBeenCalledTimes(1);
+    expect(cancelExportTablesMock).toHaveBeenCalledWith(request().cancelToken);
+    resolveExport({ Aborted: { partialDeleted: true } });
+    await expect(pending).resolves.toBe('aborted');
+    expect(fetcher.abortedPartialDeleted).toBe(true);
+  });
+
+  it('cancel() is idempotent — the command is invoked at most once', async () => {
+    const fetcher = new SqlDataFetcher(sqlContext());
+    fetcher.cancel();
+    fetcher.cancel();
+    fetcher.cancel();
+    expect(cancelExportTablesMock).toHaveBeenCalledTimes(1);
+    await fetcher.fetch();
+  });
+
+  it('maps Aborted with partialDeleted false and reports the partial kept', async () => {
+    exportTablesMock.mockResolvedValue({ Aborted: { partialDeleted: false } });
+    const fetcher = new SqlDataFetcher(sqlContext());
+    await expect(fetcher.fetch()).resolves.toBe('aborted');
+    expect(fetcher.abortedPartialDeleted).toBe(false);
+  });
+
+  it('cancel-before-fetch still aborts: the token is pre-registered', async () => {
+    exportTablesMock.mockResolvedValue({ Aborted: { partialDeleted: true } });
+    const fetcher = new SqlDataFetcher(sqlContext());
+    fetcher.cancel();
+    expect(cancelExportTablesMock).toHaveBeenCalledWith(
+      // No request has been sent yet; the token is known at construction.
+      expect.any(String),
+    );
+    await expect(fetcher.fetch()).resolves.toBe('aborted');
+    expect(request().cancelToken).toBe(
+      cancelExportTablesMock.mock.calls[0]![0],
+    );
+  });
+
+  it('uses an injected cancelExport when provided', async () => {
+    const injected = vi.fn().mockResolvedValue(true);
+    const fetcher = new SqlDataFetcher(sqlContext(), { cancelExport: injected });
+    fetcher.cancel();
+    expect(injected).toHaveBeenCalledTimes(1);
+    expect(cancelExportTablesMock).not.toHaveBeenCalled();
+  });
+
+  it('cancel() never rejects when the command fails', async () => {
+    cancelExportTablesMock.mockRejectedValue(new Error('invoke failed'));
+    const fetcher = new SqlDataFetcher(sqlContext());
+    expect(() => fetcher.cancel()).not.toThrow();
+    await fetcher.fetch();
+  });
+
+  it('ProvidedDataFetcher exposes no cancel — provided export is one-shot', () => {
+    const fetcher = new ProvidedDataFetcher(providedContext());
+    expect('cancel' in fetcher).toBe(false);
   });
 });

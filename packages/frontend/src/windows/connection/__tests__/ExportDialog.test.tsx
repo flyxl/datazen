@@ -6,6 +6,7 @@ import type { ColumnSchema } from '../../../types';
 
 // Item 3b: the entire-table scope rides the tables-exporter port.
 const exportTablesStream = vi.fn();
+const cancelExportTablesMock = vi.fn();
 
 // Task 3: the loaded scopes ride ProvidedDataFetcher, which Blob-downloads
 // on this (non-desktop) test build instead of touching the Rust exporter.
@@ -39,6 +40,8 @@ function bindFakeExporter(): void {
     },
     tablesExporter: {
       exportTables: (...args: unknown[]) => exportTablesStream(...(args as [never])),
+      cancelExportTables: (...args: unknown[]) =>
+        cancelExportTablesMock(...(args as [never])),
     },
   });
 }
@@ -107,6 +110,7 @@ beforeEach(() => {
   envState.desktop = false;
   bindFakeExporter();
   exportTablesStream.mockResolvedValue({ Saved: 2 });
+  cancelExportTablesMock.mockResolvedValue(true);
 });
 
 /** The scope `<Select>` is the second combobox rendered (format first, scope second). */
@@ -227,6 +231,46 @@ describe('ExportDialog entire-table scope (item 3b)', () => {
   });
 });
 
+describe('ExportDialog cancellation (item 1b)', () => {
+  it('cancels mid-flight and reports the partial file deleted', async () => {
+    envState.desktop = true;
+    let resolveExport!: (result: unknown) => void;
+    exportTablesStream.mockImplementation(
+      () => new Promise((resolve) => { resolveExport = resolve; }),
+    );
+    renderDialog({ defaultScope: 'entire_table' });
+    fireEvent.click(screen.getByRole('button', { name: 'export.export' }));
+    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+
+    const cancelButton = screen.getByRole('button', { name: 'export.cancelExport' });
+    expect(cancelButton).toBeEnabled();
+    fireEvent.click(cancelButton);
+    expect(screen.getByText('export.cancelling')).toBeInTheDocument();
+    expect(screen.getByText('export.cancelling')).toBeDisabled();
+    const request = exportTablesStream.mock.calls[0]![0] as {
+      cancelToken?: string;
+    };
+    expect(cancelExportTablesMock).toHaveBeenCalledTimes(1);
+    expect(cancelExportTablesMock).toHaveBeenCalledWith(request.cancelToken);
+
+    resolveExport({ Aborted: { partialDeleted: true } });
+    await waitFor(() =>
+      expect(screen.getByTestId('export-aborted-panel')).toBeInTheDocument(),
+    );
+    expect(screen.getByText('export.cancelledPartialDeleted')).toBeInTheDocument();
+    expect(screen.queryByText('export.success')).not.toBeInTheDocument();
+    expect(screen.getByText('common.close')).toBeInTheDocument();
+  });
+
+  it('offers no cancel button for the provided (current-page) scope', () => {
+    envState.desktop = true;
+    renderDialog({ defaultScope: 'current_page' });
+    expect(
+      screen.queryByRole('button', { name: 'export.cancelExport' }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe('ExportDialog column selection, schema prefetch and session guards', () => {
   const PREFETCHED: ColumnSchema[] = [
     { name: 'id', dataType: 'int', nullable: false, isPrimaryKey: true, isAutoIncrement: false },
@@ -293,10 +337,21 @@ describe('ExportDialog column selection, schema prefetch and session guards', ()
     ]);
   });
 
-  it('shows Missing connection for entire_table without a session', async () => {
+  it('falls back to the current page instead of Missing connection for entire_table without a session', async () => {
+    // Task 3: the scope correction drops an entire_table default the
+    // driver cannot serve, so the dialog can no longer sit on a scope its
+    // own option list does not offer — the export below is a provided
+    // current-page export, not a Missing connection error.
     renderDialog({ dbSessionId: undefined, defaultScope: 'entire_table' });
+    expect(scopeSelect()).toHaveValue('current_page');
     fireEvent.click(screen.getByRole('button', { name: 'export.export' }));
-    await waitFor(() => expect(screen.getByText('Missing connection')).toBeInTheDocument());
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1));
+    expect(downloadBlobMock).toHaveBeenCalledWith(
+      'id\n1\n2',
+      'users.csv',
+      'text/csv',
+    );
+    expect(screen.queryByText('Missing connection')).not.toBeInTheDocument();
     expect(exportTablesStream).not.toHaveBeenCalled();
   });
 
@@ -385,10 +440,28 @@ describe('ExportDialog web format supply (task 6, plan §2.8)', () => {
     ]);
   });
 
-  it('offers CSV only for the entire-table scope on web', () => {
+  it('disables every non-CSV format with its reason for the entire-table scope on web', () => {
     renderDialog({ defaultScope: 'entire_table' });
     expect(scopeSelect()).toHaveValue('entire_table');
-    expect(formatValues()).toEqual(['csv']);
+    expect(formatValues()).toEqual([
+      'csv',
+      'json',
+      'markdown',
+      'xlsx',
+      'sql_insert',
+      'sql_update',
+    ]);
+    const disabled = new Map(
+      Array.from(formatSelect().options).map((o) => [o.value, o.disabled]),
+    );
+    expect(disabled.get('csv')).toBe(false);
+    for (const value of ['json', 'markdown', 'xlsx', 'sql_insert', 'sql_update']) {
+      expect(disabled.get(value)).toBe(true);
+    }
+    // The fixture column carries a primary key, so only the web reason shows.
+    expect(
+      screen.getAllByTestId('export-format-disabled-reason').map((el) => el.textContent),
+    ).toEqual(['export.formatDisabledWebSqlScope']);
   });
 
   it('resets a non-CSV format to CSV when switching to the entire-table scope on web', () => {
@@ -398,7 +471,18 @@ describe('ExportDialog web format supply (task 6, plan §2.8)', () => {
     fireEvent.change(scopeSelect(), { target: { value: 'entire_table' } });
     expect(scopeSelect()).toHaveValue('entire_table');
     expect(formatSelect()).toHaveValue('csv');
-    expect(formatValues()).toEqual(['csv']);
+    // The disabled formats stay listed (greyed out) instead of vanishing.
+    expect(formatValues()).toEqual([
+      'csv',
+      'json',
+      'markdown',
+      'xlsx',
+      'sql_insert',
+      'sql_update',
+    ]);
+    expect(
+      Array.from(formatSelect().options).find((o) => o.value === 'xlsx')?.disabled,
+    ).toBe(true);
   });
 
   it('exports the current page as JSON on web via the frontend formatter', async () => {
@@ -417,5 +501,158 @@ describe('ExportDialog web format supply (task 6, plan §2.8)', () => {
     expect(mimeType).toBe('application/json');
     expect(exportTablesStream).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getByText('export.success')).toBeInTheDocument());
+  });
+});
+
+describe('ExportDialog shared column picker (item 1a)', () => {
+  const COLS2: ColumnSchema[] = [
+    { name: 'id', dataType: 'int', nullable: false, isPrimaryKey: true, isAutoIncrement: false },
+    { name: 'name', dataType: 'text', nullable: true, isPrimaryKey: false, isAutoIncrement: false },
+  ];
+
+  it('renders the shared picker with a PK badge on the key column', () => {
+    renderDialog({ columns: COLS2 });
+    const list = screen.getByTestId('export-columns-list');
+    const labels = Array.from(list.querySelectorAll('label')).map(
+      (label) => label.textContent,
+    );
+    expect(labels).toEqual(['idPKint', 'nametext']);
+    expect(screen.getByTestId('export-column-id')).toBeChecked();
+    expect(screen.getByTestId('export-column-name')).toBeChecked();
+  });
+
+  it('reset-to-default restores every column after toggling one off', () => {
+    renderDialog({ columns: COLS2 });
+    fireEvent.click(screen.getByTestId('export-column-name'));
+    expect(screen.getByTestId('export-column-name')).not.toBeChecked();
+    expect(screen.getByRole('button', { name: 'export.export' })).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId('export-column-name'));
+    fireEvent.click(screen.getByTestId('export-columns-clear-all'));
+    expect(screen.getByRole('button', { name: 'export.export' })).toBeDisabled();
+    fireEvent.click(screen.getByTestId('export-columns-reset-default'));
+    expect(screen.getByRole('button', { name: 'export.export' })).not.toBeDisabled();
+    expect(screen.getByTestId('export-column-id')).toBeChecked();
+    expect(screen.getByTestId('export-column-name')).toBeChecked();
+  });
+
+  it('exports only the checked columns through the shared picker', async () => {
+    renderDialog({ columns: COLS2 });
+    fireEvent.click(screen.getByTestId('export-column-name'));
+    fireEvent.click(screen.getByRole('button', { name: 'export.export' }));
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1));
+    expect(downloadBlobMock).toHaveBeenCalledWith('id\n1\n2', 'users.csv', 'text/csv');
+    expect(exportTablesStream).not.toHaveBeenCalled();
+  });
+});
+
+describe('ExportDialog format availability (item 1c)', () => {
+  const COLS_NO_KEY: ColumnSchema[] = [
+    { name: 'id', dataType: 'int', nullable: false, isPrimaryKey: false, isAutoIncrement: false },
+    { name: 'name', dataType: 'text', nullable: true, isPrimaryKey: false, isAutoIncrement: false },
+  ];
+
+  /** Format is the first combobox, scope the last (mock renders both). */
+  function formatSelect(): HTMLSelectElement {
+    return screen.getAllByRole('combobox')[0] as HTMLSelectElement;
+  }
+  function formatOption(value: string): HTMLOptionElement {
+    return Array.from(formatSelect().options).find((o) => o.value === value)!;
+  }
+
+  it('disables SQL UPDATE with its reason when no key column exists', () => {
+    renderDialog({ columns: COLS_NO_KEY });
+    expect(formatOption('sql_update').disabled).toBe(true);
+    expect(formatOption('csv').disabled).toBe(false);
+    expect(formatOption('xlsx').disabled).toBe(false);
+    expect(screen.getByTestId('export-format-disabled-reason')).toHaveTextContent(
+      'export.formatDisabledNoKey',
+    );
+  });
+
+  it('enables SQL UPDATE and shows no reason when a key column exists', () => {
+    renderDialog();
+    expect(formatOption('sql_update').disabled).toBe(false);
+    expect(screen.queryByTestId('export-format-disabled-reason')).not.toBeInTheDocument();
+  });
+
+  it('ignores selecting a disabled format', () => {
+    renderDialog({ columns: COLS_NO_KEY });
+    fireEvent.change(formatSelect(), { target: { value: 'sql_update' } });
+    expect(formatSelect()).toHaveValue('csv');
+  });
+
+  it('falls back to CSV when the key column disappears', () => {
+    const { rerender } = renderDialog();
+    fireEvent.change(formatSelect(), { target: { value: 'sql_update' } });
+    expect(formatSelect()).toHaveValue('sql_update');
+    rerender(
+      <ExportDialog
+        open
+        onClose={vi.fn()}
+        tableName="users"
+        columns={COLS_NO_KEY}
+        rows={[{ id: 1 }, { id: 2 }]}
+        selectedRows={new Set()}
+        dbSessionId="c1"
+      />,
+    );
+    expect(formatSelect()).toHaveValue('csv');
+    expect(screen.getByTestId('export-format-disabled-reason')).toHaveTextContent(
+      'export.formatDisabledNoKey',
+    );
+  });
+
+  it('never disables XLSX for the entire-table scope on desktop', () => {
+    envState.desktop = true;
+    renderDialog({ defaultScope: 'entire_table' });
+    expect(formatOption('xlsx').disabled).toBe(false);
+    expect(screen.queryByTestId('export-format-disabled-reason')).not.toBeInTheDocument();
+  });
+});
+
+describe('ExportDialog default scope correction (item 3)', () => {
+  it('falls back to the current page when entire_table is the default but no session serves it', () => {
+    renderDialog({ dbSessionId: undefined, defaultScope: 'entire_table' });
+    const values = Array.from(scopeSelect().options).map((o) => o.value);
+    expect(values).not.toContain('entire_table');
+    expect(scopeSelect()).toHaveValue('current_page');
+  });
+
+  it('keeps entire_table when a session serves it', () => {
+    renderDialog({ defaultScope: 'entire_table' });
+    expect(scopeSelect()).toHaveValue('entire_table');
+  });
+
+  it('opens on the current page without a session and no preferred scope', () => {
+    renderDialog({ dbSessionId: undefined, rows: [] });
+    expect(scopeSelect()).toHaveValue('current_page');
+  });
+
+  it('falls back when the driver capability forbids entire-table export', () => {
+    renderDialog({ defaultScope: 'entire_table', dataExportCapability: 'loaded_only' });
+    expect(scopeSelect()).toHaveValue('current_page');
+  });
+
+  it('falls back when export is disabled for the driver', () => {
+    renderDialog({ defaultScope: 'entire_table', dataExportCapability: 'none' });
+    expect(scopeSelect()).toHaveValue('current_page');
+  });
+
+  it('falls back when the session disappears after opening on entire_table', () => {
+    const { rerender } = renderDialog({ defaultScope: 'entire_table' });
+    expect(scopeSelect()).toHaveValue('entire_table');
+    rerender(
+      <ExportDialog
+        open
+        onClose={vi.fn()}
+        tableName="users"
+        columns={COLS}
+        rows={[{ id: 1 }, { id: 2 }]}
+        selectedRows={new Set()}
+        dbSessionId={undefined}
+        defaultScope="entire_table"
+      />,
+    );
+    expect(scopeSelect()).toHaveValue('current_page');
   });
 });

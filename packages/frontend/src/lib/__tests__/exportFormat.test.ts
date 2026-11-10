@@ -18,6 +18,7 @@
 import { describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
 import {
+  applyCsvFormulaGuard,
   buildProvidedExportFilename,
   formatRowsAsText,
   formatRowsAsXlsx,
@@ -82,6 +83,89 @@ describe('formatRowsAsText: CSV', () => {
       textOptions({ rows: [[1], [2, 'b', 'EXTRA']], format: 'csv' }),
     );
     expect(result.content).toBe('id,name\n1,\n2,b');
+  });
+});
+
+/**
+ * CSV formula-injection guard parity (issue 2) — shared fixture with
+ * the Rust test (`crates/datazen/src/export/fetcher.rs`,
+ * `write_data_file_sql_source_applies_csv_formula_guard`) and the web
+ * blob exporter test
+ * (`packages/frontend/src/platform/__tests__/blobTablesExporter.test.ts`):
+ * the same rows must produce byte-identical CSV in all three paths.
+ * `formatRowsAsText` joins lines with `\n` and adds no trailing
+ * newline (the old `generateExport` shape), so parity compares
+ * `content + '\n'` against the Rust / blob bytes. Desktop CSV bytes
+ * change on purpose here: cells starting with `=`, `+`, `-` or `@`
+ * are now quoted (security fix, not a regression).
+ */
+const formulaGuardRows: unknown[][] = [
+  ['=SUM(A1:B2)'],
+  ['+2+2'],
+  ['-x'],
+  ['@user'],
+  [-5],
+  ['=a,b'],
+  ['say "hi"'],
+  ['line1\nline2'],
+  ['plain'],
+  [5],
+];
+
+const formulaGuardCsv =
+  'v\n"=SUM(A1:B2)"\n"+2+2"\n"-x"\n"@user"\n"-5"\n"=a,b"\n"say ""hi"""\n"line1\nline2"\nplain\n5\n';
+
+describe('formatRowsAsText: CSV formula-injection guard', () => {
+  it('quotes formula prefixes, negative numbers included, and leaves the rest alone', () => {
+    expect(applyCsvFormulaGuard('=SUM(A1)')).toBe('"=SUM(A1)"');
+    expect(applyCsvFormulaGuard('+2+2')).toBe('"+2+2"');
+    expect(applyCsvFormulaGuard('-x')).toBe('"-x"');
+    expect(applyCsvFormulaGuard('@user')).toBe('"@user"');
+    // Negative numbers keep the quoting the rule gives them (deliberate,
+    // matching the web exporter byte for byte).
+    expect(applyCsvFormulaGuard('-5')).toBe('"-5"');
+    // Already-quoted values (delimiter / quote / line break inside)
+    // start with `"` and are left alone — no double wrap.
+    expect(applyCsvFormulaGuard('"=a,b"')).toBe('"=a,b"');
+    expect(applyCsvFormulaGuard('"say ""hi"""')).toBe('"say ""hi"""');
+    expect(applyCsvFormulaGuard('"line1\nline2"')).toBe('"line1\nline2"');
+    // Plain text, plain numbers and empty cells are untouched.
+    expect(applyCsvFormulaGuard('plain')).toBe('plain');
+    expect(applyCsvFormulaGuard('5')).toBe('5');
+    expect(applyCsvFormulaGuard('')).toBe('');
+  });
+
+  it('emits the shared fixture byte-identical to the Rust and blob paths', () => {
+    const result = formatRowsAsText(
+      textOptions({
+        columns: [{ name: 'v', dataType: 'text', nullable: true }],
+        rows: formulaGuardRows,
+        format: 'csv',
+      }),
+    );
+    expect(`${result.content}\n`).toBe(formulaGuardCsv);
+  });
+
+  it('guards a column name starting with `=` in the header', () => {
+    const result = formatRowsAsText(
+      textOptions({
+        columns: [{ name: '=note', dataType: 'text', nullable: true }],
+        rows: [['plain']],
+        format: 'csv',
+      }),
+    );
+    expect(result.content).toBe('"=note"\nplain');
+  });
+
+  it('does not apply the guard outside the CSV branch (TSV)', () => {
+    const result = formatRowsAsText(
+      textOptions({
+        columns: [{ name: 'v', dataType: 'text', nullable: true }],
+        rows: [['=SUM(A1)'], [-5], ['plain']],
+        format: 'tsv',
+      }),
+    );
+    expect(result.content).toBe('v\n=SUM(A1)\n-5\nplain');
   });
 });
 

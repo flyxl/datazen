@@ -8,7 +8,7 @@
  * 1. **driverGateway 的 `open_base64_with_dialog`**（契约 §6.9/§8）：对话框
  *    语义属于平台宿主而非后端，web 形态用浏览器 API（或功能缺位）承接，
  *    **永不上 HTTP**；
- * 2. **`LegacyHostMethodMap` 全部键**（134 个 snake_case 桌面宿主命令，
+ * 2. **`LegacyHostMethodMap` 全部键**（135 个 snake_case 桌面宿主命令，
  *    `packages/backend-client/src/legacyHostCommands.ts`）：契约 §8 明文
  *    「legacy IPC 命令轨不镜像」——它们随 WR-A2 command 薄壳化逐域收敛进
  *    `MethodMap` 的内核域，收敛一个域、本文件减一域；域客户端不在此列的
@@ -100,6 +100,7 @@ const LEGACY_HTTP_OFF: readonly LegacyCommandName[] = [
   'begin_save_with_dialog',
   'begin_session_transaction',
   'cancel_data_transfer',
+  'cancel_export_tables',
   'cancel_query',
   'classify_transfer_pair',
   'close_database',

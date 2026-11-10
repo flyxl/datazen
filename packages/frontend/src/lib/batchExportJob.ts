@@ -1,11 +1,17 @@
 import { SqlDataFetcher } from './dataFetcher';
 import type { ExportProgressEvent } from '../commands/file';
-import type { ExportTablesRequest } from '../commands/file';
+import type { ExportTablesRequest, ExportTablesResult } from '../commands/file';
 import { requireTablesExporter } from '../platform/contracts';
 
 export type BatchExportOutputMode = 'single' | 'zip';
 
 export type BatchExportMode = 'data_only' | 'structure_only' | 'data_and_structure';
+
+/** The honest end states of a Rust-side export run (DBR-06, restored): */
+export type SingleTableExportResult =
+  | { status: 'saved' }
+  | { status: 'cancelled' }
+  | { status: 'aborted'; partialDeleted: boolean };
 export type BatchExportDataFormat =
   | 'csv'
   | 'tsv'
@@ -56,12 +62,21 @@ export interface RunBatchExportJobOptions {
    * dual-flow port — desktop streams via the save-dialog token writer, a web
    * build Blob-downloads under the same signature).
    */
-  exportTables?: (
-    request: ExportTablesRequest,
-  ) => Promise<{ Saved: number } | { Cancelled: null } | null>;
+  exportTables?: (request: ExportTablesRequest) => Promise<ExportTablesResult | null>;
+  /**
+   * Injectable cancel for tests; defaults to the tables-exporter port's
+   * `cancelExportTables` (desktop). A form without one (web) has no
+   * cancellation to offer, so the handle is a no-op there.
+   */
+  cancelExport?: (token: string) => Promise<boolean>;
+  /**
+   * Receives the cancel function for the run, before any table is
+   * exported. The batch dialog wires its "Cancel export" button to it.
+   */
+  onCancelHandle?: (cancel: () => void) => void;
 }
 
-export type RunBatchExportJobResult = { status: 'saved' } | { status: 'cancelled' };
+export type RunBatchExportJobResult = SingleTableExportResult;
 
 export interface SingleTableExportOptions {
   dbSessionId: string;
@@ -86,9 +101,13 @@ export interface SingleTableExportOptions {
    * Injectable for tests; defaults to the bound form's exporter (the same
    * `export_tables_stream` the batch job uses).
    */
-  exportTables?: (
-    request: ExportTablesRequest,
-  ) => Promise<{ Saved: number } | { Cancelled: null } | null>;
+  exportTables?: (request: ExportTablesRequest) => Promise<ExportTablesResult | null>;
+  /**
+   * Injectable cancel for tests; defaults to the tables-exporter port.
+   * Threaded through to the `SqlDataFetcher` so a test that injects
+   * `exportTables` can observe the cancel call without binding a platform.
+   */
+  cancelExport?: (token: string) => Promise<boolean>;
   /**
    * Injectable for tests; defaults to `onExportProgress`
    * (`batch-export-progress`). Threaded through to the `SqlDataFetcher`
@@ -97,6 +116,12 @@ export interface SingleTableExportOptions {
   subscribeProgress?: (
     handler: (event: ExportProgressEvent) => void,
   ) => Promise<() => void>;
+  /**
+   * Receives the cancel function for the run, before the export starts
+   * (the fetcher mints its token at construction). The dialogs wire
+   * their "Cancel export" button to it. Omitted callers get no handle.
+   */
+  onCancelHandle?: (cancel: () => void) => void;
 }
 
 /**
@@ -113,7 +138,7 @@ export interface SingleTableExportOptions {
  */
 export async function exportSingleTableViaRust(
   options: SingleTableExportOptions,
-): Promise<'saved' | 'cancelled'> {
+): Promise<SingleTableExportResult> {
   const {
     dbSessionId,
     databaseType,
@@ -125,7 +150,9 @@ export async function exportSingleTableViaRust(
     sql,
     primaryKey,
     exportTables,
+    cancelExport,
     subscribeProgress,
+    onCancelHandle,
   } = options;
 
   const fetcher = new SqlDataFetcher(
@@ -145,10 +172,19 @@ export async function exportSingleTableViaRust(
     },
     {
       ...(exportTables ? { exportTables } : {}),
+      ...(cancelExport ? { cancelExport } : {}),
       ...(subscribeProgress ? { subscribeProgress } : {}),
     },
   );
-  return fetcher.fetch();
+  onCancelHandle?.(() => fetcher.cancel());
+  const result = await fetcher.fetch();
+  if (result === 'aborted') {
+    // The fetcher records the partial-file outcome from the `Aborted`
+    // result; unknown (a test double that never set it) reports "kept"
+    // rather than claiming a deletion.
+    return { status: 'aborted', partialDeleted: fetcher.abortedPartialDeleted ?? false };
+  }
+  return { status: result };
 }
 
 /**
@@ -174,9 +210,7 @@ export interface SingleTableStructureExportOptions {
    * Injectable for tests; defaults to the bound form's exporter (the same
    * `export_tables_stream` the batch job uses).
    */
-  exportTables?: (
-    request: ExportTablesRequest,
-  ) => Promise<{ Saved: number } | { Cancelled: null } | null>;
+  exportTables?: (request: ExportTablesRequest) => Promise<ExportTablesResult | null>;
 }
 
 export async function exportSingleTableStructureViaRust(
@@ -250,6 +284,9 @@ export async function runBatchExportJob(
     loadTableExportData,
     onProgress,
     exportTables = (request: ExportTablesRequest) => requireTablesExporter().exportTables(request),
+    cancelExport = async (token: string) =>
+      (await requireTablesExporter().cancelExportTables?.(token)) ?? false,
+    onCancelHandle,
   } = options;
 
   if (tableNames.length === 0) {
@@ -259,9 +296,26 @@ export async function runBatchExportJob(
     throw new Error('Missing connection');
   }
 
+  // One token for the whole batch: the batch is a single combined Rust
+  // request, so cancelling it interrupts the table in flight and stops
+  // the batch. The handle goes out before any table is loaded, so a
+  // cancel during metadata loading stops the batch without ever calling
+  // the exporter (nothing was written, so there is no partial file).
+  const cancelToken = crypto.randomUUID();
+  let cancelRequested = false;
+  const cancel = () => {
+    if (cancelRequested) return;
+    cancelRequested = true;
+    void cancelExport(cancelToken).catch(() => undefined);
+  };
+  onCancelHandle?.(cancel);
+
   const tables = [];
   const total = tableNames.length;
   for (let i = 0; i < tableNames.length; i += 1) {
+    if (cancelRequested) {
+      return { status: 'aborted', partialDeleted: true };
+    }
     const tableName = tableNames[i]!;
     onProgress?.({ current: i + 1, total, tableName });
     const meta = await loadTableExportData(tableName);
@@ -273,8 +327,16 @@ export async function runBatchExportJob(
     });
   }
 
+  // A cancel that lands during the last table's metadata load has no
+  // further loop iteration to catch it — check again before the
+  // exporter is called, so the batch never starts after a cancel.
+  if (cancelRequested) {
+    return { status: 'aborted', partialDeleted: true };
+  }
+
   const request: ExportTablesRequest = {
     dbSessionId,
+    cancelToken,
     databaseType: databaseType ?? undefined,
     database: database ?? undefined,
     schema: schema ?? undefined,
@@ -285,5 +347,8 @@ export async function runBatchExportJob(
   };
 
   const result = await exportTables(request);
+  if (result && 'Aborted' in result) {
+    return { status: 'aborted', partialDeleted: result.Aborted.partialDeleted };
+  }
   return result && 'Saved' in result ? { status: 'saved' } : { status: 'cancelled' };
 }
