@@ -443,6 +443,21 @@ pub fn unique_filename(seen: &mut HashSet<String>, name: String) -> String {
     }
 }
 
+/// Extension of the file [`default_export_name`] produces — decided by the
+/// actual product, not by the data format alone. A structure-only export
+/// is always DDL text (see [`build_file_plans`]: every plan is
+/// `{base}.sql`), so it is `.sql` whatever the data format says; a zip
+/// container is `.zip`; everything else keeps the data format's extension.
+pub fn default_export_extension(request: &ExportTablesRequest, use_zip: bool) -> &'static str {
+    if use_zip {
+        "zip"
+    } else if matches!(request.mode, ExportMode::StructureOnly) {
+        "sql"
+    } else {
+        request.data_format.extension()
+    }
+}
+
 pub fn default_export_name(request: &ExportTablesRequest, use_zip: bool) -> String {
     let ts = chrono::Utc::now().format("%Y-%m-%d-%H-%M-%S");
     let prefix = match request.mode {
@@ -450,11 +465,7 @@ pub fn default_export_name(request: &ExportTablesRequest, use_zip: bool) -> Stri
         ExportMode::DataOnly => "export_data",
         ExportMode::DataAndStructure => "export_full",
     };
-    let ext = if use_zip {
-        "zip"
-    } else {
-        request.data_format.extension()
-    };
+    let ext = default_export_extension(request, use_zip);
     format!("{prefix}_{ts}.{ext}")
 }
 
@@ -1206,3 +1217,75 @@ pub fn stream_bytes_to_sink(path: &Path, sink: &mut FileSink) -> Result<(), Comm
 // ---------------------------------------------------------------------------
 // Main command
 // ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request(mode: ExportMode, data_format: DataFormat) -> ExportTablesRequest {
+        ExportTablesRequest {
+            db_session_id: "sess-1".into(),
+            cancel_token: None,
+            database_type: None,
+            database: None,
+            schema: None,
+            mode,
+            data_format,
+            output_mode: OutputMode::Single,
+            tables: vec![TableExportInput {
+                table_name: "users".into(),
+                schema: None,
+                columns: vec![],
+                ddl: Some("CREATE TABLE users (id INT);".into()),
+                source: TableDataSource::Table,
+                primary_key: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn default_export_name_uses_sql_for_structure_only() {
+        // A structure-only export only ever produces DDL text, whatever the
+        // data format says — naming it .xlsx would mislabel DDL as a workbook.
+        let name =
+            default_export_name(&request(ExportMode::StructureOnly, DataFormat::Xlsx), false);
+        assert!(name.starts_with("export_structure_"), "{name}");
+        assert!(name.ends_with(".sql"), "{name}");
+
+        let name = default_export_name(&request(ExportMode::StructureOnly, DataFormat::Csv), false);
+        assert!(name.ends_with(".sql"), "{name}");
+
+        // Multi-table structure_only also stays a single merged .sql file
+        // (every plan is {base}.sql, so prepare_export never routes to zip).
+        let mut multi = request(ExportMode::StructureOnly, DataFormat::Xlsx);
+        multi.tables.push(TableExportInput {
+            table_name: "orders".into(),
+            schema: None,
+            columns: vec![],
+            ddl: Some("CREATE TABLE orders (id INT);".into()),
+            source: TableDataSource::Table,
+            primary_key: None,
+        });
+        let (_, use_zip) = prepare_export(&multi).unwrap();
+        assert!(!use_zip);
+        let name = default_export_name(&multi, use_zip);
+        assert!(name.ends_with(".sql"), "{name}");
+    }
+
+    #[test]
+    fn default_export_name_keeps_format_extension_for_data_exports() {
+        let name = default_export_name(&request(ExportMode::DataOnly, DataFormat::Xlsx), false);
+        assert!(name.starts_with("export_data_"), "{name}");
+        assert!(name.ends_with(".xlsx"), "{name}");
+    }
+
+    #[test]
+    fn default_export_name_uses_zip_when_zipped() {
+        let name = default_export_name(
+            &request(ExportMode::DataAndStructure, DataFormat::Xlsx),
+            true,
+        );
+        assert!(name.starts_with("export_full_"), "{name}");
+        assert!(name.ends_with(".zip"), "{name}");
+    }
+}

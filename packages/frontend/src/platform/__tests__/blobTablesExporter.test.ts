@@ -213,10 +213,10 @@ describe('web/desktop alignment (item 5)', () => {
       ),
     ).resolves.toEqual({ Saved: 1 });
     expect(readPage).not.toHaveBeenCalled();
-    // The shared default name follows the data format's extension even
-    // when the file is DDL-only (same rule as the desktop
-    // `default_export_name`).
-    expect(delivered[0]?.fileName).toBe('export_structure_2026-11-09-05-00-00.xlsx');
+    // The shared default name follows the actual product: a structure-only
+    // export is DDL text, so it is named .sql even when the data format
+    // is xlsx (same rule as the desktop `default_export_name`).
+    expect(delivered[0]?.fileName).toBe('export_structure_2026-11-09-05-00-00.sql');
     expect(delivered[0]?.contents).toContain('CREATE TABLE users (id INT);');
   });
 

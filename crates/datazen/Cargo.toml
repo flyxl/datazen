@@ -446,6 +446,9 @@ tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "test-util"] }
 wiremock = "0.6"
 tracing-subscriber = "0.3"
+# XLSX 读回验收（export 测试）：用真实解析器读回 Rust writer 产出的
+# .xlsx，只进 dev 依赖，不影响安装包与生产闭包。
+calamine = "0.31"
 # data_sync 测试：家族归一化（sync_family_of）走 inventory 链接期工厂，
 # 测试二进制必须链接 driver crate 才有工厂可查（与原 data-sync crate 的
 # dev-deps 对齐，否则 mysql/mariadb、tidb 等别名判定退化成异构对）。

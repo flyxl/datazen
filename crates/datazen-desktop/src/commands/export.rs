@@ -207,11 +207,7 @@ pub async fn export_tables_stream(
 
     let use_zip = prepare_export(&request)?.1;
 
-    let ext = if use_zip {
-        "zip"
-    } else {
-        request.data_format.extension()
-    };
+    let ext = default_export_extension(&request, use_zip);
     let picked = super::dialog::save_file(
         &app,
         ("Export".into(), vec![ext.to_string()]),

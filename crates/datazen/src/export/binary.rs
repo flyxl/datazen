@@ -151,7 +151,9 @@ impl XlsxFormatter {
                 Ok(())
             }
             Some(Value::Integer(n)) => {
-                if n.abs() <= XLSX_MAX_EXACT_INTEGER {
+                // Range check, not abs(): n.abs() panics on i64::MIN in
+                // debug builds (and wraps in release).
+                if *n >= -XLSX_MAX_EXACT_INTEGER && *n <= XLSX_MAX_EXACT_INTEGER {
                     worksheet
                         .write_number(row, col, *n as f64)
                         .map_err(xlsx_error)?;
@@ -284,6 +286,18 @@ impl BinaryFormatter for XlsxFormatter {
 impl XlsxFormatter {
     pub(crate) fn test_sheet_name(&self) -> &str {
         &self.sheet_name
+    }
+
+    /// Move the write cursor (test-only): lets the 1,048,576-row limit be
+    /// exercised without writing a million rows.
+    pub(crate) fn test_set_next_row(&mut self, row: u32) {
+        self.next_row = row;
+    }
+
+    /// Current write cursor (test-only): 0 before begin(), 1 once the
+    /// header row is written.
+    pub(crate) fn test_next_row(&self) -> u32 {
+        self.next_row
     }
 }
 
@@ -420,6 +434,89 @@ mod tests {
     }
 
     #[test]
+    fn xlsx_calamine_readback_matches_written_values() {
+        // Real-parser acceptance: the file the Rust writer produces must
+        // round-trip through calamine, not just string-match sheet XML.
+        // Numbers come back as Float (XLSX stores numbers as f64);
+        // Bytes come back as the bare hex string; the over-limit integer
+        // comes back as a string, not a rounded number.
+        let dest = temp_xlsx("calamine.xlsx");
+        let mut fmt = XlsxFormatter::new("users", dest.clone());
+        fmt.begin(&[
+            col("id", "int8"),
+            col("score", "float8"),
+            col("name", "text"),
+            col("active", "bool"),
+            col("payload", "bytea"),
+            col("created", "timestamp"),
+            col("meta", "jsonb"),
+            col("note", "text"),
+            col("big", "int8"),
+        ])
+        .unwrap();
+        fmt.rows(&[vec![
+            Some(Value::Integer(42)),
+            Some(Value::Float(1.5)),
+            Some(Value::String("a,b".into())),
+            Some(Value::Bool(true)),
+            Some(Value::Bytes(vec![0x00, 0xff])),
+            Some(Value::Timestamp("2026-11-09 12:00:00".into())),
+            Some(Value::Json(serde_json::json!({"k": 1}))),
+            None,
+            Some(Value::Integer(1_000_000_000_000_000)),
+        ]])
+        .unwrap();
+        fmt.finish().unwrap();
+
+        let mut workbook: calamine::Xlsx<_> =
+            calamine::open_workbook(&dest).expect("calamine opens the produced file");
+        use calamine::{DataType, Reader};
+        let range = workbook
+            .worksheet_range("users")
+            .expect("sheet users exists");
+        let rows: Vec<&[calamine::Data]> = range.rows().collect();
+        assert_eq!(rows.len(), 2, "header + one data row");
+        let header: Vec<String> = rows[0]
+            .iter()
+            .map(|c| c.as_string().expect("header is a string"))
+            .collect();
+        assert_eq!(
+            header,
+            ["id", "score", "name", "active", "payload", "created", "meta", "note", "big"]
+        );
+        let row = rows[1];
+        assert_eq!(row[0], calamine::Data::Float(42.0), "integer read back");
+        assert_eq!(row[1], calamine::Data::Float(1.5), "float read back");
+        assert_eq!(
+            row[2],
+            calamine::Data::String("a,b".to_string()),
+            "string read back"
+        );
+        assert_eq!(row[3], calamine::Data::Bool(true), "bool read back");
+        assert_eq!(
+            row[4],
+            calamine::Data::String("00ff".to_string()),
+            "bytes read back as bare hex"
+        );
+        assert_eq!(
+            row[5],
+            calamine::Data::String("2026-11-09 12:00:00".to_string()),
+            "timestamp read back as string"
+        );
+        assert_eq!(
+            row[6],
+            calamine::Data::String("{\"k\":1}".to_string()),
+            "json read back as string"
+        );
+        assert_eq!(row[7], calamine::Data::Empty, "null read back as empty");
+        assert_eq!(
+            row[8],
+            calamine::Data::String("1000000000000000".to_string()),
+            "over-limit integer read back as a string, not a rounded number"
+        );
+    }
+
+    #[test]
     fn xlsx_big_integers_become_strings_not_rounded_numbers() {
         let dest = temp_xlsx("bigint.xlsx");
         let mut fmt = XlsxFormatter::new("t", dest.clone());
@@ -437,6 +534,28 @@ mod tests {
         assert!(
             text.contains("1000000000000000") && !text.contains("<v>1000000000000000</v>"),
             "over-limit integer stored as string, not a rounded number: {text}"
+        );
+    }
+
+    #[test]
+    fn xlsx_i64_min_becomes_string_without_panic_or_precision_loss() {
+        // i64::MIN used to panic in write_cell via n.abs(); it must now
+        // degrade to a string cell, keeping every digit.
+        let dest = temp_xlsx("i64min.xlsx");
+        let mut fmt = XlsxFormatter::new("t", dest.clone());
+        fmt.begin(&[col("n", "int8")]).unwrap();
+        fmt.rows(&[vec![Some(Value::Integer(i64::MIN))]]).unwrap();
+        fmt.rows(&[vec![Some(Value::Integer(-999_999_999_999_999))]])
+            .unwrap();
+        fmt.finish().unwrap();
+        let text = xlsx_cell_text(&dest);
+        assert!(
+            text.contains("-9223372036854775808") && !text.contains("<v>-9223372036854775808</v>"),
+            "i64::MIN stored as string, not a number: {text}"
+        );
+        assert!(
+            text.contains("<v>-999999999999999</v>"),
+            "at-limit negative integer stays numeric: {text}"
         );
     }
 
@@ -476,6 +595,22 @@ mod tests {
         let err = wide.begin(&cols).unwrap_err();
         assert!(
             matches!(err, ExportError::Validation(ref m) if m.contains("16384")),
+            "unexpected: {err:?}"
+        );
+    }
+
+    #[test]
+    fn xlsx_row_limit_counts_header_and_rejects_row_1048577() {
+        let dest = temp_xlsx("rowlimit.xlsx");
+        let mut fmt = XlsxFormatter::new("t", dest.clone());
+        fmt.begin(&[col("id", "int4")]).unwrap();
+        // begin() writes the header at row 0, so the next data row is 1.
+        assert_eq!(fmt.test_next_row(), 1, "header occupies row 0");
+        fmt.test_set_next_row(XLSX_MAX_ROWS - 1);
+        fmt.rows(&[vec![Some(Value::Integer(1))]]).unwrap();
+        let err = fmt.rows(&[vec![Some(Value::Integer(2))]]).unwrap_err();
+        assert!(
+            matches!(err, ExportError::Validation(ref m) if m.contains("1048576")),
             "unexpected: {err:?}"
         );
     }
