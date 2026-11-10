@@ -22,8 +22,22 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SQLITE_DB = path.resolve(__dirname, '../fixtures/test.db');
 const SQLITE_SETUP = path.resolve(__dirname, '../create-sqlite-test-db.mjs');
+
+function resolveSqliteFixturePath(): string {
+  const workerIndex = process.env.E2E_WORKER_INDEX;
+  const port = process.env.E2E_WD_PORT;
+  const workerKey =
+    workerIndex != null && workerIndex !== ''
+      ? `worker-${workerIndex}`
+      : port != null && port !== ''
+        ? `port-${port}`
+        : null;
+  return (
+    process.env.E2E_SQLITE_DB_PATH ||
+    path.resolve(__dirname, '../fixtures', workerKey ? `test-${workerKey}.db` : 'test.db')
+  );
+}
 
 export interface ContractConnCtx {
   readonly fixture: DriverFixtureDefinition;
@@ -34,7 +48,12 @@ export interface ContractConnCtx {
 async function openSqlite(fixture: DriverFixtureDefinition, mainWindow: string) {
   // The SQLite database is an ignored/generated fixture. Recreate it before
   // connecting so the navigator sees the stable contract table at first load.
-  execFileSync(process.execPath, [SQLITE_SETUP], { stdio: 'pipe' });
+  // Use per-worker paths in parallel runs to avoid cross-worker fixture races.
+  const sqliteDbPath = resolveSqliteFixturePath();
+  execFileSync(process.execPath, [SQLITE_SETUP], {
+    stdio: 'pipe',
+    env: { ...process.env, E2E_SQLITE_DB_PATH: sqliteDbPath },
+  });
   await expandAllGroups();
   const existing = await findCardByName(fixture.displayName);
   if (existing) {
@@ -45,7 +64,7 @@ async function openSqlite(fixture: DriverFixtureDefinition, mainWindow: string) 
     await browser.pause(300);
     await $(`input[placeholder="${t('newConn.namePlaceholder')}"]`).setValue(fixture.displayName);
     const dbInput = await $('input[placeholder="/path/to/db.sqlite"]');
-    await dbInput.setValue(SQLITE_DB);
+    await dbInput.setValue(sqliteDbPath);
     await clickNewConnectionSave();
     await browser.waitUntil(
       async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
