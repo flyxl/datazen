@@ -51,34 +51,30 @@ node scripts/with-driver-inject.mjs [--drivers=basic] -- node scripts/e2e-tauri-
 
 ## 2. 一键跑通（推荐）
 
-### 2.0 整包验证默认「一个 spec 一个应用进程」
+### 2.0 全量 E2E 默认并行（分阶段、安全隔离）
 
 ```bash
-pnpm e2e                    # 完整构建 + 每 spec 独立应用进程（整包默认）
+pnpm e2e                    # 完整构建 + 全量 E2E（默认并行，最多 4 实例）
 pnpm e2e:skip-build         # 已有 webdriver 构建时：同上，跳过构建
-pnpm e2e:isolated           # 显式指定隔离模式（等价于整包默认）
-pnpm e2e:isolated:skip-build
-pnpm e2e:skip-build -- --spec e2e/specs/x.ts   # 单 spec 仍是共享进程
+pnpm e2e:serial             # 强制串行隔离全量跑（调试/排查串扰时使用）
+pnpm e2e:serial:skip-build  # 同上，跳过构建
+pnpm e2e:skip-build -- --spec e2e/specs/x.ts   # 单 spec
+pnpm e2e:skip-build -- --suite <name>          # 指定 suite
 ```
 
-不传 `--spec` / `--suite` 时，runner 会把 spec 文件逐个交给 WDIO，**每个 spec 起一次
-应用进程、跑完就关**；指定了 `--spec` / `--suite` 的分组跑法保持原来的共享进程。
-`--isolate-specs` / `--no-isolate-specs` 可显式覆盖该默认。
+**默认全量行为（不传 `--spec` / `--suite`）**：
 
-为什么整包必须隔离：串跑时 159 个 spec 共用同一个 Tauri 进程，运行时会话、连接池、
-`config_revision` 和 WebDriver 会话都会留到下一个 spec。seeded 连接在每个 spec 的
-`before` 钩子里被改写（每轮换一个 worker 数据库 = 一次 `save_connection` = 一次
-`config_revision` 自增），上一轮仍然活着的会话继续占着该连接的资源额度；下一个 spec 的
-`connect` 撞上 `resource admission refused`，命令层报
-`connection runtime operation failed`，失败却记在无辜的 spec 头上。实测同一棵树上：
-串跑 5 passed / 140 failed，隔离跑全绿。
+- runner 将全量 specs 分为两阶段执行，避免共享夹具冲突：
+  1. **并行阶段**：除 data-sync / data-transfer / schema-diff 共享夹具套件外的 spec，按多实例并行执行（`--instances` 默认自动选择，**上限 4**）。
+  2. **串行阶段**：`data-sync`、`data-transfer`、`schema-diff` 套件相关 specs 串行隔离执行（每个 spec 独立应用进程 + 共享夹具重置），避免并发操作同一批共享 fixture 库（`datazen_sync_src` / `datazen_sync_tgt` 等）。
+- 每个并行 worker 使用独立 `DATAZEN_DATA_DIR`、独立 WebDriver 端口与独立 worker PostgreSQL 数据库，降低跨 worker 干扰。
+- 可用 `--instances N` 指定并发度（全量跑会自动 **cap 到 4**）；需要完全串行排查时使用 `pnpm e2e:serial[:skip-build]` 或 `--serial`。
 
-代价是每个 spec 多一次应用启动 + WDIO 启动（约 7–8 s），整包总时长明显变长；这是为
-「失败归属可信」付的钱。定位单个 spec 时继续用 `--spec`，不必付这笔开销。
+> 说明：`data-sync` / `data-transfer` / `schema-diff` 依赖共享夹具库与特定 setup 脚本，单独运行时仍建议使用对应命令（如 `pnpm e2e:data-sync`、`pnpm e2e:data-transfer`、`pnpm e2e:schema-diff`）。
 
 
 ```bash
-# 首次 / 改过 Rust 或前端后：完整构建 + 跑全部 E2E
+# 首次 / 改过 Rust 或前端后：完整构建 + 跑全部 E2E（默认并行，最多 4 实例）
 pnpm e2e
 
 # 更快构建：仅 basic 四核心驱动（跳过 Git / 其余 path 驱动）（仅内置驱动；多数 UI/路径 IPC spec 足够）
@@ -88,12 +84,12 @@ pnpm e2e:minimal
 # 已有正确的 webdriver debug 构建后：跳过构建，只跑 WDIO
 pnpm e2e:skip-build
 
-# 只跑某个 spec
+# 只跑某个 spec / suite
 pnpm e2e:skip-build -- --spec e2e/specs/path-ipc-hardening.ts
+pnpm e2e:skip-build -- --suite <name>
 
 # 分组快捷方式（均默认 --skip-build，前提是已做过 webdriver 构建）
-# 分组清单统一定义为 WDIO suites（e2e/wdio.conf.ts 的 suites 字段），单一事实来源；
-# 临时跑某个分组也可直接：pnpm e2e:skip-build -- --suite <name>
+# 分组清单统一定义为 WDIO suites（e2e/wdio.conf.ts 的 suites 字段），单一事实来源
 pnpm e2e:core
 pnpm e2e:db
 pnpm e2e:ai
@@ -102,17 +98,16 @@ pnpm e2e:schema-tree-objects  # MySQL/PostgreSQL Schema Tree 对象 journey（�
 pnpm e2e:i18n-backup
 pnpm e2e:path-ipc
 pnpm e2e:dashboard      # data-dashboard*.ts（同样 skip-build）
-pnpm e2e:data-transfer  # 数据传输专用：preflight 清理 + 全量 transfer suite（25000 行宽类型）
-pnpm e2e:data-transfer:build  # 同上，但会先完整 webdriver 构建
-pnpm e2e:schema-diff  # 结构对比专用：preflight 清理 + 全量 schema-diff suite（19 列宽类型 + 跨方言）
-pnpm e2e:schema-diff:build  # 同上，但会先完整 webdriver 构建
-pnpm e2e:journeys  # 跨模块连续用户旅程（Welcome/Query/Navigator/Chart/迁移）+ 截图留痕
-pnpm e2e:journeys:edge  # 首次安装、连接和查询的异常恢复/状态边界 journeys
-pnpm e2e:connection:edge  # 连接校验、生命周期和重试等模块级边界测试
-pnpm e2e:contract:matrix          # Host UI/IPC × PG/MySQL/SQLite 连接窗
-pnpm e2e:contract:pg              # 仅 PostgreSQL 契约冒烟
-pnpm test:unit:e2e-contract:coverage  # 契约纯逻辑单测 ≥80%
-# Kiwi：在 datazen-driver-kiwi 仓 `pnpm e2e:kiwi`（Host 同名脚本会 exit 1）
+pnpm e2e:data-transfer  # 数据传输专用：preflight 清理 + 全量 transfer suite
+pnpm e2e:data-transfer:build
+pnpm e2e:schema-diff    # 结构对比专用：preflight 清理 + 全量 schema-diff suite
+pnpm e2e:schema-diff:build
+pnpm e2e:journeys
+pnpm e2e:journeys:edge
+pnpm e2e:connection:edge
+pnpm e2e:contract:matrix
+pnpm e2e:contract:pg
+pnpm test:unit:e2e-contract:coverage
 ```
 
 > 脚本化封装：受限运行环境（应用数据目录写入受限、需 HOME 沙箱）可用
@@ -151,13 +146,13 @@ bash crates/drivers/postgres/e2e/install-manual-schema-tree.sh
 
 ```bash
 # Job 1: Core (无 DB)
-E2E_WD_PORT=4445 pnpm e2e:ci:core
+E2E_WD_PORT=4445 pnpm e2e:core
 
 # Job 2: DB specs
-E2E_WD_PORT=4446 pnpm e2e:ci:db
+E2E_WD_PORT=4446 pnpm e2e:db
 
 # Job 3: Feature specs
-E2E_WD_PORT=4447 pnpm e2e:ci:features
+E2E_WD_PORT=4447 pnpm e2e:skip-build -- --suite ai --suite i18n-backup --suite path-ipc --suite dashboard --suite journeys --suite journey-edge --suite connection-edge
 ```
 
 `e2e/run.mjs` 会将 `E2E_WD_PORT`（或 `--port <number>`）同步到 Tauri WebDriver 插件（`TAURI_WEBDRIVER_PORT`）与 WDIO（`e2e/wdio.conf.ts`）。默认端口仍为 4445，不影响 `pnpm e2e` 现有行为。
@@ -166,29 +161,32 @@ E2E_WD_PORT=4447 pnpm e2e:ci:features
 
 ### 单机多实例并行（同一机器）
 
-在同一台机器上启动多个 DataZen 实例，WDIO 通过多 capability 并行分配 spec：
+`e2e/run.mjs` 支持多实例并行：为每个 worker 启动独立 app 进程、WebDriver 端口与 `DATAZEN_DATA_DIR`，并分配不同 spec 子集。
 
 ```bash
-# 3 个 app 实例（端口 4445–4447），跳过构建
-pnpm e2e:parallel
+# 全量（默认并行，自动 cap 4）
+pnpm e2e:skip-build
 
-# 含完整构建
-pnpm e2e:parallel:build
+# 指定并发度（全量跑仍会 cap 到 4）
+node e2e/run.mjs --skip-build --instances 3
 
-# 自定义实例数 / 起始端口 / suite
-node e2e/run.mjs --skip-build --instances 3 --port 4445 -- --suite smoke
+# 指定 suite 并行（按目标场景评估是否适合并行）
+node e2e/run.mjs --skip-build --instances 3 -- --suite smoke
+node e2e/run.mjs --skip-build --instances 2 -- --suite core
 ```
 
-`--instances N`（默认 1，向后兼容）行为：
+`--instances N` 行为（简化）：
 
 | N | app 进程 | app-data 目录 | WebDriver 端口 |
 |---|----------|---------------|----------------|
 | 1 | 1 | `e2e/.app-data` | `E2E_WD_PORT` 或 4445 |
 | N>1 | N | `e2e/.app-data-0` … `e2e/.app-data-(N-1)` | `port`, `port+1`, … |
 
-runner 向 WDIO 注入 `E2E_INSTANCES`、`E2E_WD_PORTS`、`E2E_DATA_DIRS`；`e2e/wdio.conf.ts` 为每个端口创建 capability，各 worker 在 `before` 中独立 seed 连接与语言设置。
+**并行安全说明**：
 
-**限制**：多实例共享同一 PostgreSQL/MySQL 测试库，DB 写入类 spec 可能偶发冲突；优先用于 core/smoke 等读多写少 suite。全量并行前建议先跑 `pnpm e2e:parallel -- --suite core` 验证稳定性。
+- 并行 worker 各自拥有独立 worker PostgreSQL 数据库与 app-data，适合大多数 UI/表格/连接类 spec。
+- `data-sync` / `data-transfer` / `schema-diff` 套件依赖共享夹具库（如 `datazen_sync_src` / `datazen_sync_tgt`），**全量跑会自动放入串行阶段**，避免跨 worker 并发冲突；单独跑这些套件时建议按 suite 串行执行（使用对应命令）。
+- 并发度过高会导致 CPU/内存争用与 WebDriver/DB 超时；全量跑默认并行并**限制为最多 4**。
 
 ## 插件自有测试（Host 默认不拉）
 
@@ -205,6 +203,53 @@ runner 向 WDIO 注入 `E2E_INSTANCES`、`E2E_WD_PORTS`、`E2E_DATA_DIRS`；`e2e
 
 1. 若不确定本地二进制是否合格 → 直接 `pnpm e2e -- --spec <spec>`（**不要**加 `--skip-build`），或先执行构建命令再 skip-build。  
 2. 仅当本会话刚成功跑过 `e2e-tauri-build.mjs`（含驱动 feature）时，才用 `pnpm e2e:skip-build`。
+
+
+## 2.3 截图与录屏（输出到 `e2e/screenshots/`，按需同步到站点）
+
+**统一原则**：
+- 截图/录屏产物默认输出到 `e2e/screenshots/`（不直接写入 `site/assets/`）。
+- 同步到 `site/assets/*` 是**后续操作**，基于 `e2e/screenshots/` 中已有文件完成，不应通过重新截图/重录实现。
+- 截图采集默认复用已构建的 webdriver 包（`--skip-build`）。
+
+### 截图采集（site/marketing）
+```bash
+# 采集默认站点截图集合（输出到 e2e/screenshots/site/）
+pnpm e2e:shots
+
+# 指定 spec 生成对应截图（推荐：按需生成）
+node e2e/run.mjs --skip-build --capture -- --spec e2e/specs/wizard-screenshot.ts
+node e2e/run.mjs --skip-build --capture -- --spec e2e/specs/dashboard-screenshot.ts
+
+# Pro 截图采集（输出同目录约定）
+pnpm e2e:shots:pro
+
+# 将 e2e/screenshots/site/ 同步到 site/assets/screenshots/（后处理，不重采集）
+pnpm e2e:shots:sync
+# 或同步全部截图/博客/演示资源
+pnpm e2e:assets:sync
+```
+
+> `--capture` 会放开默认排除的截图/录屏 spec（`*screenshot*`、`zz-screenshots.ts`、`demo-recording.ts` 等）。采集内容应通过 `--spec` / `--suite` 精确指定，避免误跑。
+
+### 演示录屏
+```bash
+# 默认复用已有 webdriver 构建，输出到 e2e/screenshots/demo/
+pnpm e2e:demo
+
+# 需要时显式构建
+pnpm e2e:demo:build
+
+# 将 e2e/screenshots/demo/demo-recording.mp4 同步到 site/assets/video/（后处理，不重录）
+pnpm e2e:demo:sync
+```
+
+### 调试截图留痕（trace）
+`--screenshot` / `E2E_SCREENSHOT=1` 用于测试过程留痕（输出到 `e2e/screenshots/<spec>/...`），与“发布素材采集”是不同用途：
+```bash
+node e2e/run.mjs --skip-build --screenshot -- --spec e2e/specs/table-data.ts
+```
+
 
 ## 3. 手工分步（调试用）
 

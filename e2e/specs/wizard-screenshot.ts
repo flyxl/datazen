@@ -4,7 +4,7 @@
  * The wizard is a separate native Tauri window. We navigate to it directly,
  * wait for it to render, and capture a full-resolution screenshot.
  *
- * Outputs: site/assets/screenshots/wizard-open.png
+ * Outputs: e2e/screenshots/site/wizard-open.png
  */
 import { browser, $ } from '@wdio/globals';
 import { assertGallerySize, ensureMaximized } from '../lib/capture-window';
@@ -13,7 +13,7 @@ import path from 'node:path';
 import url from 'node:url';
 
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..', '..');
-const OUT = path.join(ROOT, 'site', 'assets', 'screenshots');
+const OUT = path.join(ROOT, 'e2e', 'screenshots', 'site');
 
 async function invoke<T = unknown>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   return browser.executeAsync(

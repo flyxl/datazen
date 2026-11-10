@@ -12,7 +12,7 @@
  *   #7  实时 SQL 诊断：写错即刻提示             → describe('Blog07')
  *   #8  智能粘贴与拖拽：Schema 树到编辑器        → describe('Blog08')
  *
- * 截图输出: site/assets/blog/
+ * 截图输出: e2e/screenshots/blog/
  *
  * 前置条件:
  *   1. pnpm tauri:build:webdriver（或 pnpm e2e:skip-build 前已构建）
@@ -35,7 +35,7 @@ import {
 
 // ── paths ──────────────────────────────────────────────────────────────
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..', '..');
-const OUT = path.join(ROOT, 'site', 'assets', 'blog');
+const OUT = path.join(ROOT, 'e2e', 'screenshots', 'blog');
 
 // ── connection config ──────────────────────────────────────────────────
 const PG = {

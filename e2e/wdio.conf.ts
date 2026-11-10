@@ -45,7 +45,7 @@ const WD_PORT = parseInt(process.env.E2E_WD_PORT || '4445', 10);
  *
  * Without this the window keeps whatever geometry the host monitor hands it, so
  * `saveScreenshot` returns a different pixel size on every machine and every
- * display. That is how site/assets/screenshots/ accumulated 12 different
+ * display. That is how e2e/screenshots/site/ accumulated 12 different
  * resolutions — unusable for stitching into a video.
  *
  * ## The window size is a layout constraint, not a video constraint
@@ -217,7 +217,7 @@ export const config: WebdriverIO.Config = {
   // Gallery capture is a separate, deliberate task, not part of the suite.
   //
   // Every `*screenshot*` spec rewrites committed binaries under
-  // site/assets/screenshots, so running one from a plain `pnpm e2e` would
+  // e2e/screenshots/site (and synced to site assets as a separate step), so running one from a plain `pnpm e2e` would
   // silently republish whatever happened to be on the developer's screen. They
   // also want a hand-sized, maximized window and seeded demo data, which a
   // normal test run cannot arrange. Opt in with `--capture` (`pnpm e2e:shots`).
@@ -267,8 +267,18 @@ export const config: WebdriverIO.Config = {
       './specs/drag-drop-groups.ts',
       './specs/unified-tab-bar.ts',
     ],
-    // Manual screenshot / demo capture — `pnpm e2e -- --suite screenshots`
+    // Manual screenshot / demo capture — legacy combined suite
     screenshots: ['./specs/zz-screenshots.ts', './specs/demo-recording.ts'],
+    // Site/marketing screenshot captures (output: e2e/screenshots/site). Use with --capture.
+    'site-shots': [
+      './specs/zz-screenshots.ts',
+      './specs/editor-features-screenshots.ts',
+      './specs/editor-pro-screenshots.ts',
+      './specs/dashboard-screenshot.ts',
+      './specs/plugins-screenshot.ts',
+      './specs/sql-run-mode-screenshot.ts',
+      './specs/wizard-screenshot.ts',
+    ],
     // Core UI, no real DB required (was `pnpm e2e:core`)
     core: [
       './specs/main-window.ts',
@@ -377,7 +387,7 @@ export const config: WebdriverIO.Config = {
     ],
     // Release-gallery captures that need the Pro build but assert no behaviour
     // (`pnpm e2e:qb:shot`). Kept out of pro-sql-editor so a normal regression
-    // run never rewrites files in site/assets/screenshots/.
+    // run never rewrites site assets directly (outputs to e2e/screenshots/site; sync separately).
     'pro-screenshots': ['../packages/pro-extensions/sql-editor-pro/e2e/specs/*-screenshot.ts'],
     // AI features (`pnpm e2e:ai`)
     ai: [

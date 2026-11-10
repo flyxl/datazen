@@ -12,7 +12,7 @@
  *   7. AI: natural-language filter → chart → report
  *   8. ER diagram overview
  *
- * Frames land in e2e/.demo-recording/frame_NNNNN.png and are assembled by
+ * Frames land in e2e/screenshots/demo/frames/frame_NNNNN.png and are assembled by
  * e2e/assemble-apng.mjs (see e2e/record-demo.sh).
  *
  * Usage (via wrapper):
@@ -24,7 +24,7 @@ import path from 'node:path';
 import url from 'node:url';
 
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..', '..');
-const FRAME_DIR = path.join(ROOT, 'e2e', '.demo-recording');
+const FRAME_DIR = path.join(ROOT, 'e2e', 'screenshots', 'demo', 'frames');
 
 const DEMO_PG_DB = process.env.E2E_DEMO_PG_DB || 'datazen_demo';
 const DEMO_PG_CONN_ID = 'conn_demo_pg';
