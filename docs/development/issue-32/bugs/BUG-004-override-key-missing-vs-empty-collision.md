@@ -1,6 +1,6 @@
 # BUG-004：列覆盖键缺省字段与空字符串碰撞
 
-- 状态：已修复，待 tester 回归验证
+- 状态：已关闭（2026-11-12 回归验证通过，详见「回归验证」段）
 - 严重程度：轻微（现实影响可忽略：空串标识符不出现；但 T06 持久化后该键成为存储身份，存在串用风险）
 - 发现阶段：issue-32 T04 独立测试验证（见 `docs/development/issue-32/testing/T04-host-pipeline.md` 的 P9，由协调方复核代码确认）
 - 归属判定：**T04 引入的 bug**（缺陷在 T04 提交引入；T01–T03 的键/注册逻辑不受影响），属 T01/BUG-003 先例允许的顺带修复，须在提交信息与报告中申报
@@ -70,7 +70,19 @@ computePresentationPlanCacheKey({ ...cacheBase, source: { connectionId: 'c', dat
 
 ## 回归验证
 
-- 验证人：tester（独立回归，未修改任何被测代码）
-- 日期：待验证
-- 方法：待 tester 独立探针 + 门禁复跑后补记。
-- 结论：**待 tester 回归验证。**本文件状态在验证通过前保持「已修复，待 tester 回归验证」，勿自称已关闭。
+- 验证人：tester（独立回归，未修改任何被测代码；验证分支 `feature/issue-32-value-presentation`，HEAD `1efa2cd41`；修复提交 `7f083faa2` + 回归测试提交 `1efa2cd41`）
+- 日期：2026-11-12
+- 方法：独立探针 `/tmp/probe-bug004`（11 项，R1–R6；`node_modules` 符号链接复用仓库依赖，`environment: jsdom`，被测源码以绝对路径导入；不重跑仓库自带测试当作探针；用后已删除）+ 门禁复跑（G1–G4）+ 代码审读。探针以 `buildColumnPresentationPlans` + `raw` 覆盖走完整覆盖查找路径，并以 `columnOverrideKey` / `computePresentationPlanCacheKey` 直接调用做对照。
+- 探针结果（11/11 通过，退出码 0）：
+  - R1 原始复现 ✅：缺省键 `["c",null,null,"t","x"]`，空串键 `["c","","","t","x"]`，二者不同。
+  - R2 单字段对照 ✅：仅 database 缺省 `["c",null,"n","t","x"]` vs 空串 `["c","","n","t","x"]`；仅 namespace 缺省 `["c","d",null,"t","x"]` vs 空串 `["c","d","","t","x"]`；两者齐备且相同 → 同键 `["c","d","n","t","x"]`。
+  - R3 缓存键对照 ✅：source 缺省 database 的缓存键 `[["c",null,null,"t"],[["x","","other"]],1,1,"en-US","UTC",null]` 与空串 database 的 `[["c","",null,"t"],[["x","","other"]],1,1,"en-US","UTC",null]` 不同；同输入复算键稳定；namespace 缺省 vs 空串的缓存键亦不同。
+  - R4 覆盖查找端到端 ✅：只存缺省键时空串 database 的列查不到该覆盖（命中侧 `raw`、未命中侧走默认路由 `ready`，不串用）；只存空串键时缺省列同样查不到（命中侧 `raw`、未命中侧 `ready`）。
+  - R5 无回归 ✅：大小写不同仍键不同（database `DB` vs `db`、表名 `T` vs `t`）；完全相同输入键相同；PRD 锚点经 `plan.present` 仍通过——`2026-01-15T14:30:00Z` → `2026-01-15T22:30:00+08:00`（含 22:30 与 +08:00）；Unix `1705316400123` → `2024-01-15T19:00:00.123+08:00` 含 `.123`，`1705316400000` → `2024-01-15T19:00:00+08:00` 不含 `.000`（BUG-003 不回归）。
+  - R6 `:248` 裁决复核 ✅：旧期望（`it('缺省字段与空字符串归一为同一键')` + `toBe`）在修复前代码上成立、修复后必失败，编码的正是与设计 §6 冲突的 bug 行为；新期望（键不同 + 缓存键对照）正确，与设计 §6「缺省字段与空字符串不能无意碰撞」一致；`git diff` 审读确认测试文件除 `:248` 用例外其余既有断言一字未动（仅该用例改名、`toBe` → `not.toBe` 并补一条缓存键对照断言）。
+- 门禁结果：
+  - G1 ✅：`npx vitest run packages/frontend/src/lib/valuePresentation packages/frontend/src/hooks/__tests__/useValuePresentation.test.tsx --retry=0`，**283/283** 通过（presentationPlan 75、useValuePresentation 6、timestampContribution 46、timestampConfig 26、temporalMath 96、timestampFormat 34），退出码 0。
+  - G2 ✅：`pnpm typecheck`（tsrs 0.18.0）与 `pnpm typecheck:tsc`（tsc 7.0.2）双引擎均 OK（root / scripts / pack-ep 三程序），退出码均为 0（经 `npx -y pnpm@12.18.0` 等价调用）。
+  - G3 ✅：`node scripts/check-test-module-naming.mjs` ok（1837 Rust 文件、256 cfg(test) 模块；2561 TS 文件、8 wdio spec 树），退出码 0。
+  - G4 代码审读 ✅：`7f083faa2` 的 diff 最小——仅 `presentationPlan.ts` 一个文件，7 行增 / 6 行删：`columnOverrideKey` 与缓存键来源段各两处 `?? ''` → `?? null` + 注释修正；columns 段 `dataType ?? ''` 未被动（fix diff 中 0 行 `dataType` 变化）；注释与事实一致（缺省用 `null`、空串保留为空串、二者键不同，仍不做大小写归一）。
+- 结论：**BUG-004 验证通过，关闭。**缺省与空串字段在覆盖键与缓存键来源段均得不同键，覆盖查找端到端不再串用；大小写语义、PRD 锚点与 BUG-003 均无回归。
