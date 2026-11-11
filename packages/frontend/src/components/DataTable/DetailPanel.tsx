@@ -201,6 +201,12 @@ function FieldRow({
 }: FieldRowProps) {
   const { t } = useI18n();
   const [quickLookOpen, setQuickLookOpen] = useState(false);
+  /**
+   * BUG-005: whether this field is being edited. Display is the default;
+   * the editor is entered from the display container (click / Enter /
+   * Space) and left by commit or Escape — see the branch below.
+   */
+  const [editing, setEditing] = useState(false);
 
   const isNull = value === null || value === undefined;
   const type = (column.type ?? '').toLowerCase();
@@ -253,8 +259,56 @@ function FieldRow({
         </div>
       </div>
 
-      {editable && onCommit ? (
-        <InlineFieldEditor value={value} type={type} isLongText={isLongText} onCommit={onCommit} />
+      {editable && onCommit && !editing ? (
+        // BUG-005: the editable drawer used to render the editor outright,
+        // so the presented text (T05 `<pre>` below) was unreachable in the
+        // production flow and Escape could never "return to display" — there
+        // was no display state to return to. Display is now the default;
+        // click / Enter / Space enters the editor, commit or Escape returns.
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => setEditing(true)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setEditing(true);
+            }
+          }}
+        >
+          {isBlob && !isNull ? (
+            <div className="font-mono text-xs italic text-fg-muted">
+              {t('detail.blobData')} ·{' '}
+              {typeof value === 'string' ? value.length : formatCell(value).length}{' '}
+              {t('detail.bytes')}
+            </div>
+          ) : (
+            <pre
+              className={cn(
+                'max-h-32 overflow-auto whitespace-pre-wrap break-all font-mono text-xs',
+                isNull ? 'italic text-fg-muted' : 'text-fg',
+              )}
+            >
+              {isNull
+                ? 'NULL'
+                : presented?.kind === 'text'
+                  ? presented.text
+                  : (pretty ?? formatCell(value))}
+            </pre>
+          )}
+        </div>
+      ) : editable && onCommit && editing ? (
+        <InlineFieldEditor
+          value={value}
+          type={type}
+          isLongText={isLongText}
+          onCommit={(v) => {
+            onCommit(v);
+            setEditing(false);
+          }}
+          onCancel={() => setEditing(false)}
+          autoFocus
+        />
       ) : isBlob && !isNull ? (
         <div className="font-mono text-xs italic text-fg-muted">
           {t('detail.blobData')} ·{' '}
@@ -294,9 +348,27 @@ interface InlineFieldEditorProps {
   type: string;
   isLongText: boolean;
   onCommit: (value: unknown) => void;
+  /**
+   * BUG-005: focus the field as soon as the editor mounts, so one click on
+   * the display container lands straight in a typeable editor.
+   */
+  autoFocus?: boolean;
+  /**
+   * BUG-005: called on Escape, after the editor's own reset (local value
+   * restored, internal editing cleared, no commit) — the caller uses it to
+   * return to the display state.
+   */
+  onCancel?: () => void;
 }
 
-function InlineFieldEditor({ value, type, isLongText, onCommit }: InlineFieldEditorProps) {
+function InlineFieldEditor({
+  value,
+  type,
+  isLongText,
+  onCommit,
+  autoFocus,
+  onCancel,
+}: InlineFieldEditorProps) {
   const isNull = value === null || value === undefined;
   const display = toEditString(value);
   const [local, setLocal] = useState(display);
@@ -350,6 +422,7 @@ function InlineFieldEditor({ value, type, isLongText, onCommit }: InlineFieldEdi
       if (e.key === 'Escape') {
         setLocal(toEditString(value));
         setEditing(false);
+        onCancel?.();
         return;
       }
       if (e.key === 'Enter' && !isLongText) {
@@ -357,7 +430,7 @@ function InlineFieldEditor({ value, type, isLongText, onCommit }: InlineFieldEdi
         commit();
       }
     },
-    [value, isLongText, commit],
+    [value, isLongText, commit, onCancel],
   );
 
   const sharedClass = cn(
@@ -379,6 +452,7 @@ function InlineFieldEditor({ value, type, isLongText, onCommit }: InlineFieldEdi
         onKeyDown={handleKeyDown}
         rows={1}
         wrap="off"
+        autoFocus={autoFocus}
       />
     );
   }
@@ -392,6 +466,7 @@ function InlineFieldEditor({ value, type, isLongText, onCommit }: InlineFieldEdi
       onFocus={() => setEditing(true)}
       onBlur={commit}
       onKeyDown={handleKeyDown}
+      autoFocus={autoFocus}
     />
   );
 }

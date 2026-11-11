@@ -1264,12 +1264,17 @@ export function TableView({
         // Value presentation (issue-32 T05): the snapshot threads through,
         // the source is this panel's own table identity — and only when a
         // connectionId exists; without one there is no source to fake.
+        // BUG-006: `database` is a plain string here (`''` when both the
+        // panel and the session leave it unset), while the aside passes
+        // `undefined` for the same absence — the same override then hit
+        // aside-side and missed grid-side. Normalise `''` to `undefined`
+        // in the source only; the `database` prop itself is untouched.
         presentationSnapshot={presentationSnapshot}
         presentationSource={
           connectionId
             ? {
                 connectionId,
-                database,
+                database: database === '' ? undefined : database,
                 namespace: schema ?? undefined,
                 table: tableName,
               }
