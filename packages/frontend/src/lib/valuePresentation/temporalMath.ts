@@ -500,7 +500,12 @@ export function parseUnixValue(
   if (!Number.isSafeInteger(epochMs)) {
     return { kind: 'error', reason: { reason: 'out-of-range' } };
   }
-  return { kind: 'ok', instant: { epochMs, subSecondNanos: 0, fractionDigits: 0 } };
+  // BUG-003：毫秒余数真实存在时不得谎报 fractionDigits 0，否则 iso/iso-tz
+  // 组装会被显式 0 截断（resolveFractionDigits 显式优先），静默丢弃 .123。
+  // 正模使负 epochMs（如 -1 → 余数 999）同样得到 3 位；秒单位的 epochMs
+  // 恒为 1000 倍数，余数 0，fractionDigits 保持 0。
+  const fractionDigits = positiveMod(epochMs, 1000) === 0 ? 0 : 3;
+  return { kind: 'ok', instant: { epochMs, subSecondNanos: 0, fractionDigits } };
 }
 
 // ---------------------------------------------------------------------------
