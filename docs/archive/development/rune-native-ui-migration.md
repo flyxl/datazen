@@ -6,7 +6,7 @@
 > 
 > DataZen 基线：本分支创建时的 main 提交 `2c424b6238356f1b987635bfacfd502f613865a1`
 > 
-> Rune 评估基线：`anomalyco/rune` dev revision `086d71108622bf83d3e77154cfef7e99fd7fe343`
+> Rune 评估基线：`anomalyco/rune` dev revision `2e4999f67064dd351e504bbdaaf71f0b601e2114`
 > 
 > 当前状态：**方案已提交；尚未开始代码迁移。先完成 SQL Editor 与 DataGrid 技术验证，再决定是否进入批量迁移。**
 
@@ -175,7 +175,7 @@ Web 的 React/TypeScript 代码在迁移期不再承担主要业务 UI，但保�
 
 ### 阶段 0：固定基线与双 Host 骨架
 
-1. 在独立分支固定 Rune revision：`086d71108622bf83d3e77154cfef7e99fd7fe343`。Rune 尚无稳定 Release，升级只能通过显式 revision 更新。
+1. 在独立分支固定 Rune revision：`2e4999f67064dd351e504bbdaaf71f0b601e2114`。Rune 尚无稳定 Release，升级只能通过显式 revision 更新。
 2. 记录 Rust toolchain、Rune Cargo features、native/WASM 构建命令和依赖体积；Web 构建禁用 `dev`、`hot`、`native-file-dialog` 等不适用于 wasm 的 features。
 3. 创建最小 `datazen-ui`、Native Host 和 WASM Host，分别跑通 Rune hello、Canvas mount、窗口关闭与资源释放。
 4. 在 CI 增加 native build、`wasm32-unknown-unknown` build、Web smoke test；不修改现有 React/desktop/web 默认入口。
@@ -333,9 +333,9 @@ Web 的 React/TypeScript 代码在迁移期不再承担主要业务 UI，但保�
 ### Rune 上游（评估基线）
 
 - [Rune Repository](https://github.com/anomalyco/rune)
-- [Rune Plan](https://github.com/anomalyco/rune/blob/086d71108622bf83d3e77154cfef7e99fd7fe343/PLAN.md)
-- [Rune Web Target](https://github.com/anomalyco/rune/blob/086d71108622bf83d3e77154cfef7e99fd7fe343/WEB.md)
-- [Rune Changelog](https://github.com/anomalyco/rune/blob/086d71108622bf83d3e77154cfef7e99fd7fe343/CHANGELOG.md)
-- [TextEdit implementation](https://github.com/anomalyco/rune/blob/086d71108622bf83d3e77154cfef7e99fd7fe343/crates/rune/src/edit.rs)
+- [Rune Plan](https://github.com/anomalyco/rune/blob/2e4999f67064dd351e504bbdaaf71f0b601e2114/PLAN.md)
+- [Rune Web Target](https://github.com/anomalyco/rune/blob/2e4999f67064dd351e504bbdaaf71f0b601e2114/WEB.md)
+- [Rune Changelog](https://github.com/anomalyco/rune/blob/2e4999f67064dd351e504bbdaaf71f0b601e2114/CHANGELOG.md)
+- [TextEdit implementation](https://github.com/anomalyco/rune/blob/2e4999f67064dd351e504bbdaaf71f0b601e2114/crates/rune/src/edit.rs)
 
 上游功能状态以固定 revision 的源码和官方文档为准。升级 Rune revision 时，必须重新验证第 3、5、7 节涉及的能力和限制。
