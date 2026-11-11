@@ -13,6 +13,10 @@
  *
  * T04（宿主展示管线）及之后的管线模块在本目录追加；展示器契约类型见
  * `@datazen/extension-points`（T01 已交付）。
+ *
+ * T04 交付的宿主展示管线（本文件追加）：
+ * - presentationPlan：展示快照、语义种映射、列展示计划构建与缓存键；
+ *   纯逻辑，宿主接线 hook 在 `packages/frontend/src/hooks/useValuePresentation.ts`。
  */
 
 export type {
@@ -71,3 +75,23 @@ export {
   TIMESTAMP_CONTRIBUTION_CONFIG_VERSION,
   timestampContribution,
 } from './timestampContribution';
+
+export type {
+  PresentationSemanticKind,
+  PresentationPlanColumn,
+  ValuePresentationSnapshot,
+  ColumnPresentationStatus,
+  ColumnPresentationPlan,
+  BuildColumnPresentationPlansInput,
+  PresentationPlanCacheKeyInput,
+} from './presentationPlan';
+export {
+  resolvePresentationSemanticKind,
+  buildPresentationColumnContext,
+  columnOverrideKey,
+  resolvePresentationEnvironment,
+  createDefaultValuePresentationSnapshot,
+  fallbackPresentationReason,
+  buildColumnPresentationPlans,
+  computePresentationPlanCacheKey,
+} from './presentationPlan';
