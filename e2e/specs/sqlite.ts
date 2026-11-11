@@ -16,7 +16,21 @@ import { t } from '../i18n.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONN_NAME = 'E2E-SQLite';
-const DB_PATH = path.resolve(__dirname, '../fixtures/test.db');
+function resolveSqliteFixturePath(): string {
+  const workerIndex = process.env.E2E_WORKER_INDEX;
+  const port = process.env.E2E_WD_PORT;
+  const workerKey =
+    workerIndex != null && workerIndex !== ''
+      ? `worker-${workerIndex}`
+      : port != null && port !== ''
+        ? `port-${port}`
+        : null;
+  return (
+    process.env.E2E_SQLITE_DB_PATH ||
+    path.resolve(__dirname, '../fixtures', workerKey ? `test-${workerKey}.db` : 'test.db')
+  );
+}
+const DB_PATH = resolveSqliteFixturePath();
 
 describe('SQLite', () => {
   let mainWindow: string;

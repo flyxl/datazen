@@ -7,12 +7,13 @@ merge-base diff，刻意与 select_ci_baseline 的 run 间窗口无关——merg
 的分支会把产品变更（版本号 bump、清单同步等）带进 run 间窗口（PR #182 教训），
 那不是 PR 自身的变更，不能作为豁免依据。push / workflow_dispatch 事件不豁免。
 
-半边基线（per-half baseline）：整轮 run 成功才构成 direct 基线；只有单边 job
-绿、另一边红时（典型：rust 红 → 修复推送 → 重跑），旧逻辑退回 merge-base
-全量，让绿的那半边陪跑。本脚本在此基础上为每个 job 独立找「最近一次该 job
+半边基线（per-half baseline）：为每个 job 独立找「最近一次该 job
 completed+success」的 run：该 sha 到当前的 direct 窗口 = 该半边全部未验证
 变更（中间红 run 的提交都在窗口内，不会漏）。窗口内没有本半边文件即可跳过。
-仅当无整轮成功基线且历史 API 可用时启用；jobs API 故障按半边回退公共基线
+即使存在更早的整轮成功基线，只要其后某半边有更新的单独 green run，也应将该
+半边推进到该 green sha（避免整轮成功后“单边绿、另一边红”的后续提交让已验证
+半边陪跑）。
+仅当有历史 API 证据且 jobs API 可用时启用；jobs API 故障按半边回退公共基线
 （never narrower 不变）。同 sha 多次 run 只信最新一条记录；head_sha 等于当前
 sha 的证据跳过（re-run 当前提交时窗口不能为空）。
 """
@@ -417,8 +418,8 @@ def _resolve_baseline(env: dict[str, str]) -> dict[str, tuple[str, str]]:
 
     mode 为 direct / merge-base / all。公共基线仍是 select_ci_baseline 的
     全套判定（整轮成功 → direct，PR 无成功基线 → merge-base，push 未知
-    历史 → all）；半边细化只在没有整轮成功时尝试——整轮成功的 direct
-    窗口已是最小完整窗口，再拆半边不会更窄。
+    历史 → all）；随后在有历史证据时尝试半边细化：若某半边存在比公共基线
+    更新的单独 green run，则将该半边推进到该 direct 基线，以避免已验证半边陪跑。
     """
     event_name = env["EVENT_NAME"]
     if event_name == "workflow_dispatch":
@@ -465,7 +466,7 @@ def _resolve_baseline(env: dict[str, str]) -> dict[str, tuple[str, str]]:
         event_before=env.get("EVENT_BEFORE", ""),
     )
 
-    if previous_success is None and had_prior_run and api_ok and runs is not None and token:
+    if had_prior_run and api_ok and runs is not None and token:
         def fetch_jobs(run_id: int) -> list[dict[str, Any]]:
             return _fetch_run_jobs(repository=repository, token=token, run_id=run_id)
     else:

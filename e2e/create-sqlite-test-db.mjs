@@ -5,11 +5,23 @@ import Database from 'better-sqlite3';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixturesDir = path.join(__dirname, 'fixtures');
-const dbPath = path.join(fixturesDir, 'test.db');
+const workerIndex = process.env.E2E_WORKER_INDEX;
+const port = process.env.E2E_WD_PORT;
+const workerKey =
+  workerIndex != null && workerIndex !== ''
+    ? `worker-${workerIndex}`
+    : port != null && port !== ''
+      ? `port-${port}`
+      : null;
+const dbPath =
+  process.env.E2E_SQLITE_DB_PATH ||
+  path.join(fixturesDir, workerKey ? `test-${workerKey}.db` : 'test.db');
 
 fs.mkdirSync(fixturesDir, { recursive: true });
-if (fs.existsSync(dbPath)) {
-  fs.unlinkSync(dbPath);
+// Remove stale WAL/SHM sidecar files from previous runs to avoid corruption.
+for (const suffix of ['', '-wal', '-shm']) {
+  const p = suffix ? `${dbPath}${suffix}` : dbPath;
+  if (fs.existsSync(p)) fs.unlinkSync(p);
 }
 
 const db = new Database(dbPath);

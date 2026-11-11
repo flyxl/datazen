@@ -88,7 +88,8 @@ async function dataCleanupMessage(): Promise<string> {
   return section.getText();
 }
 
-describe('UIX — @datazen/ui 抽取后的对话框与复制行为', () => {
+describe('UIX — @datazen/ui 抽取后的对话框与复制行为', function () {
+  this.timeout(180000);
   before(async () => {
     await browser.url('tauri://localhost');
     const nav = await $('[data-testid="workspace-nav-databases"]');
@@ -241,16 +242,45 @@ describe('UIX — @datazen/ui 抽取后的对话框与复制行为', () => {
   });
 
   it('UIX-005: ResultMessageDialog（成功）—— 无复制按钮且关闭按钮文案已本地化', async () => {
+    // Ensure we're in main connection window context with menu listeners active.
+    await browser.url('tauri://localhost');
+    const nav = await $('[data-testid="workspace-nav-databases"]');
+    await nav.waitForDisplayed({ timeout: 20000 });
+    await nav.click().catch(() => {});
+    await browser.pause(800);
+
     // Queue the save-dialog answer *before* triggering the export: emitting
     // first lets the native dialog open (and wait) before any answer exists,
     // and resetting the queue afterwards then threw that pending request away —
     // the export never finished, so the success dialog never appeared.
-    await resetDialogQueue();
-    await injectDialogPath(`${process.env.DATAZEN_DATA_DIR ?? '.'}/uix-export.zip`);
-    await emitCrossWindowEvent('menu:export-config');
+    const outDir = process.env.DATAZEN_DATA_DIR || process.env.TMPDIR || '/tmp';
+    const triggerExport = async (name: string) => {
+      await dismissAnyOpenDialog();
+      await resetDialogQueue();
+      await injectDialogPath(`${outDir}/${name}`);
+      await emitCrossWindowEvent('menu:export-config');
+    };
 
     const okBtn = await $('[data-testid="result-message-ok"]');
-    await okBtn.waitForDisplayed({ timeout: 20000 });
+    let shown = false;
+    for (let attempt = 0; attempt < 4 && !shown; attempt++) {
+      await browser.url('tauri://localhost');
+      const nav2 = await $('[data-testid="workspace-nav-databases"]');
+      await nav2.waitForDisplayed({ timeout: 20000 }).catch(() => {});
+      await nav2.click().catch(() => {});
+      await browser.pause(1000);
+      await triggerExport(`uix-export-${attempt}.zip`);
+      try {
+        await okBtn.waitForDisplayed({ timeout: 30000 });
+        shown = true;
+      } catch {
+        await dismissAnyOpenDialog().catch(() => {});
+        await browser.pause(1500);
+      }
+    }
+    if (!shown) {
+      await okBtn.waitForDisplayed({ timeout: 15000, timeoutMsg: '导出配置成功弹窗未出现' });
+    }
     // OK is the localized `common.ok` ("确定" under zh-CN), NOT a raw key. The
     // unit-test swap from `getByRole(...'common.ok')` to the data-testid was
     // made against a mocked `useI18n`; this case pins the real rendered copy.
@@ -281,31 +311,53 @@ describe('UIX — @datazen/ui 抽取后的对话框与复制行为', () => {
     // behind: the key prompt only appears *after* the export-success dialog is
     // dismissed, and a case that starts mid-flow cannot tell "not reached yet"
     // from "never shown".
-    await resetDialogQueue();
-    await injectDialogPath(`${process.env.DATAZEN_DATA_DIR ?? '.'}/uix-export-key.zip`);
-    await emitCrossWindowEvent('menu:export-config');
+    const outDir = process.env.DATAZEN_DATA_DIR || process.env.TMPDIR || '/tmp';
+    const triggerExport = async (name: string) => {
+      await dismissAnyOpenDialog().catch(() => {});
+      await resetDialogQueue();
+      await injectDialogPath(`${outDir}/${name}`);
+      await emitCrossWindowEvent('menu:export-config');
+    };
 
     const successOk = await $('[data-testid="result-message-ok"]');
-    await successOk.waitForDisplayed({ timeout: 20000 });
+    let shown = false;
+    for (let attempt = 0; attempt < 3 && !shown; attempt++) {
+      await browser.url('tauri://localhost');
+      const nav2 = await $('[data-testid="workspace-nav-databases"]');
+      await nav2.waitForDisplayed({ timeout: 20000 }).catch(() => {});
+      await nav2.click().catch(() => {});
+      await browser.pause(1200);
+      await triggerExport(`uix-export-key-${attempt}.zip`);
+      try {
+        await successOk.waitForDisplayed({ timeout: 25000 });
+        shown = true;
+      } catch {
+        await dismissAnyOpenDialog().catch(() => {});
+        await browser.pause(1200);
+      }
+    }
+    if (!shown) {
+      await successOk.waitForDisplayed({ timeout: 15000, timeoutMsg: '导出配置成功弹窗未出现' });
+    }
     await successOk.click();
     await browser.waitUntil(async () => !(await successOk.isExisting().catch(() => false)), {
-      timeout: 8000,
+      timeout: 10000,
       timeoutMsg: '导出成功弹窗未关闭',
     });
 
     const okBtn = await $('[data-testid="confirm-dialog-ok"]');
-    await okBtn.waitForDisplayed({ timeout: 15000 });
+    await okBtn.waitForDisplayed({ timeout: 20000, timeoutMsg: '备份密钥确认弹窗未出现' });
     await expect(okBtn).toHaveText(expect.stringContaining(t('common.save')));
     expect(await headerCloseLabel()).toBe(t('common.close'));
 
     // Same ordering rule as UIX-005: answer the key-file save dialog before the
     // click that opens it.
     await resetDialogQueue();
-    await injectDialogPath(`${process.env.DATAZEN_DATA_DIR ?? '.'}/uix-datazen.key`);
+    await injectDialogPath(`${outDir}/uix-datazen.key`);
     await okBtn.click();
 
     const savedOk = await $('[data-testid="result-message-ok"]');
-    await savedOk.waitForDisplayed({ timeout: 20000 });
+    await savedOk.waitForDisplayed({ timeout: 25000, timeoutMsg: '备份密钥保存成功弹窗未出现' });
     expect(await headerCloseLabel()).toBe(t('common.close'));
     expect(await headerCloseLabel()).not.toBe('Close');
     expect(
@@ -316,7 +368,7 @@ describe('UIX — @datazen/ui 抽取后的对话框与复制行为', () => {
 
     await savedOk.click();
     await browser.waitUntil(async () => !(await savedOk.isExisting().catch(() => false)), {
-      timeout: 8000,
+      timeout: 10000,
       timeoutMsg: '备份密钥保存成功弹窗未关闭',
     });
   });

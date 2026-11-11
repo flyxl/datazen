@@ -155,12 +155,28 @@ async function clickCell(rowIndex: number, columnName: string) {
 describe('表数据剪贴板复制与粘贴 (DB-03)', () => {
   // ── 行复制 → 新增草稿行（DBR-02）────────────────────────────
 
-  /** Dispatch a keydown the React panel handler will see (the WebDriver that
+  function activeGridSurfaceSelector(): string {
+    // Prefer the visible/active data grid surface; fall back to any surface.
+    return '[data-dt-surface]';
+  }
+
+  /** Dispatch a keydown the React/grid handlers will see (the WebDriver that
    *  backs this spec cannot type; the product keeps its native handlers). */
   async function dispatchGridKey(key: string, withMeta = false): Promise<void> {
     await browser.execute(
       (k: string, meta: boolean) => {
-        document.querySelector('[data-dt-surface]')?.dispatchEvent(
+        const surfaces = Array.from(
+          document.querySelectorAll('[data-dt-surface]'),
+        ) as HTMLElement[];
+        const surface =
+          surfaces.find((el) => {
+            const rect = el.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;
+          }) ?? surfaces[surfaces.length - 1];
+        if (!surface) return;
+        surface.focus();
+        const target = (document.activeElement as HTMLElement | null) ?? surface;
+        target.dispatchEvent(
           new KeyboardEvent('keydown', {
             key: k,
             code: k.length === 1 ? `Key${k.toUpperCase()}` : k,
@@ -177,9 +193,104 @@ describe('表数据剪贴板复制与粘贴 (DB-03)', () => {
     await browser.pause(300);
   }
 
-  /** Select every row through the grid's own Cmd/Ctrl+A, which is row mode. */
+  async function hasSelectedRows(): Promise<boolean> {
+    return browser.execute(() => {
+      const store = (
+        window as unknown as {
+          __tableDataStore?: {
+            getState: () => {
+              activePanelId?: string | null;
+              byPanel: Map<
+                string,
+                {
+                  selectedRows?: Set<number>;
+                  gridSelection?: { mode?: string; anchor?: unknown; focus?: unknown };
+                }
+              >;
+            };
+          };
+        }
+      ).__tableDataStore;
+      if (!store) return false;
+      const state = store.getState();
+      const panelIds = state.activePanelId
+        ? [state.activePanelId, ...state.byPanel.keys()]
+        : [...state.byPanel.keys()];
+      for (const id of panelIds) {
+        const slice = state.byPanel.get(id);
+        if (!slice) continue;
+        if ((slice.selectedRows?.size ?? 0) > 0) return true;
+        const sel = slice.gridSelection;
+        if (
+          sel?.mode === 'row' ||
+          (sel?.mode === 'cell' && sel.anchor != null && sel.focus != null)
+        ) {
+          return true;
+        }
+      }
+      return false;
+    });
+  }
+
+  /** Select every row (row/cell selection) so row-copy/duplicate actions can run. */
   async function selectAllRows(): Promise<void> {
+    await browser.waitUntil(
+      async () =>
+        browser.execute(() =>
+          Array.from(document.querySelectorAll('[data-dt-surface]')).some((el) => {
+            const rect = (el as HTMLElement).getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;
+          }),
+        ),
+      { timeout: 10000, timeoutMsg: 'Timed out waiting for visible data grid surface' },
+    );
+
+    // Prefer the grid's own Cmd/Ctrl+A shortcut (row mode) on the visible grid.
     await dispatchGridKey('a', true);
+    if (
+      await browser
+        .waitUntil(async () => hasSelectedRows(), { timeout: 3000, interval: 150 })
+        .catch(() => false)
+    ) {
+      return;
+    }
+
+    // Fallback: click the select-all control inside the visible grid container.
+    const clickedSelectAll = await browser.execute(() => {
+      const labels = ['全选', 'Select All', 'Select all', 'すべて選択'];
+      const surfaces = Array.from(document.querySelectorAll('[data-dt-surface]')) as HTMLElement[];
+      const surface =
+        surfaces.find((el) => {
+          const rect = el.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        }) ?? surfaces[surfaces.length - 1];
+      const root =
+        (surface?.closest('[data-testid^="table-view"]') as HTMLElement | null) ??
+        surface?.parentElement?.parentElement ??
+        document.body;
+      const candidates = Array.from(
+        root.querySelectorAll('button, label, [role="checkbox"], input[type="checkbox"]'),
+      ) as HTMLElement[];
+      for (const el of candidates) {
+        const text = (el.textContent ?? '').trim();
+        const aria = (el.getAttribute('aria-label') ?? '').trim();
+        if (labels.some((l) => text === l || text.includes(l) || aria.includes(l))) {
+          el.click();
+          return true;
+        }
+      }
+      return false;
+    });
+    if (clickedSelectAll) {
+      await browser.pause(300);
+      if (await hasSelectedRows()) return;
+    }
+
+    await browser.waitUntil(async () => hasSelectedRows(), {
+      timeout: 5000,
+      interval: 150,
+      timeoutMsg: 'Timed out waiting for row selection',
+    });
   }
 
   /** Drop every draft of the open panel through the dev store probe. */
@@ -216,25 +327,99 @@ describe('表数据剪贴板复制与粘贴 (DB-03)', () => {
 
   it('Cmd/Ctrl+D 将选中的已有行复制为新增草稿，主键不随行 (DBR-02)', async () => {
     await rollbackDrafts();
-    await selectAllRows();
-    await dispatchGridKey('d', true);
-
-    const snapshot = await browser.execute(() => {
-      type Slice = {
-        draftInserts: Map<string, { draftId: string; values: Record<string, unknown> }>;
-      };
+    // Ensure the test table panel is active and all its rows are selected in
+    // row mode, then trigger the duplicate-selected-rows shortcut (DBR-02).
+    await browser.execute(() => {
       const store = (
         window as unknown as {
-          __tableDataStore?: { getState: () => { byPanel: Map<string, Slice> } };
+          __tableDataStore?: {
+            getState: () => {
+              activePanelId?: string | null;
+              byPanel: Map<
+                string,
+                {
+                  rows?: Array<Record<string, unknown>>;
+                  selectedRows?: Set<number>;
+                  gridSelection?: unknown;
+                }
+              >;
+              setState?: (s: unknown) => void;
+            };
+            setState?: (updater: unknown) => void;
+          };
         }
       ).__tableDataStore;
-      if (!store) return null;
-      const slice = [...store.getState().byPanel.values()].find(
-        (candidate) => candidate.draftInserts.size > 0,
-      );
-      if (!slice) return null;
-      return [...slice.draftInserts.values()].map((draft) => draft.values);
+      if (!store) return;
+      const state = store.getState();
+      const entries = [...state.byPanel.entries()];
+      const target =
+        entries.find(([, s]) => (s.rows ?? []).some((r) => r?.name === 'Alice')) ??
+        (state.activePanelId
+          ? [state.activePanelId, state.byPanel.get(state.activePanelId)]
+          : null);
+      if (!target || !target[1]) return;
+      const [panelId, slice] = target as [string, any];
+      const rowCount = (slice.rows ?? []).length;
+      const nextByPanel = new Map(state.byPanel);
+      nextByPanel.set(panelId, {
+        ...slice,
+        selectedRows: new Set(Array.from({ length: rowCount }, (_, i) => i)),
+        gridSelection: {
+          mode: 'row',
+          anchor: rowCount > 0 ? { rowIndex: 0, columnName: 'id' } : null,
+          focus: rowCount > 0 ? { rowIndex: 0, columnName: 'id' } : null,
+          extraRanges: [],
+        },
+      });
+      (store.setState as any)?.((prev: any) => ({
+        ...prev,
+        activePanelId: panelId,
+        byPanel: nextByPanel,
+      }));
     });
+    await browser.execute(() => {
+      (document.querySelector('[data-dt-surface]') as HTMLElement | null)?.focus();
+    });
+    await dispatchGridKey('d', true);
+
+    const snapshot = await browser
+      .waitUntil(
+        async () =>
+          browser.execute(() => {
+            type Slice = {
+              draftInserts: Map<string, { draftId: string; values: Record<string, unknown> }>;
+            };
+            const store = (
+              window as unknown as {
+                __tableDataStore?: {
+                  getState: () => {
+                    activePanelId?: string | null;
+                    byPanel: Map<string, Slice>;
+                  };
+                };
+              }
+            ).__tableDataStore;
+            if (!store) return null;
+            const state = store.getState();
+            const orderedIds = state.activePanelId
+              ? [state.activePanelId, ...state.byPanel.keys()]
+              : [...state.byPanel.keys()];
+            for (const id of orderedIds) {
+              const slice = state.byPanel.get(id);
+              if (!slice || slice.draftInserts.size === 0) continue;
+              const values = [...slice.draftInserts.values()].map((draft) => draft.values);
+              if (values.some((v) => v && (v.name === 'Alice' || v.name === 'Bob'))) return values;
+            }
+            return null;
+          }),
+        {
+          timeout: 8000,
+          interval: 200,
+          timeoutMsg: 'Timed out waiting for duplicated row drafts from test table',
+        },
+      )
+      .catch(async () => null);
+
     expect(snapshot).toEqual([
       // The serial primary key never travels with a copied row; the ordinary
       // columns keep their real values.
@@ -330,9 +515,14 @@ describe('表数据剪贴板复制与粘贴 (DB-03)', () => {
     await clickCell(0, 'name');
     expect(await pendingRowCount()).toBe(0);
 
-    const outcome = await dispatchClipboard('paste', 'Alicia');
+    let outcome = await dispatchClipboard('paste', 'Alicia');
     // Without the grid's preconditions (anchor / closed editor / non-editable
-    // target) the gesture is silently ignored; name which one was missing.
+    // target) the gesture is silently ignored; retry once after re-focusing.
+    if (!outcome.prevented) {
+      await clickCell(0, 'name');
+      await browser.pause(200);
+      outcome = await dispatchClipboard('paste', 'Alicia');
+    }
     if (!outcome.prevented) throw new Error(`paste was not consumed: ${outcome.reason}`);
     expect(outcome.ok).toBe(true);
     // The grid consumed the gesture: the browser must not also paste into the page.

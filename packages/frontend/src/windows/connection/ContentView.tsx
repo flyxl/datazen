@@ -451,6 +451,19 @@ export function ContentView({
     [setImportTableName, setImportOpen],
   );
 
+  useEffect(() => {
+    if (!import.meta.env.DEV && import.meta.env.VITE_E2E !== '1') return;
+    const w = window as unknown as {
+      __datazenOpenImport?: typeof requestImport;
+    };
+    w.__datazenOpenImport = requestImport;
+    return () => {
+      if (w.__datazenOpenImport === requestImport) {
+        delete w.__datazenOpenImport;
+      }
+    };
+  }, [requestImport]);
+
   /**
    * After an import finishes (DBR-01): refresh the schema tree AND reload the
    * data of any open table panel showing the target table, so the new rows are

@@ -20,10 +20,23 @@ vi.mock('../../lib/themePackApply', () => ({
   syncWebviewBackgroundFromTokens: vi.fn(),
 }));
 
-vi.mock('../../lib/resolveUiLanguage', () => ({
-  resolveUiLanguage: (locale: string) =>
-    locale.trim().toLowerCase().replace(/_/g, '-').startsWith('zh') ? 'zh-CN' : 'en',
-}));
+vi.mock('../../lib/resolveUiLanguage', () => {
+  const resolveUiLanguage = (locale: string) => {
+    const normalized = locale.trim().toLowerCase().replace(/_/g, '-');
+    if (normalized.startsWith('zh')) return 'zh-CN';
+    if (normalized.startsWith('en')) return 'en';
+    return 'en';
+  };
+  const normalizeSettingsLanguage = (language: string) => {
+    const normalized = language.trim().replace(/_/g, '-');
+    if (!normalized) return 'en';
+    const lower = normalized.toLowerCase();
+    if (lower === 'zh-cn' || lower.startsWith('zh')) return 'zh-CN';
+    if (lower === 'en' || lower.startsWith('en')) return 'en';
+    return normalized;
+  };
+  return { resolveUiLanguage, normalizeSettingsLanguage };
+});
 
 describe('settingsStore', () => {
   let useSettingsStore: typeof import('../settingsStore').useSettingsStore;
@@ -84,7 +97,7 @@ describe('settingsStore', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(true);
   });
 
-  it('loadSettings normalizes a saved unsupported language to English', async () => {
+  it('loadSettings preserves a saved non-builtin language code (e.g. installed language pack)', async () => {
     mockSettingsCommands.getSettings.mockResolvedValueOnce({
       theme: { mode: 'light', packId: null },
       language: 'ja',
@@ -92,7 +105,7 @@ describe('settingsStore', () => {
 
     await useSettingsStore.getState().loadSettings();
 
-    expect(useSettingsStore.getState().settings.language).toBe('en');
+    expect(useSettingsStore.getState().settings.language).toBe('ja');
   });
 
   it('SS-P1: loadSettings dispatches a persisted plugin:<id>:<theme> packId to applyThemePack verbatim', async () => {
@@ -211,17 +224,17 @@ describe('settingsStore', () => {
     expect(mockSettingsCommands.saveSettings).toHaveBeenCalled();
   });
 
-  it('updateSettings normalizes unsupported languages before saving and syncing the menu', async () => {
+  it('updateSettings preserves non-builtin language codes before saving and syncing the menu', async () => {
     mockSettingsCommands.saveSettings.mockResolvedValue(undefined);
     const { settingsCommands } = await import('../../commands/settings');
 
     await useSettingsStore.getState().updateSettings({ language: 'ja' });
 
-    expect(useSettingsStore.getState().settings.language).toBe('en');
+    expect(useSettingsStore.getState().settings.language).toBe('ja');
     expect(mockSettingsCommands.saveSettings).toHaveBeenLastCalledWith(
-      expect.objectContaining({ language: 'en' }),
+      expect.objectContaining({ language: 'ja' }),
     );
-    expect(settingsCommands.syncLanguageMenu).toHaveBeenCalledWith('en');
+    expect(settingsCommands.syncLanguageMenu).toHaveBeenCalledWith('ja');
   });
 
   it('updateSettings applies theme when theme partial provided', async () => {
@@ -266,7 +279,7 @@ describe('settingsStore', () => {
       theme: { mode: 'system', packId: null },
     });
 
-    expect(useSettingsStore.getState().settings.language).toBe('en');
+    expect(useSettingsStore.getState().settings.language).toBe('ja');
     expect(useSettingsStore.getState().settings.theme.mode).toBe('system');
   });
 

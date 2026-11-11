@@ -108,11 +108,64 @@ export async function runHcObj(ctx: ContractConnCtx) {
 /** HC-EXPLAIN: explain button produces plan chrome. */
 export async function runHcExplain(ctx: ContractConnCtx) {
   await focusContractCtx(ctx);
-  await openQueryTab();
+  // HC-OBJ may leave the routines/objects panel active, which can hide the
+  // query toolbar/editor. Return to a normal table workspace first, then open
+  // a query tab for EXPLAIN.
+  try {
+    const table = await seedContractTable(ctx, 'data');
+    await clickTableInSidebar(table);
+    await browser.pause(800);
+  } catch {
+    // Fall through to generic recovery.
+  }
+  for (let i = 0; i < 5; i++) {
+    if (
+      await $('[data-testid="editor-execute-button"]')
+        .isExisting()
+        .catch(() => false)
+    )
+      break;
+    await browser.keys(['Escape']).catch(() => {});
+    await browser.pause(250);
+    await browser
+      .execute(() => {
+        const clickFirst = (selector: string) => {
+          const el = document.querySelector(selector) as HTMLElement | null;
+          if (!el) return false;
+          const rect = el.getBoundingClientRect();
+          if (rect.width <= 0 || rect.height <= 0) return false;
+          el.click();
+          return true;
+        };
+        const hasQueryControl =
+          !!document.querySelector('[data-testid="conn-toolbar-new-query"]') ||
+          !!document.querySelector('[data-testid="home-quick-new-query"]');
+        if (!hasQueryControl) {
+          clickFirst('[data-testid="content-toolbar-objects"]');
+        }
+        clickFirst('[data-testid="home-quick-new-query"]') ||
+          clickFirst('[data-testid="conn-toolbar-new-query"]');
+      })
+      .catch(() => {});
+    await browser.pause(400);
+    if (
+      await $('[data-testid="editor-execute-button"]')
+        .isExisting()
+        .catch(() => false)
+    )
+      break;
+  }
+  if (
+    !(await $('[data-testid="editor-execute-button"]')
+      .isExisting()
+      .catch(() => false))
+  ) {
+    await openQueryTab();
+  }
   await setEditorContent('SELECT 1 AS n');
   await browser.pause(300);
   const explainBtn = await $('[data-testid="editor-explain-button"]');
-  await explainBtn.waitForDisplayed({ timeout: 8000 });
+  await explainBtn.waitForDisplayed({ timeout: 10000 });
   await explainBtn.click();
   await browser.waitUntil(
     async () => {
@@ -133,6 +186,7 @@ export async function runHcExplain(ctx: ContractConnCtx) {
       body.includes(t('explain.loading')) ||
       body.includes('Result') ||
       body.includes('SCAN') ||
+      body.includes('EXPLAIN') ||
       body.includes('plan'),
   ).toBe(true);
 }

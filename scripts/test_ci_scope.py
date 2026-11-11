@@ -467,6 +467,38 @@ class HalfBaselineTests(unittest.TestCase):
         rust_window: list[str] = []
         self.assertEqual(classify_half_windows(frontend_window, rust_window), (True, False))
 
+    def test_newer_half_green_advances_beyond_whole_run_success(self) -> None:
+        """整轮成功之后若某半边有更新的单独 green run，应推进该半边基线。"""
+        runs = [
+            self._prior_run(31, "2026-11-07T13:00:00Z", "sha-current", "in_progress", None),
+            # 更新：rust 绿、frontend 红（整轮失败），但 rust 已被验证到此 sha。
+            self._prior_run(30, "2026-11-07T12:00:00Z", "sha-rust-green", "completed", "failure"),
+            # 更早：整轮成功（公共基线候选）。
+            self._prior_run(29, "2026-11-07T11:00:00Z", "sha-whole-success", "completed", "success"),
+        ]
+        jobs = {
+            30: [
+                self._job("frontend", "completed", "failure"),
+                self._job("rust", "completed", "success"),
+            ],
+            29: [
+                self._job("frontend", "completed", "success"),
+                self._job("rust", "completed", "success"),
+            ],
+        }
+        bases = resolve_half_baselines(
+            common_base=("sha-whole-success", "direct"),
+            runs=runs,
+            current_run_id="31",
+            current_sha="sha-current",
+            event_name="pull_request",
+            pr_number=self.PR_NUMBER,
+            head_branch="feature",
+            jobs_fetcher=lambda run_id: jobs[run_id],
+        )
+        self.assertEqual(bases["rust"], ("sha-rust-green", "direct"))
+        self.assertEqual(bases["frontend"], ("sha-whole-success", "direct"))
+
 
 def _repo_with_merged_main(repository: Path) -> tuple[str, str, str]:
     """构造「merge 过 main 的 docs-only 分支」夹具（PR #182 场景）。

@@ -14,7 +14,21 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '../..');
 const CONN_NAME = 'E2E-SQLite-CODEBLOCK';
-const DB_PATH = path.resolve(__dirname, '../fixtures/test.db');
+function resolveSqliteFixturePath(): string {
+  const workerIndex = process.env.E2E_WORKER_INDEX;
+  const port = process.env.E2E_WD_PORT;
+  const workerKey =
+    workerIndex != null && workerIndex !== ''
+      ? `worker-${workerIndex}`
+      : port != null && port !== ''
+        ? `port-${port}`
+        : null;
+  return (
+    process.env.E2E_SQLITE_DB_PATH ||
+    path.resolve(__dirname, '../fixtures', workerKey ? `test-${workerKey}.db` : 'test.db')
+  );
+}
+const DB_PATH = resolveSqliteFixturePath();
 
 const SQL_MSG =
   'Try this query:\n```sql\nSELECT id FROM users LIMIT 10;\n```\nLet me know if you need changes.';
@@ -127,7 +141,11 @@ describe('AI Chat inline code blocks (E2E)', () => {
   let mainWindow: string;
 
   before(async () => {
-    execSync('node e2e/create-sqlite-test-db.mjs', { cwd: ROOT, stdio: 'pipe' });
+    execSync('node e2e/create-sqlite-test-db.mjs', {
+      cwd: ROOT,
+      stdio: 'pipe',
+      env: { ...process.env, E2E_SQLITE_DB_PATH: DB_PATH },
+    });
 
     mainWindow = await browser.getWindowHandle();
     await closeExtraWindows(mainWindow);

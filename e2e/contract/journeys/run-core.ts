@@ -58,6 +58,33 @@ export async function runHcFilter(ctx: ContractConnCtx) {
     await browser.pause(400);
   }
   await $('[data-testid="filter-editor"]').waitForDisplayed({ timeout: 5000 });
+  // Ensure structured mode/editor body is visible even if a previous state left
+  // the panel in a different mode.
+  const structuredMode = await $('[data-testid="filter-mode-structured"]');
+  if (
+    (await structuredMode.isExisting().catch(() => false)) &&
+    (await structuredMode.getAttribute('aria-selected').catch(() => null)) === 'false'
+  ) {
+    await structuredMode.click();
+    await browser.pause(300);
+  }
+  const editorBodyVisible = async () =>
+    (await $('[data-testid="filter-apply"]')
+      .isDisplayed()
+      .catch(() => false)) ||
+    (await $('[data-testid="filter-add"]')
+      .isDisplayed()
+      .catch(() => false)) ||
+    (await $('[data-testid="filter-value"]')
+      .isDisplayed()
+      .catch(() => false));
+  if (!(await editorBodyVisible())) {
+    const summary = await $('[data-testid="filter-summary-toggle"]');
+    if (await summary.isExisting().catch(() => false)) {
+      await summary.click();
+      await browser.pause(300);
+    }
+  }
   // The editor is intentionally empty after opening a fresh table. Add the
   // first condition before selecting a column; otherwise the only listbox is
   // the page-size selector and the column trigger cannot be found.
@@ -71,6 +98,7 @@ export async function runHcFilter(ctx: ContractConnCtx) {
 
   // Empty apply regression
   const applyBtn = await $('[data-testid="filter-apply"]');
+  await applyBtn.waitForDisplayed({ timeout: 10000 });
   if (await applyBtn.isEnabled()) {
     await applyBtn.click();
     await browser.pause(800);

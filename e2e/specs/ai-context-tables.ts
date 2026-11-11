@@ -15,7 +15,21 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '../..');
 const CONN_NAME = 'E2E-SQLite-CTX';
-const DB_PATH = path.resolve(__dirname, '../fixtures/test.db');
+function resolveSqliteFixturePath(): string {
+  const workerIndex = process.env.E2E_WORKER_INDEX;
+  const port = process.env.E2E_WD_PORT;
+  const workerKey =
+    workerIndex != null && workerIndex !== ''
+      ? `worker-${workerIndex}`
+      : port != null && port !== ''
+        ? `port-${port}`
+        : null;
+  return (
+    process.env.E2E_SQLITE_DB_PATH ||
+    path.resolve(__dirname, '../fixtures', workerKey ? `test-${workerKey}.db` : 'test.db')
+  );
+}
+const DB_PATH = resolveSqliteFixturePath();
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   const result = await browser.executeAsync(
@@ -132,7 +146,11 @@ describe('AI context tables (CTX-T01~T06)', () => {
   let contextDir: string;
 
   before(async () => {
-    execSync('node e2e/create-sqlite-test-db.mjs', { cwd: ROOT, stdio: 'pipe' });
+    execSync('node e2e/create-sqlite-test-db.mjs', {
+      cwd: ROOT,
+      stdio: 'pipe',
+      env: { ...process.env, E2E_SQLITE_DB_PATH: DB_PATH },
+    });
 
     mainWindow = await browser.getWindowHandle();
     await closeExtraWindows(mainWindow);

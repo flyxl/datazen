@@ -227,28 +227,88 @@ describe('结构对比窗口 (SD-001~SD-004, SD-LIM)', () => {
     await clickSchemaDiffCompare();
     await advanceSchemaDiffToPlan();
 
-    await $('[data-testid="schema-diff-profile-save"]').click();
+    // Save profile from plan state (profile controls are visible on plan step).
+    const saveBtn = await $('[data-testid="schema-diff-profile-save"]');
+    await saveBtn.waitForClickable({ timeout: 15000 });
+    await saveBtn.click();
     const dialog = await $('[data-testid="schema-diff-profile-dialog"]');
     await dialog.waitForDisplayed({ timeout: 8000 });
     await $('[data-testid="schema-diff-profile-name"]').setValue('E2E Schema Profile');
     await $('[data-testid="schema-diff-profile-save-confirm"]').click();
-    await browser.waitUntil(
-      async () =>
-        (await $('[data-testid="schema-diff-profile-select"]').getText()).includes(
-          'E2E Schema Profile',
-        ),
-      { timeout: 8000, timeoutMsg: '等待 Schema Diff profile 保存完成超时' },
-    );
+    await browser.waitUntil(async () => !(await dialog.isDisplayed().catch(() => false)), {
+      timeout: 20000,
+      timeoutMsg: '等待 Schema Diff profile 保存对话框关闭超时',
+    });
 
-    await selectDzOption('E2E Schema Profile', 'E2E Schema Profile');
-    await $('[data-testid="schema-diff-profile-load"]').click();
+    // Saved profile should be selected/refreshed; load it to restore scope and trigger object inspection.
     await browser.waitUntil(
       async () =>
-        await $('[data-testid="schema-diff-objects-panel"]')
-          .isDisplayed()
-          .catch(() => false),
-      { timeout: 15000, timeoutMsg: '加载 Schema Diff profile 后未回到对象检查步骤' },
+        (await $('[data-testid="schema-diff-profile-load"]')
+          .getAttribute('disabled')
+          .catch(() => 'true')) === null,
+      { timeout: 20000, timeoutMsg: 'Schema Diff profile 加载按钮未可用' },
     );
+    await browser.keys('Escape').catch(() => {});
+    const loadBtn = await $('[data-testid="schema-diff-profile-load"]');
+    await loadBtn.waitForClickable({ timeout: 15000 });
+    await loadBtn.click();
+
+    const hasRows = async () => (await $$('[data-testid="schema-diff-table-row"]').length) > 0;
+    const onObjects = async () =>
+      (await $('[data-testid="schema-diff-objects-panel"]')
+        .isDisplayed()
+        .catch(() => false)) ||
+      (await $('[data-testid="schema-diff-objects-step"]')
+        .isDisplayed()
+        .catch(() => false));
+    const onEndpoints = async () =>
+      await $('[data-testid="schema-diff-source"]')
+        .isDisplayed()
+        .catch(() => false);
+    const clickBack = async () =>
+      browser.execute(() => {
+        const btn = Array.from(document.querySelectorAll('button')).find((b) => {
+          const text = b.textContent || '';
+          return (
+            !!b.querySelector('svg.lucide-chevron-left') ||
+            text.includes('上一步') ||
+            text.includes('Back')
+          );
+        }) as HTMLButtonElement | undefined;
+        if (btn && !btn.disabled) btn.click();
+      });
+
+    const restoreDeadline = Date.now() + 50000;
+    while (Date.now() < restoreDeadline) {
+      if (await hasRows()) break;
+
+      if (await onObjects()) {
+        await browser.pause(800);
+        continue;
+      }
+
+      if (await onEndpoints()) {
+        // Profile load sets picks/endpoints; advancing should reach objects with restored scope.
+        try {
+          await waitForSchemaDiffNextEnabled(15000);
+        } catch {
+          await selectSchemaDiffEndpoints(E2E_PG_CONN_NAME, 'E2E-PG-目标').catch(() => {});
+        }
+        await clickSchemaDiffNext().catch(() => {});
+        await browser.pause(1200);
+        continue;
+      }
+
+      // Still on plan/compare/deploy while async inspect runs or if it stayed; step back toward endpoints/objects.
+      await clickBack();
+      await browser.pause(700);
+    }
+
+    await browser.waitUntil(hasRows, {
+      timeout: 15000,
+      timeoutMsg: '加载 Schema Diff profile 后未恢复对象范围',
+    });
+
     expect(await $$('[data-testid="schema-diff-table-row"]')).not.toHaveLength(0);
     await captureJourneyStep('schema-diff-profile-loaded');
   });

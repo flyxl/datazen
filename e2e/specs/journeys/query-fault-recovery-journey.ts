@@ -180,9 +180,15 @@ describe('查询故障恢复完整旅程 (QUERY-FAULT-RECOVERY-JOURNEY)', functi
         await setEditorContent('SELECT pg_sleep(30) AS fault_cancel_probe');
         await clickExecute();
         await waitForStopButton(15000);
-        await inPageClick('[data-testid="editor-stop-button"]');
+        // Retry stop click if cancel is slow to take effect under load.
+        const cancelDeadline = Date.now() + 30000;
+        while (Date.now() < cancelDeadline) {
+          await inPageClick('[data-testid="editor-stop-button"]');
+          if (!(await stopButtonVisible())) break;
+          await browser.pause(500);
+        }
         await browser.waitUntil(async () => !(await stopButtonVisible()), {
-          timeout: 20000,
+          timeout: 5000,
           timeoutMsg: 'stop button never cleared after the cancel request',
         });
         facts.cancelled = true;

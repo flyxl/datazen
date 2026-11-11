@@ -3,6 +3,7 @@
  */
 import { CONNECT_COMMANDS, dbSessionIdOf } from '../lib/sessionId.js';
 import { expect, browser, $ } from '@wdio/globals';
+import * as path from 'node:path';
 import {
   closeExtraWindows,
   executeSQL,
@@ -82,7 +83,17 @@ describe('边缘用例 (TC-EDGE-001/002/004/008)', () => {
   });
 
   it('TC-EDGE-002: 特殊字符 SQLite 文件名连接应可保存', async () => {
-    const fixture = `${process.cwd()}/e2e/fixtures/test.db`;
+    const workerIndex = process.env.E2E_WORKER_INDEX;
+    const port = process.env.E2E_WD_PORT;
+    const workerKey =
+      workerIndex != null && workerIndex !== ''
+        ? `worker-${workerIndex}`
+        : port != null && port !== ''
+          ? `port-${port}`
+          : null;
+    const fixture =
+      process.env.E2E_SQLITE_DB_PATH ||
+      path.resolve(process.cwd(), 'e2e/fixtures', workerKey ? `test-${workerKey}.db` : 'test.db');
     await invokeBackend('save_connection', {
       config: {
         id: specialDbConnId,
