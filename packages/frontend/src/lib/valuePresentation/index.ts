@@ -6,7 +6,12 @@
  * - timestampFormat：iso / iso-tz / locale 三种输出格式。
  * - timestampConfig：时间展示器配置类型与纯验证（JSON 可序列化）。
  *
- * T03（展示器贡献注册）及之后的管线模块在本目录追加；展示器契约类型见
+ * T03 交付的展示器贡献（本文件追加）：
+ * - timestampContribution：`datazen.timestamp` 贡献对象（validateConfig /
+ *   prepare），装配 T02 核心供宿主展示管线消费；接线 CellRenderer /
+ *   DetailPanel 属 T05，不在本目录。
+ *
+ * T04（宿主展示管线）及之后的管线模块在本目录追加；展示器契约类型见
  * `@datazen/extension-points`（T01 已交付）。
  */
 
@@ -60,3 +65,9 @@ export type {
   TimestampOptionsValidation,
 } from './timestampConfig';
 export { validateTimestampOptions } from './timestampConfig';
+
+export {
+  TIMESTAMP_CONTRIBUTION_ID,
+  TIMESTAMP_CONTRIBUTION_CONFIG_VERSION,
+  timestampContribution,
+} from './timestampContribution';
