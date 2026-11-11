@@ -17,7 +17,7 @@ fn view(_: &AppState, _: &mut Cx<AppState>) -> El {
         .font(type_::TITLE)
         .color(theme.text);
     let subtitle = text("Native UI migration bootstrap")
-        .color(theme.text_muted);
+        .color(theme.text);
     let status = text("Rune renderer is active")
         .color(theme.text);
     col()
