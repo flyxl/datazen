@@ -193,6 +193,37 @@ describe('resolve-pro codegen output', () => {
     expect(content).not.toContain('@datazen/extension-sql-editor-pro');
   });
 
+  it('builds the Pro entry from the verified bundle, not from a second path', () => {
+    // A mechanical directory move rewrote the entry fetch to
+    // `extDir('packages/desktop/dist', 'index.esm.js')`. That path does not
+    // exist inside the extension package, so packaged builds logged
+    // "running community fallback" and every Pro feature (including Alt+Enter
+    // star expansion) was silently absent while the dev server stayed green.
+    const dir = mkdtempSync(join(tmpdir(), 'resolve-pro-test-'));
+    const file = join(dir, 'generated-pro.ts');
+    writeProCodegen(file);
+    const content = readFileSync(file, 'utf-8');
+
+    expect(content.match(/fetchText\('dist\/index\.esm\.js'\)/g) ?? []).toHaveLength(1);
+    expect(content).toContain('new Blob([bundleContent]');
+    // Code assertion, not prose: the comment above names the old broken path.
+    expect(content).not.toContain('const entryPath = await extDir(');
+    expect(content).not.toMatch(/await extDir\(['"](?:apps|packages)\/desktop\/dist/);
+
+    // The DEV entry had the same mechanical-rename damage: it pointed at
+    // `<pro checkout>/packages/frontend/src/index.ts`, but the extension entry
+    // is `<pro checkout>/src/index.ts`. Both branches must resolve or neither
+    // the dev server nor the packaged app can load the extension.
+    const proPath = join(tmpdir(), 'pro-ext-fixture');
+    const devFile = join(dir, 'generated-pro-dev.ts');
+    writeProCodegen(devFile, { proPath });
+    const devContent = readFileSync(devFile, 'utf-8');
+    expect(devContent).toContain(
+      `const PRO_DEV_ENTRY = '${join(proPath, 'src/index.ts').replace(/\\/g, '/')}';`,
+    );
+    expect(devContent).not.toContain('packages/frontend/src/index.ts');
+  });
+
   it('preserves existing generated-pro.ts when codegenOnly is run without explicit edition', () => {
     const sb = makeSandbox();
     try {

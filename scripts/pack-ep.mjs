@@ -887,7 +887,9 @@ export function stagePackageTree(
   mkdirSync(targetDir, { recursive: true });
 
   cpSync(join(sourceDir, 'manifest.json'), join(targetDir, 'manifest.json'));
-  mkdirSync(join(targetDir, 'packages/desktop/dist'), { recursive: true });
+  // `cpSync` creates `dist/`; the old explicit mkdir became
+  // `packages/desktop/dist` during a mechanical directory rename, leaving an
+  // empty directory that made the packaged loader look correct on paper.
   cpSync(join(sourceDir, 'dist/index.esm.js'), join(targetDir, 'dist/index.esm.js'));
   if (rewriteImports) {
     // Track B: blob-loaded bundles cannot resolve bare imports — rewrite to
