@@ -95,3 +95,13 @@ export {
   buildColumnPresentationPlans,
   computePresentationPlanCacheKey,
 } from './presentationPlan';
+
+// T06（设置持久化链路，设计 §5/§6）：存储形状、宽容解析、快照构建与
+// 核心内置贡献的启动注册。设置 UI / 规则 / 列覆盖持久化不在 T06。
+export type { StoredRendererSettings, StoredValuePresentationSettings } from './settings';
+export {
+  DEFAULT_VALUE_PRESENTATION_SETTINGS,
+  parseStoredValuePresentationSettings,
+  buildValuePresentationSnapshot,
+} from './settings';
+export { registerBundledValuePresentationContributions } from './registerBundledContributions';

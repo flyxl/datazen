@@ -346,6 +346,13 @@ impl AppSettings {
             monitor: self.monitor.clone(),
             onboarding: self.onboarding.clone(),
             row_count_mode: self.row_count_mode.clone(),
+            // Issue-32 T06: the desktop AppSettings projection does not own
+            // this field (no `value_presentation` host field yet — F4-style
+            // promotion is a follow-up); the shared path therefore reports
+            // the default here. The full-blob path keeps the frontend value
+            // opaquely in `extra` (flatten catch-all), so nothing is lost
+            // on disk, but the shared read does not surface it.
+            value_presentation: Default::default(),
         }
     }
     pub fn apply_shared_settings(&mut self, value: SharedSettings) -> Result<(), String> {

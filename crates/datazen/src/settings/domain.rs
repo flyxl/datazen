@@ -21,10 +21,53 @@ pub struct SharedSettings {
     pub onboarding: Option<OnboardingState>,
     #[serde(default = "default_row_count_mode")]
     pub row_count_mode: String,
+    /// Value-presentation settings (issue-32 T06); `default` keeps older
+    /// payloads loadable.
+    #[serde(default)]
+    pub value_presentation: ValuePresentationSettings,
 }
 
 fn default_row_count_mode() -> String {
     "auto".into()
+}
+
+/// Value-presentation settings (issue-32 T06, design §5/§6).
+///
+/// Versioned, namespaced per renderer id. Rust only stores and forwards
+/// this blob: `renderers` values are uninterpreted JSON
+/// (`serde_json::Value`), so the host (frontend) owns option-shape
+/// validation at its boundary; unknown renderers and unknown versions are
+/// preserved verbatim, never rejected or rewritten (design §6: an unknown
+/// version keeps the original instead of being overwritten with defaults).
+///
+/// Entry shape: `{ enabled: bool, options: TimestampOptions JSON }`
+/// (canonical option type:
+/// `packages/frontend/src/lib/valuePresentation/timestampConfig.ts`;
+/// the backend-client mirror is
+/// `SettingsValuePresentationRendererSettings`).
+/// `rules` are NOT in this version's shape (T08 extends it, and the
+/// version / field handling is revisited then). Table-column overrides are
+/// NOT stored here either (T10).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ValuePresentationSettings {
+    #[serde(default = "default_value_presentation_version")]
+    pub version: u32,
+    #[serde(default)]
+    pub renderers: serde_json::Map<String, serde_json::Value>,
+}
+
+fn default_value_presentation_version() -> u32 {
+    1
+}
+
+impl Default for ValuePresentationSettings {
+    fn default() -> Self {
+        Self {
+            version: 1,
+            renderers: serde_json::Map::new(),
+        }
+    }
 }
 
 /// Onboarding wizard state, portable across form factors.
@@ -236,6 +279,42 @@ mod tests {
             settings.apply_result_limit(&mut input);
             assert_eq!(input["limit"], 100);
         }
+    }
+
+    #[test]
+    fn value_presentation_defaults_to_version_1_with_no_renderers() {
+        assert_eq!(
+            ValuePresentationSettings::default(),
+            ValuePresentationSettings {
+                version: 1,
+                renderers: serde_json::Map::new(),
+            }
+        );
+        // An empty object loads as the default (old payloads carry no field).
+        let loaded: ValuePresentationSettings =
+            serde_json::from_value(serde_json::json!({})).expect("empty object loads");
+        assert_eq!(loaded, ValuePresentationSettings::default());
+    }
+
+    #[test]
+    fn value_presentation_round_trips_unknown_version_and_renderers() {
+        // Unknown versions and unknown renderers are preserved verbatim:
+        // Rust only stores the blob, the frontend validates at its boundary.
+        let mut renderers = serde_json::Map::new();
+        renderers.insert(
+            "acme.future".into(),
+            serde_json::json!({"enabled": true, "options": {"format": "iso"}}),
+        );
+        let settings = ValuePresentationSettings {
+            version: 99,
+            renderers,
+        };
+        let value = serde_json::to_value(&settings).expect("serialize");
+        let loaded: ValuePresentationSettings =
+            serde_json::from_value(value).expect("round-trip loads");
+        assert_eq!(loaded, settings);
+        assert_eq!(loaded.version, 99);
+        assert!(loaded.renderers.contains_key("acme.future"));
     }
 }
 

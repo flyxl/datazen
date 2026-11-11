@@ -79,8 +79,8 @@ const HOST_EXTRAS_KEYS = [
  * shape, never leaking a host field through it.
  */
 export function toSettings(desktop: DesktopSettings): SharedSettings {
-  const { preferences, execution, monitor, onboarding, rowCountMode } = desktop;
-  return { preferences, execution, monitor, onboarding, rowCountMode };
+  const { preferences, execution, monitor, onboarding, rowCountMode, valuePresentation } = desktop;
+  return { preferences, execution, monitor, onboarding, rowCountMode, valuePresentation };
 }
 
 /**

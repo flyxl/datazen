@@ -14,6 +14,11 @@ import {
   DEFAULT_TABLE_SORT,
 } from '../types/settings';
 import { DEFAULT_SQL_FORMAT_OPTIONS } from '../lib/sqlFormat';
+import {
+  DEFAULT_VALUE_PRESENTATION_SETTINGS,
+  parseStoredValuePresentationSettings,
+  type StoredValuePresentationSettings,
+} from '../lib/valuePresentation/settings';
 import { DEFAULT_THEME_PREFERENCE, normalizeThemePreference, type ThemeMode } from '../types/theme';
 import { DEFAULT_MONITOR_SETTINGS } from '../types/dashboard';
 import { applyThemePack, syncWebviewBackgroundFromTokens } from '../lib/themePackApply';
@@ -76,6 +81,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   gridAlternatingRows: DEFAULT_GRID_ALTERNATING_ROWS,
   gridRowNumbers: DEFAULT_GRID_ROW_NUMBERS,
   gridAutoHideScrollbar: DEFAULT_GRID_AUTO_HIDE_SCROLLBAR,
+  // Value presentation (issue-32 T06): v1 默认关闭一切，历史配置缺字段
+  // 即默认关闭（设计 §6）。
+  valuePresentation: DEFAULT_VALUE_PRESENTATION_SETTINGS,
 };
 
 const THEME_STORAGE_KEY = 'datazen-theme';
@@ -148,7 +156,17 @@ export async function applySettingsLocally(incoming: AppSettings) {
   const theme = normalizeThemePreference(incoming.theme);
   const language = normalizeSettingsLanguage(incoming.language);
   const prev = useSettingsStore.getState().settings;
-  useSettingsStore.setState({ settings: { ...incoming, language, theme } });
+  // 旧窗口 payload 可能没有 valuePresentation：宽容解析为默认值；
+  // JSON 变化时 valuePresentationRevision +1（O-5 revision 不变量）。
+  const valuePresentation = parseStoredValuePresentationSettings(incoming.valuePresentation);
+  useSettingsStore.setState({
+    settings: { ...incoming, language, theme, valuePresentation },
+    valuePresentationRevision: nextValuePresentationRevision(
+      prev.valuePresentation,
+      valuePresentation,
+      useSettingsStore.getState().valuePresentationRevision,
+    ),
+  });
   const themeChanged = prev.theme.mode !== theme.mode || prev.theme.packId !== theme.packId;
   if (!themeChanged) return;
   try {
@@ -159,14 +177,32 @@ export async function applySettingsLocally(incoming: AppSettings) {
   }
 }
 
+/**
+ * valuePresentation 的修订计数：JSON 变化时 +1，不变时不动。
+ * 快照 hook 与展示计划缓存以此失效（O-5 revision 不变量由该计数器保证，
+ * 而不是由对象 identity 保证——load/save 往返可能重建等值对象）。
+ */
+function nextValuePresentationRevision(
+  prev: StoredValuePresentationSettings,
+  next: StoredValuePresentationSettings,
+  revision: number,
+): number {
+  return JSON.stringify(prev) === JSON.stringify(next) ? revision : revision + 1;
+}
+
 interface SettingsStore {
   settings: AppSettings;
+  /** valuePresentation 的修订计数：JSON 变化时 +1，不变时不动（O-5）。 */
+  valuePresentationRevision: number;
   loadSettings: () => Promise<void>;
   updateSettings: (partial: Partial<AppSettings>) => Promise<void>;
+  /** 供 T07/T08 调用：替换整份 valuePresentation 存储值并走正常保存链路。 */
+  updateValuePresentationSettings: (next: StoredValuePresentationSettings) => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
   settings: DEFAULT_SETTINGS,
+  valuePresentationRevision: 0,
 
   loadSettings: async () => {
     try {
@@ -179,6 +215,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         theme,
         connectionPoolSize: raw.connectionPoolSize ?? 10,
         monitor: { ...DEFAULT_MONITOR_SETTINGS, ...raw.monitor },
+        // 旧后端 payload 可能没有 valuePresentation：宽容解析，缺省为默认。
+        valuePresentation: parseStoredValuePresentationSettings(raw.valuePresentation),
       };
       try {
         await applyTheme(theme.mode, theme.packId);
@@ -193,11 +231,26 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         }
       }
       watchSystemTheme(theme.mode);
-      set({ settings });
+      set({
+        settings,
+        valuePresentationRevision: nextValuePresentationRevision(
+          get().settings.valuePresentation,
+          settings.valuePresentation,
+          get().valuePresentationRevision,
+        ),
+      });
     } catch {
       await applyTheme(DEFAULT_SETTINGS.theme.mode, DEFAULT_SETTINGS.theme.packId);
       const language = resolveUiLanguage(navigator.language);
-      set({ settings: { ...DEFAULT_SETTINGS, language } });
+      const settings = { ...DEFAULT_SETTINGS, language };
+      set({
+        settings,
+        valuePresentationRevision: nextValuePresentationRevision(
+          get().settings.valuePresentation,
+          settings.valuePresentation,
+          get().valuePresentationRevision,
+        ),
+      });
     }
   },
 
@@ -218,8 +271,19 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const persisted: AppSettings = {
       ...persistedValues,
       language: normalizeSettingsLanguage(persistedValues.language),
+      // 后端回值可能缺 valuePresentation（旧后端）：宽容解析兜底为默认。
+      valuePresentation: parseStoredValuePresentationSettings(persistedValues.valuePresentation),
     };
-    set({ settings: persisted });
+    const prevValuePresentation = get().settings.valuePresentation;
+    const prevRevision = get().valuePresentationRevision;
+    set({
+      settings: persisted,
+      valuePresentationRevision: nextValuePresentationRevision(
+        prevValuePresentation,
+        persisted.valuePresentation,
+        prevRevision,
+      ),
+    });
 
     if (partial.theme) {
       void emitCrossWindow('datazen:theme-changed', theme.mode);
@@ -228,6 +292,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       void settingsCommands.syncLanguageMenu?.(persisted.language).catch(() => {});
     }
     void emitCrossWindow('datazen:settings-changed', persisted);
+  },
+
+  updateValuePresentationSettings: async (next) => {
+    await get().updateSettings({ valuePresentation: next });
   },
 }));
 
