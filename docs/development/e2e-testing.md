@@ -11,7 +11,7 @@
 | **禁止裸 `cargo build`** | `cargo build -p datazen_desktop --features webdriver` 常导致运行时报 `asset not found: index.html`（未走 `beforeBuildCommand` / 资源嵌入流程） |
 | **必须开 `webdriver` feature** | 否则 4445 端口不会监听，WDIO 连不上 |
 | **必须启用驱动 Cargo feature** | 仅 `--features webdriver` 不会链接 path 驱动；inventory 注册依赖 `-f driver-postgres,...`（由 `.driver-features.json` 提供） |
-| **前端产物 `dist/`** | 由 `pnpm build`（Tauri `beforeBuildCommand`）生成；`frontendDist` 为 `../dist` |
+| **前端产物 `packages/desktop/dist/`** | 由 `pnpm build`（Tauri `beforeBuildCommand`）生成；`frontendDist` 为 `../../packages/desktop/dist` |
 
 正确构建链路与快捷命令：
 
@@ -28,7 +28,7 @@ pnpm tauri:build:webdriver:minimal
 node scripts/with-driver-inject.mjs [--drivers=basic] -- node scripts/e2e-tauri-build.mjs
   → resolve-drivers → .driver-features.json
   → pnpm tauri build --debug -f webdriver,driver-postgres,...
-  → beforeBuildCommand: pnpm build   # 生成 dist/index.html 等
+  → beforeBuildCommand: pnpm build   # 生成 packages/desktop/dist/index.html 等
   → cargo 嵌入 dist + WebDriver + 驱动
   → （macOS）产出 target/debug/bundle/macos/DataZen.app
 ```
@@ -258,7 +258,7 @@ node e2e/run.mjs --skip-build --screenshot -- --spec e2e/specs/table-data.ts
 node scripts/generate-menu-labels.mjs && node scripts/with-driver-inject.mjs --drivers=basic -- node scripts/e2e-tauri-build.mjs
 
 # 2) 确认产物
-ls dist/index.html
+ls packages/desktop/dist/index.html
 ls target/debug/datazen_desktop
 # macOS 另有：
 ls target/debug/bundle/macos/DataZen.app/Contents/MacOS/datazen_desktop
@@ -514,7 +514,7 @@ Tauri 2 前端传参为 **camelCase**（如 `defaultFileName`），不要用 sna
 
 - [ ] 使用的是 `pnpm e2e` 或先 `pnpm tauri build --debug --features webdriver`
 - [ ] **没有**仅用 `cargo build` / `cargo test` 冒充 E2E 二进制
-- [ ] `dist/index.html` 存在
+- [ ] `packages/desktop/dist/index.html` 存在
 - [ ] 启动日志无 `asset not found: index.html`
 - [ ] 4445 端口就绪
 - [ ] WDIO 退出码为 0（或如实报告失败用例）
