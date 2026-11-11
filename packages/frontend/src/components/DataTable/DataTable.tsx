@@ -43,6 +43,12 @@ import { DataExportDialog } from './DataExportDialog';
 import { DataTableSelectionBar } from './DataTableSelectionBar';
 import type { CellEditingContext } from '../../lib/cellEditorKind';
 import type { CellTypeHints } from '../../lib/cellTypes';
+import { useValuePresentation } from '../../hooks/useValuePresentation';
+import {
+  createDefaultValuePresentationSnapshot,
+  type ValuePresentationSnapshot,
+} from '../../lib/valuePresentation/presentationPlan';
+import type { ColumnSource, ValuePresentationRegistry } from '@datazen/extension-points';
 import { cn } from '../../lib/cn';
 import { Spinner } from '../ui/Spinner';
 import { DATA_TABLE_ROW_HEIGHT } from './rowHeight';
@@ -399,12 +405,37 @@ export interface DataTableProps {
    * because the element only exists after the first render.
    */
   onScrollElementChange?: (element: HTMLDivElement | null) => void;
+
+  /**
+   * Value-presentation wiring (issue-32 T05, design §7).
+   *
+   * - `presentationSnapshot`: the host's config snapshot. Omitted ⇒ the
+   *   shared default snapshot (revision 0, no configs, no enabled
+   *   renderers): every time column is `disabled`, `present` returns
+   *   `unchanged`, and the grid renders exactly as before (default-off).
+   *   Real snapshots arrive with T06 persistence + T07 settings UI.
+   * - `presentationSource`: the table identity (without `column`); omitted
+   *   ⇒ query results and other sourceless grids: no table overrides.
+   * - `presentationRegistry`: injectable for tests, so a test can use a
+   *   fresh registry without touching the global singleton. Omitted ⇒ the
+   *   global `valuePresentationRegistry`.
+   */
+  presentationSnapshot?: ValuePresentationSnapshot;
+  presentationSource?: Readonly<Omit<ColumnSource, 'column'>>;
+  presentationRegistry?: ValuePresentationRegistry;
 }
 
 const NOOP = () => {};
 const EMPTY_SET = new Set<number>();
 const EMPTY_SORTS: SortCondition[] = [];
 const EMPTY_FILTERS: FilterCondition[] = [];
+
+/**
+ * The shared default presentation snapshot (issue-32 T05): one module-level
+ * read-only instance, never mutated — the "loading" snapshot of design §6,
+ * under which time columns stay `disabled` and the grid keeps its old text.
+ */
+const DEFAULT_PRESENTATION_SNAPSHOT = createDefaultValuePresentationSnapshot();
 
 export function DataTable({
   columns,
@@ -519,6 +550,9 @@ export function DataTable({
   onRequestScrollIntoView,
   lastSelectedIndex,
   onScrollElementChange,
+  presentationSnapshot,
+  presentationSource,
+  presentationRegistry,
 }: DataTableProps) {
   const { t } = useI18n();
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
@@ -562,6 +596,32 @@ export function DataTable({
     () => adjustWidthsForSort(baseWidths, columns, sorts),
     [baseWidths, columns, sorts],
   );
+
+  /**
+   * Value-presentation plans (issue-32 T05, design §7): one plan per
+   * column, built once per snapshot / source / contribution revision by
+   * `useValuePresentation` and handed to VirtualBody by column name. The
+   * grid and the aside each call the same hook with the same (columns,
+   * source, snapshot) triple, so the same input always yields the same
+   * plan — no shared context/provider is introduced here (left for a
+   * later task if one is ever needed).
+   */
+  const presentationSnapshotResolved = presentationSnapshot ?? DEFAULT_PRESENTATION_SNAPSHOT;
+  const planColumns = useMemo(
+    () =>
+      columns.map((c) => ({
+        name: c.name,
+        dataType: c.type,
+        hints: cellTypeHints,
+      })),
+    [columns, cellTypeHints],
+  );
+  const { planByColumn: presentationPlanByColumn } = useValuePresentation({
+    columns: planColumns,
+    source: presentationSource,
+    snapshot: presentationSnapshotResolved,
+    registry: presentationRegistry,
+  });
 
   const handleRowClick = useCallback(
     (index: number, opts?: { multi?: boolean; range?: boolean }) => {
@@ -911,6 +971,7 @@ export function DataTable({
               onCellQuickLook={onCellQuickLook}
               cellEditing={cellEditing}
               cellTypeHints={cellTypeHints}
+              presentationPlanByColumn={presentationPlanByColumn}
               onRowSelect={handleRowClick}
               onRowGutterSelect={handleGutterSelect}
               onRowClick={onRowClick}

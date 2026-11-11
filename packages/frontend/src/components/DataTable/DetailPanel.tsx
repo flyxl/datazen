@@ -7,6 +7,17 @@ import { formatCell } from '../../lib/formatters';
 import { dataTypeTextClass } from '../../lib/dataTypeColors';
 import type { CellTypeHints } from '../../lib/cellTypes';
 import { useI18n } from '../../hooks/useI18n';
+import { useValuePresentation } from '../../hooks/useValuePresentation';
+import {
+  createDefaultValuePresentationSnapshot,
+  type ColumnPresentationPlan,
+  type ValuePresentationSnapshot,
+} from '../../lib/valuePresentation/presentationPlan';
+import type {
+  ColumnSource,
+  PresentationValue,
+  ValuePresentationRegistry,
+} from '@datazen/extension-points';
 import { cn } from '../../lib/cn';
 
 export interface DetailPanelProps {
@@ -26,9 +37,28 @@ export interface DetailPanelProps {
    * (05 §3.1). Omitted → the shared table alone decides, as before.
    */
   cellTypeHints?: CellTypeHints;
+  /**
+   * Value-presentation wiring (issue-32 T05, design §7) — the same three
+   * props as DataTable, with the same defaults: no snapshot ⇒ the shared
+   * default snapshot (revision 0, time columns `disabled`, old text);
+   * no source ⇒ no table overrides; no registry ⇒ the global
+   * `valuePresentationRegistry`. The aside builds its own plans from the
+   * same (columns, source, snapshot) triple as the grid, so the same
+   * input yields the same plan and the two read identically.
+   */
+  presentationSnapshot?: ValuePresentationSnapshot;
+  presentationSource?: Readonly<Omit<ColumnSource, 'column'>>;
+  presentationRegistry?: ValuePresentationRegistry;
 }
 
 const EMPTY_SET = new Set<number>();
+
+/**
+ * The shared default presentation snapshot (issue-32 T05) — see
+ * DataTable's `DEFAULT_PRESENTATION_SNAPSHOT`: one module-level read-only
+ * instance, never mutated; time columns stay `disabled` under it.
+ */
+const DEFAULT_PRESENTATION_SNAPSHOT = createDefaultValuePresentationSnapshot();
 
 export function DetailPanel({
   open,
@@ -39,6 +69,9 @@ export function DetailPanel({
   onFieldEdit,
   selectedRows = EMPTY_SET,
   cellTypeHints,
+  presentationSnapshot,
+  presentationSource,
+  presentationRegistry,
 }: DetailPanelProps) {
   const { t } = useI18n();
   const [query, setQuery] = useState('');
@@ -48,6 +81,28 @@ export function DetailPanel({
     if (!q) return columns;
     return columns.filter((c) => c.name.toLowerCase().includes(q));
   }, [columns, query]);
+
+  /**
+   * Value-presentation plans (issue-32 T05): built from the same triple
+   * the grid uses, so grid and aside agree cell for cell. This hook call
+   * stays above the `!open` early return, like every other hook here.
+   */
+  const presentationSnapshotResolved = presentationSnapshot ?? DEFAULT_PRESENTATION_SNAPSHOT;
+  const planColumns = useMemo(
+    () =>
+      columns.map((c) => ({
+        name: c.name,
+        dataType: c.type,
+        hints: cellTypeHints,
+      })),
+    [columns, cellTypeHints],
+  );
+  const { planByColumn: presentationPlanByColumn } = useValuePresentation({
+    columns: planColumns,
+    source: presentationSource,
+    snapshot: presentationSnapshotResolved,
+    registry: presentationRegistry,
+  });
 
   if (!open) return null;
 
@@ -105,6 +160,7 @@ export function DetailPanel({
                   value={row[col.name]}
                   editable={editable}
                   cellTypeHints={cellTypeHints}
+                  presentationPlan={presentationPlanByColumn.get(col.name)}
                   onCommit={
                     editable && onFieldEdit && rowIndex !== null
                       ? (v) => onFieldEdit(rowIndex, col.name, v)
@@ -127,9 +183,22 @@ interface FieldRowProps {
   onCommit?: (value: unknown) => void;
   /** The driver's own column-type rules — the same ones the grid reads. */
   cellTypeHints?: CellTypeHints;
+  /**
+   * The column's presentation plan (issue-32 T05). Only the read-only,
+   * non-blob display path consults it; the editor still initialises
+   * from the raw value (`toEditString(value)`), and NULL stays `NULL`.
+   */
+  presentationPlan?: ColumnPresentationPlan;
 }
 
-function FieldRow({ column, value, editable, onCommit, cellTypeHints }: FieldRowProps) {
+function FieldRow({
+  column,
+  value,
+  editable,
+  onCommit,
+  cellTypeHints,
+  presentationPlan,
+}: FieldRowProps) {
   const { t } = useI18n();
   const [quickLookOpen, setQuickLookOpen] = useState(false);
 
@@ -140,6 +209,14 @@ function FieldRow({ column, value, editable, onCommit, cellTypeHints }: FieldRow
   const isLongText = type.includes('text') || isJson || isBlob;
   const canQuickLook = isJson || isBlob || (typeof value === 'string' && value.length > 120);
   const pretty = isJson ? prettyJson(value) : null;
+  /**
+   * The presented value (issue-32 T05): consulted only by the read-only,
+   * non-blob `<pre>` below. A `text` result replaces the old
+   * `(pretty ?? formatCell(value))` there; `unchanged` (or no plan) keeps
+   * it. NULL is decided by `isNull` before this is ever read, the blob
+   * path never reads it, and the editor path never sees it.
+   */
+  const presented = isNull ? undefined : presentationPlan?.present(value as PresentationValue);
 
   return (
     <div
@@ -190,7 +267,11 @@ function FieldRow({ column, value, editable, onCommit, cellTypeHints }: FieldRow
             isNull ? 'italic text-fg-muted' : 'text-fg',
           )}
         >
-          {isNull ? 'NULL' : (pretty ?? formatCell(value))}
+          {isNull
+            ? 'NULL'
+            : presented?.kind === 'text'
+              ? presented.text
+              : (pretty ?? formatCell(value))}
         </pre>
       )}
 

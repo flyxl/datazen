@@ -10,6 +10,7 @@ import type { ColumnDef } from './TableHeader';
 import { CellRenderer } from './CellRenderer';
 import { EditableCell } from './EditableCell';
 import type { Value } from '../../types';
+import type { ColumnPresentationPlan } from '../../lib/valuePresentation/presentationPlan';
 import type { DraftRowViewModel } from './VirtualBody';
 
 const NOOP = () => {};
@@ -26,6 +27,13 @@ interface DraftRowProps {
   cellSelectionEnabled: boolean;
   /** The panel the draft belongs to (the editor registers with the guard). */
   panelId?: string;
+  /**
+   * Column presentation plans (issue-32 T05), keyed by column name.
+   * Only a **written** cell consults its plan; the unwritten DEFAULT
+   * placeholder and the editing `EditableCell` never see one, and the
+   * editor still initialises from the raw value.
+   */
+  presentationPlanByColumn?: ReadonlyMap<string, ColumnPresentationPlan>;
   onDraftCellEdit?: (draftId: string, column: string, value: Value | null | undefined) => void;
   onDraftCellEditStart?: (draftId: string, column: string) => void;
   onDraftCellEditCancel?: () => void;
@@ -51,6 +59,7 @@ export const DraftRow = memo(function DraftRow({
   editing,
   cellSelectionEnabled,
   panelId,
+  presentationPlanByColumn,
   onDraftCellEdit,
   onDraftCellEditStart,
   onDraftCellEditCancel,
@@ -139,6 +148,7 @@ export const DraftRow = memo(function DraftRow({
                 isEditing={false}
                 onCommit={NOOP}
                 onCancel={NOOP}
+                presentationPlan={presentationPlanByColumn?.get(col.name)}
               />
             ) : (
               <span
