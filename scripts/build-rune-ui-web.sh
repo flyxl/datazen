@@ -4,6 +4,18 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TARGET="wasm32-unknown-unknown"
 OUTPUT="$ROOT/packages/web/public/rune-ui"
+RUNE_TOOLCHAIN="1.99.1"
+
+if [[ "${RUSTUP_TOOLCHAIN:-$RUNE_TOOLCHAIN}" != "$RUNE_TOOLCHAIN" ]]; then
+  echo "Rune revision requires Rust $RUNE_TOOLCHAIN; do not override RUSTUP_TOOLCHAIN for this build." >&2
+  exit 2
+fi
+export RUSTUP_TOOLCHAIN="$RUNE_TOOLCHAIN"
+
+if ! rustup toolchain list | awk '{print $1}' | grep -Eq "^${RUNE_TOOLCHAIN}(-|$)"; then
+  echo "Missing Rust toolchain. Run: rustup toolchain install $RUNE_TOOLCHAIN" >&2
+  exit 2
+fi
 
 if [[ ! -f "$ROOT/vendor/rune/scripts/web-build.sh" ]]; then
   echo "Rune submodule is missing. Run: git submodule update --init --recursive vendor/rune" >&2

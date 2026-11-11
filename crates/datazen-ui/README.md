@@ -25,10 +25,13 @@ After cloning DataZen:
 git submodule update --init --recursive vendor/rune
 ~~~
 
-## Native preview
+## Toolchain
+
+Rune pins Rust 1.99.1 in its upstream `rust-toolchain.toml`. The submodule is a dependency rather than a workspace member, so Rust does not automatically inherit that file. Install and select the pinned toolchain explicitly:
 
 ~~~sh
-cargo run -p datazen-ui --bin datazen-rune
+rustup toolchain install 1.99.1
+RUSTUP_TOOLCHAIN=1.99.1 cargo run -p datazen-ui --bin datazen-rune
 ~~~
 
 ## Web preview
