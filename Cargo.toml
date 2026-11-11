@@ -16,6 +16,10 @@ exclude = [
     "crates/drivers/superset",
 ]
 
+[workspace.package]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
 [workspace.dependencies]
 # Path crates — the only place a member's relative path is spelled out.
 datazen-driver-api = { path = "crates/datazen-driver-api" }
