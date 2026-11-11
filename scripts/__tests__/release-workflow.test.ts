@@ -268,23 +268,46 @@ describe('Per-SKU updater channels', () => {
   const buildSteps = workflow.jobs.build.steps;
   const stepNamed = (name: string) => buildSteps.find((s) => s.name === name);
 
-  it('only enables Apple notarization when all three credentials are configured', () => {
-    const notarizationStep = stepNamed('Configure Apple notarization credentials');
+  it('requires Apple notarization credentials and notarizes the final macOS DMG', () => {
+    const notarizationStep = stepNamed('Require Apple notarization credentials');
     expect(notarizationStep?.if).toBe("runner.os == 'macOS'");
     expect(notarizationStep?.env).toMatchObject({
       APPLE_ID: '${{ secrets.APPLE_ID }}',
       APPLE_PASSWORD: '${{ secrets.APPLE_PASSWORD }}',
       APPLE_TEAM_ID: '${{ secrets.APPLE_TEAM_ID }}',
     });
-    expect(notarizationStep?.run).toContain(
-      '[[ -n "$APPLE_ID" && -n "$APPLE_PASSWORD" && -n "$APPLE_TEAM_ID" ]]',
-    );
+    expect(notarizationStep?.run).toContain(': "${APPLE_ID:?');
+    expect(notarizationStep?.run).toContain(': "${APPLE_PASSWORD:?');
+    expect(notarizationStep?.run).toContain(': "${APPLE_TEAM_ID:?');
+    expect(notarizationStep?.run).not.toContain('notarization will be skipped');
     expect(notarizationStep?.run).toContain('>> "$GITHUB_ENV"');
 
     const buildStep = stepNamed('Resolve drivers and build Tauri app');
     expect(buildStep?.env).not.toHaveProperty('APPLE_ID');
     expect(buildStep?.env).not.toHaveProperty('APPLE_PASSWORD');
     expect(buildStep?.env).not.toHaveProperty('APPLE_TEAM_ID');
+
+    const readmeStepIndex = buildSteps.findIndex(
+      (step) => step.name === 'Add first-launch README to macOS DMGs',
+    );
+    const finalDmgNotarization = stepNamed('Notarize and staple final macOS DMGs');
+    expect(finalDmgNotarization?.if).toBe("runner.os == 'macOS'");
+    expect(finalDmgNotarization?.env).toMatchObject({
+      APPLE_ID: '${{ secrets.APPLE_ID }}',
+      APPLE_PASSWORD: '${{ secrets.APPLE_PASSWORD }}',
+      APPLE_TEAM_ID: '${{ secrets.APPLE_TEAM_ID }}',
+    });
+    expect(finalDmgNotarization?.run).toContain('xcrun notarytool submit "$dmg"');
+    expect(finalDmgNotarization?.run).toContain('xcrun stapler staple "$dmg"');
+    expect(finalDmgNotarization?.run).toContain('xcrun stapler validate "$dmg"');
+    expect(finalDmgNotarization?.run).toContain('No macOS DMG found to notarize');
+    const finalDmgNotarizationIndex = buildSteps.indexOf(finalDmgNotarization!);
+    const uploadStepIndex = buildSteps.findIndex(
+      (step) => step.name === 'Upload artifacts to release',
+    );
+    expect(readmeStepIndex).toBeGreaterThanOrEqual(0);
+    expect(finalDmgNotarizationIndex).toBeGreaterThan(readmeStepIndex);
+    expect(finalDmgNotarizationIndex).toBeLessThan(uploadStepIndex);
   });
 
   it('signs every variant, not just Basic', () => {
