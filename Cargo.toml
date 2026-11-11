@@ -24,6 +24,9 @@ datazen-infra = { path = "crates/datazen-infra" }
 datazen-driver-postgres = { path = "crates/drivers/postgres" }
 datazen-driver-mysql = { path = "crates/drivers/mysql" }
 datazen-driver-sqlite = { path = "crates/drivers/sqlite" }
+# W8-a P1：其余 12 个 path 驱动入表——server 的 `driver-*` per-driver feature
+# 按需链接（deploy-drivers 聚合；缺省不链接，注册表空表）。桌面宿主保持
+# 相对 path 写法不动（W3-c 静态声明形态）。
 datazen-driver-redis = { path = "crates/drivers/redis" }
 datazen-driver-mongodb = { path = "crates/drivers/mongodb" }
 datazen-driver-sqlserver = { path = "crates/drivers/sqlserver" }
@@ -36,15 +39,27 @@ datazen-driver-influxdb = { path = "crates/drivers/influxdb" }
 datazen-driver-victoriametrics = { path = "crates/drivers/victoriametrics" }
 datazen-driver-hbase = { path = "crates/drivers/hbase" }
 datazen-driver-vector = { path = "crates/drivers/vector" }
-
-# Rune is pinned to an immutable upstream commit: the project has no stable release.
-# Keep the dependency feature set explicit; native and wasm builds share the same UI crate.
+# Shared external specs — single source of truth for the versions (and, where
+# they must stay in lockstep, the feature sets) that modules, the desktop host
+# and the driver crates consume. Members inherit with `workspace = true`.
+# Only specs identical across their consumers belong here; chrono, tokio and
+# tracing-subscriber intentionally stay per-member because their feature sets
+# legitimately differ — divergent specs must be a consumer decision, never
+# silently unified by this table.
+# dirs was the fourth hold-out (modules 5 / desktop 6, review F-2); converged
+# at 6 on 2026-10-30 — the connection_import call sites use the free
+# home_dir/data_dir/data_local_dir/config_dir functions, whose signatures are
+# unchanged between the majors, so no code adaptation was needed.
+# Rune is pinned to an immutable upstream commit because it has no stable release.
 rune = { git = "https://github.com/anomalyco/rune", rev = "2e4999f67064dd351e504bbdaaf71f0b601e2114", default-features = false, features = ["accessibility", "embedded-fonts", "metal-backend", "svg"] }
-
 thiserror = "1"
 async-trait = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# serde_yaml 0.9.34 is upstream-deprecated (archived). serde_norway is the
+# maintained drop-in fork that continues the 0.9.x line; the package alias
+# keeps every `serde_yaml::` import path stable. The repo's entire API face
+# is from_str (17 call sites) + to_string (3), both signature-identical.
 serde_yaml = { package = "serde_norway", version = "0.9.42" }
 dirs = "6"
 uuid = { version = "1", features = ["v4", "serde"] }
@@ -60,6 +75,9 @@ hmac = "0.12"
 futures-util = "0.3"
 rusqlite = { version = "0.32.1", features = ["bundled"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
+# Export cleanup item 3a (XLSX): rust_xlsxwriter 0.102 (latest) needs zip v9
+# and MSRV 1.88 — the workspace keeps zip v2 for its own archiving, and the
+# two majors coexist as separate crates in the graph (verified by cargo tree). 
 rust_xlsxwriter = { version = "0.102", features = ["constant_memory"] }
 russh = "0.60"
 tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
@@ -69,6 +87,11 @@ reqwest = { version = "0.13.3", default-features = false, features = ["rustls", 
 sqlparser = { version = "0.59", features = ["visitor"] }
 
 [workspace.lints.rust]
+# 标识符只许 ASCII：中文测试名（2026-10-27 存量 160 个已全部改英文，
+# 见 test/ascii-test-identifiers 分支）会触发 rustc 的 non_snake_case
+# 告警刷屏 CI 日志；deny 让新增非 ASCII 标识符直接红编译，而不是等
+# 日志里再冒出来。注释与字符串字面量里的中文不受此 lint 影响。
+# （cm70_no_disk.rs 的 `fn 落盘` 是探测器自证样本 raw string，非标识符。）
 non_ascii_idents = "deny"
 
 [profile.dev]
