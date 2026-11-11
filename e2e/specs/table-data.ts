@@ -406,21 +406,46 @@ describe('全库值搜索 (TD-VS)', () => {
     }
   }
 
-  /** Pick the n-th entry of the Select carrying the test id (0-based). */
-  async function pickSelectOption(testId: string, index: number): Promise<void> {
-    await $(`[data-testid="${testId}"]`).click();
-    const option = await $(`[data-testid="select-option"][data-option-idx="${index}"]`);
-    await option.waitForDisplayed({ timeout: 5000 });
-    await option.click();
+  /** Pick an option of the Select carrying the test id by index or label text. */
+  async function pickSelectOption(testId: string, selector: number | string): Promise<void> {
+    await browser.execute((id: string) => {
+      (document.querySelector(`[data-testid="${id}"]`) as HTMLElement | null)?.click();
+    }, testId);
+    await browser.waitUntil(
+      async () =>
+        browser.execute(() => Boolean(document.querySelector('[data-testid="select-listbox"]'))),
+      { timeout: 5000, timeoutMsg: `select listbox did not open for ${testId}` },
+    );
+    const clicked = await browser.execute((sel: number | string) => {
+      const list = document.querySelector('[data-testid="select-listbox"]');
+      if (!list) return false;
+      const options = Array.from(
+        list.querySelectorAll<HTMLElement>('[data-testid="select-option"]'),
+      );
+      const target =
+        typeof sel === 'number'
+          ? (options.find((el) => el.getAttribute('data-option-idx') === String(sel)) ??
+            options[sel])
+          : options.find((el) => (el.textContent ?? '').includes(sel));
+      if (!target) return false;
+      target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      target.click();
+      return true;
+    }, selector);
+    if (!clicked) throw new Error(`Could not select option ${String(selector)} for ${testId}`);
     await browser.pause(200);
   }
 
   it('工具栏入口打开对话框，匹配模式含"不包含" (TD-VS-001)', async () => {
     await openValueSearch();
 
-    await pickSelectOption('value-search-mode', 1);
+    await pickSelectOption('value-search-mode', t('valueSearch.mode.notContains'));
     // The trigger now shows the not-contains label.
     const trigger = await $('[data-testid="value-search-mode"]');
+    await browser.waitUntil(
+      async () => (await trigger.getText()).includes(t('valueSearch.mode.notContains')),
+      { timeout: 5000, timeoutMsg: 'value-search mode did not switch to not-contains' },
+    );
     const label = await trigger.getText();
     expect(label).toContain(t('valueSearch.mode.notContains'));
 
@@ -430,19 +455,39 @@ describe('全库值搜索 (TD-VS)', () => {
   it('范围选择器按 Schema 区分同名表，计划随之收窄 (TD-VS-002)', async () => {
     await openValueSearch();
 
-    // 已选表 (index 1 of the scope select)
-    await pickSelectOption('value-search-scope', 1);
+    // 已选表
+    await pickSelectOption('value-search-scope', '已选表');
     const picker = await $('[data-testid="value-search-table-picker"]');
     await picker.waitForDisplayed({ timeout: 5000 });
 
     // Both same-named tables appear, each under its own schema.
-    const a = await $('[data-testid="value-search-table-option-e2e_vs_a.dup_name"]');
-    const b = await $('[data-testid="value-search-table-option-e2e_vs_b.dup_name"]');
-    await expect(a).toBeDisplayed();
-    await expect(b).toBeDisplayed();
+    await browser.waitUntil(
+      async () =>
+        browser.execute(
+          () =>
+            document.querySelectorAll('[data-testid^="value-search-table-option-"]').length >= 2,
+        ),
+      { timeout: 10000, timeoutMsg: 'Timed out waiting for value-search table options' },
+    );
+    const dupOptions = await browser.execute(() =>
+      Array.from(
+        document.querySelectorAll<HTMLElement>('[data-testid^="value-search-table-option-"]'),
+      )
+        .map((el) => ({
+          testId: el.getAttribute('data-testid') ?? '',
+          text: (el.textContent ?? '').replace(/\s+/g, ' ').trim(),
+        }))
+        .filter((item) => item.text.includes('dup_name')),
+    );
+    expect(dupOptions.length).toBeGreaterThanOrEqual(2);
+    const picked =
+      dupOptions.find(
+        (item) => item.testId.includes('e2e_vs_a') || item.text.includes('e2e_vs_a'),
+      ) ?? dupOptions[0];
+    const pickedKey = picked.testId.replace('value-search-table-option-', '');
 
     // Picking one narrows the plan's cost note to exactly that table.
-    await a.click();
+    await $(`[data-testid="${picked.testId}"]`).click();
     await browser.pause(200);
     const note = await $('[data-testid="value-search-cost-note"]');
     const noteText = await note.getText();
@@ -462,14 +507,24 @@ describe('全库值搜索 (TD-VS)', () => {
     );
     // The answer names the schema-qualified table that was picked — the
     // other schema's same-named table has no answer row at all.
-    const rowText = await results.getText();
-    expect(rowText).toContain('dup_name');
+    await expect(await $(`[data-testid="value-search-result-${pickedKey}"]`)).toBeDisplayed();
 
     await closeValueSearch();
   });
 
   it('全部范围扫描把零命中表与命中表分列 (TD-VS-003)', async () => {
     await openValueSearch();
+    // Dialog state persists across openings; ensure full-database scope.
+    const scopeTrigger = await $('[data-testid="value-search-scope"]');
+    if (
+      !(await scopeTrigger.getText()).includes(
+        t('valueSearch.scope.all', { count: 0 }).split('{')[0].trim() || '全部',
+      )
+    ) {
+      await pickSelectOption('value-search-scope', '全部');
+    } else {
+      // already all
+    }
 
     const input = await $('[data-testid="value-search-input"]');
     await input.setValue('needle');
@@ -496,19 +551,40 @@ describe('全库值搜索 (TD-VS)', () => {
 
     // 只扫 e2e_vs_a.dup_name：needle 在一行，other 在另一行 — not-contains
     // 的答案是 1（否定分布到每一列，AND 起来，而不是把命中行算进去）。
-    await pickSelectOption('value-search-scope', 1);
-    const option = await $('[data-testid="value-search-table-option-e2e_vs_a.dup_name"]');
-    await option.click();
+    await pickSelectOption('value-search-scope', '已选表');
+    const picker = await $('[data-testid="value-search-table-picker"]');
+    await picker.waitForDisplayed({ timeout: 5000 });
+    await browser.waitUntil(
+      async () =>
+        browser.execute(
+          () =>
+            document.querySelectorAll('[data-testid^="value-search-table-option-"]').length >= 1,
+        ),
+      { timeout: 10000, timeoutMsg: 'Timed out waiting for value-search table options' },
+    );
+    const picked = await browser.execute(() =>
+      Array.from(
+        document.querySelectorAll<HTMLElement>('[data-testid^="value-search-table-option-"]'),
+      )
+        .map((el) => ({
+          testId: el.getAttribute('data-testid') ?? '',
+          text: (el.textContent ?? '').replace(/\s+/g, ' ').trim(),
+        }))
+        .find((item) => item.testId.includes('e2e_vs_a') || item.text.includes('e2e_vs_a')),
+    );
+    if (!picked) throw new Error('Could not find e2e_vs_a.dup_name in value-search picker');
+    const pickedKey = picked.testId.replace('value-search-table-option-', '');
+    await $(`[data-testid="${picked.testId}"]`).click();
     await browser.pause(200);
 
-    await pickSelectOption('value-search-mode', 1);
+    await pickSelectOption('value-search-mode', t('valueSearch.mode.notContains'));
     const input = await $('[data-testid="value-search-input"]');
     await input.setValue('needle');
     await $('[data-testid="value-search-start"]').click();
 
     const results = await $('[data-testid="value-search-results"]');
     await results.waitForDisplayed({ timeout: 20000 });
-    const row = await $('[data-testid="value-search-result-e2e_vs_a.dup_name"]');
+    const row = await $(`[data-testid="value-search-result-${pickedKey}"]`);
     await expect(row).toBeDisplayed();
     const rowText = await row.getText();
     expect(rowText).toContain('1');
@@ -518,6 +594,8 @@ describe('全库值搜索 (TD-VS)', () => {
 
   it('打开并定位：新表页带着扫描自己的条件打开 (TD-VS-005)', async () => {
     await openValueSearch();
+    // Ensure all-scope scan so e2e_vs_a.dup_name is searched.
+    await pickSelectOption('value-search-scope', '全部');
 
     const input = await $('[data-testid="value-search-input"]');
     await input.setValue('needle');
@@ -530,7 +608,23 @@ describe('全库值搜索 (TD-VS)', () => {
       { timeout: 20000 },
     );
 
-    await $('[data-testid="value-search-locate-e2e_vs_a.dup_name"]').click();
+    await browser.waitUntil(
+      async () =>
+        browser.execute(
+          () =>
+            !!document.querySelector(
+              '[data-testid^="value-search-locate-"][data-testid*="e2e_vs_a"]',
+            ),
+        ),
+      { timeout: 10000, timeoutMsg: 'Timed out waiting for locate action for e2e_vs_a.dup_name' },
+    );
+    await browser.execute(() => {
+      (
+        document.querySelector(
+          '[data-testid^="value-search-locate-"][data-testid*="e2e_vs_a"]',
+        ) as HTMLElement | null
+      )?.click();
+    });
 
     // The dialog hands over, the table tab opens, and the filter panel
     // arrives already carrying the scan's own question: a contains

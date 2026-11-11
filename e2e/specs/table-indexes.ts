@@ -169,7 +169,19 @@ describe('表索引创建与删除 (IDX-001~IDX-006)', () => {
     // 整包里它就红过一次，单跑两次都稳过。
     const editBtn = await $("[data-testid='idx-edit-in-structure']");
     try {
-      await editBtn.waitForDisplayed({ timeout: 20000 });
+      await browser.waitUntil(
+        async () => {
+          if (await editBtn.isDisplayed().catch(() => false)) return true;
+          // Metadata/permissions can arrive late in parallel runs; refresh indexes view.
+          const refresh = await $('[data-testid="idx-refresh"]').catch(() => null);
+          if (refresh && (await refresh.isDisplayed().catch(() => false))) {
+            await refresh.click().catch(() => undefined);
+            await browser.pause(800);
+          }
+          return editBtn.isDisplayed().catch(() => false);
+        },
+        { timeout: 30000, interval: 1000, timeoutMsg: '等待「在结构中编辑」按钮显示超时' },
+      );
     } catch (error) {
       const state = await browser.execute(() => {
         const visible = (selector: string) =>

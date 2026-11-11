@@ -123,7 +123,7 @@ objc2-app-kit = { version = "0.3.2", optional = true }
 # 构建期注入，不入 default。
 # 脚本化构建（ci-tauri-build / e2e-tauri-build / tauri-dev）一律先传
 # `--no-default-features` 再显式传 `-f <.driver-features.json 的 features>`，
-# 因此 basic/all/webdriver SKU 的特征集与 default=[] 时代逐项相同、零变化。
+# 因此 basic/all/webdriver SKU 的特征集与 default= [] 时代逐项相同、零变化。
 default = ["drivers"]
 webdriver = ["tauri-plugin-webdriver", "dep:objc2", "dep:objc2-app-kit", "datazen/webdriver"]
 # Enables `datazen::test_harness` for src-tauri/tests/ IPC migration integration tests.

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { bindSettingsStore, HOST_DEFAULT_EDITOR_FONT } from '@datazen/driver-sdk';
 import { settingsCommands } from '../commands/settings';
 import { emitCrossWindow } from '../lib/crossWindowBus';
-import { resolveUiLanguage } from '../lib/resolveUiLanguage';
+import { normalizeSettingsLanguage, resolveUiLanguage } from '../lib/resolveUiLanguage';
 import type { AppSettings } from '../types';
 import {
   DEFAULT_GRID_ALTERNATING_ROWS,
@@ -146,7 +146,7 @@ export async function applyThemeLocally(mode: ThemeMode) {
  */
 export async function applySettingsLocally(incoming: AppSettings) {
   const theme = normalizeThemePreference(incoming.theme);
-  const language = resolveUiLanguage(incoming.language);
+  const language = normalizeSettingsLanguage(incoming.language);
   const prev = useSettingsStore.getState().settings;
   useSettingsStore.setState({ settings: { ...incoming, language, theme } });
   const themeChanged = prev.theme.mode !== theme.mode || prev.theme.packId !== theme.packId;
@@ -175,7 +175,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       let settings = {
         ...DEFAULT_SETTINGS,
         ...raw,
-        language: resolveUiLanguage(raw.language ?? DEFAULT_SETTINGS.language),
+        language: normalizeSettingsLanguage(raw.language ?? DEFAULT_SETTINGS.language),
         theme,
         connectionPoolSize: raw.connectionPoolSize ?? 10,
         monitor: { ...DEFAULT_MONITOR_SETTINGS, ...raw.monitor },
@@ -206,7 +206,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const theme = partial.theme ? normalizeThemePreference(partial.theme) : merged.theme;
     const next: AppSettings = {
       ...merged,
-      language: resolveUiLanguage(merged.language),
+      language: normalizeSettingsLanguage(merged.language),
       theme,
     };
     if (partial.theme) {
@@ -217,7 +217,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const persistedValues = { ...next, ...(saved ?? {}) };
     const persisted: AppSettings = {
       ...persistedValues,
-      language: resolveUiLanguage(persistedValues.language),
+      language: normalizeSettingsLanguage(persistedValues.language),
     };
     set({ settings: persisted });
 

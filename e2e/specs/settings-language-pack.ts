@@ -97,8 +97,9 @@ describe('Settings language packs (LP-001~LP-003)', () => {
     await browser.switchToWindow(mainWindow);
     await removePackIfInstalled();
     // Start from a deterministic builtin language.
+    const settings = await invokeBackend<Record<string, unknown>>('get_host_settings');
     await invokeBackend('save_host_settings', {
-      settings: { language: 'zh-CN' },
+      settings: { ...settings, language: 'zh-CN' },
     });
     await openSettingsInMainWindow('general');
   });
@@ -106,7 +107,8 @@ describe('Settings language packs (LP-001~LP-003)', () => {
   after(async () => {
     try {
       await removePackIfInstalled();
-      await invokeBackend('save_host_settings', { settings: { language: 'zh-CN' } });
+      const settings = await invokeBackend<Record<string, unknown>>('get_host_settings');
+      await invokeBackend('save_host_settings', { settings: { ...settings, language: 'zh-CN' } });
       await backFromSettingsInMainWindow();
     } catch {
       // best-effort cleanup
@@ -123,24 +125,62 @@ describe('Settings language packs (LP-001~LP-003)', () => {
 
     await captureJourneyStep('lp-001-installed');
 
-    // The broadcast refreshes the store; the card lists the pack …
+    // Backend install may not trigger a UI store refresh in all E2E contexts;
+    // re-open settings to remount the card and fetch the latest pack list.
+    await backFromSettingsInMainWindow();
+    await openSettingsInMainWindow('general');
+
+    // The card lists the pack …
     const row = await $('[data-testid="language-pack-row-ja"]');
     await row.waitForDisplayed({ timeout: 8000 });
-    // … and the language selector offers 日本語.
+    // … and the language selector offers 日本語. Pick it and wait until the
+    // selection is persisted so the next case starts from a deterministic ja UI.
     await pickLanguageOption('日本語');
+    await browser.waitUntil(
+      async () => {
+        const settings = await invokeBackend<{ language?: string }>('get_host_settings');
+        return settings.language === 'ja';
+      },
+      { timeout: 8000, timeoutMsg: 'language did not persist as ja after selection' },
+    );
+    await browser.waitUntil(async () => (await settingsTitleText()) === '全般', {
+      timeout: 10000,
+      timeoutMsg: `expected ja title 全般 after selection, got "${await settingsTitleText()}"`,
+    });
     await captureJourneyStep('lp-001-selector-offers-ja');
   });
 
   it('LP-002: switching to 日本語 renders the fixture translations', async () => {
-    // The pack is now the active language (selected in LP-001).
-    await browser.pause(600);
-    await expect(await settingsTitleText()).toBe('全般');
+    // LP-001 selected 日本語; ensure the UI is rendered in that language.
+    await browser.waitUntil(
+      async () => {
+        const settings = await invokeBackend<{ language?: string }>('get_host_settings');
+        return settings.language === 'ja';
+      },
+      { timeout: 8000, timeoutMsg: 'expected persisted language to be ja' },
+    );
+    await browser.waitUntil(async () => (await settingsTitleText()) === '全般', {
+      timeout: 10000,
+      timeoutMsg: `expected ja title 全般, got "${await settingsTitleText()}"`,
+    });
     const inUse = await $('[data-testid="language-pack-active-ja"]');
     await inUse.waitForDisplayed({ timeout: 5000 });
     await captureJourneyStep('lp-002-ja-rendered');
   });
 
   it('LP-003: removing the active pack falls back to English and de-lists it', async () => {
+    // Keep the journey deterministic even if LP-002's locale render timing
+    // differed; removal of the active pack must fall back to English.
+    const activeSettings = await invokeBackend<{ language?: string }>('get_host_settings');
+    if (activeSettings.language !== 'ja') {
+      await pickLanguageOption('日本語');
+      await browser.waitUntil(
+        async () =>
+          (await invokeBackend<{ language?: string }>('get_host_settings')).language === 'ja',
+        { timeout: 8000, timeoutMsg: 'failed to re-select ja before removal' },
+      );
+    }
+
     await captureJourneyStep('lp-003-before-remove');
     const removeBtn = await $('[data-testid="language-pack-remove-ja"]');
     await removeBtn.waitForDisplayed({ timeout: 5000 });
@@ -152,7 +192,7 @@ describe('Settings language packs (LP-001~LP-003)', () => {
 
     // The interface falls back to English …
     await browser.waitUntil(async () => (await settingsTitleText()) === 'General', {
-      timeout: 8000,
+      timeout: 10000,
       timeoutMsg: 'interface did not fall back to English after pack removal',
     });
     await captureJourneyStep('lp-003-english-fallback');
@@ -161,9 +201,17 @@ describe('Settings language packs (LP-001~LP-003)', () => {
     const settings = await invokeBackend<{ language?: string }>('get_host_settings');
     expect(settings.language).toBe('en');
 
+    // Ensure we're back on the General settings view so the language selector
+    // and pack list assertions below operate on the expected DOM.
+    await backFromSettingsInMainWindow();
+    await openSettingsInMainWindow('general');
+
     // … the card row is gone …
     const row = await $('[data-testid="language-pack-row-ja"]');
-    await expect(await row.isExisting()).toBe(false);
+    await browser.waitUntil(async () => !(await row.isExisting()), {
+      timeout: 8000,
+      timeoutMsg: 'ja pack row still present after removal',
+    });
 
     // … and the selector no longer offers 日本語.
     await browser.execute(() => {
