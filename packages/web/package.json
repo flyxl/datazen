@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vite",
     "build": "node ../../scripts/ensure-generated-drivers.mjs && node ../../scripts/generate-builtin-locales.mjs && vite build",
+    "build:rune-ui": "bash ../../scripts/build-rune-ui-web.sh",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

@@ -51,7 +51,8 @@ datazen-driver-vector = { path = "crates/drivers/vector" }
 # home_dir/data_dir/data_local_dir/config_dir functions, whose signatures are
 # unchanged between the majors, so no code adaptation was needed.
 # Rune is pinned to an immutable upstream commit because it has no stable release.
-rune = { git = "https://github.com/anomalyco/rune", rev = "2e4999f67064dd351e504bbdaaf71f0b601e2114", default-features = false, features = ["accessibility", "embedded-fonts", "metal-backend", "svg"] }
+rune = { path = "vendor/rune/crates/rune", default-features = false, features = ["accessibility", "embedded-fonts", "metal-backend", "svg", "webgl"] }
+wasm-bindgen = "=0.2.129"
 thiserror = "1"
 async-trait = "0.1"
 serde = { version = "1", features = ["derive"] }
@@ -85,6 +86,11 @@ tokio-rustls = "0.26"
 url = "2"
 reqwest = { version = "0.13.3", default-features = false, features = ["rustls", "json", "stream", "cookies", "query", "form"] }
 sqlparser = { version = "0.59", features = ["visitor"] }
+
+[patch.crates-io]
+# Rune DX12 adapter selection and lazy FXC loading use its pinned wgpu-hal patch.
+# Cargo does not inherit [patch.crates-io] from the Rune submodule workspace.
+wgpu-hal = { path = "vendor/rune/vendor/wgpu-hal" }
 
 [workspace.lints.rust]
 # 标识符只许 ASCII：中文测试名（2026-10-27 存量 160 个已全部改英文，

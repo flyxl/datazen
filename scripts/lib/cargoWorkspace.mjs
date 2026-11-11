@@ -72,6 +72,8 @@ export const LAYERS = Object.freeze([
   { id: 'modules', path: 'crates/datazen', kind: 'rust' },
   { id: 'infra', path: 'crates/datazen-infra', kind: 'rust' },
   { id: 'server', path: 'crates/datazen-server', kind: 'rust' },
+  // Shared Rune presentation layer; it must remain independent of hosts and core.
+  { id: 'ui', path: 'crates/datazen-ui', kind: 'rust' },
   // `crates/datazen-driver-support`（F3 下沉的零依赖文本工具）与 driver-api 同层：
   // 同一「驱动契约」地层的两个 crate。归入既有层而不是新开一层，是让
   // F-01 的 allowedLayers ['driver','driver-api'] 当天就对它生效——驱动

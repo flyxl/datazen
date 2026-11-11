@@ -97,6 +97,7 @@ const CORE = [
   { name: 'datazen-driver-api', dir: 'crates/datazen-driver-api' },
   { name: 'datazen', dir: 'crates/datazen' },
   { name: 'datazen-server', dir: 'crates/datazen-server' },
+  { name: 'datazen-ui', dir: 'crates/datazen-ui' },
   { name: 'datazen-driver-redis', dir: 'crates/drivers/redis' },
 ];
 
@@ -151,6 +152,7 @@ describe('classifyMemberDir', () => {
     for (const dir of [
       'crates/datazen-desktop',
       'crates/datazen-server',
+      'crates/datazen-ui',
       'crates/datazen',
       'crates/datazen-infra',
       'crates/datazen-driver-api',
@@ -160,6 +162,7 @@ describe('classifyMemberDir', () => {
       expect(classifyMemberDir(dir).unclassified).toBeUndefined();
     }
     expect(layerIdOf('crates/datazen')).toBe('modules');
+    expect(layerIdOf('crates/datazen-ui')).toBe('ui');
     expect(layerIdOf('crates/drivers/redis')).toBe('driver');
   });
 
@@ -309,6 +312,13 @@ describe('checkPlatformCrateBoundaries', () => {
       requireLayers: ['modules'],
     });
     expect(result.violations.join('\n')).toMatch(/F-14.*datazen.*datazen_desktop/);
+  });
+
+  it('F-15: Rune UI reaching a host crate is rejected', () => {
+    const result = run(fixture(CORE, { ...clean, 'datazen-ui': ['datazen_desktop'] }), SPEC, {
+      requireLayers: ['ui'],
+    });
+    expect(result.violations.join('\\n')).toMatch(/F-15.*datazen-ui.*datazen_desktop/);
   });
 
   it('F-01: a driver reaching datazen is a violation', () => {

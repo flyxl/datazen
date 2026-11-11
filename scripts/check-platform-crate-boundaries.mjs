@@ -239,6 +239,15 @@ export const RULES = Object.freeze([
     specTokens: ['modules', 'tauri'],
     note: 'feature modules stay independent of host, legacy runtime, and transport layers',
   },
+  {
+    id: 'F-15',
+    subjects: ['ui'],
+    subjectsFromSpec: true,
+    forbiddenLayers: ['host', 'server', 'modules', 'infra', 'driver', 'driver-api'],
+    forbiddenCrates: ['tauri', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
+    specTokens: ['crates/datazen-ui', 'tauri*', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
+    note: 'the Rune UI is a presentation layer and cannot reach hosts, the domain core, drivers, or server transports',
+  },
 ]);
 
 /**
@@ -257,7 +266,7 @@ export const RULES = Object.freeze([
  * (2026-10-31): F-06 now has a real subject, and this entry is what makes the
  * server crate's disappearance an error rather than a silently vacuous rule.
  */
-export const DEFAULT_REQUIRED_LAYERS = ['backend-client', 'modules', 'server'];
+export const DEFAULT_REQUIRED_LAYERS = ['backend-client', 'modules', 'server', 'ui'];
 
 function specLayerId(pathToken) {
   const normalised = pathToken.replace(/\/\*$/, '/*');

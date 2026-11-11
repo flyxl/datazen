@@ -250,6 +250,8 @@ jobs:
       # 浅克隆即可：basic 预设全是 path 驱动，resolve-drivers 不做 git fetch；
       # 需要全量历史的 site diff 只在 frontend job。
       - uses: actions/checkout@v5
+        with:
+          submodules: recursive
 
       # run 1376（main a3febe1d）实测：rust job 在链接 datazen-driver-mysql
       # 测试二进制时 `ld terminated with signal 7 (Bus error)`——SIGBUS 是磁盘

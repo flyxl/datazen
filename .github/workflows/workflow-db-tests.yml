@@ -71,6 +71,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          submodules: recursive
 
       # 宿主 crate 构建需要 resolve-drivers（node_modules + node），与
       # ci.yml rust job 同链。
