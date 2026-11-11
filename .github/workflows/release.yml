@@ -509,7 +509,7 @@ jobs:
           rm -f "$CERTIFICATE_PATH"
           echo "Imported Apple signing identity: $APPLE_SIGNING_IDENTITY"
 
-      - name: Configure Apple notarization credentials
+      - name: Require Apple notarization credentials
         if: runner.os == 'macOS'
         shell: bash
         env:
@@ -518,14 +518,13 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
-          if [[ -n "$APPLE_ID" && -n "$APPLE_PASSWORD" && -n "$APPLE_TEAM_ID" ]]; then
-            printf 'APPLE_ID=%s\n' "$APPLE_ID" >> "$GITHUB_ENV"
-            printf 'APPLE_PASSWORD=%s\n' "$APPLE_PASSWORD" >> "$GITHUB_ENV"
-            printf 'APPLE_TEAM_ID=%s\n' "$APPLE_TEAM_ID" >> "$GITHUB_ENV"
-            echo "Apple notarization credentials configured."
-          else
-            echo "::notice::Apple notarization credentials are incomplete; notarization will be skipped while code signing remains enabled."
-          fi
+          : "${APPLE_ID:?Add APPLE_ID to the release environment secrets}"
+          : "${APPLE_PASSWORD:?Add an Apple app-specific password as APPLE_PASSWORD}"
+          : "${APPLE_TEAM_ID:?Add APPLE_TEAM_ID to the release environment secrets}"
+          printf 'APPLE_ID=%s\n' "$APPLE_ID" >> "$GITHUB_ENV"
+          printf 'APPLE_PASSWORD=%s\n' "$APPLE_PASSWORD" >> "$GITHUB_ENV"
+          printf 'APPLE_TEAM_ID=%s\n' "$APPLE_TEAM_ID" >> "$GITHUB_ENV"
+          echo "Apple notarization credentials configured."
 
       - name: Install frontend dependencies
         run: pnpm install
@@ -957,6 +956,40 @@ jobs:
               echo "::error::rebuilt DMG is unreadable: $dmg"
               exit 1
             fi
+          done
+
+      # README injection rebuilds the image and invalidates the original DMG
+      # notarization ticket. Submit and staple the final artifact after edits.
+      - name: Notarize and staple final macOS DMGs
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          : "${APPLE_ID:?Apple ID is missing}"
+          : "${APPLE_PASSWORD:?Apple app-specific password is missing}"
+          : "${APPLE_TEAM_ID:?Apple Team ID is missing}"
+
+          shopt -s nullglob
+          DMGS=(artifacts/*.dmg)
+          if [ ${#DMGS[@]} -eq 0 ]; then
+            echo "::error::No macOS DMG found to notarize"
+            exit 1
+          fi
+
+          for dmg in "${DMGS[@]}"; do
+            echo "Submitting $(basename "$dmg") to Apple notary service"
+            xcrun notarytool submit "$dmg" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait
+            xcrun stapler staple "$dmg"
+            xcrun stapler validate "$dmg"
+            echo "✓ $(basename "$dmg") is notarized and stapled"
           done
 
       - name: Resolve release notes file

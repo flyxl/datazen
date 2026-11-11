@@ -38,7 +38,7 @@ a variant artifact, keeps a retired name, or drifts from the release matrix.
 
 ### User workaround (unsigned / not-notarized builds)
 
-Current public releases are **code-signed** but **not Apple-notarized**. macOS Gatekeeper may show “已损坏” / “无法验证开发者” on first launch.
+Previously published releases remain **code-signed** but **not Apple-notarized**. macOS Gatekeeper may show “已损坏” / “无法验证开发者” on first launch. Releases built after the mandatory notarization workflow is merged will be notarized and stapled.
 
 **Option A — clear quarantine (recommended for Homebrew/manual install):**
 
@@ -58,9 +58,9 @@ The macOS matrix in `.github/workflows/release.yml` imports the Developer ID ide
 |------------------------------------|----------|
 | `APPLE_CERTIFICATE` | Base64-encoded `.p12` containing the Developer ID Application certificate and private key |
 | `APPLE_CERTIFICATE_PASSWORD` | Password used when exporting the `.p12` |
-| `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | Optional notarization credentials; use an app-specific password for `APPLE_PASSWORD` |
+| `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | Required notarization credentials; use an app-specific password for `APPLE_PASSWORD` |
 
-The workflow imports the certificate into a temporary macOS keychain and derives `APPLE_SIGNING_IDENTITY` from it. If notarization credentials are present, Tauri notarizes and staples the macOS bundle during the build. Until then, the app can be signed but Gatekeeper may still warn that it is not notarized. Verify a notarized build with `spctl -a -vv -t exec /Applications/DataZen.app` and `xcrun stapler validate /Applications/DataZen.app`.
+The workflow imports the certificate into a temporary macOS keychain and derives `APPLE_SIGNING_IDENTITY` from it. The macOS build fails if any notarization credential is missing. Tauri notarizes the app bundle during the build; after the workflow injects the first-launch README and rebuilds each DMG, it submits the final DMG to Apple, staples the ticket, and validates it. This ensures the published artifact itself carries a ticket. Verify a notarized app with `spctl -a -vv -t exec /Applications/DataZen.app` and `xcrun stapler validate /Applications/DataZen.app`.
 
 Tauri v2 signing hooks live in `tauri.conf.json` (`bundle.macOS.signingIdentity`, etc.). Updater minisign keys ([`updater.md`](updater.md)) are **independent** of Apple code signing.
 
