@@ -115,15 +115,16 @@ export function buildPresentationColumnContext(
 }
 
 /**
- * 表列覆盖键：JSON.stringify([connectionId, database ?? '', namespace ?? '',
+ * 表列覆盖键：JSON.stringify([connectionId, database ?? null, namespace ?? null,
  * table, column])，不做大小写归一——保留驱动返回的标识符大小写语义
- * （设计 §6）；缺省字段与空字符串均归一为空串，键形状固定，不碰撞。
+ * （设计 §6）；缺省字段用 null、空字符串保留为空串，二者键不同
+ * （设计 §6「缺省字段与空字符串不能无意碰撞」）。
  */
 export function columnOverrideKey(source: Readonly<ColumnSource>): string {
   return JSON.stringify([
     source.connectionId,
-    source.database ?? '',
-    source.namespace ?? '',
+    source.database ?? null,
+    source.namespace ?? null,
     source.table,
     source.column,
   ]);
@@ -444,8 +445,8 @@ export function computePresentationPlanCacheKey(
       ? null
       : [
           input.source.connectionId,
-          input.source.database ?? '',
-          input.source.namespace ?? '',
+          input.source.database ?? null,
+          input.source.namespace ?? null,
           input.source.table,
         ];
   const columnsPart = input.columns.map((column) => [
