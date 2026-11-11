@@ -246,6 +246,24 @@ describe('formatTimestampOutput: iso-tz', () => {
   });
 });
 
+// BUG-003 regression: a Unix millisecond value with a nonzero remainder must
+// keep its fraction in all three formats — before the fix iso/iso-tz
+// silently dropped it while locale kept it.
+describe('formatTimestampOutput: unix millisecond remainder (BUG-003)', () => {
+  it('keeps .123 in iso, iso-tz and locale for the same instant', () => {
+    const instant = unixOf(1705316400123, 'milliseconds');
+    expect(textOf(fmt(instant, 'iso', SHANGHAI))).toBe('2024-01-15T11:00:00.123Z');
+    expect(textOf(fmt(instant, 'iso-tz', SHANGHAI))).toBe('2024-01-15T19:00:00.123+08:00');
+    expect(textOf(fmt(instant, 'locale', SHANGHAI, 'en-US'))).toMatch(/07:00:00\.123\b/);
+  });
+
+  it('keeps .999 for a negative millisecond value (-1)', () => {
+    const instant = unixOf(-1, 'milliseconds');
+    expect(textOf(fmt(instant, 'iso', SHANGHAI))).toBe('1969-12-31T23:59:59.999Z');
+    expect(textOf(fmt(instant, 'iso-tz', SHANGHAI))).toBe('1970-01-01T07:59:59.999+08:00');
+  });
+});
+
 // ---------------------------------------------------------------------------
 // locale — explicit locale + time zone
 // ---------------------------------------------------------------------------

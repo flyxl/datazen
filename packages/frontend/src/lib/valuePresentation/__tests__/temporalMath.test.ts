@@ -371,11 +371,59 @@ describe('parseUnixValue: number input', () => {
   });
 });
 
+// BUG-003 regression: a nonzero millisecond remainder must be reported as
+// fractionDigits 3, otherwise iso/iso-tz output silently drops it (the
+// explicit 0 wins in resolveFractionDigits) while locale keeps it.
+describe('parseUnixValue: millisecond remainder (BUG-003)', () => {
+  it('reports fractionDigits 3 when the millisecond remainder is nonzero', () => {
+    expect(parseUnixValue(1705316400123, 'milliseconds')).toEqual({
+      kind: 'ok',
+      instant: { epochMs: 1705316400123, subSecondNanos: 0, fractionDigits: 3 },
+    });
+  });
+
+  it('reports fractionDigits 3 for a negative millisecond value (positive modulo)', () => {
+    // -1 ms → civil millisecond 999 within the wall second.
+    expect(parseUnixValue(-1, 'milliseconds')).toEqual({
+      kind: 'ok',
+      instant: { epochMs: -1, subSecondNanos: 0, fractionDigits: 3 },
+    });
+  });
+
+  it('reports fractionDigits 0 when the millisecond remainder is zero', () => {
+    expect(parseUnixValue(1705316400000, 'milliseconds')).toEqual({
+      kind: 'ok',
+      instant: { epochMs: 1705316400000, subSecondNanos: 0, fractionDigits: 0 },
+    });
+  });
+
+  it('reports fractionDigits 0 for seconds input (epochMs is a multiple of 1000)', () => {
+    expect(parseUnixValue(1705316400, 'seconds')).toEqual({
+      kind: 'ok',
+      instant: { epochMs: 1705316400000, subSecondNanos: 0, fractionDigits: 0 },
+    });
+  });
+
+  it('agrees between number and string paths for the same millisecond value', () => {
+    expect(parseUnixValue('1705316400123', 'milliseconds')).toEqual({
+      kind: 'ok',
+      instant: { epochMs: 1705316400123, subSecondNanos: 0, fractionDigits: 3 },
+    });
+    expect(parseUnixValue('-1', 'milliseconds')).toEqual({
+      kind: 'ok',
+      instant: { epochMs: -1, subSecondNanos: 0, fractionDigits: 3 },
+    });
+  });
+});
+
 describe('parseUnixValue: string input', () => {
   it('accepts integer syntax with explicit sign', () => {
+    // BUG-003: +12 ms has a nonzero millisecond remainder (12), so
+    // fractionDigits must be 3 — the previous expectation of 0 encoded the
+    // bug (iso output silently dropped .012).
     expect(parseUnixValue('+12', 'milliseconds')).toEqual({
       kind: 'ok',
-      instant: { epochMs: 12, subSecondNanos: 0, fractionDigits: 0 },
+      instant: { epochMs: 12, subSecondNanos: 0, fractionDigits: 3 },
     });
     expect(parseUnixValue('-0', 'seconds')).toEqual({
       kind: 'ok',
