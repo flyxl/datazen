@@ -464,3 +464,63 @@ describe('release matrix agrees with release-variants.mjs', () => {
     }
   });
 });
+
+describe('Release notes are generated once', () => {
+  const workflow = YAML.parse(releaseWorkflow) as {
+    jobs: Record<
+      string,
+      {
+        needs?: string | string[];
+        steps: Array<{
+          id?: string;
+          name?: string;
+          run?: string;
+          with?: Record<string, unknown>;
+        }>;
+      }
+    >;
+  };
+
+  it('leaves release notes out of the per-variant upload step', () => {
+    // generate_release_notes appends to the existing body. Running it from every
+    // matrix leg produced one full "What's Changed" block per leg and eventually
+    // pushed the release body over GitHub's 125,000-character limit.
+    const upload = workflow.jobs.build.steps.find((s) => s.name === 'Upload artifacts to release');
+    expect(upload, 'upload step must exist').toBeTruthy();
+    expect(upload?.with).not.toHaveProperty('body_path');
+    expect(upload?.with).not.toHaveProperty('generate_release_notes');
+  });
+
+  it('updates the body from one job after the matrix finishes', () => {
+    const job = workflow.jobs['release-notes'];
+    expect(job, 'release-notes job must exist').toBeTruthy();
+    expect(job?.needs).toBe('build');
+
+    const update = job?.steps.find((s) => s.name === 'Update release notes once');
+    expect(update, 'notes update step must exist').toBeTruthy();
+    expect(update?.run).toContain('gh release edit "$TAG" --notes-file "$BODY_FILE"');
+    // The automatic fallback is one request for the whole release, not one per
+    // variant.
+    expect(update?.run?.match(/releases\/generate-notes/g)?.length).toBe(1);
+  });
+
+  it('runs the notes job before checksums append to the body', () => {
+    // Checksums edit the same body; a later notes update would erase them.
+    expect(workflow.jobs['release-checksums'].needs).toEqual([
+      'build',
+      'release-notes',
+      'release-updater-json',
+    ]);
+  });
+
+  it('removes the old checksum table with a literal marker match', () => {
+    // `$0 ~ marker` treats the parentheses in "(SHA256)" as a regex group, so
+    // the old table was never matched and every release appended another one.
+    const step = workflow.jobs['release-checksums'].steps.find(
+      (s) => s.name === 'Append checksums to release body',
+    );
+    expect(step, 'checksums append step must exist').toBeTruthy();
+    expect(step?.run).toContain('index($0, marker)');
+    expect(step?.run).not.toContain('$0 ~ marker');
+  });
+});
