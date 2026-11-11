@@ -245,7 +245,7 @@ describe('columnOverrideKey', () => {
     expect(columnOverrideKey({ ...full, column: 'created_at' })).not.toBe(columnOverrideKey(full));
   });
 
-  it('缺省字段与空字符串归一为同一键', () => {
+  it('缺省字段与空字符串 → 键不同（BUG-004）', () => {
     const noDatabase: ColumnSource = {
       connectionId: 'c',
       table: 't',
@@ -258,7 +258,26 @@ describe('columnOverrideKey', () => {
       table: 't',
       column: 'x',
     };
-    expect(columnOverrideKey(noDatabase)).toBe(columnOverrideKey(emptyDatabase));
+    expect(columnOverrideKey(noDatabase)).not.toBe(columnOverrideKey(emptyDatabase));
+    // 缓存键来源段与覆盖键一致：缺省 database 与空串 database 的缓存键也不同。
+    const cacheBase = {
+      columns: [col('x')],
+      configRevision: 1,
+      contributionRevision: 1,
+      locale: 'en-US',
+      localTimeZone: 'UTC',
+    } as const;
+    expect(
+      computePresentationPlanCacheKey({
+        ...cacheBase,
+        source: { connectionId: 'c', table: 't' },
+      }),
+    ).not.toBe(
+      computePresentationPlanCacheKey({
+        ...cacheBase,
+        source: { connectionId: 'c', database: '', table: 't' },
+      }),
+    );
   });
 });
 
