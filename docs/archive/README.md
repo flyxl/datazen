@@ -16,6 +16,7 @@
 | `ddd-refactor-plan.md` + `ddd-refactor/`（10 文件） | DDD 模块化重构总纲与细节（原 §2–§14） | D0–D8 全部完成；旧 `packages/kernel` crate 已退役删除，内核收敛为 `crates/datazen/` |
 | `frontend-form-split-plan.md` | 前端形态拆分（`packages/frontend` / `packages/desktop` 分家）F1–F6 实施计划 | 全部落地 |
 | `frontend-form-split-worklog.md` | 形态拆分过程 worklog | 随计划归档 |
+| `rune-native-ui-migration.md` | Rune 双端原生 UI 迁移实施方案：共享 Rust UI、Native/WASM Host、SQL Editor/DataGrid POC 与验收门禁 | 实施尚未开始，先通过 POC 决策门 |
 
 ### W8 迭代（团队 Web 服务点亮，2026-11-05 至 11-09，全部交付）
 
