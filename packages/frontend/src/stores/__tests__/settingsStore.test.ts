@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { DEFAULT_THEME_PREFERENCE } from '../../types/theme';
+import type { StoredValuePresentationSettings } from '../../lib/valuePresentation/settings';
 
 const mockSettingsCommands = {
   getSettings: vi.fn(),
@@ -367,5 +368,186 @@ describe('settingsStore', () => {
     expect(settings.rowCountEstimateThreshold).toBe(1000);
     expect(settings.defaultTableSort).toBe('none');
     expect(mockSettingsCommands.saveSettings).toHaveBeenCalled();
+  });
+
+  // Issue-32 T06: valuePresentation 持久化链路与 revision 计数。
+  it('loadSettings parses valuePresentation and bumps the revision when it differs', async () => {
+    const stored: StoredValuePresentationSettings = {
+      version: 1,
+      renderers: {
+        'datazen.timestamp': {
+          enabled: true,
+          options: {
+            interpretation: { kind: 'native' },
+            format: 'iso',
+            displayTimeZone: { kind: 'utc' },
+          },
+        },
+      },
+    };
+    mockSettingsCommands.getSettings.mockResolvedValueOnce({
+      theme: { mode: 'dark', packId: null },
+      language: 'en',
+      valuePresentation: stored,
+    });
+
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(0);
+    await useSettingsStore.getState().loadSettings();
+
+    expect(useSettingsStore.getState().settings.valuePresentation).toEqual(stored);
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(1);
+  });
+
+  it('loadSettings keeps the revision at 0 when the loaded value equals the default', async () => {
+    mockSettingsCommands.getSettings.mockResolvedValueOnce({
+      theme: { mode: 'dark', packId: null },
+      language: 'en',
+      valuePresentation: { version: 1, renderers: {} },
+    });
+
+    await useSettingsStore.getState().loadSettings();
+
+    expect(useSettingsStore.getState().settings.valuePresentation).toEqual({
+      version: 1,
+      renderers: {},
+    });
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(0);
+  });
+
+  it('loadSettings falls back to the default for a malformed valuePresentation (old payload)', async () => {
+    mockSettingsCommands.getSettings.mockResolvedValueOnce({
+      theme: { mode: 'dark', packId: null },
+      language: 'en',
+      valuePresentation: { version: 'x', renderers: 'nope' },
+    });
+
+    await useSettingsStore.getState().loadSettings();
+
+    expect(useSettingsStore.getState().settings.valuePresentation).toEqual({
+      version: 1,
+      renderers: {},
+    });
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(0);
+  });
+
+  it('loadSettings round-trips valuePresentation through save and reload', async () => {
+    const stored: StoredValuePresentationSettings = {
+      version: 1,
+      renderers: {
+        'datazen.timestamp': {
+          enabled: true,
+          options: {
+            interpretation: { kind: 'unix', unit: 'milliseconds' },
+            format: 'iso-tz',
+            displayTimeZone: { kind: 'iana', name: 'Asia/Shanghai' },
+          },
+        },
+      },
+    };
+    mockSettingsCommands.getSettings.mockResolvedValueOnce({
+      theme: { mode: 'dark', packId: null },
+      language: 'en',
+      valuePresentation: stored,
+    });
+    await useSettingsStore.getState().loadSettings();
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(1);
+
+    mockSettingsCommands.saveSettings.mockResolvedValue(undefined);
+    await useSettingsStore.getState().updateSettings({ defaultPageSize: 100 });
+    const saved = mockSettingsCommands.saveSettings.mock.lastCall?.[0] as {
+      valuePresentation: unknown;
+    };
+    expect(saved.valuePresentation).toEqual(stored);
+    // 往返中 JSON 不变，revision 不动。
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(1);
+    expect(useSettingsStore.getState().settings.valuePresentation).toEqual(stored);
+  });
+
+  it('updateSettings bumps the revision only when valuePresentation JSON changes', async () => {
+    mockSettingsCommands.saveSettings.mockResolvedValue(undefined);
+    const next: StoredValuePresentationSettings = {
+      version: 1,
+      renderers: {
+        'datazen.timestamp': {
+          enabled: true,
+          options: {
+            interpretation: { kind: 'native' },
+            format: 'iso',
+            displayTimeZone: { kind: 'utc' },
+          },
+        },
+      },
+    };
+
+    await useSettingsStore.getState().updateSettings({ valuePresentation: next });
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(1);
+    expect(mockSettingsCommands.saveSettings).toHaveBeenLastCalledWith(
+      expect.objectContaining({ valuePresentation: next }),
+    );
+
+    // 同值再写：revision 不动（load/save 往返重建等值对象也不触发重建）。
+    await useSettingsStore.getState().updateSettings({
+      valuePresentation: JSON.parse(JSON.stringify(next)) as typeof next,
+    });
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(1);
+  });
+
+  it('updateValuePresentationSettings replaces the stored value through the normal save path', async () => {
+    mockSettingsCommands.saveSettings.mockResolvedValue(undefined);
+    const next: StoredValuePresentationSettings = {
+      version: 1,
+      renderers: {
+        'datazen.timestamp': {
+          enabled: false,
+          options: {
+            interpretation: { kind: 'native' },
+            format: 'locale',
+            displayTimeZone: { kind: 'local' },
+          },
+        },
+      },
+    };
+
+    await useSettingsStore.getState().updateValuePresentationSettings(next);
+
+    expect(useSettingsStore.getState().settings.valuePresentation).toEqual(next);
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(1);
+    expect(mockSettingsCommands.saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ valuePresentation: next }),
+    );
+  });
+
+  it('applySettingsLocally syncs valuePresentation and its revision without saving', async () => {
+    applyThemePack.mockResolvedValue({ ok: true });
+    const { applySettingsLocally } = await import('../settingsStore');
+    const next: StoredValuePresentationSettings = {
+      version: 1,
+      renderers: {
+        'datazen.timestamp': {
+          enabled: true,
+          options: {
+            interpretation: { kind: 'native' },
+            format: 'iso',
+            displayTimeZone: { kind: 'utc' },
+          },
+        },
+      },
+    };
+
+    await applySettingsLocally({
+      ...useSettingsStore.getState().settings,
+      valuePresentation: next,
+    });
+
+    expect(useSettingsStore.getState().settings.valuePresentation).toEqual(next);
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(1);
+    expect(mockSettingsCommands.saveSettings).not.toHaveBeenCalled();
+
+    // 同值再同步：revision 不动。
+    await applySettingsLocally({
+      ...useSettingsStore.getState().settings,
+      valuePresentation: JSON.parse(JSON.stringify(next)) as typeof next,
+    });
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(1);
   });
 });
