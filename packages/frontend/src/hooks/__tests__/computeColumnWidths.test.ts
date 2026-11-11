@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { computeInitialColumnWidths, adjustWidthsForSort, SORT_ICON_WIDTH } from '../useColumnResize';
+import {
+  computeInitialColumnWidths,
+  adjustWidthsForSort,
+  SORT_BADGE_EXTRA_WIDTH,
+} from '../useColumnResize';
 
 describe('computeInitialColumnWidths', () => {
   it('gives narrow width to id/serial columns', () => {
@@ -80,7 +84,9 @@ describe('computeInitialColumnWidths', () => {
 
   it('clamps to max width', () => {
     const cols = [{ name: 'data', type: 'jsonb' }];
-    const rows = [['{"a":1,"b":2,"c":3,"d":4,"e":"a very very long json field that could be unlimited"}']];
+    const rows = [
+      ['{"a":1,"b":2,"c":3,"d":4,"e":"a very very long json field that could be unlimited"}'],
+    ];
     const widths = computeInitialColumnWidths(cols, rows);
     expect(widths[0]).toBeLessThanOrEqual(400);
   });
@@ -91,10 +97,10 @@ describe('computeInitialColumnWidths', () => {
     expect(widths[0]).toBeLessThanOrEqual(105);
   });
 
-  it('initial width does not include sort icon space', () => {
-    const cols = [{ name: 'stock', type: 'integer' }];
+  it('reserves the sort control width before a sort is active', () => {
+    const cols = [{ name: 'score_column', type: 'integer' }];
     const widths = computeInitialColumnWidths(cols, [[0]]);
-    expect(widths[0]).toBe(90);
+    expect(widths[0]).toBe(134);
   });
 
   it('long-named integer column is compact', () => {
@@ -113,13 +119,19 @@ describe('adjustWidthsForSort', () => {
     expect(result).toEqual([90, 150, 100]);
   });
 
-  it('expands only the sorted column by SORT_ICON_WIDTH', () => {
+  it('keeps a single sort at its default width and reserves space for multi-sort badges', () => {
     const widths = [90, 150, 100];
     const cols = [{ name: 'id' }, { name: 'name' }, { name: 'price' }];
     const result = adjustWidthsForSort(widths, cols, [{ column: 'name', descending: false }]);
-    expect(result[0]).toBe(90);
-    expect(result[1]).toBe(150 + SORT_ICON_WIDTH);
-    expect(result[2]).toBe(100);
+    expect(result).toEqual(widths);
+
+    const multiSort = adjustWidthsForSort(widths, cols, [
+      { column: 'name', descending: false },
+      { column: 'price', descending: true },
+    ]);
+    expect(multiSort[0]).toBe(90);
+    expect(multiSort[1]).toBe(150 + SORT_BADGE_EXTRA_WIDTH);
+    expect(multiSort[2]).toBe(100 + SORT_BADGE_EXTRA_WIDTH);
   });
 
   it('does not mutate the original widths array', () => {

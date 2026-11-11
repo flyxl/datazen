@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowDown, ArrowUp, ChevronDown, Filter } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import type { SortCondition } from '../../types';
@@ -38,7 +38,6 @@ export interface TableHeaderProps {
   columnWidths?: number[];
   onResizeStart?: (colIndex: number, startX: number) => void;
   sortable?: boolean;
-  onFilterColumn?: (column: string) => void;
   /**
    * The driver's own column-type rules (`DatabaseTypeMeta.cellTypes`).
    *
@@ -81,7 +80,6 @@ export function TableHeader({
   columnWidths,
   onResizeStart,
   sortable = true,
-  onFilterColumn,
   cellTypeHints,
   gridSemantics = false,
   onReorderColumns,
@@ -95,9 +93,9 @@ export function TableHeader({
 
   /**
    * The header's own sort menu (DBR-SORT): three single-column entries, opened
-   * from the chevron every sortable column carries. The entries are **replace**
-   * semantics — the Navicat behaviour the click cycle also implements — while
-   * the right-click menu keeps its multi-column builder; the two never mix.
+   * from the single adaptive sort control every sortable column carries. The
+   * entries are **replace** semantics — the Navicat behaviour the click cycle
+   * also implements — while the right-click menu keeps its multi-column builder.
    */
   const openSortMenu = (
     event: React.MouseEvent<HTMLButtonElement>,
@@ -270,19 +268,6 @@ export function TableHeader({
                 </div>
               ) : null}
             </div>
-            {onFilterColumn && (
-              <button
-                type="button"
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-fg-muted hover:bg-surface hover:text-accent"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onFilterColumn(col.name);
-                }}
-                aria-label="Filter"
-              >
-                <Filter className="h-3.5 w-3.5" />
-              </button>
-            )}
             {sortable && sorted !== 'none' && sorts.length > 1 && (
               <span
                 data-sort-badge
@@ -290,19 +275,6 @@ export function TableHeader({
                 className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-sm bg-accent/15 px-1 font-mono text-[10px] leading-none text-accent"
               >
                 {sortPosition + 1}
-              </span>
-            )}
-            {sortable && sorted !== 'none' && (
-              <span
-                data-sort-indicator
-                aria-hidden
-                className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-accent"
-              >
-                {sorted === 'asc' ? (
-                  <ArrowUp className="h-3.5 w-3.5" />
-                ) : (
-                  <ArrowDown className="h-3.5 w-3.5" />
-                )}
               </span>
             )}
             {sortable && (
@@ -317,7 +289,17 @@ export function TableHeader({
                 aria-label={t('dataTable.sortMenuLabel')}
                 title={t('dataTable.sortMenuLabel')}
               >
-                <ChevronDown className="h-3.5 w-3.5" />
+                {sorted === 'asc' ? (
+                  <span data-sort-indicator aria-hidden className="inline-flex">
+                    <ArrowUp className="h-3.5 w-3.5 text-accent" />
+                  </span>
+                ) : sorted === 'desc' ? (
+                  <span data-sort-indicator aria-hidden className="inline-flex">
+                    <ArrowDown className="h-3.5 w-3.5 text-accent" />
+                  </span>
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                )}
               </button>
             )}
             {onResizeStart && (

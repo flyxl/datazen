@@ -890,11 +890,6 @@ export function DataTable({
               frozenColumns={frozenColumns}
               // DB-17: the gutter is the setting's to drop.
               showRowNumbers={showRowNumbers}
-              onFilterColumn={
-                onAddFilter
-                  ? (column) => onAddFilter({ column, operator: 'eq', value: '' })
-                  : undefined
-              }
               cellTypeHints={cellTypeHints}
             />
             <VirtualBody

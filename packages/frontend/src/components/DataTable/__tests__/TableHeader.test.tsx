@@ -26,17 +26,20 @@ const COLS = [
 ];
 
 describe('TableHeader sort interaction (DBR-SORT, Navicat-aligned)', () => {
-  it('hides the direction indicator for unsorted columns but keeps the menu chevron', () => {
+  it('uses one chevron control for unsorted columns', () => {
     const { container } = render(
       <TableHeader columns={COLS} sorts={[]} onSort={() => {}} sortable />,
     );
-    // No column is sorted: no direction indicator anywhere…
+    // No column is sorted, so no direction indicator appears…
     expect(container.querySelectorAll('[data-sort-indicator]').length).toBe(0);
-    // …but every sortable column carries the chevron that opens its menu.
+    // …and each column has one chevron control that opens its sort menu.
     expect(container.querySelectorAll('[data-sort-menu]').length).toBe(COLS.length);
+    expect(container.querySelectorAll('[data-sort-menu] .lucide-chevron-down').length).toBe(
+      COLS.length,
+    );
   });
 
-  it('shows the direction indicator only for the actively sorted column', () => {
+  it('replaces the chevron with a direction indicator on the sorted column', () => {
     const sorts: SortCondition[] = [{ column: 'name', descending: false }];
     const { container } = render(
       <TableHeader columns={COLS} sorts={sorts} onSort={() => {}} sortable />,
@@ -44,6 +47,19 @@ describe('TableHeader sort interaction (DBR-SORT, Navicat-aligned)', () => {
     const indicators = container.querySelectorAll('[data-sort-indicator]');
     expect(indicators.length).toBe(1);
     expect(indicators[0].querySelector('.lucide-arrow-up')).toBeTruthy();
+    const nameHeader = container.querySelector('[data-col-header="name"]')!;
+    const sortControl = nameHeader.querySelector('[data-sort-menu]')!;
+    expect(sortControl.querySelector('.lucide-arrow-up')).toBeTruthy();
+    expect(sortControl.querySelector('.lucide-chevron-down')).toBeNull();
+  });
+
+  it('does not render per-column filter buttons', () => {
+    const { container } = render(
+      <TableHeader columns={COLS} sorts={[]} onSort={() => {}} sortable />,
+    );
+    expect(container.querySelectorAll('[data-col-header] button[aria-label="Filter"]').length).toBe(
+      0,
+    );
   });
 
   it('a single click sorts an unsorted column ascending', () => {
@@ -113,7 +129,7 @@ describe('TableHeader sort interaction (DBR-SORT, Navicat-aligned)', () => {
     expect(onSort).toHaveBeenCalledWith({ column: 'id', descending: false });
   });
 
-  it('the chevron opens the three single-column entries without sorting', () => {
+  it('the adaptive sort control opens the three single-column entries without sorting', () => {
     const onSort = vi.fn();
     vi.mocked(showNativeContextMenu).mockClear();
     const { container } = render(
