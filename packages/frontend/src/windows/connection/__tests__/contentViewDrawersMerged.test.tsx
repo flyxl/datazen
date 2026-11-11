@@ -19,7 +19,7 @@
  * pinned.
  */
 
-import { cleanup, render, waitFor } from '@testing-library/react';
+import { cleanup, render, fireEvent, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContentViewDrawers } from '../ContentViewDrawers';
 import { EMPTY_QUERY_EXEC, usePanelStore } from '../../../stores/panelStore';
@@ -90,9 +90,7 @@ function mysqlResult(writableMapping?: 'verified'): StatementResult {
       resourceBindingId: 'res-1',
       handle: { dbSessionId: 'sess-1', runtimeEpoch: 0 },
     },
-    ...(writableMapping
-      ? { source: { writableMapping, statementIndex: 0 } }
-      : {}),
+    ...(writableMapping ? { source: { writableMapping, statementIndex: 0 } } : {}),
   } as unknown as StatementResult;
 }
 
@@ -136,6 +134,14 @@ function renderDrawers() {
 /** The drawer's inputs: the search box plus one per editable field. */
 function inputs(container: HTMLElement): HTMLElement[] {
   return Array.from(container.querySelectorAll('input, textarea'));
+}
+
+/**
+ * BUG-005: an editable field now starts in display state — the display
+ * container (in column order) opens its editor; a read-only field has none.
+ */
+function displayContainers(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll('aside [role="button"]'));
 }
 
 function readOnlyReason(container: HTMLElement): string | null {
@@ -283,14 +289,20 @@ describe('the hand-resolved merge in ContentViewDrawers', () => {
     const { container } = renderDrawers();
 
     await waitFor(() => expect(resolveResultOrigin).toHaveBeenCalledTimes(1));
-    // The search box plus the field's editor.
+    // BUG-005: the editable drawer shows a display container first — the
+    // editor mounts only once it is opened, so editability is probed by
+    // opening it, not by counting inputs on mount.
+    await waitFor(() => expect(displayContainers(container).length).toBe(1));
+    fireEvent.click(displayContainers(container)[0]);
     await waitFor(() => expect(inputs(container).length).toBeGreaterThan(1));
 
-    // A result no verdict vouches for is read-only: only the search box.
+    // A result no verdict vouches for is read-only: only the search box,
+    // and no display container to open.
     cleanup();
     seed(mysqlResult());
     const second = renderDrawers();
     await waitFor(() => expect(resolveResultOrigin).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(inputs(second.container).length).toBe(1));
+    expect(displayContainers(second.container)).toHaveLength(0);
   });
 });

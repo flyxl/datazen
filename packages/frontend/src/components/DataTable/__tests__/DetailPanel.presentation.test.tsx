@@ -88,6 +88,15 @@ function fieldInputs(container: HTMLElement): HTMLInputElement[] {
   return Array.from(container.querySelectorAll('input')).slice(1) as HTMLInputElement[];
 }
 
+/**
+ * BUG-005: editable fields now start in display state — click the display
+ * container (in column order) to open the editor for that field.
+ */
+function openEditor(container: HTMLElement, index = 0): void {
+  const displays = container.querySelectorAll('aside [role="button"]');
+  fireEvent.click(displays[index]);
+}
+
 function asidePres(container: HTMLElement): string[] {
   return Array.from(container.querySelectorAll('aside pre')).map((pre) => pre.textContent ?? '');
 }
@@ -161,6 +170,11 @@ describe('DetailPanel presentation wiring (issue-32 T05)', () => {
         presentationRegistry={makeRegistry()}
       />,
     );
+    // BUG-005: the editable aside now shows the presented text by default…
+    expect(asidePres(container)).toContain('2026-01-15T22:30:00+08:00');
+    expect(fieldInputs(container)).toHaveLength(0);
+    // …and only the editor, opened from the display, holds the raw value.
+    openEditor(container);
     const input = fieldInputs(container)[0];
     expect(input).toHaveValue('2026-01-15T14:30:00Z');
     expect(input).not.toHaveValue('2026-01-15T22:30:00+08:00');
@@ -194,6 +208,8 @@ describe('DetailPanel presentation wiring (issue-32 T05)', () => {
         onFieldEdit={onFieldEdit}
       />,
     );
+    // BUG-005: the editor opens from the display container, not on mount.
+    openEditor(container);
     const input = fieldInputs(container)[0];
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: 'Carol' } });
@@ -213,6 +229,8 @@ describe('DetailPanel presentation wiring (issue-32 T05)', () => {
         onFieldEdit={onFieldEdit}
       />,
     );
+    // BUG-005: the editor opens from the display container, not on mount.
+    openEditor(container);
     const input = fieldInputs(container)[0];
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: 'Dave' } });
