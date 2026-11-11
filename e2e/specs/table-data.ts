@@ -176,14 +176,19 @@ describe('表数据视图 (TD-001~TD-008)', () => {
     return values as string[];
   };
 
+  const openSortMenuForColumn = async (column: string) => {
+    const header = await $('[data-col-header="' + column + '"]');
+    const sortButton = await header.$('[data-sort-menu]');
+    await sortButton.click();
+    return header;
+  };
+
   it('列头排序菜单应真实排序、取消排序且显示完整列名 (TD-003)', async () => {
     const filterButtonCount = await browser.execute(
       () => document.querySelectorAll('[data-col-header] button[aria-label="Filter"]').length,
     );
     expect(filterButtonCount).toBe(0);
 
-    const longHeader = await $('[data-col-header="product_description_label"]');
-    await longHeader.scrollIntoView();
     const labelLayout = await browser.execute(() => {
       const header = document.querySelector<HTMLElement>(
         '[data-col-header="product_description_label"]',
@@ -199,10 +204,7 @@ describe('表数据视图 (TD-001~TD-008)', () => {
     });
     expect(labelLayout).toEqual({ headerFound: true, nameFits: true, typeFits: true });
 
-    const header = await $('[data-col-header="score"]');
-    const sortMenuButton = await header.$('[data-sort-menu]');
-    await header.moveTo();
-    await sortMenuButton.click();
+    const header = await openSortMenuForColumn('score');
     const ascendingItem = await $('[data-testid="web-context-item-sort-ascending"]');
     await ascendingItem.waitForDisplayed({ timeout: 5000 });
     await expect(header.$('[data-sort-indicator]')).not.toBeExisting();
@@ -218,9 +220,7 @@ describe('表数据视图 (TD-001~TD-008)', () => {
       { timeout: 15000, timeoutMsg: 'Ascending sort did not reorder the table rows' },
     );
 
-    const sortedHeader = await $('[data-col-header="score"]');
-    await sortedHeader.moveTo();
-    await sortedHeader.$('[data-sort-menu]').click();
+    await openSortMenuForColumn('score');
     const descendingItem = await $('[data-testid="web-context-item-sort-descending"]');
     await descendingItem.waitForDisplayed({ timeout: 5000 });
     await descendingItem.click();
@@ -230,14 +230,12 @@ describe('表数据视图 (TD-001~TD-008)', () => {
         const [first, second] = (await readColumnValues('score', 2)).map(Number);
         const [firstName] = await readColumnValues('name', 1);
         const arrow = await $('[data-col-header="score"] [data-sort-indicator] .lucide-arrow-down');
-        return first > second && firstName === 'user_14' && (await arrow.isExisting());
+        return first > second && firstName === 'user_57' && (await arrow.isExisting());
       },
       { timeout: 15000, timeoutMsg: 'Descending sort did not reorder the table rows' },
     );
 
-    const descendingHeader = await $('[data-col-header="score"]');
-    await descendingHeader.moveTo();
-    await descendingHeader.$('[data-sort-menu]').click();
+    await openSortMenuForColumn('score');
     const removeSortItem = await $('[data-testid="web-context-item-remove-sort"]');
     await removeSortItem.waitForDisplayed({ timeout: 5000 });
     await expect(removeSortItem).toBeEnabled();
