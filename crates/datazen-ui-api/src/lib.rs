@@ -80,7 +80,16 @@ impl MemoryWorkspace {
                 engine: "postgres".into(),
             }],
             session: None,
-            tables: vec![("customers".into(), StoredTable { columns: columns.into_iter().map(str::to_owned).collect(), rows })],
+            tables: vec![
+                ("customers".into(), StoredTable { columns: columns.into_iter().map(str::to_owned).collect(), rows }),
+                (
+                    "orders".into(),
+                    StoredTable {
+                        columns: vec!["id".into(), "name".into()],
+                        rows: vec![vec!["1".into(), "order-0".into()]],
+                    },
+                ),
+            ],
             open: None,
         }
     }

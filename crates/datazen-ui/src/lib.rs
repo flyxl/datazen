@@ -114,7 +114,9 @@ impl AppState {
     }
 
     fn open_table_tab(&mut self, title: &str) -> Option<u32> {
-        self.tabs.open(TabKind::Table, title)
+        let id = self.tabs.open(TabKind::Table, title)?;
+        self.show_table(title);
+        Some(id)
     }
 
     fn open_query_tab(&mut self, title: &str) -> Option<u32> {
@@ -122,7 +124,29 @@ impl AppState {
     }
 
     fn select_tab(&mut self, id: u32) -> bool {
-        self.tabs.select(id)
+        if !self.tabs.select(id) {
+            return false;
+        }
+        let title = self
+            .tabs
+            .selected()
+            .filter(|tab| tab.kind == TabKind::Table)
+            .map(|tab| tab.title.clone());
+        if let Some(title) = title {
+            self.show_table(&title);
+        }
+        true
+    }
+
+    fn show_table(&mut self, title: &str) -> bool {
+        match self.workspace.open_table(title) {
+            Ok(page) => {
+                self.grid.load_page(&page);
+                self.active = Section::DataBrowser;
+                true
+            }
+            Err(_) => false,
+        }
     }
 
     fn close_tab(&mut self, id: u32) -> bool {
@@ -614,5 +638,38 @@ mod tests {
         assert_eq!(runtime.state.tabs.tabs().len(), 1);
         assert_eq!(runtime.state.tabs.selected().unwrap().title, "customers");
         assert_eq!(runtime.state.tabs.selected().unwrap().kind, datazen_ui_api::TabKind::Table);
+    }
+
+    #[test]
+    fn the_open_table_tab_is_the_table_in_the_grid() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("connection-local").expect("connection");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+
+        let (x, y) = runtime.find("tree-table-orders").expect("orders");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        let orders = runtime.state.tabs.selected().unwrap().id;
+        assert_eq!(runtime.state.grid.cell(0, 1), "order-0");
+
+        let (x, y) = runtime.find("tree-table-customers").expect("customers");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        let customers = runtime.state.tabs.selected().unwrap().id;
+        assert_eq!(runtime.state.grid.cell(0, 1), "customer-0");
+
+        runtime.frame(1.0);
+        let (x, y) = runtime.find(&format!("tab-{orders}")).expect("orders tab");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.tabs.selected().unwrap().id, orders);
+        assert_eq!(runtime.state.grid.cell(0, 1), "order-0");
+        assert_ne!(customers, orders);
     }
 }
