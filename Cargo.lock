@@ -2614,9 +2614,14 @@ dependencies = [
 name = "datazen-ui"
 version = "0.1.0"
 dependencies = [
+ "datazen-ui-api",
  "rune",
  "wasm-bindgen",
 ]
+
+[[package]]
+name = "datazen-ui-api"
+version = "0.1.0"
 
 [[package]]
 name = "datazen_desktop"

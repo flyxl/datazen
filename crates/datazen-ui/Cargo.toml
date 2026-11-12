@@ -13,6 +13,7 @@ name = "datazen-rune"
 path = "src/main.rs"
 
 [dependencies]
+datazen-ui-api = { workspace = true }
 rune = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

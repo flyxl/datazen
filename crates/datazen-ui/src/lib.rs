@@ -7,6 +7,7 @@ mod data_grid;
 mod sql_editor;
 
 use data_grid::DataGrid;
+use datazen_ui_api::{MemoryWorkspace, WorkspaceApi};
 use rune::tok::{self, type_};
 use rune::{App, AppSpec, Cx, El, Ime, KeyEvent, Tx, col, row, text};
 use sql_editor::SqlEditor;
@@ -81,17 +82,43 @@ struct AppState {
     active: Section,
     sql: SqlEditor,
     grid: DataGrid,
+    workspace: MemoryWorkspace,
 }
 
 impl Default for AppState {
     fn default() -> Self {
-        Self { active: Section::Connections, sql: SqlEditor::new(), grid: DataGrid::new() }
+        Self {
+            active: Section::Connections,
+            sql: SqlEditor::new(),
+            grid: DataGrid::new(),
+            workspace: MemoryWorkspace::new(),
+        }
     }
 }
 
 impl AppState {
     fn select(&mut self, section: Section) {
         self.active = section;
+    }
+
+    fn open_connection(&mut self, id: &str) {
+        if self.workspace.connect(id).is_err() {
+            return;
+        }
+        if let Ok(page) = self.workspace.open_table("customers") {
+            self.grid.load_page(&page);
+            self.active = Section::DataBrowser;
+        }
+    }
+
+    fn commit_grid_edit(&mut self) {
+        let (row, col) = self.grid.focus();
+        let column = self.grid.column_name(col).map(str::to_owned);
+        self.grid.commit_edit();
+        if let Some(column) = column {
+            let value = self.grid.cell(row, col);
+            let _ = self.workspace.stage_cell(row, &column, value);
+        }
     }
 }
 
@@ -127,6 +154,9 @@ fn page_body(state: &AppState, theme: tok::Theme) -> El {
     if state.active == Section::DataBrowser {
         return data_grid::panel(&state.grid, theme.text, theme.text_secondary, theme.control_off);
     }
+    if state.active == Section::Connections {
+        return connection_list(state, theme);
+    }
 
     col()
         .key("datazen-preview-card")
@@ -150,6 +180,27 @@ fn page_body(state: &AppState, theme: tok::Theme) -> El {
                 .color(theme.text_secondary)
                 .w_full(),
         )
+}
+
+fn connection_list(state: &AppState, theme: tok::Theme) -> El {
+    let mut list = col().key("connection-list").w_full().gap(8.0);
+    for profile in state.workspace.connections() {
+        let id = profile.id.clone();
+        let label = format!("{} · {}", profile.name, profile.engine);
+        list = list.child(
+            row()
+                .key(format!("connection-{id}"))
+                .w_full()
+                .h(40.0)
+                .px(12.0)
+                .center_y()
+                .radius(8.0)
+                .fill(theme.control_off)
+                .child(text(label).font(type_::LABEL).color(theme.text))
+                .on_press(move |state: &mut AppState| state.open_connection(&id)),
+        );
+    }
+    list
 }
 
 fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
@@ -422,5 +473,26 @@ mod tests {
         runtime.frame(0.0);
         let copied = runtime.copy_request.as_ref().map(|copy| copy.content().text().to_owned());
         assert_eq!(copied.as_deref(), Some("A"));
+    }
+
+    #[test]
+    fn opening_a_connection_loads_the_table_page_into_the_grid() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("connection-local").expect("connection row");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+
+        assert_eq!(runtime.state.active, Section::DataBrowser);
+        assert_eq!(runtime.state.grid.cell(0, 1), "customer-0");
+        assert_eq!(runtime.state.grid.column_name(1), Some("name"));
+        runtime.state.grid.select(0, 1);
+        runtime.state.grid.begin_edit();
+        runtime.state.grid.editor.insert("-edited");
+        runtime.state.commit_grid_edit();
+        assert_eq!(runtime.state.workspace.open_table("customers").unwrap().rows[0][1], "customer-0-edited");
     }
 }

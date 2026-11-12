@@ -1,0 +1,11 @@
+[package]
+name = "datazen-ui-api"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "UI ports for the DataZen Rune interface. No host, driver or HTTP types."
+
+[dependencies]
+
+[lints]
+workspace = true

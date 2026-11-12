@@ -26,10 +26,12 @@ pub struct DataGrid {
     pub rows: u32,
     pub cols: u32,
     edits: HashMap<(u32, u32), String>,
+    source: Option<Vec<Vec<String>>>,
+    columns: Vec<String>,
     anchor: (u32, u32),
     focus: (u32, u32),
     editing: bool,
-    editor: TextEdit,
+    pub(crate) editor: TextEdit,
     /// Horizontal scroll, in points. `on_scroll_offset` writes it; it cannot touch this struct.
     scroll_x: rune::Live<f32>,
     origin_col: u32,
@@ -47,6 +49,8 @@ impl DataGrid {
             rows: ROW_COUNT,
             cols: COL_COUNT,
             edits: HashMap::new(),
+            source: None,
+            columns: Vec::new(),
             anchor: (0, 0),
             focus: (0, 0),
             editing: false,
@@ -73,10 +77,36 @@ impl DataGrid {
     }
 
     pub fn cell(&self, row: u32, col: u32) -> String {
-        self.edits
-            .get(&(row, col))
-            .cloned()
-            .unwrap_or_else(|| format!("r{row}c{col}"))
+        if let Some(value) = self.edits.get(&(row, col)) {
+            return value.clone();
+        }
+        if let Some(rows) = &self.source {
+            if let Some(record) = rows.get(row as usize) {
+                if let Some(value) = record.get(col as usize) {
+                    return value.clone();
+                }
+            }
+        }
+        format!("r{row}c{col}")
+    }
+
+    pub fn column_name(&self, col: u32) -> Option<&str> {
+        self.columns.get(col as usize).map(String::as_str)
+    }
+
+    pub fn load_page(&mut self, page: &datazen_ui_api::TablePage) {
+        if self.editing {
+            self.editing = false;
+        }
+        self.source = Some(page.rows.clone());
+        self.columns = page.columns.clone();
+        self.rows = page.rows.len() as u32;
+        self.cols = page.columns.len() as u32;
+        self.edits.clear();
+        self.anchor = (0, 0);
+        self.focus = (0, 0);
+        self.origin_col = 0;
+        self.scroll_x.set(0.0);
     }
 
     pub fn select(&mut self, row: u32, col: u32) {
@@ -260,7 +290,7 @@ pub fn panel(grid: &DataGrid, ink: rune::Color, muted: rune::Color, well: rune::
         .w_full()
         .h(420.0)
         .gap(8.0)
-        .child(text(status).font(label()).color(muted).key("data-grid-status"))
+        .child(text(status).font(label_style()).color(muted).key("data-grid-status"))
         .child(
             col()
                 .key("data-grid-scroll")
@@ -284,7 +314,7 @@ fn header_row(grid: &DataGrid, ink: rune::Color) -> El {
         if col_index > cursor {
             line = line.child(el().w((col_index - cursor) as f32 * COL_W).h(ROW_H));
         }
-        line = line.child(header_cell(col_index, ink));
+        line = line.child(header_cell(grid, col_index, ink));
         cursor = col_index + 1;
     }
     if cursor < grid.cols {
@@ -314,14 +344,18 @@ fn paint_row(grid: &DataGrid, row_index: u32, ink: rune::Color) -> El {
     line
 }
 
-fn header_cell(col_index: u32, ink: rune::Color) -> El {
+fn header_cell(grid: &DataGrid, col_index: u32, ink: rune::Color) -> El {
+    let label = grid
+        .column_name(col_index)
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("c{col_index}"));
     let mut cell = row()
         .key(format!("head-{col_index}"))
         .w(COL_W)
         .h(ROW_H)
         .px(8.0)
         .center_y()
-        .child(text(format!("c{col_index}")).font(label()).color(ink));
+        .child(text(label).font(label_style()).color(ink));
     if col_index == 0 {
         cell = cell.sticky_left(0.0).fill(oklch(0.24, 0.03, 250.0));
     }
@@ -361,14 +395,14 @@ fn cell(grid: &DataGrid, row_index: u32, col_index: u32, ink: rune::Color) -> El
                 .w(COL_W - 16.0)
                 .h(ROW_H - 4.0)
                 .on_edit(|state: &mut crate::AppState| &mut state.grid.editor)
-                .on_submit(|state: &mut crate::AppState, _| state.grid.commit_edit()),
+                .on_submit(|state: &mut crate::AppState, _| state.commit_grid_edit()),
         )
     } else {
-        box_el.child(text(grid.cell(row_index, col_index)).font(label()).color(ink))
+        box_el.child(text(grid.cell(row_index, col_index)).font(label_style()).color(ink))
     }
 }
 
-fn label() -> TextStyle {
+fn label_style() -> TextStyle {
     TextStyle::new(12.0, 400.0)
 }
 
