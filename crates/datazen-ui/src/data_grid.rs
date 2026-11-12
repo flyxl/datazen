@@ -31,6 +31,7 @@ pub struct DataGrid {
     anchor: (u32, u32),
     focus: (u32, u32),
     editing: bool,
+    editable: bool,
     pub(crate) editor: TextEdit,
     /// Horizontal scroll, in points. `on_scroll_offset` writes it; it cannot touch this struct.
     scroll_x: rune::Live<f32>,
@@ -54,6 +55,7 @@ impl DataGrid {
             anchor: (0, 0),
             focus: (0, 0),
             editing: false,
+            editable: true,
             editor: TextEdit::new(String::new()),
             scroll_x: rune::Live::new(0.0),
             origin_col: 0,
@@ -66,6 +68,17 @@ impl DataGrid {
 
     pub fn focus(&self) -> (u32, u32) {
         self.focus
+    }
+
+    pub fn set_editable(&mut self, editable: bool) {
+        self.editable = editable;
+        if !editable {
+            self.editing = false;
+        }
+    }
+
+    pub fn is_editable(&self) -> bool {
+        self.editable
     }
 
     pub fn is_editing(&self) -> bool {
@@ -120,6 +133,9 @@ impl DataGrid {
     }
 
     pub fn begin_edit(&mut self) {
+        if !self.editable {
+            return;
+        }
         if self.editing {
             self.commit_edit();
         }

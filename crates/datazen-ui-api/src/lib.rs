@@ -33,6 +33,7 @@ pub trait WorkspaceApi {
     fn connections(&self) -> &[ConnectionProfile];
     fn session(&self) -> Option<&Session>;
     fn connect(&mut self, id: &str) -> Result<(), String>;
+    fn disconnect(&mut self);
     fn open_table(&mut self, table: &str) -> Result<TablePage, String>;
     fn stage_cell(&mut self, row: u32, column: &str, value: String) -> Result<(), String>;
 }
@@ -113,6 +114,11 @@ impl WorkspaceApi for MemoryWorkspace {
             tables: self.tables.iter().map(|(name, _)| name.clone()).collect(),
         });
         Ok(())
+    }
+
+    fn disconnect(&mut self) {
+        self.session = None;
+        self.open = None;
     }
 
     fn open_table(&mut self, table: &str) -> Result<TablePage, String> {

@@ -109,8 +109,15 @@ impl AppState {
         }
         if let Ok(page) = self.workspace.open_table("customers") {
             self.grid.load_page(&page);
+            self.grid.set_editable(true);
             self.active = Section::DataBrowser;
         }
+    }
+
+    fn disconnect(&mut self) {
+        self.workspace.disconnect();
+        self.tabs = Tabs::new();
+        self.grid.set_editable(false);
     }
 
     fn open_table_tab(&mut self, title: &str) -> Option<u32> {
@@ -137,6 +144,7 @@ impl AppState {
         match self.workspace.open_table(title) {
             Ok(page) => {
                 self.grid.load_page(&page);
+                self.grid.set_editable(true);
                 self.active = Section::DataBrowser;
                 true
             }
@@ -167,6 +175,9 @@ impl AppState {
     }
 
     fn commit_grid_edit(&mut self) {
+        if !self.grid.is_editable() {
+            return;
+        }
         let (row, col) = self.grid.focus();
         let column = self.grid.column_name(col).map(str::to_owned);
         self.grid.commit_edit();
@@ -336,6 +347,22 @@ fn open_query_button(theme: tok::Theme) -> El {
         })
 }
 
+fn disconnect_button(state: &AppState, theme: tok::Theme) -> El {
+    if state.workspace.session().is_none() {
+        return row().key("disconnect-absent").h(0.0);
+    }
+    row()
+        .key("disconnect")
+        .w_full()
+        .h(32.0)
+        .px(8.0)
+        .center_y()
+        .radius(6.0)
+        .fill(theme.control_off)
+        .child(text("Disconnect").font(type_::LABEL).color(theme.text))
+        .on_press(|state: &mut AppState| state.disconnect())
+}
+
 fn connection_list(state: &AppState, theme: tok::Theme) -> El {
     let mut list = col().key("connection-list").w_full().gap(8.0);
     for profile in state.workspace.connections() {
@@ -387,6 +414,7 @@ fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
         .child(navigation)
         .child(object_tree(state, theme))
         .child(open_query_button(theme))
+        .child(disconnect_button(state, theme))
         .child(
             col()
                 .w_full()
@@ -774,5 +802,33 @@ mod tests {
         runtime.frame(0.0);
         assert!(runtime.state.sql.doc().starts_with("select 1"), "{}", runtime.state.sql.doc());
         assert!(runtime.find("query-results").is_some());
+    }
+
+    #[test]
+    fn disconnect_clears_the_tree_and_blocks_editing() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        assert!(runtime.find("disconnect").is_none());
+        let (x, y) = runtime.find("connection-local").expect("connection");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        runtime.state.open_table_tab("customers").unwrap();
+        assert!(runtime.state.grid.is_editable());
+
+        runtime.frame(1.0);
+        let (x, y) = runtime.find("disconnect").expect("disconnect");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+
+        assert!(runtime.state.workspace.session().is_none());
+        assert!(runtime.state.tabs.tabs().is_empty());
+        assert!(runtime.find("tree-table-customers").is_none());
+        assert!(!runtime.state.grid.is_editable());
+        runtime.state.grid.begin_edit();
+        assert!(!runtime.state.grid.is_editing());
     }
 }
