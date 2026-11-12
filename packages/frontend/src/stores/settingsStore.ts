@@ -237,8 +237,17 @@ function normalizeLoadedSettings(raw: Partial<AppSettings>): AppSettings {
  * 地 store 值（重读失败、响应不是对象、或权威响应根本没有
  * valuePresentation 字段——旧后端——时，不拿缺省默认去覆盖本地已
  * 有的 valuePresentation，见 valuePresentationSave.ts 文件头裁决 3）。
+ *
+ * 除归一化后的完整设置外，一并带回 valuePresentation 原文：
+ * T11-BUG-001——parseStoredValuePresentationSettings 对未知版本
+ * （version !== 1）只返回 { version, renderers }，会丢弃其 rules /
+ * columnOverrides / 未知顶层字段；未知版本保存时 updater 必须作用
+ * 于这份原文而非 parse 后的残值。
  */
-async function readAuthoritativeSettings(): Promise<AppSettings | null> {
+async function readAuthoritativeSettings(): Promise<{
+  settings: AppSettings;
+  rawValuePresentation: unknown;
+} | null> {
   // await + try/catch（不用 .catch()）：getSettings 恒返回 Promise，
   // 但同步抛错或返回非 Promise 时也不应把保存链路一起拖垮。
   let raw: unknown;
@@ -248,8 +257,28 @@ async function readAuthoritativeSettings(): Promise<AppSettings | null> {
     return null;
   }
   if (typeof raw !== 'object' || raw === null) return null;
-  if ((raw as Partial<AppSettings>).valuePresentation === undefined) return null;
-  return normalizeLoadedSettings(raw as Partial<AppSettings>);
+  const rawValuePresentation = (raw as Partial<AppSettings>).valuePresentation;
+  if (rawValuePresentation === undefined) return null;
+  return {
+    settings: normalizeLoadedSettings(raw as Partial<AppSettings>),
+    rawValuePresentation,
+  };
+}
+
+/**
+ * 未知版本（version !== 1）的 valuePresentation 原文判定
+ * （T11-BUG-001）：只有带数字 version 且 version !== 1 的记录才
+ * 以原文作 updater 的 fresh；其余（version 缺失/非数字、非记录）
+ * 仍走 parse 的宽容解析（缺 version 即按 v1 处理）。
+ */
+function isUnknownVersionValuePresentation(
+  value: unknown,
+): value is StoredValuePresentationSettings {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const version = (value as { version?: unknown }).version;
+  return typeof version === 'number' && version !== 1;
 }
 
 interface SettingsStore {
@@ -383,8 +412,18 @@ export const useSettingsStore = create<SettingsStore>((set, get) => {
       // 重读失败 / 权威响应无 valuePresentation 字段时回落本地基底
       // （不阻塞保存；残余重读→保存窗口见 valuePresentationSave.ts）。
       const authoritative = await readAuthoritativeSettings();
-      const base = authoritative ?? get().settings;
-      const freshValuePresentation = parseStoredValuePresentationSettings(base.valuePresentation);
+      const base = authoritative?.settings ?? get().settings;
+      // T11-BUG-001：未知版本（version !== 1）时以权威响应里的原始
+      // valuePresentation 对象作 updater 的 fresh——parse 会丢弃其
+      // rules / columnOverrides / 未知顶层字段；version === 1 时继续
+      // 用 parse 后的值（需要其宽容解析语义：非法条目丢弃等）。
+      // 三个 helper 对未知版本均安全：withTimestampRenderer 只做展开
+      // 替换、withValuePresentationRules 原样返回 fresh、
+      // withColumnOverride 原样返回同一对象。
+      const rawValuePresentation = authoritative?.rawValuePresentation;
+      const freshValuePresentation = isUnknownVersionValuePresentation(rawValuePresentation)
+        ? rawValuePresentation
+        : parseStoredValuePresentationSettings(base.valuePresentation);
       const nextValuePresentation = applyValuePresentationUpdate(freshValuePresentation, update);
       const next: AppSettings = {
         ...base,
