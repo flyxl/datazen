@@ -3,8 +3,11 @@
 //! The page shell is deliberately independent of DataZen's transport and storage
 //! implementations. Platform adapters will be added behind typed UI ports.
 
+mod sql_editor;
+
 use rune::tok::{self, type_};
-use rune::{AppSpec, Cx, El, col, row, text};
+use rune::{AppSpec, Cx, El, col, row, text, text_input};
+use sql_editor::{EDITOR_SURFACE_WIDTH, SqlEditor, editor_font, on_editor_key};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Section {
@@ -52,7 +55,7 @@ impl Section {
     const fn description(self) -> &'static str {
         match self {
             Self::Connections => "Manage database profiles and open a session.",
-            Self::SqlEditor => "Run SQL, inspect execution state and review query results.",
+            Self::SqlEditor => "SQL with multiple carets, syntax color and horizontal scroll. Not CodeMirror yet.",
             Self::DataBrowser => "Browse rows, edit cells and inspect table data.",
             Self::Schema => "Explore databases, schemas and database objects.",
             Self::Workflows => "Compose repeatable database and automation workflows.",
@@ -63,7 +66,7 @@ impl Section {
     const fn next_step(self) -> &'static str {
         match self {
             Self::Connections => "Next implementation: connect this screen to ConnectionUseCases.",
-            Self::SqlEditor => "The CodeMirror parity POC is a migration gate; this page is not an editor yet.",
+            Self::SqlEditor => "POC is on this page. Execution against a session is not wired.",
             Self::DataBrowser => "The DataGrid parity POC is a migration gate; no database rows are loaded yet.",
             Self::Schema => "Schema metadata will be supplied by the shared DataZen application API.",
             Self::Workflows => "Workflow execution stays in the existing DataZen business core.",
@@ -72,9 +75,16 @@ impl Section {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct AppState {
     active: Section,
+    sql: SqlEditor,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self { active: Section::Connections, sql: SqlEditor::new() }
+    }
 }
 
 impl AppState {
@@ -108,6 +118,79 @@ fn navigation_item(state: &AppState, section: Section, dark: bool) -> El {
         .label(section.label())
         .on_press(move |state: &mut AppState| state.select(section))
 }
+fn page_body(state: &AppState, theme: tok::Theme) -> El {
+    if state.active != Section::SqlEditor {
+        return col()
+            .key("datazen-preview-card")
+            .w_full()
+            .h(220.0)
+            .px(20.0)
+            .py(20.0)
+            .gap(12.0)
+            .radius(12.0)
+            .fill(theme.control_off)
+            .child(text("Shared Rune view is running").font(type_::TITLE).color(theme.text))
+            .child(
+                text("This interactive shell is the first UI slice shared by the native desktop binary and the WebAssembly entrypoint.")
+                    .font(type_::LABEL)
+                    .color(theme.text_secondary)
+                    .w_full(),
+            )
+            .child(
+                text(state.active.next_step())
+                    .font(type_::LABEL)
+                    .color(theme.text_secondary)
+                    .w_full(),
+            );
+    }
+
+    let cursors = format!("{} cursor{}", state.sql.cursor_count(), if state.sql.cursor_count() == 1 { "" } else { "s" });
+    let field = text_input(&state.sql.edit, editor_font())
+        .key("sql-editor-field")
+        .w(EDITOR_SURFACE_WIDTH)
+        .min_h(300.0)
+        .spans(state.sql.highlight_spans())
+        .on_edit(|state: &mut AppState| &mut state.sql.edit)
+        .on_submit(|state: &mut AppState, _| state.sql.insert_all("\n"))
+        .on_input_key(|state: &mut AppState, ev, _| on_editor_key(&mut state.sql, ev));
+
+    col()
+        .key("sql-editor")
+        .w_full()
+        .h(420.0)
+        .gap(8.0)
+        .child(
+            row()
+                .w_full()
+                .h(28.0)
+                .gap(12.0)
+                .center_y()
+                .child(text(cursors).font(type_::LABEL).color(theme.text).key("sql-cursor-count"))
+                .child(
+                    text("Add cursor")
+                        .font(type_::LABEL)
+                        .color(theme.text)
+                        .key("sql-add-cursor")
+                        .on_press(|state: &mut AppState| state.sql.add_cursor_at_end()),
+                )
+                .child(
+                    text("IME follows the primary caret. Extra carets repeat committed typing.")
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
+        )
+        .child(
+            col()
+                .key("sql-editor-scroll")
+                .w_full()
+                .h(380.0)
+                .scroll_xy()
+                .fill(theme.control_off)
+                .radius(8.0)
+                .child(field),
+        )
+}
+
 fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
     let dark = cx.system_dark();
     let theme = tok::theme(dark);
@@ -180,34 +263,7 @@ fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
                 .font(type_::LABEL)
                 .color(theme.text),
         )
-        .child(
-            col()
-                .key("datazen-preview-card")
-                .w_full()
-                .h(220.0)
-                .px(20.0)
-                .py(20.0)
-                .gap(12.0)
-                .radius(12.0)
-                .fill(theme.control_off)
-                .child(
-                    text("Shared Rune view is running")
-                        .font(type_::TITLE)
-                        .color(theme.text),
-                )
-                .child(
-                    text("This interactive shell is the first UI slice shared by the native desktop binary and the WebAssembly entrypoint.")
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary)
-                        .w_full(),
-                )
-                .child(
-                    text(state.active.next_step())
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary)
-                        .w_full(),
-                ),
-        )
+        .child(page_body(state, theme))
         .child(
             row()
                 .w_full()
@@ -284,5 +340,42 @@ mod tests {
         runtime.frame(1.0 / 60.0);
 
         assert_eq!(runtime.state.active, Section::SqlEditor);
+    }
+
+    #[test]
+    fn sql_editor_scrolls_a_surface_wider_than_the_viewport() {
+        let mut runtime = runtime();
+        runtime.state.active = Section::SqlEditor;
+        runtime.frame(0.0);
+
+        let field = runtime.presented("sql-editor-field").expect("editor field");
+        let scroll = runtime.presented("sql-editor-scroll").expect("editor scroll");
+        assert!(field.0[2] > scroll.0[2] + 100.0, "field {} viewport {}", field.0[2], scroll.0[2]);
+    }
+
+    #[test]
+    fn chinese_ime_commits_on_the_primary_caret_without_entering_the_buffer_early() {
+        use super::sql_editor::{ime_commit, ime_preedit};
+
+        let mut runtime = runtime();
+        runtime.state.active = Section::SqlEditor;
+        runtime.frame(0.0);
+        let scroll = runtime.presented("sql-editor-scroll").expect("scroll");
+        let x = scroll.0[0] + 24.0;
+        let y = scroll.0[1] + 24.0;
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0 / 60.0);
+
+        let before = runtime.state.sql.edit.text.clone();
+        runtime.ime(ime_preedit("中"));
+        runtime.frame(1.0 / 60.0);
+        assert_eq!(runtime.state.sql.edit.text, before);
+        assert_eq!(runtime.state.sql.edit.preedit().map(|(t, _)| t), Some("中"));
+
+        runtime.ime(ime_commit("中文"));
+        runtime.frame(1.0 / 60.0);
+        assert!(runtime.state.sql.edit.preedit().is_none());
+        assert!(runtime.state.sql.edit.text.contains("中文"), "{}", runtime.state.sql.edit.text);
     }
 }
