@@ -244,6 +244,10 @@ pub mod error;
 pub mod fetcher;
 pub mod file_job;
 pub mod format;
+// Parquet-only: absent from export-only / export-xlsx builds by design (T1
+// feature split); the off-feature error arm lives in `binary_formatter`.
+#[cfg(feature = "export-parquet")]
+pub mod parquet_schema;
 pub use binary::BinaryFormatter;
 #[cfg(feature = "export-xlsx")]
 pub use binary::{sanitize_sheet_name, XlsxFormatter};
