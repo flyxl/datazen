@@ -81,6 +81,7 @@ fn value_presentation_with_timestamp() -> datazen::settings::ValuePresentationSe
         version: 1,
         renderers,
         rules: vec![],
+        column_overrides: serde_json::Map::new(),
     }
 }
 
@@ -131,6 +132,7 @@ fn value_presentation_rules_round_trip_through_shared_settings() {
                 "displayTimeZone": { "kind": "iana", "name": "Asia/Shanghai" },
             },
         })],
+        column_overrides: serde_json::Map::new(),
     };
     let shared = local.shared_settings();
     assert_eq!(shared.value_presentation, local.value_presentation);
@@ -145,6 +147,44 @@ fn value_presentation_rules_round_trip_through_shared_settings() {
     assert_eq!(fresh.value_presentation.rules.len(), 1);
 
     // JSON round trip keeps the rules too.
+    let reparsed: AppSettings =
+        serde_json::from_value(serde_json::to_value(&local).unwrap()).unwrap();
+    assert_eq!(reparsed.value_presentation, local.value_presentation);
+}
+
+/// Issue-32 T10: `value_presentation.column_overrides` is an opaque JSON
+/// object on the Rust side (the frontend validates keys and entries); it
+/// must survive a shared-settings round trip and a JSON round trip
+/// instead of being dropped by the typed struct — otherwise the next
+/// load would lose the column overrides the user just saved.
+#[test]
+fn value_presentation_column_overrides_round_trip_through_shared_settings() {
+    let mut column_overrides = serde_json::Map::new();
+    column_overrides.insert(
+        "[\"conn-1\",\"shop\",\"public\",\"orders\",\"epoch_ms\"]".into(),
+        serde_json::json!({"mode": "raw"}),
+    );
+    let mut local = AppSettings::default();
+    local.value_presentation = datazen::settings::ValuePresentationSettings {
+        version: 1,
+        renderers: serde_json::Map::new(),
+        rules: vec![],
+        column_overrides,
+    };
+    let shared = local.shared_settings();
+    assert_eq!(shared.value_presentation, local.value_presentation);
+    assert_eq!(
+        serde_json::to_value(&shared).unwrap()["valuePresentation"]["columnOverrides"]
+            ["[\"conn-1\",\"shop\",\"public\",\"orders\",\"epoch_ms\"]"]["mode"],
+        "raw"
+    );
+
+    let mut fresh = AppSettings::default();
+    fresh.apply_shared_settings(shared).unwrap();
+    assert_eq!(fresh.value_presentation, local.value_presentation);
+    assert_eq!(fresh.value_presentation.column_overrides.len(), 1);
+
+    // JSON round trip keeps the overrides too.
     let reparsed: AppSettings =
         serde_json::from_value(serde_json::to_value(&local).unwrap()).unwrap();
     assert_eq!(reparsed.value_presentation, local.value_presentation);

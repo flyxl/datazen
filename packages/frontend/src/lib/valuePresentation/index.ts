@@ -157,4 +157,14 @@ export {
   resetColumnPresentationSession,
   applySessionColumnOverrides,
 } from './columnPresentationSession';
+// T10（表列覆盖持久化，设计 §5/§6，PRD §5/§6 验收 6）：覆盖记录
+// 验证、存储值应用与面板保存链路（乐观写会话 → 持久化 → 成功后
+// 清除会话条目）。
+export type { SaveColumnOverrideInput, SaveColumnOverrideResult } from './columnOverrides';
+export {
+  MAX_VALUE_PRESENTATION_COLUMN_OVERRIDES,
+  validateStoredColumnOverrides,
+  withColumnOverride,
+  saveColumnOverride,
+} from './columnOverrides';
 export { registerBundledValuePresentationContributions } from './registerBundledContributions';

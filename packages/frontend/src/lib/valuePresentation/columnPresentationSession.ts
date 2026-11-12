@@ -9,14 +9,18 @@
  *   照；网格与 aside 各自从同一合并快照建计划，所以 cell / aside /
  *   预览显示结果一致（PRD 验收 2）。
  * - 本模块**不是持久化存储**：不写 settingsStore、不写后端、不写磁
- *   盘；刷新 / 重开后会话覆盖丢失。这是 T09 的有意边界，不是遗漏。
- * - T10（表列覆盖持久化与来源隔离）要接的口子：
+ *   盘；刷新 / 重开后会话覆盖丢失。持久化由 T10 的 columnOverrides.ts
+ *   接管（面板默认保存经 saveColumnOverride 写持久化，成功后清除
+ *   本模块同一键的会话条目）；本模块只保留乐观写会话的角色。
+ * - T10（表列覆盖持久化与来源隔离）要接的口子——已由 T10 接上
+ *   （columnOverrides.ts），本模块的角色不变：
  *   1. 在 `StoredValuePresentationSettings` 中加表列覆盖字段，并让
  *      `buildValuePresentationSnapshot`（settings.ts）把它填进快照
- *      `overrides`（目前恒 `{}`）；
- *   2. 面板保存时除写会话存储外（或改为）经
- *      `updateValuePresentationSettings` 写持久化，写成功后清除本
- *      模块里同一键的会话条目，以免会话值遮住已持久化的值；
+ *      `overrides`（T10 已填，不再恒 `{}`）；
+ *   2. 面板保存时经 `saveColumnOverride`（columnOverrides.ts）写
+ *      持久化：先乐观写本模块的会话存储，`updateValuePresentationSettings`
+ *      成功后清除本模块里同一键的会话条目，以免会话值遮住已持久化
+ *      的值；失败时会话条目保留；
  *   3. 覆盖键继续用 `columnOverrideKey`（连接/数据库/namespace/
  *      表/列，保留大小写、缺省与空串不碰撞），来源隔离的判定仍以
  *      T04/T05 已有的 ColumnSource 为准；

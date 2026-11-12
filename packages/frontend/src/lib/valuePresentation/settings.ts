@@ -1,38 +1,43 @@
 /**
  * valuePresentation 存储逻辑（issue-32 T06，设计 §5/§6）。
  *
- * 持久化形状（版本化、按 rendererId 命名空间；表列覆盖不在 T06，T10 再加）：
+ * 持久化形状（版本化、按 rendererId 命名空间；表列覆盖在 T10 加入）：
  *
  * ```ts
- * StoredValuePresentationSettings = { version: number; renderers: Record<string, StoredRendererSettings>; rules?: ValuePresentationRule[] }
+ * StoredValuePresentationSettings = { version: number; renderers: Record<string, StoredRendererSettings>; rules?: ValuePresentationRule[]; columnOverrides?: Record<string, ColumnPresentationOverride> }
  * StoredRendererSettings = { enabled: boolean; options: TimestampOptions }
  * ```
  *
- * 版本裁决（T08，见 valuePresentationRules.ts 文件头裁决 1）：
- * 保持 version 1 + 可选 `rules` 字段，不升 version 2——规则是加法性
- * 可选字段，升版会迫使无迁移的 v2 走「未知版本 → 空快照」分支，
- * 反而丢配置。旧 payload 无 rules → 缺省（消费处按空列表）；未知
- * 顶层版本仍原样保留 version 值、不解析 rules、不写回默认值。
- * - 当前版本 version = 1；表列覆盖不在本版形状里（T10 再加）。
+ * 版本裁决（T08，见 valuePresentationRules.ts 文件头裁决 1；T10 的
+ * columnOverrides 沿用同一裁决）：
+ * 保持 version 1 + 可选 `rules` / `columnOverrides` 字段，不升 version 2——
+ * 覆盖是加法性可选字段，升版会迫使无迁移的 v2 走「未知版本 → 空快照」
+ * 分支，反而丢配置。旧 payload 无 columnOverrides → 缺省（消费处按空
+ * 记录）；未知顶层版本仍原样保留 version 值、不解析 rules /
+ * columnOverrides、不写回默认值。
+ * - 当前版本 version = 1；表列覆盖键为 columnOverrideKey，值只存
+ *   raw / custom（inherit 即无条目），见 columnOverrides.ts。
  * - 本模块只做存储形状的宽容解析与快照构建，不做设置 UI、不做规则、
- *   不做列配置面板、不做表列覆盖持久化（T10）、不做跨窗口同步的形式化
- *   （T11；valuePresentation 随 AppSettings 全量走既有的
- *   `datazen:settings-changed` 事件）。
+ *   不做列配置面板、不做跨窗口同步的形式化（T11；valuePresentation
+ *   随 AppSettings 全量走既有的 `datazen:settings-changed` 事件）。
  * - 分层：前端存储类型自写，与 backend-client 的
  *   `SettingsValuePresentationSettings` 镜面（AppSettings 侧的类型在
  *   frontend types 里、backend-client 侧在 backend-client 里，两边互指）；
  *   `options` 字段直接用 T02 的 TimestampOptions（同一包内可导入）。
  * - Rust 侧只做存储透传（`ValuePresentationSettings`，renderers 值为
- *   `serde_json::Value`），解释与验证在前端宿主边界做。
+ *   `serde_json::Value`，rules 与 columnOverrides 为不透明 JSON），
+ *   解释与验证在前端宿主边界做。
  */
 
 import type {
+  ColumnPresentationOverride,
   PresentationEnvironment,
   ValuePresentationContribution,
   ValuePresentationRegistry,
   VersionedPresentationConfig,
 } from '@datazen/extension-points';
 import { valuePresentationRegistry } from '@datazen/extension-points';
+import { validateStoredColumnOverrides } from './columnOverrides';
 import type { TimestampOptions } from './timestampConfig';
 import type { ValuePresentationSnapshot } from './presentationPlan';
 import { TIMESTAMP_CONTRIBUTION_ID } from './timestampContribution';
@@ -56,6 +61,14 @@ export interface StoredValuePresentationSettings {
    * 消费处按空列表处理；版本处理见文件头裁决——保持 version 1，不升版。
    */
   rules?: ReadonlyArray<ValuePresentationRule>;
+  /**
+   * 表列覆盖（T10，设计 §5）：可选字段。键为 columnOverrideKey
+   * （connectionId / database / namespace / table / column，大小写
+   * 保留、缺省与空串不碰撞），值只存 raw / custom（inherit 即无条
+   * 目）。旧 payload 无此字段 → 缺省，消费处按空记录处理；版本处
+   * 理同 rules，保持 version 1，不升版。
+   */
+  columnOverrides?: Readonly<Record<string, ColumnPresentationOverride>>;
 }
 
 /** 当前版本 v1 的默认存储值：关闭一切（历史配置缺字段默认关闭，设计 §6）。 */
@@ -81,9 +94,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  *   列表）；数组 → 逐条验证，无效条目丢弃、超过 20 条截断（见
  *   validateValuePresentationRules）；rules 字段只在输入含数组时出现，
  *   旧 payload 解析结果不凭空多出 `rules: []`；
+ * - columnOverrides（仅 version === 1 时，T10）：非对象 → 缺省（旧
+ *   payload 默认空记录）；对象 → 逐条校验键形状与覆盖值，无效键 /
+ *   无效覆盖 / `inherit` 条目丢弃、超过 200 条截断（见
+ *   validateStoredColumnOverrides）；字段只在输入含对象时出现；
  * - 未知顶层 version（如 99）原样保留 version 值，不丢弃、不改写，
- *   且不解析 rules（未来版本的 rules 形状未知，不可按 v1 解释）
- *   （设计 §6：未知版本保留原文，不用默认值写回覆盖）。
+ *   且不解析 rules / columnOverrides（未来版本的形状未知，不可按
+ *   v1 解释）（设计 §6：未知版本保留原文，不用默认值写回覆盖）。
  *
  * 每次返回全新对象，不别名 DEFAULT，避免调用方误改共享默认值。
  */
@@ -104,10 +121,17 @@ export function parseStoredValuePresentationSettings(
       }
     }
   }
-  if (version === 1 && Array.isArray(input.rules)) {
-    return { version, renderers, rules: validateValuePresentationRules(input.rules) };
+  if (version !== 1) {
+    return { version, renderers };
   }
-  return { version, renderers };
+  const parsed: StoredValuePresentationSettings = { version, renderers };
+  if (Array.isArray(input.rules)) {
+    parsed.rules = validateValuePresentationRules(input.rules);
+  }
+  if (isRecord(input.columnOverrides)) {
+    parsed.columnOverrides = validateStoredColumnOverrides(input.columnOverrides);
+  }
+  return parsed;
 }
 
 /**
@@ -123,7 +147,11 @@ export function parseStoredValuePresentationSettings(
  * - enabledRendererIds = enabled === true 且贡献存在且 options 有效的 id
  *   ——与 T04 计划构建器的 missing-config 区分配合：enabled 但无效的不进
  *   configs，计划构建时因 configs 缺失报 missing-config；
- * - overrides 恒为 {}（T10 再填）；
+ * - overrides（T10）：存储的 columnOverrides 经
+ *   validateStoredColumnOverrides 逐条验证后填入（非法键 / 非法覆
+ *   盖 / inherit 条目丢弃，原文保留在 store）；不设渲染器启用门禁
+ *   ——custom 覆盖 bypass enabled 门禁（T04 裁决），raw 同样不依赖
+ *   总开关；
  * - rules（T08）：仅当 datazen.timestamp 条目 enabled === true 时携带
  *   解析后的规则（时间总开关是能力门控，关闭时规则不生效；全局
  *   options 无效不影响规则——规则自带完整 options，见 presentationPlan
@@ -173,12 +201,16 @@ export function buildValuePresentationSnapshot(
     isRecord(timestampEntry) && timestampEntry.enabled === true
       ? validateValuePresentationRules(stored.rules ?? [])
       : [];
+  // 表列覆盖（T10）：存储值逐条验证后进快照；stored.columnOverrides
+  // 缺省 → {}。注意：这里不要求时间渲染器启用——custom 覆盖 bypass
+  // enabled 门禁（T04 裁决），raw 同样不依赖总开关。
+  const overrides = validateStoredColumnOverrides(stored.columnOverrides ?? {});
   return {
     revision,
     environment,
     configs,
     enabledRendererIds,
-    overrides: {},
+    overrides,
     rules,
   };
 }

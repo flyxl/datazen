@@ -25,10 +25,11 @@
  * 并说明原因；仍可预览全局默认 / 仅依赖已知元数据的规则效果。
  * 来源判定以调用方传入的 ColumnSource 为准，不从 SQL 别名猜表来源。
  *
- * 保存的接缝（与 T10 的边界）：默认 `onSave` 把覆盖写进会话存储
- * （`setSessionColumnOverride`，见 columnPresentationSession.ts），
- * 网格与 aside 经合并快照即时一致；持久化存储本身是 T10 的活，
- * 本面板不建持久化存储。调用方可传自己的 `onSave` 覆盖默认行为。
+ * 保存的接缝（与 T10 的边界）：默认 `onSave` 经 `saveColumnOverride`
+ * 写持久化（`updateValuePresentationSettings`，见 columnOverrides.ts）：
+ * 先乐观写会话存储，保存成功后清除同一键的会话条目，失败则就地报错、
+ * 面板保持打开、会话条目保留、旧配置继续生效。调用方可传自己的
+ * `onSave` 覆盖默认行为（此时面板只调回调、不碰持久化）。
  *
  * 文本输入空格沿用 T07 裁决：IANA 名 trim 后接受，名内空白非法。
  * 严格 TS：禁 any；不出现 `new Date(string)`。
@@ -56,7 +57,7 @@ import {
   formatColumnPresentationSampleValue,
   isValidIanaTimeZoneName,
   isValidTimeZoneName,
-  setSessionColumnOverride,
+  saveColumnOverride,
   snapshotWithoutColumnOverride,
   validateColumnPresentationOverride,
   validateTimestampOptions,
@@ -322,6 +323,7 @@ export function ColumnPresentationDialog({
     draftFromColumnOverride(effectiveCurrentOverride, globalOptions, semanticKind),
   );
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [enabling, setEnabling] = useState(false);
   const [enableError, setEnableError] = useState<string | null>(null);
 
@@ -396,7 +398,7 @@ export function ColumnPresentationDialog({
     setError(null);
   }
 
-  function handleSave(): void {
+  async function handleSave(): Promise<void> {
     if (source === undefined) return;
     if (draftProblems.length > 0) {
       setError(
@@ -417,8 +419,34 @@ export function ColumnPresentationDialog({
     }
     if (onSave !== undefined) {
       onSave(validated.override);
-    } else {
-      setSessionColumnOverride(source, columnName, validated.override);
+      onClose();
+      return;
+    }
+    // 默认保存路径（T10）：经 settingsStore 写持久化。保存成功后
+    // 会话条目已清除（saveColumnOverride 内），快照即持久值；失败
+    // 则就地报错、面板保持打开（不 onClose）、会话条目保留、旧配
+    // 置继续生效，用户可重试。
+    setSaving(true);
+    setError(null);
+    try {
+      const store = useSettingsStore.getState();
+      const stored = parseStoredValuePresentationSettings(store.settings.valuePresentation);
+      const result = await saveColumnOverride({
+        stored,
+        source,
+        columnName,
+        override: validated.override,
+        persist: store.updateValuePresentationSettings,
+      });
+      if (!result.ok) {
+        setError(t('settings.valuePresentation.saveFailed'));
+        return;
+      }
+    } catch {
+      setError(t('settings.valuePresentation.saveFailed'));
+      return;
+    } finally {
+      setSaving(false);
     }
     onClose();
   }
@@ -456,6 +484,10 @@ export function ColumnPresentationDialog({
           [TIMESTAMP_CONTRIBUTION_ID]: { enabled: true, options },
         },
         ...(stored.version === 1 ? { rules: [...(stored.rules ?? [])] } : {}),
+        // T10：显式开启总开关不得丢弃已存的表列覆盖（整份重写时保留）。
+        ...(stored.version === 1 && stored.columnOverrides !== undefined
+          ? { columnOverrides: { ...stored.columnOverrides } }
+          : {}),
       });
     } catch {
       setEnableError(t('settings.valuePresentation.saveFailed'));
@@ -771,8 +803,8 @@ export function ColumnPresentationDialog({
         <div className="flex items-center gap-2">
           <Button
             variant="primary"
-            disabled={saveDisabled}
-            onClick={handleSave}
+            disabled={saveDisabled || saving}
+            onClick={() => void handleSave()}
             data-testid="column-presentation-save"
           >
             {t('columnPresentation.save')}

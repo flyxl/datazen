@@ -142,6 +142,7 @@ mod tests {
             version: 1,
             renderers,
             rules: vec![],
+            column_overrides: serde_json::Map::new(),
         };
 
         // Shared path: save via SettingsService → read returns the same value.

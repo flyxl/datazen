@@ -134,14 +134,35 @@ export interface SettingsValuePresentationRule {
 }
 
 /**
+ * One table-column override (issue-32 T10, design §5).
+ * Mirror of `ColumnPresentationOverride` in
+ * `packages/extension-points/src/valuePresentation/contracts.ts` — the
+ * record key is the host-side `columnOverrideKey` (connection / database /
+ * namespace / table / column, case preserved, missing vs empty distinct).
+ * `custom` only supports the timestamp renderer in practice, but its
+ * options stay `unknown` here exactly as in the canonical contract (the
+ * frontend validates them through the target renderer's validateConfig).
+ * `inherit` entries are dropped at the frontend parse boundary
+ * (`validateStoredColumnOverrides`) — `inherit` is the absence of an
+ * entry, never a stored value — but the type keeps the canonical union
+ * so `toSharedSettings` stays assignable from the frontend stored type.
+ */
+export type SettingsValuePresentationColumnOverride =
+  | { readonly mode: 'inherit' }
+  | { readonly mode: 'raw' }
+  | { readonly mode: 'custom'; readonly rendererId: string; readonly options: unknown };
+
+/**
  * Versioned value-presentation settings, namespaced per renderer id.
- * `rules` (T08) is an optional array of global rules; table-column
- * overrides are not stored here either (T10).
+ * `rules` (T08) is an optional array of global rules; `columnOverrides`
+ * (T10) is an optional record of table-column overrides, keyed by the
+ * host-side column override key.
  */
 export interface SettingsValuePresentationSettings {
   version: number;
   renderers: Record<string, SettingsValuePresentationRendererSettings>;
   rules?: ReadonlyArray<SettingsValuePresentationRule>;
+  columnOverrides?: Readonly<Record<string, SettingsValuePresentationColumnOverride>>;
 }
 
 /** Dashboard monitor settings (form-split F4: behavior field, shared). Mirrors `datazen::dashboard::types::MonitorSettings`. */

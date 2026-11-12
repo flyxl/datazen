@@ -50,8 +50,18 @@ fn default_row_count_mode() -> String {
 /// `packages/frontend/src/lib/valuePresentation/valuePresentationRules.ts`;
 /// the backend-client mirror is `SettingsValuePresentationRule`).
 /// The host never interprets rule entries; the frontend validates them.
-/// Old payloads without `rules` load as `[]`. Table-column overrides are
-/// NOT stored here either (T10).
+/// Old payloads without `rules` load as `[]`.
+/// `column_overrides` (T10, design §5) is an opaque JSON object of
+/// table-column overrides, keyed by the host-side column override key
+/// (`columnOverrideKey`: connection / database / namespace / table /
+/// column as a JSON array string; case preserved, missing vs empty
+/// distinct). Values are `raw` / `custom` overrides (canonical type:
+/// `packages/frontend/src/lib/valuePresentation/columnOverrides.ts`;
+/// the backend-client mirror is
+/// `SettingsValuePresentationColumnOverride`). The host never interprets
+/// override entries; the frontend validates them. Old payloads without
+/// `column_overrides` load as empty. Table-column overrides are NOT
+/// stored anywhere else.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ValuePresentationSettings {
@@ -61,6 +71,8 @@ pub struct ValuePresentationSettings {
     pub renderers: serde_json::Map<String, serde_json::Value>,
     #[serde(default)]
     pub rules: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub column_overrides: serde_json::Map<String, serde_json::Value>,
 }
 
 fn default_value_presentation_version() -> u32 {
@@ -73,6 +85,7 @@ impl Default for ValuePresentationSettings {
             version: 1,
             renderers: serde_json::Map::new(),
             rules: Vec::new(),
+            column_overrides: serde_json::Map::new(),
         }
     }
 }
@@ -296,6 +309,7 @@ mod tests {
                 version: 1,
                 renderers: serde_json::Map::new(),
                 rules: vec![],
+                column_overrides: serde_json::Map::new(),
             }
         );
         // An empty object loads as the default (old payloads carry no field).
@@ -317,6 +331,7 @@ mod tests {
             version: 99,
             renderers,
             rules: vec![],
+            column_overrides: serde_json::Map::new(),
         };
         let value = serde_json::to_value(&settings).expect("serialize");
         let loaded: ValuePresentationSettings =
@@ -324,6 +339,34 @@ mod tests {
         assert_eq!(loaded, settings);
         assert_eq!(loaded.version, 99);
         assert!(loaded.renderers.contains_key("acme.future"));
+    }
+
+    #[test]
+    fn value_presentation_column_overrides_round_trip_opaquely() {
+        // T10: column overrides are an opaque JSON object on the Rust side
+        // (the frontend validates keys and entries); they must survive a
+        // JSON round trip instead of being dropped by the typed struct —
+        // otherwise the next load would lose the overrides the user saved.
+        let mut column_overrides = serde_json::Map::new();
+        column_overrides.insert(
+            "[\"conn-1\",\"shop\",\"public\",\"orders\",\"epoch_ms\"]".into(),
+            serde_json::json!({"mode": "raw"}),
+        );
+        let settings = ValuePresentationSettings {
+            version: 1,
+            renderers: serde_json::Map::new(),
+            rules: vec![],
+            column_overrides,
+        };
+        let value = serde_json::to_value(&settings).expect("serialize");
+        let loaded: ValuePresentationSettings =
+            serde_json::from_value(value).expect("round-trip loads");
+        assert_eq!(loaded, settings);
+        assert_eq!(loaded.column_overrides.len(), 1);
+        // Old payloads without the field load as empty.
+        let legacy: ValuePresentationSettings =
+            serde_json::from_value(serde_json::json!({"version": 1})).expect("legacy loads");
+        assert!(legacy.column_overrides.is_empty());
     }
 }
 

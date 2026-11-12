@@ -433,6 +433,10 @@ export function ValuePresentationSettingsSection({
         [TIMESTAMP_CONTRIBUTION_ID]: { enabled: draft.enabled, options },
       },
       ...(stored.version === 1 ? { rules: [...ruleDrafts] } : {}),
+      // T10：保存全局设置不得丢弃已存的表列覆盖（整份重写时保留）。
+      ...(stored.version === 1 && stored.columnOverrides !== undefined
+        ? { columnOverrides: { ...stored.columnOverrides } }
+        : {}),
     };
     try {
       await updateValuePresentationSettings(next);
