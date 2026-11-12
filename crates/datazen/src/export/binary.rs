@@ -17,23 +17,31 @@
 //!
 //! Item 3a ships XLSX only; Parquet is a second implementor of this trait.
 
+#[cfg(feature = "export-xlsx")]
 use std::path::PathBuf;
 
+#[cfg(feature = "export-xlsx")]
+use super::bytes_to_hex;
+use super::ExportError;
 use datazen_driver_api::{ColumnInfo, Value};
+#[cfg(feature = "export-xlsx")]
 use rust_xlsxwriter::{Workbook, XlsxError};
 
-use super::{bytes_to_hex, ExportError};
-
 /// Excel worksheet limit, header row included: at most this many rows total.
+#[cfg(feature = "export-xlsx")]
 pub const XLSX_MAX_ROWS: u32 = 1_048_576;
 /// Excel worksheet limit on columns.
+#[cfg(feature = "export-xlsx")]
 pub const XLSX_MAX_COLUMNS: usize = 16_384;
 /// Excel per-cell string limit, in characters.
+#[cfg(feature = "export-xlsx")]
 pub const XLSX_MAX_CELL_CHARS: usize = 32_767;
 /// Excel worksheet-name limit, in characters.
+#[cfg(feature = "export-xlsx")]
 pub const XLSX_MAX_SHEET_NAME_CHARS: usize = 31;
 /// Excel numbers are f64; integers beyond ±this lose precision silently,
 /// so they are written as strings instead.
+#[cfg(feature = "export-xlsx")]
 pub const XLSX_MAX_EXACT_INTEGER: i64 = 999_999_999_999_999;
 
 /// A formatter that writes one binary file incrementally.
@@ -50,6 +58,7 @@ pub trait BinaryFormatter: Send {
 /// Map a `rust_xlsxwriter` failure onto the export error envelope, turning
 /// the two limits users can hit into actionable validation messages instead
 /// of library-internal text.
+#[cfg(feature = "export-xlsx")]
 fn xlsx_error(err: XlsxError) -> ExportError {
     match err {
         XlsxError::MaxStringLengthExceeded => ExportError::Validation(format!(
@@ -68,6 +77,7 @@ fn xlsx_error(err: XlsxError) -> ExportError {
 /// characters (`[]:*?/\`) become `_`, leading/trailing apostrophes are
 /// stripped, over-long names truncate to 31 characters, and the reserved
 /// name `History` is renamed. An empty result becomes `Sheet1`.
+#[cfg(feature = "export-xlsx")]
 pub fn sanitize_sheet_name(name: &str) -> String {
     let cleaned: String = name
         .chars()
@@ -97,6 +107,7 @@ pub fn sanitize_sheet_name(name: &str) -> String {
 /// how large the table is. The trade-off is the mode's own: rows must be
 /// written in order (exactly what the stream gives us) and there is no
 /// column-width autofit — v1 does not attempt one.
+#[cfg(feature = "export-xlsx")]
 pub struct XlsxFormatter {
     workbook: Workbook,
     sheet_name: String,
@@ -108,6 +119,7 @@ pub struct XlsxFormatter {
     finished: bool,
 }
 
+#[cfg(feature = "export-xlsx")]
 impl XlsxFormatter {
     pub fn new(table_name: &str, dest: PathBuf) -> Self {
         let sheet_name = sanitize_sheet_name(table_name);
@@ -192,6 +204,7 @@ impl XlsxFormatter {
 /// Friendly pre-check for the 32,767-character cell limit: the library
 /// reports the same failure, but naming the limit and the CSV fallback here
 /// keeps the message actionable.
+#[cfg(feature = "export-xlsx")]
 fn check_cell_length(text: &str) -> Result<(), ExportError> {
     if text.chars().count() > XLSX_MAX_CELL_CHARS {
         return Err(ExportError::Validation(format!(
@@ -203,6 +216,7 @@ fn check_cell_length(text: &str) -> Result<(), ExportError> {
     Ok(())
 }
 
+#[cfg(feature = "export-xlsx")]
 impl BinaryFormatter for XlsxFormatter {
     fn begin(&mut self, columns: &[ColumnInfo]) -> Result<(), ExportError> {
         if self.begun {
@@ -282,7 +296,7 @@ impl BinaryFormatter for XlsxFormatter {
 }
 
 /// The sheet name the formatter will use (sanitized table name), for tests.
-#[cfg(test)]
+#[cfg(all(test, feature = "export-xlsx"))]
 impl XlsxFormatter {
     pub(crate) fn test_sheet_name(&self) -> &str {
         &self.sheet_name
@@ -301,7 +315,7 @@ impl XlsxFormatter {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "export-xlsx"))]
 mod tests {
     use super::*;
     use std::io::Read;

@@ -241,7 +241,9 @@ pub mod error;
 pub mod fetcher;
 pub mod file_job;
 pub mod format;
-pub use binary::{sanitize_sheet_name, BinaryFormatter, XlsxFormatter};
+pub use binary::BinaryFormatter;
+#[cfg(feature = "export-xlsx")]
+pub use binary::{sanitize_sheet_name, XlsxFormatter};
 pub use error::ExportError;
 pub use fetcher::stream_sql_source;
 pub use file_job::{FileArtifactJob, FileJobOperation, FileJobOutput};
@@ -694,6 +696,42 @@ pub async fn write_data_file(
     Ok(rows_written.load(Ordering::Relaxed))
 }
 
+/// Build the binary formatter for `format`, or fail with a clear
+/// validation error naming the missing sub-feature (Parquet export T1,
+/// PRD F9). The `DataFormat` variants themselves are not feature-gated, so
+/// a build without the matching sub-feature still accepts the request
+/// shape — it just cannot serve it, and says so instead of silently
+/// falling back to another format. The Parquet arm lands in T5.
+fn binary_formatter(
+    format: DataFormat,
+    table: &TableExportInput,
+    dest: &Path,
+) -> Result<Box<dyn BinaryFormatter>, CommandError> {
+    // With no binary sub-feature enabled, no match arm below uses `table`
+    // or `dest` (every arm is an error); name that explicitly instead of
+    // letting the off-configuration warn. T5 widens this to
+    // `not(any(feature = "export-xlsx", feature = "export-parquet"))`
+    // when the Parquet arm starts using them.
+    #[cfg(not(feature = "export-xlsx"))]
+    let _ = (table, dest);
+    match format {
+        #[cfg(feature = "export-xlsx")]
+        DataFormat::Xlsx => Ok(Box::new(XlsxFormatter::new(
+            &table.table_name,
+            dest.to_path_buf(),
+        ))),
+        #[cfg(not(feature = "export-xlsx"))]
+        DataFormat::Xlsx => Err(CommandError::Validation(
+            "XLSX export requires the `export-xlsx` feature, which is not \
+             enabled in this build; enable `export-xlsx` (desktop builds do)"
+                .into(),
+        )),
+        _ => Err(CommandError::Validation(format!(
+            "{format:?} is marked binary but has no binary formatter"
+        ))),
+    }
+}
+
 /// Stream an item's data to `dest` as a binary format (item 3a: XLSX).
 /// Parallel branch to [`write_data_file`]: same SQL row stream and
 /// progress events, but the formatter owns the destination file and no
@@ -720,14 +758,18 @@ pub async fn write_binary_file(
     }
     let (sql, database, schema) = fetcher::resolve_sql_source(request, table)?;
 
-    let formatter: Box<dyn BinaryFormatter> = match format {
-        DataFormat::Xlsx => Box::new(XlsxFormatter::new(&table.table_name, dest.to_path_buf())),
-        _ => {
-            return Err(CommandError::Validation(format!(
-                "{format:?} is marked binary but has no binary formatter"
-            )));
-        }
-    };
+    // The binary dispatch is feature-gated per format (Parquet export T1,
+    // PRD F9): a format whose sub-feature is off is a clear validation
+    // error naming the missing feature — never a silent fallback to
+    // another format, and never a panic. `DataFormat` variants themselves
+    // stay ungated so the wire shape is stable across builds. The Parquet
+    // arm lands in T5, once `DataFormat::Parquet` exists (T2).
+    //
+    // The dispatch lives in its own helper (rather than inline here) so
+    // the rest of this function stays reachable — and warning-free — in a
+    // build with no binary sub-feature enabled, where every match arm
+    // diverges and an inline match would make the tail dead code.
+    let formatter = binary_formatter(format, table, dest)?;
     let formatter = Arc::new(Mutex::new(formatter));
 
     // Full ColumnInfo (not just names): the binary formatter needs it for
