@@ -738,6 +738,8 @@ const pack = {
     'XLSX 需要将全部行载入内存，因此不支持流式导出（整表 / 筛选结果）。',
   'export.formatDisabledNoKey': 'SQL UPDATE 需要主键列来构造 WHERE 子句。',
   'export.formatDisabledWebSqlScope': '网页端整表 / 筛选结果导出仅支持 CSV，没有 SQL 导出通道。',
+  'export.formatDisabledParquetRustOnly':
+    'Parquet 导出经由桌面端 Rust 导出器；当前页 / 选中行范围与网页端不可用。',
   'export.progressRows': '已写入 {rows} 行…',
   'export.cancelExport': '取消导出',
   'export.cancelling': '正在取消…',

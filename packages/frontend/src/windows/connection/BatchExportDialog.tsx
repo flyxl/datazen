@@ -54,6 +54,7 @@ const DATA_FORMAT_OPTIONS: { value: BatchExportDataFormat; label: string }[] = [
   { value: 'json', label: 'JSON' },
   { value: 'markdown', label: 'Markdown' },
   { value: 'xlsx', label: 'Excel (XLSX)' },
+  { value: 'parquet', label: 'Parquet' },
   { value: 'sql_insert', label: 'SQL INSERT' },
   { value: 'sql_update', label: 'SQL UPDATE' },
 ];

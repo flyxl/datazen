@@ -527,6 +527,8 @@ const pack = {
   'export.formatDisabledNoKey': 'SQL UPDATE는 WHERE 절을 만들 기본 키 열이 필요합니다.',
   'export.formatDisabledWebSqlScope':
     '웹에서는 전체 테이블/필터 결과 내보내기가 CSV만 지원되며, SQL 내보내기 경로가 없습니다.',
+  'export.formatDisabledParquetRustOnly':
+    'Parquet 내보내기는 데스크톱 Rust 익스포터를 거칩니다. 현재 페이지 / 선택 행 범위와 웹에서는 사용할 수 없습니다.',
   'export.progressRows': '{rows}행 기록됨…',
   'export.cancelExport': '내보내기 취소',
   'export.cancelling': '취소 중…',

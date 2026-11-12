@@ -732,6 +732,8 @@ const pack = {
   'export.formatDisabledNoKey': 'SQL UPDATE needs a primary key column to build its WHERE clause.',
   'export.formatDisabledWebSqlScope':
     'On the web, entire-table and filtered exports only support CSV — there is no SQL export path.',
+  'export.formatDisabledParquetRustOnly':
+    'Parquet export runs through the desktop Rust exporter; it is unavailable for the current page / selected rows and on the web.',
   'export.progressRows': '{rows} rows written…',
   'export.cancelExport': 'Cancel Export',
   'export.cancelling': 'Cancelling…',

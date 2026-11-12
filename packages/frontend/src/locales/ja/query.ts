@@ -532,6 +532,8 @@ const pack = {
   'export.formatDisabledNoKey': 'SQL UPDATE には WHERE 句を構成する主キー列が必要です。',
   'export.formatDisabledWebSqlScope':
     'Web では、全テーブル／フィルター結果のエクスポートは CSV のみ対応で、SQL エクスポート経路はありません。',
+  'export.formatDisabledParquetRustOnly':
+    'Parquet エクスポートはデスクトップの Rust エクスポーターを経由します。現在ページ / 選択行のスコープと Web では利用できません。',
   'export.progressRows': '{rows} 行を書き込みました…',
   'export.cancelExport': 'エクスポートをキャンセル',
   'export.cancelling': 'キャンセル中…',

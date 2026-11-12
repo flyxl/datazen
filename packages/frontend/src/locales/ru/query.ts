@@ -540,6 +540,8 @@ const pack = {
   'export.formatDisabledNoKey': 'SQL UPDATE нужен столбец первичного ключа для предложения WHERE.',
   'export.formatDisabledWebSqlScope':
     'В веб-версии экспорт всей таблицы и отфильтрованных результатов поддерживает только CSV — пути экспорта SQL нет.',
+  'export.formatDisabledParquetRustOnly':
+    'Экспорт Parquet выполняется через Rust-экспортёр настольного приложения; недоступен для текущей страницы / выбранных строк и в веб-версии.',
   'export.progressRows': 'Записано строк: {rows}…',
   'export.cancelExport': 'Отменить экспорт',
   'export.cancelling': 'Отмена…',
