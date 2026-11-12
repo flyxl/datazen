@@ -15,16 +15,14 @@
 - [ ] DataGrid POC
 
 ## SQL Editor POC
-打开侧栏 SQL Editor。字段绑定 Rune `TextEdit`（主光标、撤销、IME）。
+按 CodeMirror 6 的分层，而不是把文档放进 `text_input`。
 
-| 门禁 | 做法 | 测试 |
-|---|---|---|
-| 语法高亮 | 自写 SQL lexer，画成 `Span`（关键字 / 字符串 / 注释 / 数字） | `highlights_keywords_strings_comments_and_numbers` |
-| 多光标 | `TextEdit` 只有一个 caret。额外 caret 存在 `SqlEditor::extra`。有额外光标时按键在每一处插入同一段文本 | `multi_cursor_inserts_the_same_text_at_each_caret` |
-| 中文输入 | 主光标走 Rune IME：preedit 不进 buffer，commit 才写入 | `chinese_ime_commits_on_the_primary_caret_without_entering_the_buffer_early` |
-| 长行水平滚动 | 多行字段宽 2800，放在 `scroll_xy` 里。Rune 的多行 `text_input` 不能关 wrap，所以用比视口更宽的编辑面代替 nowrap | `sql_editor_scrolls_a_surface_wider_than_the_viewport` |
+- 文档是 `String`。选区是多个 `Sel`（anchor/head），其中一个是 main。
+- 普通按键走 `AppSpec.on_key`，对每个选区做 `changeByRange`。
+- IME 走 `App::on_ime`。preedit 只画在主光标上，不进文档；commit 才替换主选区，其它光标按这个变更映射。
+- 视图是不换行的行 + 高亮 `Span` + 光标条。主光标是 `El::ime_cursor`，用来打开系统输入法。长行放在比视口更宽的 `scroll_xy` 里。
 
-IME 只作用于主光标。额外光标重复的是已经提交的按键文本，不是组合态。这不是 CodeMirror 等价实现。
+`cargo test -p datazen-ui --lib`：10 passed。未跑 Tester。
 
 ## Verification
 ```

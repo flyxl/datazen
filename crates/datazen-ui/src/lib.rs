@@ -6,8 +6,8 @@
 mod sql_editor;
 
 use rune::tok::{self, type_};
-use rune::{AppSpec, Cx, El, col, row, text, text_input};
-use sql_editor::{EDITOR_SURFACE_WIDTH, SqlEditor, editor_font, on_editor_key};
+use rune::{App, AppSpec, Cx, El, Ime, KeyEvent, Tx, col, row, text};
+use sql_editor::SqlEditor;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Section {
@@ -144,51 +144,7 @@ fn page_body(state: &AppState, theme: tok::Theme) -> El {
             );
     }
 
-    let cursors = format!("{} cursor{}", state.sql.cursor_count(), if state.sql.cursor_count() == 1 { "" } else { "s" });
-    let field = text_input(&state.sql.edit, editor_font())
-        .key("sql-editor-field")
-        .w(EDITOR_SURFACE_WIDTH)
-        .min_h(300.0)
-        .spans(state.sql.highlight_spans())
-        .on_edit(|state: &mut AppState| &mut state.sql.edit)
-        .on_submit(|state: &mut AppState, _| state.sql.insert_all("\n"))
-        .on_input_key(|state: &mut AppState, ev, _| on_editor_key(&mut state.sql, ev));
-
-    col()
-        .key("sql-editor")
-        .w_full()
-        .h(420.0)
-        .gap(8.0)
-        .child(
-            row()
-                .w_full()
-                .h(28.0)
-                .gap(12.0)
-                .center_y()
-                .child(text(cursors).font(type_::LABEL).color(theme.text).key("sql-cursor-count"))
-                .child(
-                    text("Add cursor")
-                        .font(type_::LABEL)
-                        .color(theme.text)
-                        .key("sql-add-cursor")
-                        .on_press(|state: &mut AppState| state.sql.add_cursor_at_end()),
-                )
-                .child(
-                    text("IME follows the primary caret. Extra carets repeat committed typing.")
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                ),
-        )
-        .child(
-            col()
-                .key("sql-editor-scroll")
-                .w_full()
-                .h(380.0)
-                .scroll_xy()
-                .fill(theme.control_off)
-                .radius(8.0)
-                .child(field),
-        )
+    sql_editor::panel(&state.sql, theme.text, theme.text_secondary)
 }
 
 fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
@@ -287,12 +243,20 @@ fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
 
 /// Launch the same Rune view on native desktop and WebAssembly.
 pub fn run() {
-    rune::run(AppSpec::new(
-        "DataZen",
-        (1440.0, 900.0),
-        AppState::default,
-        view,
-    ));
+    App::new(AppSpec {
+        on_key: Some(app_key),
+        ..AppSpec::new("DataZen", (1440.0, 900.0), AppState::default, view)
+    })
+    .on_ime(app_ime)
+    .run();
+}
+
+fn app_key(state: &mut AppState, ev: &KeyEvent, _: &mut Tx) -> bool {
+    state.active == Section::SqlEditor && sql_editor::on_key(&mut state.sql, ev)
+}
+
+fn app_ime(state: &mut AppState, ev: &Ime, _: &mut Tx) -> bool {
+    state.active == Section::SqlEditor && sql_editor::on_ime(&mut state.sql, ev)
 }
 
 /// WebAssembly entrypoint consumed by wasm-bindgen.
@@ -354,28 +318,30 @@ mod tests {
     }
 
     #[test]
-    fn chinese_ime_commits_on_the_primary_caret_without_entering_the_buffer_early() {
-        use super::sql_editor::{ime_commit, ime_preedit};
+    fn chinese_ime_is_not_part_of_the_document_until_commit() {
+        use super::sql_editor::on_key;
+        use rune::{Key, KeyEvent, Mods};
 
         let mut runtime = runtime();
+        runtime.on_key = Some(|state, ev, _| state.active == Section::SqlEditor && on_key(&mut state.sql, ev));
         runtime.state.active = Section::SqlEditor;
+        runtime.state.sql.focus();
         runtime.frame(0.0);
-        let scroll = runtime.presented("sql-editor-scroll").expect("scroll");
-        let x = scroll.0[0] + 24.0;
-        let y = scroll.0[1] + 24.0;
-        runtime.pointer_down(x, y);
-        runtime.pointer_up(x, y);
-        runtime.frame(1.0 / 60.0);
+        assert!(runtime.presented("sql-caret").is_some(), "main caret is the input-method cursor");
 
-        let before = runtime.state.sql.edit.text.clone();
-        runtime.ime(ime_preedit("中"));
-        runtime.frame(1.0 / 60.0);
-        assert_eq!(runtime.state.sql.edit.text, before);
-        assert_eq!(runtime.state.sql.edit.preedit().map(|(t, _)| t), Some("中"));
+        let before = runtime.state.sql.doc().to_owned();
+        runtime.state.sql.preedit("中");
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.sql.doc(), before);
+        assert_eq!(runtime.state.sql.composition(), Some("中"));
 
-        runtime.ime(ime_commit("中文"));
-        runtime.frame(1.0 / 60.0);
-        assert!(runtime.state.sql.edit.preedit().is_none());
-        assert!(runtime.state.sql.edit.text.contains("中文"), "{}", runtime.state.sql.edit.text);
+        runtime.state.sql.commit("中文");
+        runtime.frame(0.0);
+        assert!(runtime.state.sql.composition().is_none());
+        assert!(runtime.state.sql.doc().starts_with("中文"), "{}", runtime.state.sql.doc());
+
+        runtime.key(KeyEvent { key: Key::Text("Q".into()), mods: Mods::default() });
+        runtime.frame(0.0);
+        assert!(runtime.state.sql.doc().starts_with("中文Q"), "{}", runtime.state.sql.doc());
     }
 }
