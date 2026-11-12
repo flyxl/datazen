@@ -94,6 +94,51 @@ const pack = {
   'settings.gridAutoHideScrollbar': 'Auto-hide grid scrollbars',
   'settings.gridAutoHideScrollbar.hint':
     'Scrollbars appear only while a grid is hovered or focused.',
+  // Time display (issue-32 T07).
+  'settings.valuePresentation.title': 'Time display',
+  'settings.valuePresentation.description':
+    'When enabled, the global default applies only to applicable native time values. It never tries to convert arbitrary numbers or strings into times.',
+  'settings.valuePresentation.enable': 'Enable time display',
+  'settings.valuePresentation.enableHint':
+    'Off by default. When on, native time values use the default format and display time zone below.',
+  'settings.valuePresentation.format': 'Default format',
+  'settings.valuePresentation.format.iso': 'ISO (UTC)',
+  'settings.valuePresentation.format.iso-tz': 'ISO with time zone offset',
+  'settings.valuePresentation.format.locale': 'Locale',
+  'settings.valuePresentation.displayTimeZone': 'Display time zone',
+  'settings.valuePresentation.timeZone.local': 'Local time zone',
+  'settings.valuePresentation.timeZone.utc': 'UTC',
+  'settings.valuePresentation.timeZone.iana': 'Specific IANA time zone',
+  'settings.valuePresentation.ianaName': 'IANA time zone name',
+  'settings.valuePresentation.ianaInvalid':
+    'Enter a valid IANA time zone name, for example Asia/Shanghai.',
+  'settings.valuePresentation.ianaUnknown': 'This time zone name is not known on this system.',
+  'settings.valuePresentation.preview.source': 'Preview time source',
+  'settings.valuePresentation.preview.source.native': 'Native time value',
+  'settings.valuePresentation.preview.source.unix-seconds': 'Unix seconds',
+  'settings.valuePresentation.preview.source.unix-milliseconds': 'Unix milliseconds',
+  'settings.valuePresentation.preview.source.text': 'Wall-clock text',
+  'settings.valuePresentation.preview.original': 'Original:',
+  'settings.valuePresentation.preview.unixSeconds': 'Unix seconds',
+  'settings.valuePresentation.preview.unixMilliseconds': 'Unix milliseconds',
+  'settings.valuePresentation.preview.unchanged': 'Shown unchanged',
+  'settings.valuePresentation.preview.invalid': 'Invalid configuration',
+  'settings.valuePresentation.preview.unavailable':
+    'Preview unavailable: the time display extension is not loaded.',
+  'settings.valuePresentation.rules.title': 'Rules',
+  'settings.valuePresentation.rules.empty': 'No rules yet.',
+  'settings.valuePresentation.rules.editHint':
+    'This version only lists rules. Rule editing arrives with a later update.',
+  'settings.valuePresentation.save': 'Save time display settings',
+  'settings.valuePresentation.saving': 'Saving…',
+  'settings.valuePresentation.reset': 'Restore saved',
+  'settings.valuePresentation.saved': 'Saved',
+  'settings.valuePresentation.saveFailed':
+    'Save failed. The previous settings are still in effect.',
+  'settings.valuePresentation.saveUnavailable': 'Saving is unavailable right now.',
+  'settings.valuePresentation.invalidConfig': 'Invalid configuration',
+  'settings.valuePresentation.contributionMissing':
+    'The time display extension (datazen.timestamp) is unavailable, so the preview is off. Your saved settings are kept.',
   'settings.connectionPoolSize': 'Connection Pool Size',
   'settings.connectionPoolSizeHint': 'Maximum connections kept per database connection.',
   'settings.limitSelect': 'Limit SELECT Results',
