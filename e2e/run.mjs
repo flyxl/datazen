@@ -27,7 +27,7 @@ import os from 'node:os';
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
-const DIST_INDEX = path.join(ROOT, 'dist', 'index.html');
+const DIST_INDEX = path.join(ROOT, 'packages', 'desktop', 'dist', 'index.html');
 
 /** Load e2e/.env into process.env without overriding existing vars. */
 function loadDotEnv(filePath) {
@@ -359,7 +359,7 @@ function assertFrontendDistPresent() {
   if (!fs.existsSync(DIST_INDEX)) {
     die(
       [
-        'Missing dist/index.html — frontend assets were never built.',
+        'Missing packages/desktop/dist/index.html — frontend assets were never built.',
         `Fix: run \`${BUILD_CMD}\` (do not use bare cargo build).`,
         'See docs/development/e2e-testing.md',
       ].join('\n'),
@@ -383,7 +383,9 @@ function assertBinaryReady(binaryPath) {
   const binM = fs.statSync(binaryPath).mtimeMs;
   const distM = fs.statSync(DIST_INDEX).mtimeMs;
   if (binM + 1000 < distM) {
-    log('WARNING: binary is older than dist/index.html. Embedded assets may be stale.');
+    log(
+      'WARNING: binary is older than packages/desktop/dist/index.html. Embedded assets may be stale.',
+    );
     log(`Rebuild with: ${BUILD_CMD}`);
   }
 }

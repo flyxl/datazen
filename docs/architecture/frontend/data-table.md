@@ -16,7 +16,7 @@
 | 值显示与编辑器挂载 | `src/components/DataTable/CellRenderer.tsx` | `CellRenderer`、`resolveCellEditorKind` |
 | 旧编辑入口（草稿行仍在用） | `src/components/DataTable/EditableCell.tsx` | `EditableCell`（`CellEditorHost` 的兼容壳） |
 | 编辑器族 | `src/components/DataTable/editors/` | `CellEditorHost`、`activeEditor`、`setValueMenu`、`toEditString`、`Text/Number/Boolean/Enum/Temporal/Json/LongText/Binary` 八个 `*CellEditor` |
-| 表头与排序 | `src/components/DataTable/TableHeader.tsx` | `TableHeader`、双击循环 |
+| 表头与排序 | `src/components/DataTable/TableHeader.tsx` | `TableHeader`、单列排序菜单与点击循环 |
 | 页脚 | `src/components/DataTable/Pagination.tsx` | `Pagination`、`paginationReducer`、`PagingHint` |
 | 默认序选择器 | `src/components/DataTable/DefaultOrderSelect.tsx` | `DefaultOrderSelect` |
 | 右键菜单 | `src/components/DataTable/useDataTableContextMenu.ts` | 菜单构建、`buildDataTableContextMenuItems` 的标签/处理器接线 |
@@ -377,8 +377,8 @@
 
 ### 8.2 排序
 
-- 面板只保留**一个**排序（`sorts[0]`）：`setSort` 覆盖而不是追加，无法通过点击构造多列排序。
-- 表头双击按 `none → asc → desc → asc` 循环，**没有「取消排序」这一步**；表头右侧箭头按钮只在 `asc`/`desc` 之间切换。想回到「无显式排序」只能改默认序（§8.3）。
+- 表头主体单击的单列循环是 `none → asc → desc → removed`；升/降序通过 `setSort` 替换当前排序，第三步通过 `removeSort` 移除该列。单列排序按钮是唯一的表头排序控制：未排序时显示下拉箭头，已排序时显示方向箭头；点击它打开升序、降序、移除排序菜单。
+- 表头排序菜单是单列替换语义；列头右键菜单通过 `addSort` 提供多列排序。多列状态下，参与排序的列显示顺序徽标和方向箭头，宽度计算为徽标额外留位。
 - 排序变化 = `page: 0`、清空键集游标、`skipCount: true` 重读（不重算总数）。
 - 没有生效顺序时可分页但不稳定：`unstablePaging` 为真，页脚显示「未设置排序——跨页的行可能重复或被跳过」。用户一旦设置显式排序，这条警告消失。
 

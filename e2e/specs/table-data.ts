@@ -42,7 +42,8 @@ describe('表数据视图 (TD-001~TD-008)', () => {
         id SERIAL PRIMARY KEY,
         name VARCHAR(100) NOT NULL,
         score INT NOT NULL,
-        created_at TIMESTAMP DEFAULT NOW()
+        created_at TIMESTAMP DEFAULT NOW(),
+        product_description_label VARCHAR(100) NOT NULL DEFAULT ''
       )
     `);
     // Insert 60 rows to test pagination (default page size is 25)
@@ -151,7 +152,7 @@ describe('表数据视图 (TD-001~TD-008)', () => {
     expect(hasPage1).toBe(true);
   });
 
-  // ── 排序（Navicat 对齐的三态循环：升 → 降 → 移除） ────────────────
+  // ── 排序菜单、真实行序与表头布局（Navicat 对齐） ────────────────
 
   /**
    * The first `count` visible values of `column`, in visual (DOM) order.
@@ -175,51 +176,79 @@ describe('表数据视图 (TD-001~TD-008)', () => {
     return values as string[];
   };
 
-  it('点击列头应按该列升序排序 (TD-003)', async () => {
-    // A single click on the header cell itself starts the cycle (DBR-SORT);
-    // the old spec looked for `button[title=…]` sort buttons that no longer
-    // exist, so it silently skipped.
-    const header = await $('[data-col-header="score"]');
-    await header.click();
-    await browser.pause(1500);
+  const openSortMenuForColumn = async (column: string) => {
+    const header = await $('[data-col-header="' + column + '"]');
+    const sortButton = await header.$('[data-sort-menu]');
+    await sortButton.click();
+    return header;
+  };
 
-    // The indicator the header carries while sorted: an up arrow for the
-    // ascending leg of the click cycle.
-    const ascArrow = await header.$('[data-sort-indicator] .lucide-arrow-up');
-    await expect(ascArrow).toBeExisting();
+  it('列头排序菜单应真实排序、取消排序且显示完整列名 (TD-003)', async () => {
+    const filterButtonCount = await browser.execute(
+      () => document.querySelectorAll('[data-col-header] button[aria-label="Filter"]').length,
+    );
+    expect(filterButtonCount).toBe(0);
 
-    // The first two visible rows are really in ascending score order — the
-    // arrow alone does not prove the rows moved.
-    const [first, second] = (await readColumnValues('score', 2)).map(Number);
-    expect(first).toBeLessThanOrEqual(second);
-  });
+    const labelLayout = await browser.execute(() => {
+      const header = document.querySelector<HTMLElement>(
+        '[data-col-header="product_description_label"]',
+      );
+      const label = header?.querySelector<HTMLElement>('[data-col-label]');
+      const name = label?.firstElementChild as HTMLElement | null | undefined;
+      const type = label?.children[1] as HTMLElement | undefined;
+      return {
+        headerFound: header != null,
+        nameFits: name != null && name.scrollWidth <= name.clientWidth,
+        typeFits: type != null && type.scrollWidth <= type.clientWidth,
+      };
+    });
+    expect(labelLayout).toEqual({ headerFound: true, nameFits: true, typeFits: true });
 
-  it('再次点击列头应切换为降序 (TD-003)', async () => {
-    const header = await $('[data-col-header="score"]');
-    await header.click();
-    await browser.pause(1500);
+    const header = await openSortMenuForColumn('score');
+    const ascendingItem = await $('[data-testid="web-context-item-sort-ascending"]');
+    await ascendingItem.waitForDisplayed({ timeout: 5000 });
+    await expect(header.$('[data-sort-indicator]')).not.toBeExisting();
+    await ascendingItem.click();
 
-    const descArrow = await header.$('[data-sort-indicator] .lucide-arrow-down');
-    await expect(descArrow).toBeExisting();
+    await browser.waitUntil(
+      async () => {
+        const [first, second] = (await readColumnValues('score', 2)).map(Number);
+        const [firstName] = await readColumnValues('name', 1);
+        const arrow = await $('[data-col-header="score"] [data-sort-indicator] .lucide-arrow-up');
+        return first < second && firstName === 'user_43' && (await arrow.isExisting());
+      },
+      { timeout: 15000, timeoutMsg: 'Ascending sort did not reorder the table rows' },
+    );
 
-    const [first, second] = (await readColumnValues('score', 2)).map(Number);
-    expect(first).toBeGreaterThanOrEqual(second);
-  });
+    await openSortMenuForColumn('score');
+    const descendingItem = await $('[data-testid="web-context-item-sort-descending"]');
+    await descendingItem.waitForDisplayed({ timeout: 5000 });
+    await descendingItem.click();
 
-  it('第三次点击列头应移除排序 (TD-003)', async () => {
-    const header = await $('[data-col-header="score"]');
-    await header.click();
-    await browser.pause(1500);
+    await browser.waitUntil(
+      async () => {
+        const [first, second] = (await readColumnValues('score', 2)).map(Number);
+        const [firstName] = await readColumnValues('name', 1);
+        const arrow = await $('[data-col-header="score"] [data-sort-indicator] .lucide-arrow-down');
+        return first > second && firstName === 'user_57' && (await arrow.isExisting());
+      },
+      { timeout: 15000, timeoutMsg: 'Descending sort did not reorder the table rows' },
+    );
 
-    // The third leg of the cycle removes the column from the sort: the
-    // header carries no direction indicator and the grid falls back to the
-    // default order.
-    const indicator = await header.$('[data-sort-indicator]');
-    await expect(indicator).not.toBeExisting();
+    await openSortMenuForColumn('score');
+    const removeSortItem = await $('[data-testid="web-context-item-remove-sort"]');
+    await removeSortItem.waitForDisplayed({ timeout: 5000 });
+    await expect(removeSortItem).toBeEnabled();
+    await removeSortItem.click();
 
-    // id 1 leads again under the default order.
-    const [firstName] = await readColumnValues('name', 1);
-    expect(firstName).toBe('user_1');
+    await browser.waitUntil(
+      async () => {
+        const [firstName] = await readColumnValues('name', 1);
+        const indicator = await $('[data-col-header="score"] [data-sort-indicator]');
+        return firstName === 'user_1' && !(await indicator.isExisting());
+      },
+      { timeout: 15000, timeoutMsg: 'Removing the sort did not restore the default row order' },
+    );
   });
 
   // ── 列宽调整 ───────────────────────────────────────────────────

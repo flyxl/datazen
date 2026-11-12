@@ -6,9 +6,11 @@ const MAX_COL_WIDTH = 400;
 const HEADER_CHAR_PX = 6.5;
 const DATA_CHAR_PX = 7.5;
 const CELL_PADDING = 24;
+const HEADER_CONTENT_GAP = 8;
 const SAMPLE_ROWS = 20;
 
-export const SORT_ICON_WIDTH = 36;
+export const SORT_CONTROL_WIDTH = 24;
+export const SORT_BADGE_EXTRA_WIDTH = 24;
 
 export function computeInitialColumnWidths(
   columns: { name: string; type?: string }[],
@@ -47,7 +49,11 @@ export function computeInitialColumnWidths(
       typeWidth = DEFAULT_COL_WIDTH;
     }
 
-    const headerWidth = col.name.length * HEADER_CHAR_PX + CELL_PADDING;
+    // Reserve the always-present sort menu button before sorting. It changes
+    // into the direction indicator after a sort, so the column label keeps
+    // the same usable width in both states.
+    const headerWidth =
+      col.name.length * HEADER_CHAR_PX + CELL_PADDING + SORT_CONTROL_WIDTH + HEADER_CONTENT_GAP;
 
     let dataWidth = 0;
     const sampleCount = Math.min(rows.length, SAMPLE_ROWS);
@@ -184,9 +190,12 @@ export function adjustWidthsForSort(
   columns: { name: string }[],
   sorts: { column: string; descending?: boolean }[],
 ): number[] {
-  if (sorts.length === 0) return widths;
-  // Every sorted column carries its own arrow (and, with a multi-column
-  // sort, its position badge — DB-11), so every one of them needs the room.
+  // A single-column sort uses the same adaptive control as the unsorted
+  // header, so no width change is needed. Multi-column sorting adds a position
+  // badge beside the control for each sorted column.
+  if (sorts.length < 2) return widths;
   const sortedColumns = new Set(sorts.map((sort) => sort.column));
-  return widths.map((w, i) => (sortedColumns.has(columns[i]?.name) ? w + SORT_ICON_WIDTH : w));
+  return widths.map((w, i) =>
+    sortedColumns.has(columns[i]?.name) ? w + SORT_BADGE_EXTRA_WIDTH : w,
+  );
 }
