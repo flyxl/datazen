@@ -176,6 +176,10 @@ const pack = {
   'settings.valuePresentation.invalidConfig': 'Invalid configuration',
   'settings.valuePresentation.contributionMissing':
     'The time display extension (datazen.timestamp) is unavailable, so the preview is off. Your saved settings are kept.',
+  // T11: another window saved while this panel has unsaved edits.
+  'settings.valuePresentation.externalUpdate':
+    'Time display settings were updated in another window. Your unsaved edits are kept — reload the saved settings to see the update.',
+  'settings.valuePresentation.reloadSaved': 'Reload saved settings',
   'settings.connectionPoolSize': 'Connection Pool Size',
   'settings.connectionPoolSizeHint': 'Maximum connections kept per database connection.',
   'settings.limitSelect': 'Limit SELECT Results',

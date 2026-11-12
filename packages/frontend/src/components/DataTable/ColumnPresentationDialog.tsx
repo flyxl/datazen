@@ -35,7 +35,7 @@
  * 严格 TS：禁 any；不出现 `new Date(string)`。
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type {
   ColumnPresentationOverride,
   ColumnSource,
@@ -61,6 +61,7 @@ import {
   snapshotWithoutColumnOverride,
   validateColumnPresentationOverride,
   validateTimestampOptions,
+  withTimestampRenderer,
   type TimestampOptions,
   type TimestampOutputFormat,
   type TimeZoneSpec,
@@ -337,7 +338,17 @@ export function ColumnPresentationDialog({
   }, [open, columnName]);
 
   const timeEnabled = snapshot.enabledRendererIds.includes(TIMESTAMP_CONTRIBUTION_ID);
-  const contribution = registry.get(TIMESTAMP_CONTRIBUTION_ID);
+  // T11：订阅注册中心修订——贡献在面板打开期间停用/重启用时，
+  // 缺失提示即时出现/消失，不依赖父级快照重建才重渲染。
+  const contributionRevision = useSyncExternalStore(
+    (onStoreChange: () => void): (() => void) => registry.subscribe(onStoreChange),
+    () => registry.revision,
+    () => registry.revision,
+  );
+  const contribution = useMemo(
+    () => registry.get(TIMESTAMP_CONTRIBUTION_ID),
+    [registry, contributionRevision],
+  );
   const sample: PresentationValue =
     sampleValue !== undefined
       ? sampleValue
@@ -464,31 +475,23 @@ export function ColumnPresentationDialog({
       }
       return;
     }
-    // 默认开启路径：只把 datazen.timestamp 置 enabled，其余 renderer
-    // 条目与规则原样保留；options 沿用已保存的合法值，否则用默认
-    // native / iso / local。保存列配置本身绝不走这条路。
+    // 默认开启路径：只把 datazen.timestamp 置 enabled（T11：updater
+    // 形式——store 对保存前重读的权威值替换这一项，规则与列覆盖取
+    // 权威原文，不因本窗口基底陈旧而丢弃；未知版本字段也原样保留）。
+    // options 沿用快照里的合法全局值，否则用默认 native / iso / local。
+    // 保存列配置本身绝不走这条路。
     setEnabling(true);
     setEnableError(null);
     try {
       const store = useSettingsStore.getState();
-      const stored = parseStoredValuePresentationSettings(store.settings.valuePresentation);
       const options: TimestampOptions = globalOptions ?? {
         interpretation: { kind: 'native' },
         format: 'iso',
         displayTimeZone: { kind: 'local' },
       };
-      await store.updateValuePresentationSettings({
-        version: stored.version,
-        renderers: {
-          ...stored.renderers,
-          [TIMESTAMP_CONTRIBUTION_ID]: { enabled: true, options },
-        },
-        ...(stored.version === 1 ? { rules: [...(stored.rules ?? [])] } : {}),
-        // T10：显式开启总开关不得丢弃已存的表列覆盖（整份重写时保留）。
-        ...(stored.version === 1 && stored.columnOverrides !== undefined
-          ? { columnOverrides: { ...stored.columnOverrides } }
-          : {}),
-      });
+      await store.updateValuePresentationSettings((fresh) =>
+        withTimestampRenderer(fresh, true, options),
+      );
     } catch {
       setEnableError(t('settings.valuePresentation.saveFailed'));
     } finally {

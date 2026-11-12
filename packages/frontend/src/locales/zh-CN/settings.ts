@@ -164,6 +164,10 @@ const pack = {
   'settings.valuePresentation.invalidConfig': '配置无效',
   'settings.valuePresentation.contributionMissing':
     '时间展示扩展（datazen.timestamp）不可用，预览已关闭；已保存的设置予以保留。',
+  // T11：本面板有未保存编辑时另一窗口已保存。
+  'settings.valuePresentation.externalUpdate':
+    '另一窗口已更新时间显示设置，你的未保存编辑已保留；重新加载可查看最新已保存设置。',
+  'settings.valuePresentation.reloadSaved': '重新加载已保存的设置',
   'settings.connectionPoolSize': '连接池大小',
   'settings.connectionPoolSizeHint': '每个数据库连接保留的最大连接数。',
   'settings.limitSelect': '限制 SELECT 结果行数',

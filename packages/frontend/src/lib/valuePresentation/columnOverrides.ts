@@ -39,8 +39,12 @@
  *    条目保留，用户刚改的配置不丢；`inherit` 在会话层即删除条目，
  *    失败时无条目可保留，但面板草稿仍在、失败可重试；
  * 5. 经 `persist`（即 `updateValuePresentationSettings`）写持久化；
- *    失败 → `save-failed`，旧配置继续生效（快照仍是旧值）、会话
- *    条目保留、面板保持打开并就地报错；
+ *    T11：persist 收到的不是按本窗口旧基底拼好的整份对象，而是
+ *    updater `(fresh) => withColumnOverride(fresh, …)`——store 在
+ *    保存前重读权威值再应用，只改本列一条覆盖，其余字段（全局
+ *    格式、规则、其他列覆盖）取权威原文，两窗口同时保存不互相
+ *    覆盖；失败 → `save-failed`，旧配置继续生效（快照仍是旧值）、
+ *    会话条目保留、面板保持打开并就地报错；
  * 6. 成功后清除同一键的会话条目（`clearSessionColumnOverride`），
  *    以免会话值遮住已持久化的值；之后快照即持久值。
  *
@@ -58,6 +62,7 @@ import { validateColumnPresentationOverride } from './columnPresentation';
 import { clearSessionColumnOverride, setSessionColumnOverride } from './columnPresentationSession';
 import { columnOverrideKey } from './presentationPlan';
 import type { StoredValuePresentationSettings } from './settings';
+import type { ValuePresentationSettingsUpdate } from './valuePresentationSave';
 
 /** 表列覆盖条数上限（存储体积护栏；超限拒绝保存，不静默截断）。 */
 export const MAX_VALUE_PRESENTATION_COLUMN_OVERRIDES = 200;
@@ -158,7 +163,17 @@ export interface SaveColumnOverrideInput {
   readonly source: Readonly<Omit<ColumnSource, 'column'>> | undefined;
   readonly columnName: string;
   readonly override: Readonly<ColumnPresentationOverride>;
-  readonly persist: (next: StoredValuePresentationSettings) => Promise<void>;
+  /**
+   * 持久化入口（即 settingsStore 的 updateValuePresentationSettings）。
+   * T11：收 updater 而非整份对象——store 对保存前重读的权威值应用
+   * 本列覆盖，其余字段取权威原文（见文件头步骤 5）。
+   *
+   * 注意：这里用方法签名而不用函数类型属性——方法参数按 TS 规则
+   * 双变检查，旧的整份对象形式 persist
+   * `(next: StoredValuePresentationSettings) => Promise<void>` 仍可
+   * 赋值（调用方一律传 updater；实现方按需接受对象或 updater）。
+   */
+  persist(update: ValuePresentationSettingsUpdate): Promise<void>;
 }
 
 /** saveColumnOverride 的结果：成功或失败原因（调用方据此就地报错）。 */
@@ -209,7 +224,10 @@ export async function saveColumnOverride(
     return { ok: true };
   }
   try {
-    await persist(next);
+    // T11：只把「本列覆盖」这个路径交给 store；store 对保存前重读
+    // 的权威值应用它（版本、上限复核在 withColumnOverride 内对
+    // fresh 再做一次），其余字段取权威原文。
+    await persist((fresh) => withColumnOverride(fresh, source, columnName, validated.override));
   } catch {
     return { ok: false, reason: 'save-failed' };
   }

@@ -167,4 +167,13 @@ export {
   withColumnOverride,
   saveColumnOverride,
 } from './columnOverrides';
+// T11（跨窗口同步与扩展停用回退，设计 §6 / PRD §5/§6 验收 10/12）：
+// 路径化保存更新（整份对象或只改拥有路径的 updater），见
+// valuePresentationSave.ts 文件头裁决。
+export type { ValuePresentationSettingsUpdate } from './valuePresentationSave';
+export {
+  applyValuePresentationUpdate,
+  withTimestampRenderer,
+  withValuePresentationRules,
+} from './valuePresentationSave';
 export { registerBundledValuePresentationContributions } from './registerBundledContributions';

@@ -26,6 +26,12 @@
  * 5. 未启用时不改变既有行为：开关关闭只影响保存的 enabled 位；
  *    本面板挂载、改草稿、看预览都不会写 store，也不会触动网格
  *    与详情的展示（PRD 验收 1）。
+ * 6. 跨窗口同步（T11，设计 §6）：保存走 updater 形式——只写用户
+ *    实际改过的路径（全局格式/开关、规则列表），其余字段取保存前
+ *    重读的权威值；另一窗口保存后本面板若有未保存编辑，不静默丢
+ *    弃草稿，只提示外部更新，用户点「重新加载已保存的设置」才覆
+ *    盖草稿（规则列表整体是一条路径，两窗同时改规则仍后写胜出，
+ *    见 valuePresentationSave.ts 文件头裁决）。
  */
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
@@ -51,6 +57,8 @@ import {
   resolvePresentationEnvironment,
   validateTimestampOptions,
   validateValuePresentationRule,
+  withTimestampRenderer,
+  withValuePresentationRules,
   type StoredValuePresentationSettings,
   type TimestampOptions,
   type TimestampOutputFormat,
@@ -286,6 +294,9 @@ export function ValuePresentationSettingsSection({
       : '';
   });
   const [appliedStoredJson, setAppliedStoredJson] = useState<string>(() => JSON.stringify(stored));
+  // T11：另一窗口保存后本面板仍有未保存编辑时置 true，只提示、不覆
+  // 盖草稿；用户点「重新加载已保存的设置」（即 handleReset）后清零。
+  const [externalUpdate, setExternalUpdate] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -300,22 +311,16 @@ export function ValuePresentationSettingsSection({
   // 正在编辑的规则：'new' 为新增，{ index } 为编辑第 index 条，null 为未编辑。
   const [editingRule, setEditingRule] = useState<{ index: number } | 'new' | null>(null);
 
-  // 外部 store 变化（跨窗口同步、保存成功回写）时用已保存值重建草稿；
-  // 本地编辑不触发（appliedStoredJson 只在 store 真变时更新）。
-  useEffect(() => {
-    const json = JSON.stringify(stored);
-    if (json === appliedStoredJson) return;
-    setAppliedStoredJson(json);
-    const next = draftFromStored(stored);
-    setDraft(next);
-    setIanaName(
-      next.options.displayTimeZone.kind === 'iana' ? next.options.displayTimeZone.name : '',
-    );
-    setRuleDrafts(stored.rules ?? []);
-    setEditingRule(null);
-    setError(null);
-    setSaved(false);
-  }, [stored, appliedStoredJson]);
+  // T11：草稿最后一次同步的已保存值（appliedStoredJson 的解析结果）。
+  // 保存时的按路径脏检查以它为准，而不是以当前 store 值——当前值
+  // 可能已被另一窗口改过；以当前值为准会把未动过的路径误判为脏，
+  // 反而用陈旧草稿覆盖对方刚保存的字段。
+  const appliedStored = useMemo(
+    () => parseStoredValuePresentationSettings(JSON.parse(appliedStoredJson) as unknown),
+    [appliedStoredJson],
+  );
+  const appliedDraft = useMemo(() => draftFromStored(appliedStored), [appliedStored]);
+  const appliedRules: ReadonlyArray<ValuePresentationRule> = appliedStored.rules ?? [];
 
   // 待保存的选项：IANA 名取输入框的实时值（去空白）；其余与草稿一致。
   const optionsToSave: TimestampOptions = useMemo(() => {
@@ -366,6 +371,52 @@ export function ValuePresentationSettingsSection({
     draft.enabled !== savedDraft.enabled ||
     JSON.stringify(optionsToSave) !== JSON.stringify(savedDraft.options) ||
     JSON.stringify(ruleDrafts) !== JSON.stringify(savedRules);
+
+  // T11：外部 store 变化（跨窗口同步、保存成功回写）时的草稿处理。
+  // 按路径判断草稿是否还有未保存编辑——某路径只有「与上次同步值
+  // 不同、且与新已保存值也不同」时才算未保存：自己的保存回显（草稿
+  // 与新值一致）不算，纯外部更新（草稿与上次同步值一致）也不算。
+  // 任一路径未保存 → 只提示、不覆盖草稿，且不同步基线
+  // （appliedStoredJson 不动），使保存时的按路径脏检查仍以编辑前
+  // 的基线为准；否则用已保存值重建草稿并推进基线。本地编辑本身不
+  // 触发本 effect（stored 不变时首行即返回）。
+  useEffect(() => {
+    const json = JSON.stringify(stored);
+    if (json === appliedStoredJson) return;
+    const newDraft = draftFromStored(stored);
+    const newRules: ReadonlyArray<ValuePresentationRule> = stored.rules ?? [];
+    const formatUnsaved =
+      (draft.enabled !== appliedDraft.enabled ||
+        JSON.stringify(optionsToSave) !== JSON.stringify(appliedDraft.options)) &&
+      (draft.enabled !== newDraft.enabled ||
+        JSON.stringify(optionsToSave) !== JSON.stringify(newDraft.options));
+    const rulesUnsaved =
+      JSON.stringify(ruleDrafts) !== JSON.stringify(appliedRules) &&
+      JSON.stringify(ruleDrafts) !== JSON.stringify(newRules);
+    if (formatUnsaved || rulesUnsaved) {
+      setExternalUpdate(true);
+      return;
+    }
+    setAppliedStoredJson(json);
+    setExternalUpdate(false);
+    const next = newDraft;
+    setDraft(next);
+    setIanaName(
+      next.options.displayTimeZone.kind === 'iana' ? next.options.displayTimeZone.name : '',
+    );
+    setRuleDrafts(stored.rules ?? []);
+    setEditingRule(null);
+    setError(null);
+    setSaved(false);
+  }, [stored, appliedStoredJson, draft, ruleDrafts, optionsToSave, appliedDraft, appliedRules]);
+
+  // T11：保存时按路径的脏检查（以最后一次同步的已保存值为准，见
+  // appliedStored 注释）；未动过的路径不进 updater，取保存前重读的
+  // 权威原文，不覆盖另一窗口刚保存的字段。
+  const formatDirty =
+    draft.enabled !== appliedDraft.enabled ||
+    JSON.stringify(optionsToSave) !== JSON.stringify(appliedDraft.options);
+  const rulesDirty = JSON.stringify(ruleDrafts) !== JSON.stringify(appliedRules);
 
   function validateDraftForSave(): TimestampOptions | null {
     if (draft.options.displayTimeZone.kind === 'iana') {
@@ -423,24 +474,23 @@ export function ValuePresentationSettingsSection({
     }
     setSaving(true);
     setError(null);
-    // 未知顶层 version 原样保留（T06：未知版本保留原文，不用默认值写回）；
-    // 其余 renderer 条目原样保留，只替换 datazen.timestamp 一项。
-    // rules 只在 version === 1 时写（未知版本不按 v1 形状解释其 rules）。
-    const next: StoredValuePresentationSettings = {
-      version: stored.version,
-      renderers: {
-        ...stored.renderers,
-        [TIMESTAMP_CONTRIBUTION_ID]: { enabled: draft.enabled, options },
-      },
-      ...(stored.version === 1 ? { rules: [...ruleDrafts] } : {}),
-      // T10：保存全局设置不得丢弃已存的表列覆盖（整份重写时保留）。
-      ...(stored.version === 1 && stored.columnOverrides !== undefined
-        ? { columnOverrides: { ...stored.columnOverrides } }
-        : {}),
-    };
+    // T11：updater 形式——只写用户实际改过的路径（全局开关/格式、
+    // 规则列表），其余字段（其他 renderer、列覆盖、未知版本字段）
+    // 取保存前重读的权威原文；未知版本仍原样保留 version（T06），
+    // rules 只在 version 1 写（withValuePresentationRules 内裁决）。
     try {
-      await updateValuePresentationSettings(next);
+      await updateValuePresentationSettings((fresh) => {
+        let next = fresh;
+        if (formatDirty) {
+          next = withTimestampRenderer(next, draft.enabled, options);
+        }
+        if (rulesDirty) {
+          next = withValuePresentationRules(next, ruleDrafts);
+        }
+        return next;
+      });
       setSaved(true);
+      setExternalUpdate(false);
     } catch {
       // 保存失败：旧配置继续生效，草稿保留，就地报错，不显示成已保存。
       setError(t('settings.valuePresentation.saveFailed'));
@@ -460,6 +510,8 @@ export function ValuePresentationSettingsSection({
     setEditingRule(null);
     setError(null);
     setSaved(false);
+    // T11：重新加载已保存的设置同时清除外部更新提示（同一操作）。
+    setExternalUpdate(false);
   }
 
   function handleRuleSave(rule: ValuePresentationRule): void {
@@ -521,6 +573,25 @@ export function ValuePresentationSettingsSection({
           {t('settings.valuePresentation.description')}
         </p>
       </div>
+
+      {externalUpdate && (
+        <div
+          role="status"
+          data-testid="value-presentation-external-update"
+          className="rounded-md border border-edge bg-surface-alt px-3 py-2 text-sm text-fg-secondary"
+        >
+          <p>{t('settings.valuePresentation.externalUpdate')}</p>
+          <div className="mt-2">
+            <Button
+              variant="ghost"
+              onClick={handleReset}
+              data-testid="value-presentation-reload-saved"
+            >
+              {t('settings.valuePresentation.reloadSaved')}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {contribution === undefined && (
         <p
