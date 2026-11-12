@@ -131,4 +131,29 @@ export {
   parseStoredValuePresentationSettings,
   buildValuePresentationSnapshot,
 } from './settings';
+// T09（列配置面板，设计 §5/§9，PRD §3.2）：覆盖校验与预览（纯逻辑）、
+// 会话生效接缝（进程内存储 + 合并点；持久化是 T10 的活，见
+// columnPresentationSession.ts 文件头）。
+export type {
+  ColumnPresentationOverrideProblem,
+  ColumnPresentationOverrideValidation,
+  ColumnPresentationPreview,
+  ComputeColumnPresentationPreviewInput,
+} from './columnPresentation';
+export {
+  validateColumnPresentationOverride,
+  columnOverrideFromSnapshot,
+  fallbackSampleForColumn,
+  formatColumnPresentationSampleValue,
+  computeColumnPresentationPreview,
+} from './columnPresentation';
+export type { ColumnPresentationSessionState } from './columnPresentationSession';
+export {
+  getColumnPresentationSessionState,
+  subscribeColumnPresentationSession,
+  setSessionColumnOverride,
+  clearSessionColumnOverride,
+  resetColumnPresentationSession,
+  applySessionColumnOverrides,
+} from './columnPresentationSession';
 export { registerBundledValuePresentationContributions } from './registerBundledContributions';

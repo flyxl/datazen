@@ -100,6 +100,10 @@ export type DataTableContextMenuLabels = {
   unfreezeColumns?: string;
   /** "Column Stats" — the server-side aggregates of one column (DB-12). */
   columnStats?: string;
+  /* ── Column display (issue-32 T09). Optional: a caller that does not
+     offer the panel keeps its exact previous header menu. ── */
+  /** "Display…" — open the column presentation dialog (T09). */
+  columnPresentation?: string;
 };
 
 export type DataTableContextMenuHandlers = {
@@ -155,6 +159,9 @@ export type DataTableContextMenuHandlers = {
   /* ── Column statistics (DB-12). ── */
   /** Ask for the six server-side aggregates of the right-clicked column. */
   onColumnStats?: (column: string) => void;
+  /* ── Column display (issue-32 T09). ── */
+  /** Open the column presentation dialog for the right-clicked column. */
+  onColumnPresentation?: (column: string) => void;
 };
 
 export type BuildDataTableContextMenuArgs = {
@@ -190,6 +197,14 @@ export type BuildDataTableContextMenuArgs = {
    * given without the handler — the header menu keeps its exact shape.
    */
   headerStats?: {
+    /** The name of the right-clicked column. */
+    column: string;
+  };
+  /**
+   * The column-display entry of the header menu (issue-32 T09). Omitted —
+   * or given without the handler — the header menu keeps its exact shape.
+   */
+  headerPresentation?: {
     /** The name of the right-clicked column. */
     column: string;
   };
@@ -667,6 +682,15 @@ export function buildDataTableContextMenuItems(
         labels.columnStats ?? '',
         args.headerStats && handlers.onColumnStats
           ? () => handlers.onColumnStats?.(args.headerStats!.column)
+          : undefined,
+      ),
+      // The column-display entry (issue-32 T09) sits with the column
+      // inspections, next to "Column Stats": both ask about this column.
+      item(
+        'column-presentation',
+        labels.columnPresentation ?? '',
+        args.headerPresentation && handlers.onColumnPresentation
+          ? () => handlers.onColumnPresentation?.(args.headerPresentation!.column)
           : undefined,
       ),
       item('copy-column-name', labels.copyColumnName, handlers.onCopyColumnName),

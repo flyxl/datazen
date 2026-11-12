@@ -391,6 +391,36 @@ const pack = {
   'dataTable.freezeThrough': 'Freeze through This Column',
   'dataTable.unfreezeColumns': 'Unfreeze Columns',
   'dataTable.columnStats': 'Column Stats',
+  'dataTable.columnPresentation': 'Display…',
+  // The column display dialog (issue-32 T09): one panel opened from the
+  // header menu and from the aside field menu, editing the same column
+  // configuration. en only; the other nine locales resolve them through
+  // the en fallback until the next release.
+  'columnPresentation.title': 'Display',
+  'columnPresentation.mode': 'Display mode',
+  'columnPresentation.mode.inherit': 'Follow rules',
+  'columnPresentation.mode.inherit.hint':
+    'Clear this column’s explicit override and use the global rules and default again.',
+  'columnPresentation.mode.raw': 'Raw value',
+  'columnPresentation.mode.raw.hint':
+    'Skip custom display and do not match the global rules for this column.',
+  'columnPresentation.mode.custom': 'Time',
+  'columnPresentation.mode.custom.hint':
+    'Show this column as a time, with an explicit time source, format and time zone.',
+  'columnPresentation.sourceTimeZone': 'Source time zone',
+  'columnPresentation.original': 'Original:',
+  'columnPresentation.preview.noSample': 'No sample value in the loaded rows.',
+  'columnPresentation.preview.unchanged': 'Shown unchanged',
+  'columnPresentation.notEnabled':
+    'Time display is not enabled yet. You can still edit and save this column’s setting.',
+  'columnPresentation.enable': 'Enable time display',
+  'columnPresentation.noSource':
+    'Query results have no reliable table source, so this cannot be saved as a table column override. The global default and rules that only depend on known metadata still apply.',
+  'columnPresentation.save': 'Save column display',
+  'columnPresentation.effectiveSource': 'Applies from',
+  'columnPresentation.source.override': 'Column override',
+  'columnPresentation.source.rule': 'Rule: {name}',
+  'columnPresentation.source.global': 'Global default',
   // The column-stats dialog (DB-12): six server-side aggregates of one
   // column, opened from the header menu. en only; same fallback as above.
   'columnStats.title': 'Column Stats',

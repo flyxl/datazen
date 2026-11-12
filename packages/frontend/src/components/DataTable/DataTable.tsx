@@ -44,11 +44,17 @@ import { DataTableSelectionBar } from './DataTableSelectionBar';
 import type { CellEditingContext } from '../../lib/cellEditorKind';
 import type { CellTypeHints } from '../../lib/cellTypes';
 import { useValuePresentation } from '../../hooks/useValuePresentation';
+import { useSessionValuePresentationSnapshot } from '../../hooks/useColumnPresentationSession';
+import { ColumnPresentationDialog } from './ColumnPresentationDialog';
 import {
   createDefaultValuePresentationSnapshot,
   type ValuePresentationSnapshot,
 } from '../../lib/valuePresentation/presentationPlan';
-import type { ColumnSource, ValuePresentationRegistry } from '@datazen/extension-points';
+import type {
+  ColumnSource,
+  PresentationValue,
+  ValuePresentationRegistry,
+} from '@datazen/extension-points';
 import { cn } from '../../lib/cn';
 import { Spinner } from '../ui/Spinner';
 import { DATA_TABLE_ROW_HEIGHT } from './rowHeight';
@@ -605,8 +611,16 @@ export function DataTable({
    * source, snapshot) triple, so the same input always yields the same
    * plan — no shared context/provider is introduced here (left for a
    * later task if one is ever needed).
+   *
+   * T09: the snapshot first passes through
+   * `useSessionValuePresentationSnapshot`, which merges the current
+   * session's column overrides (written by ColumnPresentationDialog)
+   * into the stored snapshot — the session seam T10 replaces with
+   * persisted overrides (see columnPresentationSession.ts).
    */
-  const presentationSnapshotResolved = presentationSnapshot ?? DEFAULT_PRESENTATION_SNAPSHOT;
+  const presentationSnapshotResolved = useSessionValuePresentationSnapshot(
+    presentationSnapshot ?? DEFAULT_PRESENTATION_SNAPSHOT,
+  );
   const planColumns = useMemo(
     () =>
       columns.map((c) => ({
@@ -762,6 +776,27 @@ export function DataTable({
   const deleteRowCount = coveredRows?.length ?? selectedRows.size;
 
   const handleExport = useCallback(() => setExportOpen(true), []);
+  /**
+   * Column presentation dialog (issue-32 T09): the header-menu entry
+   * opens it for one column; the sample is that column's first non-null
+   * loaded value (the dialog falls back to its PRD anchor sample when
+   * the column has no non-null value on this page).
+   */
+  const [presentationColumn, setPresentationColumn] = useState<string | null>(null);
+  const presentationSample = useMemo((): PresentationValue | undefined => {
+    if (presentationColumn === null) return undefined;
+    const index = columns.findIndex((c) => c.name === presentationColumn);
+    if (index < 0) return undefined;
+    for (const row of rows) {
+      const value = row[index];
+      if (value !== null && value !== undefined) return value as PresentationValue;
+    }
+    return undefined;
+  }, [presentationColumn, columns, rows]);
+  const presentationColumnType = useMemo(
+    () => columns.find((c) => c.name === presentationColumn)?.type,
+    [columns, presentationColumn],
+  );
   const { onContextMenu } = useDataTableContextMenu({
     columnNames,
     rows,
@@ -793,6 +828,9 @@ export function DataTable({
     onFreezeThrough,
     onUnfreezeColumns,
     onColumnStats,
+    // Issue-32 T09: the "Display…" entry of the header menu opens the
+    // column presentation dialog for the right-clicked column.
+    onColumnPresentation: setPresentationColumn,
     // DB-03 wiring + DBR-02: the selected-cell entries and the row-level
     // copy/paste pair of the right-click menu.
     hasCellRange: hasCellSelection,
@@ -1053,6 +1091,20 @@ export function DataTable({
           initialScope={exportInitialScope}
           onBuildFilteredExportSql={onBuildFilteredExportSql}
           dataExportCapability={dataExportCapability}
+        />
+      )}
+
+      {presentationColumn !== null && (
+        <ColumnPresentationDialog
+          open
+          columnName={presentationColumn}
+          columnType={presentationColumnType}
+          cellTypeHints={cellTypeHints}
+          source={presentationSource}
+          snapshot={presentationSnapshotResolved}
+          sampleValue={presentationSample}
+          registry={presentationRegistry}
+          onClose={() => setPresentationColumn(null)}
         />
       )}
     </div>

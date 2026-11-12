@@ -8,6 +8,8 @@ import { dataTypeTextClass } from '../../lib/dataTypeColors';
 import type { CellTypeHints } from '../../lib/cellTypes';
 import { useI18n } from '../../hooks/useI18n';
 import { useValuePresentation } from '../../hooks/useValuePresentation';
+import { useSessionValuePresentationSnapshot } from '../../hooks/useColumnPresentationSession';
+import { ColumnPresentationDialog } from './ColumnPresentationDialog';
 import {
   createDefaultValuePresentationSnapshot,
   type ColumnPresentationPlan,
@@ -86,8 +88,20 @@ export function DetailPanel({
    * Value-presentation plans (issue-32 T05): built from the same triple
    * the grid uses, so grid and aside agree cell for cell. This hook call
    * stays above the `!open` early return, like every other hook here.
+   *
+   * T09: the snapshot first passes through
+   * `useSessionValuePresentationSnapshot` (same merge as DataTable),
+   * so a column override saved from either entry shows here at once.
    */
-  const presentationSnapshotResolved = presentationSnapshot ?? DEFAULT_PRESENTATION_SNAPSHOT;
+  const presentationSnapshotResolved = useSessionValuePresentationSnapshot(
+    presentationSnapshot ?? DEFAULT_PRESENTATION_SNAPSHOT,
+  );
+  /** Column presentation dialog (issue-32 T09): the aside field-menu entry. */
+  const [presentationColumn, setPresentationColumn] = useState<string | null>(null);
+  const presentationColumnDef = useMemo(
+    () => columns.find((c) => c.name === presentationColumn),
+    [columns, presentationColumn],
+  );
   const planColumns = useMemo(
     () =>
       columns.map((c) => ({
@@ -161,6 +175,7 @@ export function DetailPanel({
                   editable={editable}
                   cellTypeHints={cellTypeHints}
                   presentationPlan={presentationPlanByColumn.get(col.name)}
+                  onOpenColumnPresentation={() => setPresentationColumn(col.name)}
                   onCommit={
                     editable && onFieldEdit && rowIndex !== null
                       ? (v) => onFieldEdit(rowIndex, col.name, v)
@@ -171,6 +186,20 @@ export function DetailPanel({
             )}
           </div>
         </>
+      )}
+
+      {presentationColumn !== null && presentationColumnDef !== undefined && (
+        <ColumnPresentationDialog
+          open
+          columnName={presentationColumn}
+          columnType={presentationColumnDef.type}
+          cellTypeHints={cellTypeHints}
+          source={presentationSource}
+          snapshot={presentationSnapshotResolved}
+          sampleValue={row?.[presentationColumn] as PresentationValue | undefined}
+          registry={presentationRegistry}
+          onClose={() => setPresentationColumn(null)}
+        />
       )}
     </aside>
   );
@@ -189,6 +218,12 @@ interface FieldRowProps {
    * from the raw value (`toEditString(value)`), and NULL stays `NULL`.
    */
   presentationPlan?: ColumnPresentationPlan;
+  /**
+   * Open the column presentation dialog for this field (issue-32 T09):
+   * the aside entry of the shared panel — the same dialog the grid
+   * header menu opens, editing the same column configuration.
+   */
+  onOpenColumnPresentation?: () => void;
 }
 
 function FieldRow({
@@ -198,6 +233,7 @@ function FieldRow({
   onCommit,
   cellTypeHints,
   presentationPlan,
+  onOpenColumnPresentation,
 }: FieldRowProps) {
   const { t } = useI18n();
   const [quickLookOpen, setQuickLookOpen] = useState(false);
@@ -254,6 +290,17 @@ function FieldRow({
               className="rounded p-0.5 text-fg-muted opacity-0 transition-opacity hover:bg-surface-raised hover:text-fg group-hover:opacity-100"
             >
               <Maximize2 className="h-3 w-3" />
+            </button>
+          )}
+          {onOpenColumnPresentation && (
+            <button
+              type="button"
+              onClick={onOpenColumnPresentation}
+              title={t('dataTable.columnPresentation')}
+              data-testid={`detail-field-presentation-${column.name}`}
+              className="rounded p-0.5 text-fg-muted opacity-0 transition-opacity hover:bg-surface-raised hover:text-fg group-hover:opacity-100"
+            >
+              {t('dataTable.columnPresentation')}
             </button>
           )}
         </div>
