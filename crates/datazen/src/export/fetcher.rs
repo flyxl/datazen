@@ -699,6 +699,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
+    #[cfg(feature = "export-xlsx")]
     #[tokio::test]
     async fn write_binary_file_emits_progress_events() {
         let req = request(
@@ -1619,6 +1620,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
+    #[cfg(feature = "export-xlsx")]
     #[tokio::test]
     async fn write_binary_file_sql_source_writes_xlsx() {
         let req = request(
@@ -1650,6 +1652,46 @@ mod tests {
         let file = std::fs::File::open(&dest).unwrap();
         let mut zip = zip::ZipArchive::new(file).unwrap();
         assert!(zip.by_name("xl/worksheets/sheet1.xml").is_ok());
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    /// T1 gating proof: with `export` but WITHOUT `export-xlsx`, an XLSX
+    /// request is a clear validation error naming the missing feature —
+    /// not a panic, not a silent fallback to another format, and no file
+    /// is created. A Parquet-specific error-path test cannot exist yet:
+    /// `DataFormat::Parquet` lands in T2; its error path is verified in
+    /// T2/T5, with the gating mechanism proven here via Xlsx.
+    #[cfg(not(feature = "export-xlsx"))]
+    #[tokio::test]
+    async fn write_binary_file_xlsx_without_export_xlsx_feature_is_a_clear_error() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Xlsx,
+            vec![table_item(
+                "t",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.xlsx");
+        let err = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Xlsx,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Validation(ref m) if m.contains("export-xlsx")),
+            "unexpected error: {err:?}"
+        );
+        assert!(!dest.exists(), "a rejected export must not create its file");
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
@@ -1698,6 +1740,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
+    #[cfg(feature = "export-xlsx")]
     #[tokio::test]
     async fn run_zip_export_writes_xlsx_entries() {
         let req = request(
@@ -1773,6 +1816,7 @@ mod tests {
         assert_eq!(f.header(&["id".to_string()]), "");
     }
 
+    #[cfg(feature = "export-xlsx")]
     #[tokio::test]
     async fn write_binary_file_begin_failure_is_reported() {
         // The 16_385-column schema arrives over the SQL stream's
@@ -1808,6 +1852,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
+    #[cfg(feature = "export-xlsx")]
     #[tokio::test]
     async fn write_binary_file_rows_before_start_fall_back_to_requested_columns() {
         // A stream that skips StatementStart still gets a header, from the
@@ -1899,6 +1944,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dest2.parent().unwrap());
     }
 
+    #[cfg(feature = "export-xlsx")]
     /// Read back a `write_binary_file` product for table "t": it must be a
     /// valid zip containing the sheet XML, and calamine must read exactly
     /// header ["id", "name"] plus the two canned rows.
@@ -1933,6 +1979,7 @@ mod tests {
         assert_eq!(rows[2][1], calamine::Data::Empty, "null reads back empty");
     }
 
+    #[cfg(feature = "export-xlsx")]
     #[tokio::test]
     async fn write_binary_file_without_done_still_finishes_xlsx() {
         // The Done event never arrives: only the finish() fallback at the
@@ -1972,6 +2019,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
+    #[cfg(feature = "export-xlsx")]
     #[tokio::test]
     async fn write_binary_file_done_arriving_finishes_xlsx_once() {
         // Control for the fallback test: same stream with Done delivered,
@@ -2012,6 +2060,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
+    #[cfg(feature = "export-xlsx")]
     #[tokio::test]
     async fn write_binary_file_row_wider_than_excel_columns_is_rejected() {
         // The canned row is wider than the schema: the library's column
@@ -2364,6 +2413,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
+    #[cfg(feature = "export-xlsx")]
     #[tokio::test]
     async fn write_binary_file_cancels_mid_stream() {
         let req = request(
@@ -2423,6 +2473,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
+    #[cfg(feature = "export-xlsx")]
     #[tokio::test]
     async fn run_single_export_cancels_mid_stream_and_removes_partial_xlsx() {
         let req = request(
