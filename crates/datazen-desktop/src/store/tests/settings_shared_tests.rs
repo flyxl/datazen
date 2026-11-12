@@ -60,3 +60,80 @@ fn unknown_fields_survive_a_legacy_settings_write() {
         true
     );
 }
+
+/// Shared `value_presentation` fixture: an enabled `datazen.timestamp`
+/// renderer entry (the canonical entry shape — `{ enabled, options }` —
+/// with realistic timestamp options; Rust stores the options opaquely).
+fn value_presentation_with_timestamp() -> datazen::settings::ValuePresentationSettings {
+    let mut renderers = serde_json::Map::new();
+    renderers.insert(
+        "datazen.timestamp".into(),
+        serde_json::json!({
+            "enabled": true,
+            "options": {
+                "interpretation": "instant",
+                "format": "iso",
+                "displayTimeZone": "UTC",
+            },
+        }),
+    );
+    datazen::settings::ValuePresentationSettings {
+        version: 1,
+        renderers,
+    }
+}
+
+/// Issue-32 T06 desktop promotion (F4-style): `value_presentation` is a
+/// first-class `AppSettings` field, so it round-trips through the shared
+/// projection instead of being reported as the default.
+#[test]
+fn value_presentation_round_trips_through_shared_settings() {
+    let mut local = AppSettings::default();
+    local.value_presentation = value_presentation_with_timestamp();
+    let shared = local.shared_settings();
+    assert_eq!(
+        shared.value_presentation, local.value_presentation,
+        "shared_settings() must surface the host value, not the default"
+    );
+    assert_eq!(
+        serde_json::to_value(&shared).unwrap()["valuePresentation"]["renderers"]
+            ["datazen.timestamp"]["enabled"],
+        true
+    );
+
+    let mut fresh = AppSettings::default();
+    fresh.apply_shared_settings(shared).unwrap();
+    assert_eq!(fresh.value_presentation, local.value_presentation);
+}
+
+/// Old settings files carry no `valuePresentation` key; they must load as
+/// the default (version 1, no renderers), not fail.
+#[test]
+fn old_settings_file_without_value_presentation_defaults() {
+    let mut value = serde_json::to_value(AppSettings::default()).unwrap();
+    value.as_object_mut().unwrap().remove("valuePresentation");
+    let parsed: AppSettings = serde_json::from_value(value).unwrap();
+    assert_eq!(
+        parsed.value_presentation,
+        datazen::settings::ValuePresentationSettings::default()
+    );
+    assert_eq!(parsed.value_presentation.version, 1);
+    assert!(parsed.value_presentation.renderers.is_empty());
+}
+
+/// Pre-promotion builds stored the value opaquely in the `extra` catch-all,
+/// so on disk it is a top-level `valuePresentation` key. After promotion
+/// that key must land in the field (and leave `extra`), not stay opaque —
+/// otherwise the next shared read would report the default and the next
+/// save would overwrite the real value with it.
+#[test]
+fn value_presentation_promoted_out_of_extra_catch_all() {
+    let mut value = serde_json::to_value(AppSettings::default()).unwrap();
+    value["valuePresentation"] = serde_json::to_value(value_presentation_with_timestamp()).unwrap();
+    let parsed: AppSettings = serde_json::from_value(value).unwrap();
+    assert_eq!(
+        parsed.value_presentation,
+        value_presentation_with_timestamp()
+    );
+    assert!(parsed.extra.get("valuePresentation").is_none());
+}
