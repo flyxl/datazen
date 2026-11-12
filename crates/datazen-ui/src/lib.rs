@@ -3,8 +3,10 @@
 //! The page shell is deliberately independent of DataZen's transport and storage
 //! implementations. Platform adapters will be added behind typed UI ports.
 
+mod data_grid;
 mod sql_editor;
 
+use data_grid::DataGrid;
 use rune::tok::{self, type_};
 use rune::{App, AppSpec, Cx, El, Ime, KeyEvent, Tx, col, row, text};
 use sql_editor::SqlEditor;
@@ -56,7 +58,7 @@ impl Section {
         match self {
             Self::Connections => "Manage database profiles and open a session.",
             Self::SqlEditor => "SQL with multiple carets, syntax color and horizontal scroll. Not CodeMirror yet.",
-            Self::DataBrowser => "Browse rows, edit cells and inspect table data.",
+            Self::DataBrowser => "Rows stay in the grid model. Only the visible rows and a window of columns are drawn.",
             Self::Schema => "Explore databases, schemas and database objects.",
             Self::Workflows => "Compose repeatable database and automation workflows.",
             Self::Settings => "Configure appearance, editor behaviour and platform options.",
@@ -67,7 +69,7 @@ impl Section {
         match self {
             Self::Connections => "Next implementation: connect this screen to ConnectionUseCases.",
             Self::SqlEditor => "POC is on this page. Execution against a session is not wired.",
-            Self::DataBrowser => "The DataGrid parity POC is a migration gate; no database rows are loaded yet.",
+            Self::DataBrowser => "DataGrid POC is on this page. It is not connected to a database session.",
             Self::Schema => "Schema metadata will be supplied by the shared DataZen application API.",
             Self::Workflows => "Workflow execution stays in the existing DataZen business core.",
             Self::Settings => "Platform-specific settings will be exposed as explicit host capabilities.",
@@ -75,15 +77,15 @@ impl Section {
     }
 }
 
-#[derive(Debug)]
 struct AppState {
     active: Section,
     sql: SqlEditor,
+    grid: DataGrid,
 }
 
 impl Default for AppState {
     fn default() -> Self {
-        Self { active: Section::Connections, sql: SqlEditor::new() }
+        Self { active: Section::Connections, sql: SqlEditor::new(), grid: DataGrid::new() }
     }
 }
 
@@ -119,32 +121,35 @@ fn navigation_item(state: &AppState, section: Section, dark: bool) -> El {
         .on_press(move |state: &mut AppState| state.select(section))
 }
 fn page_body(state: &AppState, theme: tok::Theme) -> El {
-    if state.active != Section::SqlEditor {
-        return col()
-            .key("datazen-preview-card")
-            .w_full()
-            .h(220.0)
-            .px(20.0)
-            .py(20.0)
-            .gap(12.0)
-            .radius(12.0)
-            .fill(theme.control_off)
-            .child(text("Shared Rune view is running").font(type_::TITLE).color(theme.text))
-            .child(
-                text("This interactive shell is the first UI slice shared by the native desktop binary and the WebAssembly entrypoint.")
-                    .font(type_::LABEL)
-                    .color(theme.text_secondary)
-                    .w_full(),
-            )
-            .child(
-                text(state.active.next_step())
-                    .font(type_::LABEL)
-                    .color(theme.text_secondary)
-                    .w_full(),
-            );
+    if state.active == Section::SqlEditor {
+        return sql_editor::panel(&state.sql, theme.text, theme.text_secondary);
+    }
+    if state.active == Section::DataBrowser {
+        return data_grid::panel(&state.grid, theme.text, theme.text_secondary, theme.control_off);
     }
 
-    sql_editor::panel(&state.sql, theme.text, theme.text_secondary)
+    col()
+        .key("datazen-preview-card")
+        .w_full()
+        .h(220.0)
+        .px(20.0)
+        .py(20.0)
+        .gap(12.0)
+        .radius(12.0)
+        .fill(theme.control_off)
+        .child(text("Shared Rune view is running").font(type_::TITLE).color(theme.text))
+        .child(
+            text("This interactive shell is the first UI slice shared by the native desktop binary and the WebAssembly entrypoint.")
+                .font(type_::LABEL)
+                .color(theme.text_secondary)
+                .w_full(),
+        )
+        .child(
+            text(state.active.next_step())
+                .font(type_::LABEL)
+                .color(theme.text_secondary)
+                .w_full(),
+        )
 }
 
 fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
@@ -245,14 +250,25 @@ fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
 pub fn run() {
     App::new(AppSpec {
         on_key: Some(app_key),
+        poll: Some(app_poll),
         ..AppSpec::new("DataZen", (1440.0, 900.0), AppState::default, view)
     })
     .on_ime(app_ime)
     .run();
 }
 
-fn app_key(state: &mut AppState, ev: &KeyEvent, _: &mut Tx) -> bool {
-    state.active == Section::SqlEditor && sql_editor::on_key(&mut state.sql, ev)
+fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
+    if state.active == Section::SqlEditor {
+        return sql_editor::on_key(&mut state.sql, ev);
+    }
+    if state.active == Section::DataBrowser {
+        return data_grid::on_key(&mut state.grid, ev, tx);
+    }
+    false
+}
+
+fn app_poll(state: &mut AppState, _: f64, _: &mut Tx) -> bool {
+    state.active == Section::DataBrowser && state.grid.sync_scroll()
 }
 
 fn app_ime(state: &mut AppState, ev: &Ime, _: &mut Tx) -> bool {
@@ -343,5 +359,68 @@ mod tests {
         runtime.key(KeyEvent { key: Key::Text("Q".into()), mods: Mods::default() });
         runtime.frame(0.0);
         assert!(runtime.state.sql.doc().starts_with("中文Q"), "{}", runtime.state.sql.doc());
+    }
+
+    #[test]
+    fn data_grid_mounts_a_row_window_and_a_column_window() {
+        use super::app_poll;
+        use super::data_grid;
+
+        let mut runtime = runtime();
+        runtime.poll = Some(app_poll);
+        runtime.state.active = Section::DataBrowser;
+        runtime.frame(0.0);
+
+        assert!(runtime.find("grid-row-0").is_some());
+        assert!(runtime.find("cell-0-0").is_some());
+        assert!(runtime.find("cell-0-11").is_some());
+        assert!(runtime.find("grid-row-5000").is_none(), "rows far outside the viewport are not built");
+        assert!(runtime.find("cell-0-40").is_none(), "columns outside the window are not built");
+
+        let mut mounted = 0;
+        for index in 0..200 {
+            if runtime.find(&format!("grid-row-{index}")).is_some() {
+                mounted += 1;
+            }
+        }
+        assert!(mounted > 0 && mounted < 80, "mounted rows {mounted}");
+
+        runtime.state.grid.scroll_x().set(data_grid::COL_W * 50.0);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.grid.origin_col(), 50);
+        assert!(runtime.find("cell-0-0").is_some(), "frozen column");
+        assert!(runtime.find("cell-0-50").is_some());
+        assert!(runtime.find("cell-0-11").is_none());
+    }
+
+    #[test]
+    fn data_grid_edits_a_cell_and_copies_the_selection() {
+        use super::data_grid::on_key;
+        use rune::{Key, KeyEvent, Mods};
+
+        let mut runtime = runtime();
+        runtime.on_key = Some(|state, ev, tx| state.active == Section::DataBrowser && on_key(&mut state.grid, ev, tx));
+        runtime.state.active = Section::DataBrowser;
+        runtime.frame(0.0);
+
+        let (x, y) = runtime.find("cell-0-1").expect("cell");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.grid.focus(), (0, 1));
+
+        runtime.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+        runtime.frame(0.0);
+        assert!(runtime.state.grid.is_editing());
+        runtime.state.grid.commit_edit();
+        runtime.frame(0.0);
+
+        runtime.state.grid.paste_tsv("A\tB");
+        assert_eq!(runtime.state.grid.cell(0, 1), "A");
+        assert_eq!(runtime.state.grid.cell(0, 2), "B");
+        runtime.key(KeyEvent { key: Key::Command('c'), mods: Mods::default() });
+        runtime.frame(0.0);
+        let copied = runtime.copy_request.as_ref().map(|copy| copy.content().text().to_owned());
+        assert_eq!(copied.as_deref(), Some("A"));
     }
 }
