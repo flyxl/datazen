@@ -295,6 +295,7 @@ mod tests {
             ValuePresentationSettings {
                 version: 1,
                 renderers: serde_json::Map::new(),
+                rules: vec![],
             }
         );
         // An empty object loads as the default (old payloads carry no field).
@@ -315,6 +316,7 @@ mod tests {
         let settings = ValuePresentationSettings {
             version: 99,
             renderers,
+            rules: vec![],
         };
         let value = serde_json::to_value(&settings).expect("serialize");
         let loaded: ValuePresentationSettings =
