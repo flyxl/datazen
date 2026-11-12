@@ -20,8 +20,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | R3 | 已完成 | UI 端口和内存表页 | 无，流程建立前已验收 |
 | S1 | 已完成 | 52e7bab | testing/S1-tabs.md |
 | S2 | 已完成 | a02dd07 | testing/S2-object-tree.md |
-| S3 | 进行中 | | |
-| S4 | 未开始 | | |
+| S3 | 已完成 | 63d75d2, 4fe37e5 | testing/S3-table-tab.md, testing/S3-table-tab-r2.md |
+| S4 | 进行中 | | |
 | S5 | 未开始 | | |
 | S6 | 未开始 | | |
 | B1 | 未开始 | | |
