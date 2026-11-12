@@ -120,7 +120,9 @@ impl AppState {
     }
 
     fn open_query_tab(&mut self, title: &str) -> Option<u32> {
-        self.tabs.open(TabKind::Query, title)
+        let id = self.tabs.open(TabKind::Query, title)?;
+        self.sync_grid_to_selected_tab();
+        Some(id)
     }
 
     fn select_tab(&mut self, id: u32) -> bool {
@@ -143,13 +145,13 @@ impl AppState {
     }
 
     fn sync_grid_to_selected_tab(&mut self) {
-        let title = self
-            .tabs
-            .selected()
-            .filter(|tab| tab.kind == TabKind::Table)
-            .map(|tab| tab.title.clone());
-        if let Some(title) = title {
-            self.show_table(&title);
+        let selected = self.tabs.selected().map(|tab| (tab.kind, tab.title.clone()));
+        match selected {
+            Some((TabKind::Table, title)) => {
+                self.show_table(&title);
+            }
+            Some((TabKind::Query, _)) => self.active = Section::SqlEditor,
+            None => {}
         }
     }
 
@@ -200,7 +202,14 @@ fn navigation_item(state: &AppState, section: Section, dark: bool) -> El {
         .label(section.label())
         .on_press(move |state: &mut AppState| state.select(section))
 }
+fn query_selected(state: &AppState) -> bool {
+    state.tabs.selected().is_some_and(|tab| tab.kind == TabKind::Query)
+}
+
 fn page_body(state: &AppState, theme: tok::Theme) -> El {
+    if query_selected(state) {
+        return query_workspace(state, theme);
+    }
     if state.active == Section::SqlEditor {
         return sql_editor::panel(&state.sql, theme.text, theme.text_secondary);
     }
@@ -293,6 +302,40 @@ fn object_tree(state: &AppState, theme: tok::Theme) -> El {
     tree
 }
 
+fn query_workspace(state: &AppState, theme: tok::Theme) -> El {
+    col()
+        .key("query-tab")
+        .w_full()
+        .gap(8.0)
+        .child(sql_editor::panel(&state.sql, theme.text, theme.text_secondary))
+        .child(
+            col()
+                .key("query-results")
+                .w_full()
+                .h(120.0)
+                .px(12.0)
+                .py(8.0)
+                .radius(8.0)
+                .fill(theme.control_off)
+                .child(text("No results").font(type_::LABEL).color(theme.text_secondary)),
+        )
+}
+
+fn open_query_button(theme: tok::Theme) -> El {
+    row()
+        .key("open-query")
+        .w_full()
+        .h(32.0)
+        .px(8.0)
+        .center_y()
+        .radius(6.0)
+        .fill(theme.control_off)
+        .child(text("New query").font(type_::LABEL).color(theme.text))
+        .on_press(|state: &mut AppState| {
+            state.open_query_tab("Query");
+        })
+}
+
 fn connection_list(state: &AppState, theme: tok::Theme) -> El {
     let mut list = col().key("connection-list").w_full().gap(8.0);
     for profile in state.workspace.connections() {
@@ -343,6 +386,7 @@ fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
         )
         .child(navigation)
         .child(object_tree(state, theme))
+        .child(open_query_button(theme))
         .child(
             col()
                 .w_full()
@@ -422,7 +466,7 @@ pub fn run() {
 }
 
 fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
-    if state.active == Section::SqlEditor {
+    if state.active == Section::SqlEditor || query_selected(state) {
         return sql_editor::on_key(&mut state.sql, ev);
     }
     if state.active == Section::DataBrowser {
@@ -436,7 +480,7 @@ fn app_poll(state: &mut AppState, _: f64, _: &mut Tx) -> bool {
 }
 
 fn app_ime(state: &mut AppState, ev: &Ime, _: &mut Tx) -> bool {
-    state.active == Section::SqlEditor && sql_editor::on_ime(&mut state.sql, ev)
+    (state.active == Section::SqlEditor || query_selected(state)) && sql_editor::on_ime(&mut state.sql, ev)
 }
 
 /// WebAssembly entrypoint consumed by wasm-bindgen.
@@ -705,5 +749,30 @@ mod tests {
         runtime.state.open_table_tab(" orders ").unwrap();
         assert_eq!(runtime.state.tabs.selected().unwrap().title, "orders");
         assert_eq!(runtime.state.grid.cell(0, 1), "order-0");
+    }
+
+    #[test]
+    fn a_query_tab_keeps_the_editor_above_an_empty_result() {
+        use rune::{Key, KeyEvent, Mods};
+        use super::app_key;
+
+        let mut runtime = runtime();
+        runtime.on_key = Some(app_key);
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("open-query").expect("new query");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+
+        assert!(runtime.find("query-tab").is_some());
+        assert!(runtime.find("sql-editor-field").is_some());
+        assert!(runtime.find("query-results").is_some());
+        assert_eq!(runtime.state.tabs.selected().unwrap().kind, datazen_ui_api::TabKind::Query);
+
+        runtime.state.sql.focus();
+        runtime.key(KeyEvent { key: Key::Text("select 1".into()), mods: Mods::default() });
+        runtime.frame(0.0);
+        assert!(runtime.state.sql.doc().starts_with("select 1"), "{}", runtime.state.sql.doc());
+        assert!(runtime.find("query-results").is_some());
     }
 }
