@@ -214,6 +214,49 @@ describe('ColumnPresentationDialog preview', () => {
     );
   });
 
+  it('inherit previews the rule value and source when a stored override is pending removal (T09-BUG-001)', () => {
+    const isoRule: ValuePresentationRule = {
+      name: 'iso-rule',
+      enabled: true,
+      match: { column: { kind: 'exact', value: 'epoch_ms' } },
+      options: {
+        interpretation: { kind: 'unix', unit: 'milliseconds' },
+        format: 'iso',
+        displayTimeZone: { kind: 'utc' },
+      },
+    };
+    const snapshot = makeSnapshot(
+      {
+        [columnOverrideKey({ ...SOURCE, column: 'epoch_ms' })]: {
+          mode: 'custom',
+          rendererId: TIMESTAMP_CONTRIBUTION_ID,
+          options: {
+            interpretation: { kind: 'unix', unit: 'milliseconds' },
+            format: 'iso-tz',
+            displayTimeZone: { kind: 'iana', name: 'Asia/Shanghai' },
+          },
+        },
+      },
+      [isoRule],
+    );
+    renderDialog({ snapshot });
+    // The draft starts from the stored custom override.
+    expect(
+      (screen.getByTestId('column-presentation-mode-custom') as HTMLInputElement).checked,
+    ).toBe(true);
+    expect(previewResult()).toBe('2024-01-15T19:00:00+08:00');
+    expect(screen.getByTestId('column-presentation-effective-source').textContent).toContain(
+      'columnPresentation.source.override',
+    );
+    // Switching to inherit previews the rule value and source immediately,
+    // before saving.
+    chooseMode('inherit');
+    expect(previewResult()).toBe('2024-01-15T11:00:00Z');
+    expect(screen.getByTestId('column-presentation-effective-source').textContent).toContain(
+      'columnPresentation.source.rule',
+    );
+  });
+
   it('previews wall-clock text with an explicit source time zone', () => {
     renderDialog({
       columnName: 'ts',

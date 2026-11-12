@@ -302,6 +302,51 @@ describe('computeColumnPresentationPreview', () => {
     expect(raw).toEqual({ kind: 'unchanged', reason: 'raw-override', sample: 1705316400000 });
   });
 
+  it('inherit previews the rule value when a stored override is pending removal (T09-BUG-001)', () => {
+    const ruleSnapshot = enabledSnapshot(
+      {
+        [columnOverrideKey({ ...SOURCE, column: 'epoch_ms' })]: {
+          mode: 'custom',
+          rendererId: TIMESTAMP_CONTRIBUTION_ID,
+          options: UNIX_MS_OPTIONS,
+        },
+      },
+      [
+        {
+          name: 'iso-rule',
+          enabled: true,
+          match: { column: { kind: 'exact', value: 'epoch_ms' } },
+          options: {
+            interpretation: { kind: 'unix', unit: 'milliseconds' },
+            format: 'iso',
+            displayTimeZone: { kind: 'utc' },
+          },
+        },
+      ],
+    );
+    const preview = computeColumnPresentationPreview({
+      candidate: { mode: 'inherit' },
+      column: epochColumn,
+      source: SOURCE,
+      snapshot: ruleSnapshot,
+      environment: ENVIRONMENT,
+      sampleValue: 1705316400000,
+      registry,
+    });
+    expect(preview).toEqual({
+      kind: 'text',
+      text: '2024-01-15T11:00:00Z',
+      interpretation: 'unix',
+      sample: 1705316400000,
+    });
+    // The fix strips a copy: the input snapshot still holds the override.
+    expect(ruleSnapshot.overrides[columnOverrideKey({ ...SOURCE, column: 'epoch_ms' })]).toEqual({
+      mode: 'custom',
+      rendererId: TIMESTAMP_CONTRIBUTION_ID,
+      options: UNIX_MS_OPTIONS,
+    });
+  });
+
   it('reports invalid for an illegal custom override instead of previewing it', () => {
     const preview = computeColumnPresentationPreview({
       candidate: {
