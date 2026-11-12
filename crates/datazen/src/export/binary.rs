@@ -17,15 +17,42 @@
 //!
 //! Item 3a ships XLSX only; Parquet is a second implementor of this trait.
 
-#[cfg(feature = "export-xlsx")]
+#[cfg(any(feature = "export-xlsx", feature = "export-parquet"))]
 use std::path::PathBuf;
 
-#[cfg(feature = "export-xlsx")]
+#[cfg(any(feature = "export-xlsx", feature = "export-parquet"))]
 use super::bytes_to_hex;
 use super::ExportError;
 use datazen_driver_api::{ColumnInfo, Value};
 #[cfg(feature = "export-xlsx")]
 use rust_xlsxwriter::{Workbook, XlsxError};
+
+#[cfg(feature = "export-parquet")]
+use std::fs::File;
+#[cfg(feature = "export-parquet")]
+use std::sync::Arc;
+
+#[cfg(feature = "export-parquet")]
+use super::parquet_schema::infer_schema;
+#[cfg(feature = "export-parquet")]
+use arrow::array::{
+    ArrayRef, BinaryArray, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array,
+    Int64Array, Int8Array, StringArray, UInt8Array,
+};
+#[cfg(feature = "export-parquet")]
+use arrow::datatypes::{DataType, Field, SchemaRef};
+#[cfg(feature = "export-parquet")]
+use arrow::error::ArrowError;
+#[cfg(feature = "export-parquet")]
+use arrow::record_batch::RecordBatch;
+#[cfg(feature = "export-parquet")]
+use parquet::arrow::arrow_writer::ArrowWriter;
+#[cfg(feature = "export-parquet")]
+use parquet::basic::Compression;
+#[cfg(feature = "export-parquet")]
+use parquet::errors::ParquetError;
+#[cfg(feature = "export-parquet")]
+use parquet::file::properties::WriterProperties;
 
 /// Excel worksheet limit, header row included: at most this many rows total.
 #[cfg(feature = "export-xlsx")]
@@ -292,6 +319,353 @@ impl BinaryFormatter for XlsxFormatter {
         self.finished = true;
         let dest = self.dest.clone();
         self.workbook.save(dest).map_err(xlsx_error)
+    }
+}
+
+/// Row-group ceiling for the Parquet writer (PRD F4): far below the 1,048,576
+/// default so the writer's buffering stays bounded even though upstream feeds
+/// it in ≤500-row batches. Row groups split at this boundary.
+#[cfg(feature = "export-parquet")]
+pub const PARQUET_ROW_GROUP_ROWS: usize = 100_000;
+
+/// Map an `ArrowWriter` failure onto the export error envelope (Parquet has no
+/// user-hittable limits of its own; library failures are internal).
+#[cfg(feature = "export-parquet")]
+fn parquet_error(err: ParquetError) -> ExportError {
+    ExportError::Internal(format!("Parquet write failed: {err}"))
+}
+
+/// Map a `RecordBatch` construction failure the same way (arrow-side errors
+/// share the envelope; the batch cannot disagree with the schema that built
+/// its arrays, so this is belt-and-braces).
+#[cfg(feature = "export-parquet")]
+fn arrow_error(err: ArrowError) -> ExportError {
+    ExportError::Internal(format!("Parquet write failed: {err}"))
+}
+
+/// Human name of a `Value` variant, for type-conflict messages.
+#[cfg(feature = "export-parquet")]
+fn value_kind(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "NULL",
+        Value::Bool(_) => "Bool",
+        Value::Integer(_) => "Integer",
+        Value::Float(_) => "Float",
+        Value::String(_) => "String",
+        Value::Bytes(_) => "Bytes",
+        Value::Timestamp(_) => "Timestamp",
+        Value::Json(_) => "Json",
+    }
+}
+
+/// The schema was fixed from the first batch; a later batch that cannot fit
+/// it fails the export naming the column and the offending kind (PRD F3:
+/// never silently rewrite, never silently NULL out).
+#[cfg(feature = "export-parquet")]
+fn type_conflict(column: &str, expected: &str, value: &Value) -> ExportError {
+    ExportError::Validation(format!(
+        "Parquet column {column:?} expects {expected} but a later batch carries a {} value; \
+         the schema was fixed from the first batch",
+        value_kind(value)
+    ))
+}
+
+/// One column of one batch → one Arrow array, transposed per the fixed schema
+/// type. NULL (and a short row's missing tail) becomes a null slot; a value
+/// that cannot fit the fixed type is a conflict error, not a silent rewrite.
+#[cfg(feature = "export-parquet")]
+fn parquet_column_array(
+    index: usize,
+    field: &Field,
+    rows: &[Vec<Option<Value>>],
+) -> Result<ArrayRef, ExportError> {
+    let name = field.name().as_str();
+    match field.data_type() {
+        DataType::Int16 => {
+            let mut values = Vec::with_capacity(rows.len());
+            for row in rows {
+                values.push(
+                    int_cell(name, "int16", row.get(index))?
+                        .map(|n| i16::try_from(n).map_err(|_| out_of_range(name, "int16", n)))
+                        .transpose()?,
+                );
+            }
+            Ok(Arc::new(Int16Array::from(values)))
+        }
+        DataType::Int32 => {
+            let mut values = Vec::with_capacity(rows.len());
+            for row in rows {
+                values.push(
+                    int_cell(name, "int32", row.get(index))?
+                        .map(|n| i32::try_from(n).map_err(|_| out_of_range(name, "int32", n)))
+                        .transpose()?,
+                );
+            }
+            Ok(Arc::new(Int32Array::from(values)))
+        }
+        DataType::Int64 => {
+            let mut values = Vec::with_capacity(rows.len());
+            for row in rows {
+                values.push(int_cell(name, "int64", row.get(index))?);
+            }
+            Ok(Arc::new(Int64Array::from(values)))
+        }
+        DataType::Int8 => {
+            let mut values = Vec::with_capacity(rows.len());
+            for row in rows {
+                values.push(
+                    int_cell(name, "int8", row.get(index))?
+                        .map(|n| i8::try_from(n).map_err(|_| out_of_range(name, "int8", n)))
+                        .transpose()?,
+                );
+            }
+            Ok(Arc::new(Int8Array::from(values)))
+        }
+        DataType::UInt8 => {
+            let mut values = Vec::with_capacity(rows.len());
+            for row in rows {
+                values.push(
+                    int_cell(name, "uint8", row.get(index))?
+                        .map(|n| u8::try_from(n).map_err(|_| out_of_range(name, "uint8", n)))
+                        .transpose()?,
+                );
+            }
+            Ok(Arc::new(UInt8Array::from(values)))
+        }
+        DataType::Float32 => {
+            let mut values = Vec::with_capacity(rows.len());
+            for row in rows {
+                values.push(float_cell(name, "float32", row.get(index))?);
+            }
+            Ok(Arc::new(Float32Array::from(
+                values
+                    .into_iter()
+                    .map(|v| v.map(|f| f as f32))
+                    .collect::<Vec<_>>(),
+            )))
+        }
+        DataType::Float64 => {
+            let mut values = Vec::with_capacity(rows.len());
+            for row in rows {
+                values.push(float_cell(name, "float64", row.get(index))?);
+            }
+            Ok(Arc::new(Float64Array::from(values)))
+        }
+        DataType::Boolean => {
+            let mut values = Vec::with_capacity(rows.len());
+            for row in rows {
+                values.push(match row.get(index).and_then(|v| v.as_ref()) {
+                    None | Some(Value::Null) => None,
+                    Some(Value::Bool(b)) => Some(*b),
+                    Some(other) => return Err(type_conflict(name, "boolean", other)),
+                });
+            }
+            Ok(Arc::new(BooleanArray::from(values)))
+        }
+        DataType::Binary => {
+            let mut values: Vec<Option<&[u8]>> = Vec::with_capacity(rows.len());
+            for row in rows {
+                values.push(match row.get(index).and_then(|v| v.as_ref()) {
+                    None | Some(Value::Null) => None,
+                    Some(Value::Bytes(b)) => Some(b.as_slice()),
+                    Some(other) => return Err(type_conflict(name, "binary", other)),
+                });
+            }
+            Ok(Arc::new(BinaryArray::from(values)))
+        }
+        // Utf8 is the everything-fits fallback (PRD F3): every scalar renders
+        // as text — numbers via Display, Bytes as the bare hex string (same
+        // convention as the XLSX cells, no CSV round-trip marker), Json via
+        // to_string. No value kind conflicts with Utf8.
+        DataType::Utf8 => {
+            let mut values = Vec::with_capacity(rows.len());
+            for row in rows {
+                values.push(match row.get(index).and_then(|v| v.as_ref()) {
+                    None | Some(Value::Null) => None,
+                    Some(Value::String(s)) | Some(Value::Timestamp(s)) => Some(s.clone()),
+                    Some(Value::Json(j)) => Some(j.to_string()),
+                    Some(Value::Integer(n)) => Some(n.to_string()),
+                    Some(Value::Float(f)) => Some(f.to_string()),
+                    Some(Value::Bool(b)) => Some(b.to_string()),
+                    Some(Value::Bytes(b)) => Some(bytes_to_hex(b)),
+                });
+            }
+            Ok(Arc::new(StringArray::from(values)))
+        }
+        // `infer_schema` only ever produces the types above; anything else is
+        // an internal invariant break, not a user error.
+        other => Err(ExportError::Internal(format!(
+            "Parquet write failed: unsupported inferred column type {other:?}"
+        ))),
+    }
+}
+
+/// The integer a typed column expects, or a conflict error naming the column
+/// and the offending value kind (PRD F3).
+#[cfg(feature = "export-parquet")]
+fn int_cell(
+    column: &str,
+    expected: &str,
+    cell: Option<&Option<Value>>,
+) -> Result<Option<i64>, ExportError> {
+    match cell.and_then(|value| value.as_ref()) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Integer(n)) => Ok(Some(*n)),
+        Some(other) => Err(type_conflict(column, expected, other)),
+    }
+}
+
+/// The float a typed column expects, or a conflict error.
+#[cfg(feature = "export-parquet")]
+fn float_cell(
+    name: &str,
+    expected: &str,
+    cell: Option<&Option<Value>>,
+) -> Result<Option<f64>, ExportError> {
+    match cell.and_then(|value| value.as_ref()) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Float(f)) => Ok(Some(*f)),
+        Some(other) => Err(type_conflict(name, expected, other)),
+    }
+}
+
+/// An integer outside the fixed width (only reachable via driver anomalies;
+/// real drivers never send out-of-range integers for their own column types).
+#[cfg(feature = "export-parquet")]
+fn out_of_range(column: &str, expected: &str, n: i64) -> ExportError {
+    ExportError::Validation(format!(
+        "Parquet column {column:?} ({expected}) cannot hold the integer {n}"
+    ))
+}
+
+/// Parquet writer over `parquet::arrow::ArrowWriter`, lazily created: `begin()`
+/// only sees column metadata, never values, so the schema — and the writer —
+/// cannot be fixed before the first batch (PRD F3). Memory stays bounded by
+/// the explicit row-group limit, not the 1,048,576 default.
+#[cfg(feature = "export-parquet")]
+pub struct ParquetFormatter {
+    dialect: Option<String>,
+    dest: PathBuf,
+    columns: Vec<ColumnInfo>,
+    /// Fixed together with the writer: on the first non-empty `rows()` batch,
+    /// or in `finish()` for a zero-row table.
+    schema: Option<SchemaRef>,
+    writer: Option<ArrowWriter<File>>,
+    begun: bool,
+    finished: bool,
+}
+
+#[cfg(feature = "export-parquet")]
+impl ParquetFormatter {
+    /// `dialect` is `ExportTablesRequest.database_type`, verbatim — the schema
+    /// inference's dialect key (None when the request omits it).
+    pub fn new(dialect: Option<String>, dest: PathBuf) -> Self {
+        Self {
+            dialect,
+            dest,
+            columns: Vec::new(),
+            schema: None,
+            writer: None,
+            begun: false,
+            finished: false,
+        }
+    }
+
+    /// Fix the schema from `first_batch` and create the `ArrowWriter` over the
+    /// destination. Called on the first non-empty `rows()` batch — and from
+    /// `finish()` with an empty batch for a zero-row table, where the schema
+    /// is the dialect mapping plus the Utf8 fallback (PRD F2).
+    fn ensure_writer(&mut self, first_batch: &[Vec<Option<Value>>]) -> Result<(), ExportError> {
+        if self.writer.is_some() {
+            return Ok(());
+        }
+        let schema: SchemaRef = Arc::new(infer_schema(
+            &self.columns,
+            self.dialect.as_deref(),
+            first_batch,
+        ));
+        let file = File::create(&self.dest).map_err(|err| {
+            ExportError::Internal(format!(
+                "Parquet write failed: cannot create {}: {err}",
+                self.dest.display()
+            ))
+        })?;
+        let properties = WriterProperties::builder()
+            .set_max_row_group_row_count(Some(PARQUET_ROW_GROUP_ROWS))
+            .set_compression(Compression::SNAPPY)
+            .build();
+        let writer =
+            ArrowWriter::try_new(file, schema.clone(), Some(properties)).map_err(parquet_error)?;
+        self.schema = Some(schema);
+        self.writer = Some(writer);
+        Ok(())
+    }
+}
+
+#[cfg(feature = "export-parquet")]
+impl BinaryFormatter for ParquetFormatter {
+    fn begin(&mut self, columns: &[ColumnInfo]) -> Result<(), ExportError> {
+        if self.begun {
+            return Err(ExportError::Validation(
+                "Parquet export received a second column header".into(),
+            ));
+        }
+        self.columns = columns.to_vec();
+        self.begun = true;
+        Ok(())
+    }
+
+    fn rows(&mut self, rows: &[Vec<Option<Value>>]) -> Result<(), ExportError> {
+        if !self.begun {
+            return Err(ExportError::Validation(
+                "Parquet export received rows before the column header".into(),
+            ));
+        }
+        // An empty batch carries no inference signal: never let it fix the
+        // schema (that is what the Utf8 fallback exists for, and an empty
+        // table must keep the mapping-based schema in finish()).
+        if rows.is_empty() {
+            return Ok(());
+        }
+        self.ensure_writer(rows)?;
+        let schema = self.schema.clone().expect("ensure_writer fixed the schema");
+        let arrays = schema
+            .fields()
+            .iter()
+            .enumerate()
+            .map(|(index, field)| parquet_column_array(index, field, rows))
+            .collect::<Result<Vec<_>, _>>()?;
+        let batch = RecordBatch::try_new(schema, arrays).map_err(arrow_error)?;
+        self.writer
+            .as_mut()
+            .expect("ensure_writer created the writer")
+            .write(&batch)
+            .map_err(parquet_error)?;
+        Ok(())
+    }
+
+    fn finish(&mut self) -> Result<(), ExportError> {
+        if self.finished {
+            return Ok(());
+        }
+        if !self.begun {
+            // A Parquet file needs at least one column; unlike XLSX there is
+            // no such thing as a column-less workbook to save. This is only
+            // reachable when the stream never produced a statement at all.
+            return Err(ExportError::Validation(
+                "Parquet export finished without a column header".into(),
+            ));
+        }
+        self.finished = true;
+        // Zero-row table: fix the schema from the mapping + Utf8 fallback
+        // and close — a legal schema-only file, not an empty byte stream.
+        self.ensure_writer(&[])?;
+        let writer = self
+            .writer
+            .take()
+            .expect("ensure_writer created the writer");
+        writer.close().map_err(parquet_error)?;
+        Ok(())
     }
 }
 
