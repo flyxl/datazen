@@ -1112,9 +1112,6 @@ export function TableView({
         onSetFilters={actions.setFilters}
         onClearFilters={actions.clearFilters}
         onAddDraftRow={() => drafts.addDraftRow()}
-        defaultOrderOverride={defaultOrderOverride}
-        onDefaultOrderOverrideChange={actions.setDefaultOrderOverride}
-        primaryKeyCount={primaryKeyColumnNames.length}
         namedView={namedView}
       />
       {readOnlyTipReason ? <TableReadOnlyTip reason={readOnlyTipReason} /> : null}
