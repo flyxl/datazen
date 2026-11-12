@@ -17,7 +17,11 @@ exclude = [
 ]
 
 [workspace.package]
-edition = "2021"
+# Vendored Rune crates use `edition.workspace = true` and Cargo resolves that
+# against this workspace (nested workspaces are not isolated). Rune rev
+# 2e4999f requires edition 2024 (let chains). DataZen members pin edition
+# 2021 explicitly and are unaffected.
+edition = "2024"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
