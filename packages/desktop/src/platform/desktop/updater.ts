@@ -107,8 +107,9 @@ export async function downloadAndInstallUpdate(
       }
     });
 
+    // Installed and staged; caller decides when to relaunch. The new version is
+    // applied on the next restart if the user defers.
     onProgress?.({ phase: 'done', version: update.version });
-    await relaunch();
     return { status: 'installed', version: update.version };
   } catch (e) {
     onProgress?.({ phase: 'idle' });
@@ -117,6 +118,11 @@ export async function downloadAndInstallUpdate(
       message: e instanceof Error ? e.message : String(e),
     };
   }
+}
+
+/** Relaunch the app to apply a downloaded update. */
+export async function relaunchToApplyUpdate(): Promise<void> {
+  await relaunch();
 }
 
 /** Silent startup check; installs when an update is available and setting is on. */

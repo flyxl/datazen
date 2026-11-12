@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowDown, ArrowUp, ChevronDown } from 'lucide-react';
+import { ArrowDownWideNarrow, ArrowUpDown, ArrowUpNarrowWide } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import type { SortCondition } from '../../types';
@@ -220,7 +220,7 @@ export function TableHeader({
               setDropIndex(null);
             }}
             className={cn(
-              'group relative flex h-10 shrink-0 select-none items-center justify-between gap-2 border-r border-edge px-3',
+              'group relative flex h-10 shrink-0 select-none items-center justify-between gap-1 border-r border-edge pl-3 pr-1.5',
               // The frozen edge (DB-12): the last pinned column needs a
               // visible seam so the scroll boundary reads as intentional.
               lastFrozen && 'border-r-2 border-r-accent/40',
@@ -281,25 +281,24 @@ export function TableHeader({
               <button
                 type="button"
                 data-sort-menu
+                data-sort-state={sorted}
                 className={cn(
-                  'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-muted opacity-0 transition-opacity hover:bg-surface hover:text-accent',
-                  'focus-visible:opacity-100 group-hover:opacity-100',
+                  'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm transition-colors hover:bg-surface-raised',
+                  sorted === 'none' ? 'text-fg-muted' : 'text-accent',
                 )}
                 onClick={(e) => openSortMenu(e, col.name, sorted)}
                 aria-label={t('dataTable.sortMenuLabel')}
                 title={t('dataTable.sortMenuLabel')}
               >
-                {sorted === 'asc' ? (
-                  <span data-sort-indicator aria-hidden className="inline-flex">
-                    <ArrowUp className="h-3.5 w-3.5 text-accent" />
-                  </span>
-                ) : sorted === 'desc' ? (
-                  <span data-sort-indicator aria-hidden className="inline-flex">
-                    <ArrowDown className="h-3.5 w-3.5 text-accent" />
-                  </span>
-                ) : (
-                  <ChevronDown className="h-3.5 w-3.5" />
-                )}
+                <span data-sort-indicator aria-hidden className="inline-flex">
+                  {sorted === 'asc' ? (
+                    <ArrowUpNarrowWide className="h-3.5 w-3.5" />
+                  ) : sorted === 'desc' ? (
+                    <ArrowDownWideNarrow className="h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowUpDown className="h-3.5 w-3.5" />
+                  )}
+                </span>
               </button>
             )}
             {onResizeStart && (

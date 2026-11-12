@@ -2,12 +2,14 @@ import { useCallback, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { settingsCommands } from '../../commands/settings';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import {
   checkForUpdates,
   currentVariant,
   downloadAndInstallUpdate,
   getUpdateChannel,
   isUpdaterSupported,
+  relaunchToApplyUpdate,
   type UpdateProgress,
 } from '../../lib/updater';
 
@@ -32,7 +34,7 @@ function progressLabel(
     case 'installing':
       return t('settings.updater.installing');
     case 'done':
-      return t('settings.updater.installed').replace('{version}', progress.version);
+      return t('settings.updater.readyToRestart').replace('{version}', progress.version);
     default:
       return '';
   }
@@ -76,6 +78,8 @@ export function UpdateSection() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pendingRestartVersion, setPendingRestartVersion] = useState<string | null>(null);
+  const [confirmRestart, confirmRestartDialog] = useConfirmDialog();
   const updateChannel = getUpdateChannel();
 
   const handleCheck = useCallback(async () => {
@@ -100,6 +104,17 @@ export function UpdateSection() {
     setBusy(false);
   }, [t]);
 
+  const handleRestart = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await relaunchToApplyUpdate();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+    }
+  }, []);
+
   const handleDownload = useCallback(async () => {
     if (!isUpdaterSupported()) {
       setError(t('settings.updater.unavailable'));
@@ -116,7 +131,25 @@ export function UpdateSection() {
     if (result.status === 'upToDate') {
       setStatus(t('settings.updater.upToDate'));
     } else if (result.status === 'installed') {
-      setStatus(t('settings.updater.installed').replace('{version}', result.version));
+      setPendingRestartVersion(result.version);
+      setStatus(t('settings.updater.readyToRestart').replace('{version}', result.version));
+      const message = t('settings.updater.restartPrompt').replace('{version}', result.version);
+      const restartNow = await confirmRestart({
+        title: t('settings.updater.title'),
+        message,
+        confirmLabel: t('settings.updater.restartNow'),
+        cancelLabel: t('settings.updater.restartLater'),
+        kind: 'info',
+      });
+      if (restartNow) {
+        try {
+          await relaunchToApplyUpdate();
+          return;
+        } catch (e) {
+          setError(e instanceof Error ? e.message : String(e));
+        }
+      }
+      setStatus(t('settings.updater.restartLaterHint').replace('{version}', result.version));
     } else if (result.status === 'error') {
       setError(result.message);
       setStatus(null);
@@ -142,13 +175,20 @@ export function UpdateSection() {
         <Button variant="secondary" disabled={busy} onClick={() => void handleCheck()}>
           {t('settings.updater.check')}
         </Button>
-        <Button variant="primary" disabled={busy} onClick={() => void handleDownload()}>
-          {t('settings.updater.downloadInstall')}
-        </Button>
+        {!pendingRestartVersion ? (
+          <Button variant="primary" disabled={busy} onClick={() => void handleDownload()}>
+            {t('settings.updater.downloadInstall')}
+          </Button>
+        ) : (
+          <Button variant="primary" disabled={busy} onClick={() => void handleRestart()}>
+            {t('settings.updater.restartNow')}
+          </Button>
+        )}
       </div>
 
       {status && <p className="text-xs text-fg-secondary">{status}</p>}
       {error && <p className="select-text text-xs text-red-500">{error}</p>}
+      {confirmRestartDialog}
     </>
   );
 }

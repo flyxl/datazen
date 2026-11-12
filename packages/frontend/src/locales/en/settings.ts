@@ -37,8 +37,11 @@ const pack = {
   'settings.updater.description': 'Check GitHub Releases for signed updates of this build.',
   'settings.updater.sidebarAvailable': 'Update {version}',
   'settings.updater.sidebarInstalling': 'Updating…',
+  'settings.updater.sidebarRestartReady': 'Restart to update {version}',
   'settings.updater.check': 'Check for updates',
   'settings.updater.downloadInstall': 'Download and install',
+  'settings.updater.restartNow': 'Restart now',
+  'settings.updater.restartLater': 'Later',
   'settings.updater.checkOnStartup': 'Check for updates on startup',
   'settings.updater.checking': 'Checking for updates…',
   'settings.updater.upToDate': 'You are on the latest version',
@@ -46,7 +49,12 @@ const pack = {
   'settings.updater.downloading': 'Downloading… {pct}%',
   'settings.updater.downloadingIndeterminate': 'Downloading…',
   'settings.updater.installing': 'Installing update…',
-  'settings.updater.installed': 'Installed {version} — restarting…',
+  'settings.updater.readyToRestart': 'Version {version} is ready — restart to apply the update.',
+  'settings.updater.restartPrompt':
+    'Version {version} has been downloaded and installed. Restart now to apply the update?\n\nIf you choose Cancel, it will be applied on the next restart.',
+  'settings.updater.restartLaterHint':
+    'Version {version} is installed and will be applied on the next restart.',
+  'settings.updater.installed': 'Installed {version} — restart to apply the update.',
   'settings.updater.unavailable': 'Auto-update is not available in this build',
   'settings.updater.manualDescription':
     'This build has no signed update channel, so it is updated by installing a matching release from GitHub Releases.',

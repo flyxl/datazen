@@ -148,5 +148,6 @@ export function createDesktopSettingsClient(host: DesktopHostServices): HostSett
     persistSurfaceBackground: (hex, dark) => host.persistSurfaceBackground(hex, dark),
     checkForUpdates: () => host.checkForUpdates(),
     downloadAndInstallUpdate: (onProgress) => host.downloadAndInstallUpdate(onProgress),
+    relaunchToApplyUpdate: () => host.relaunchToApplyUpdate(),
   };
 }

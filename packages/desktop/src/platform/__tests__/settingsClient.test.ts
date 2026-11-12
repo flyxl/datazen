@@ -152,6 +152,7 @@ describe('createDesktopSettingsClient — the HostSettingsPort adapter', () => {
       persistSurfaceBackground: vi.fn(),
       checkForUpdates: vi.fn().mockResolvedValue({ status: 'upToDate' }),
       downloadAndInstallUpdate: vi.fn().mockResolvedValue({ status: 'upToDate' }),
+      relaunchToApplyUpdate: vi.fn().mockResolvedValue(undefined),
     };
   }
 

@@ -34,10 +34,15 @@ const pack = {
   'settings.appearance.morePlaceholder':
     'Réservé à de futures options telles que la densité, la taille de police, etc.',
   'settings.updater.title': 'Mises à jour',
+  'settings.updater.sidebarAvailable': 'Mettre à jour {version}',
+  'settings.updater.sidebarInstalling': 'Mise à jour…',
+  'settings.updater.sidebarRestartReady': 'Redémarrer pour {version}',
   'settings.updater.description':
     'Vérifier GitHub Releases pour les mises à jour signées de Basic.',
   'settings.updater.check': 'Vérifier les mises à jour',
   'settings.updater.downloadInstall': 'Télécharger et installer',
+  'settings.updater.restartNow': 'Redémarrer maintenant',
+  'settings.updater.restartLater': 'Plus tard',
   'settings.updater.checkOnStartup': 'Vérifier les mises à jour au démarrage',
   'settings.updater.checking': 'Vérification des mises à jour…',
   'settings.updater.upToDate': 'Vous êtes sur la dernière version',
@@ -46,7 +51,13 @@ const pack = {
   'settings.updater.downloading': 'Téléchargement… {pct}%',
   'settings.updater.downloadingIndeterminate': 'Téléchargement…',
   'settings.updater.installing': 'Installation de la mise à jour…',
-  'settings.updater.installed': '{version} installé — redémarrage…',
+  'settings.updater.readyToRestart':
+    'La version {version} est prête — redémarrez pour appliquer la mise à jour.',
+  'settings.updater.restartPrompt':
+    'La version {version} a été téléchargée et installée. Redémarrer maintenant pour appliquer la mise à jour ?\n\nSi vous choisissez Annuler, elle sera appliquée au prochain démarrage.',
+  'settings.updater.restartLaterHint':
+    'La version {version} est installée et sera appliquée au prochain démarrage.',
+  'settings.updater.installed': '{version} installé — redémarrez pour appliquer la mise à jour.',
   'settings.updater.unavailable':
     "La mise à jour automatique n'est pas disponible dans cette version",
   'settings.language': 'Langue',

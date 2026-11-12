@@ -130,6 +130,11 @@ export function downloadAndInstallUpdate(
   return requireHostSettings().downloadAndInstallUpdate(onProgress);
 }
 
+/** Relaunch the app to apply an installed update. */
+export function relaunchToApplyUpdate(): Promise<void> {
+  return requireHostSettings().relaunchToApplyUpdate();
+}
+
 /**
  * Silent startup check; installs when an update is available and setting is on.
  *

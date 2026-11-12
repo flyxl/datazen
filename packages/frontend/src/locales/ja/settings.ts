@@ -34,8 +34,13 @@ const pack = {
     '密度、フォントサイズなどの将来のオプション用に予約されています。',
   'settings.updater.title': '更新',
   'settings.updater.description': 'GitHub Releases で署名済み Basic ビルドの更新を確認します。',
+  'settings.updater.sidebarAvailable': '{version} に更新',
+  'settings.updater.sidebarInstalling': '更新中…',
+  'settings.updater.sidebarRestartReady': '{version} を適用するには再起動',
   'settings.updater.check': '更新を確認',
   'settings.updater.downloadInstall': 'ダウンロードしてインストール',
+  'settings.updater.restartNow': '今すぐ再起動',
+  'settings.updater.restartLater': '後で',
   'settings.updater.checkOnStartup': '起動時に更新を確認',
   'settings.updater.checking': '更新を確認中…',
   'settings.updater.upToDate': '最新バージョンです',
@@ -44,7 +49,13 @@ const pack = {
   'settings.updater.downloading': 'ダウンロード中… {pct}%',
   'settings.updater.downloadingIndeterminate': 'ダウンロード中…',
   'settings.updater.installing': 'アップデートをインストール中…',
-  'settings.updater.installed': '{version} をインストールしました — 再起動中…',
+  'settings.updater.readyToRestart':
+    'バージョン {version} の準備ができました。再起動して適用します。',
+  'settings.updater.restartPrompt':
+    'バージョン {version} のダウンロードとインストールが完了しました。今すぐ再起動して更新を適用しますか？\n\nキャンセルを選ぶと、次回起動時に適用されます。',
+  'settings.updater.restartLaterHint':
+    'バージョン {version} はインストール済みです。次回起動時に適用されます。',
+  'settings.updater.installed': '{version} をインストールしました — 再起動して適用します。',
   'settings.updater.unavailable': 'このビルドでは自動更新が利用できません',
   'settings.language': '言語',
   'settings.langZh': '简体中文',
