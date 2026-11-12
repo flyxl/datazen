@@ -1035,3 +1035,452 @@ mod tests {
         );
     }
 }
+
+/// Parquet-side tests (separate from the XLSX `tests` module so each feature
+/// gate compiles only what it can build). Read-back goes through the `parquet`
+/// crate's own arrow reader — the same parser family pyarrow implements, per
+/// the plan's "读回用 parquet crate 的 reader" requirement.
+#[cfg(all(test, feature = "export-parquet"))]
+mod parquet_tests {
+    use super::*;
+    use arrow::array::{Array, BinaryArray, BooleanArray, Float64Array, Int64Array, StringArray};
+    use arrow::datatypes::DataType;
+    use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+
+    fn col(name: &str, data_type: &str) -> ColumnInfo {
+        ColumnInfo {
+            name: name.into(),
+            data_type: data_type.into(),
+            nullable: true,
+        }
+    }
+
+    fn temp_parquet(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("datazen-export-parquet-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("tempdir");
+        dir.join(name)
+    }
+
+    fn pg_dialect() -> Option<String> {
+        Some("postgresql".into())
+    }
+
+    fn cleanup(dest: &PathBuf) {
+        let _ = std::fs::remove_dir_all(dest.parent().expect("tempdir parent"));
+    }
+
+    /// Read a written file back: field list plus every record batch.
+    fn read_parquet(path: &PathBuf) -> (Vec<arrow::datatypes::Field>, Vec<RecordBatch>) {
+        let file = std::fs::File::open(path).expect("parquet file exists");
+        let builder = ParquetRecordBatchReaderBuilder::try_new(file).expect("open parquet");
+        let fields = builder
+            .schema()
+            .fields()
+            .iter()
+            .map(|field| field.as_ref().clone())
+            .collect();
+        let reader = builder.build().expect("build parquet reader");
+        let batches = reader
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read parquet batches");
+        (fields, batches)
+    }
+
+    fn total_rows(batches: &[RecordBatch]) -> usize {
+        batches.iter().map(|batch| batch.num_rows()).sum()
+    }
+
+    #[test]
+    fn parquet_roundtrip_columns_values_and_nulls() {
+        let dest = temp_parquet("roundtrip.parquet");
+        let mut fmt = ParquetFormatter::new(pg_dialect(), dest.clone());
+        fmt.begin(&[
+            col("id", "int8"),
+            col("score", "float8"),
+            col("name", "text"),
+            col("active", "bool"),
+            col("payload", "bytea"),
+            col("created", "timestamptz"),
+            col("meta", "jsonb"),
+            col("note", "text"),
+        ])
+        .unwrap();
+        fmt.rows(&[vec![
+            Some(Value::Integer(42)),
+            Some(Value::Float(1.5)),
+            Some(Value::String("a,b".into())),
+            Some(Value::Bool(true)),
+            Some(Value::Bytes(vec![0x00, 0xff])),
+            Some(Value::Timestamp("2026-11-09 12:00:00".into())),
+            Some(Value::Json(serde_json::json!({"k": 1}))),
+            None,
+        ]])
+        .unwrap();
+        fmt.finish().unwrap();
+
+        let (fields, batches) = read_parquet(&dest);
+        let expected = [
+            (0, "id", DataType::Int64),
+            (1, "score", DataType::Float64),
+            (2, "name", DataType::Utf8),
+            (3, "active", DataType::Boolean),
+            (4, "payload", DataType::Binary),
+            (5, "created", DataType::Utf8),
+            (6, "meta", DataType::Utf8),
+            (7, "note", DataType::Utf8),
+        ];
+        for (index, name, data_type) in expected {
+            assert_eq!(fields[index].name(), name, "column {index} name");
+            assert_eq!(fields[index].data_type(), &data_type, "column {name}");
+        }
+        assert_eq!(total_rows(&batches), 1);
+        let batch = &batches[0];
+        assert_eq!(
+            batch
+                .column(0)
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .expect("int64")
+                .value(0),
+            42
+        );
+        assert_eq!(
+            batch
+                .column(1)
+                .as_any()
+                .downcast_ref::<Float64Array>()
+                .expect("float64")
+                .value(0),
+            1.5
+        );
+        assert_eq!(
+            batch
+                .column(2)
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .expect("utf8")
+                .value(0),
+            "a,b"
+        );
+        assert_eq!(
+            batch
+                .column(3)
+                .as_any()
+                .downcast_ref::<BooleanArray>()
+                .expect("bool")
+                .value(0),
+            true
+        );
+        assert_eq!(
+            batch
+                .column(4)
+                .as_any()
+                .downcast_ref::<BinaryArray>()
+                .expect("binary")
+                .value(0),
+            &[0x00, 0xff][..]
+        );
+        assert_eq!(
+            batch
+                .column(5)
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .expect("utf8")
+                .value(0),
+            "2026-11-09 12:00:00"
+        );
+        assert_eq!(
+            batch
+                .column(6)
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .expect("utf8")
+                .value(0),
+            "{\"k\":1}"
+        );
+        // No CSV round-trip marker anywhere in the rendered text.
+        assert!(!batch
+            .column(6)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .expect("utf8")
+            .value(0)
+            .contains("datazen:bytes:hex:"));
+        assert!(batch.column(7).is_null(0), "the None cell is a null slot");
+        cleanup(&dest);
+    }
+
+    #[test]
+    fn parquet_empty_table_writes_schema_only_file() {
+        let dest = temp_parquet("empty.parquet");
+        let mut fmt = ParquetFormatter::new(pg_dialect(), dest.clone());
+        fmt.begin(&[col("id", "int8"), col("weird", "money")])
+            .unwrap();
+        fmt.finish().unwrap();
+        assert!(dest.exists(), "a schema-only file, not zero bytes");
+        let bytes = std::fs::read(&dest).expect("read parquet");
+        assert_eq!(&bytes[..4], b"PAR1", "parquet magic at head");
+        assert_eq!(&bytes[bytes.len() - 4..], b"PAR1", "parquet magic at tail");
+        let (fields, batches) = read_parquet(&dest);
+        assert_eq!(total_rows(&batches), 0, "zero rows");
+        // The schema is the dialect mapping plus the Utf8 fallback, with no
+        // values to consult.
+        assert_eq!(fields[0].name(), "id");
+        assert_eq!(fields[0].data_type(), &DataType::Int64);
+        assert_eq!(fields[1].name(), "weird");
+        assert_eq!(fields[1].data_type(), &DataType::Utf8);
+        cleanup(&dest);
+    }
+
+    #[test]
+    fn parquet_first_batch_all_null_then_strings() {
+        let dest = temp_parquet("allnull.parquet");
+        let mut fmt = ParquetFormatter::new(pg_dialect(), dest.clone());
+        fmt.begin(&[col("a", "money"), col("b", "money")]).unwrap();
+        // An all-NULL first batch fixes Utf8 for both columns (no signal).
+        fmt.rows(&[vec![None, None]]).unwrap();
+        fmt.rows(&[vec![Some(Value::String("x".into())), None]])
+            .unwrap();
+        fmt.finish().unwrap();
+        let (fields, batches) = read_parquet(&dest);
+        assert_eq!(fields[0].data_type(), &DataType::Utf8);
+        assert_eq!(fields[1].data_type(), &DataType::Utf8);
+        assert_eq!(total_rows(&batches), 2);
+        let batch = &batches[0];
+        assert!(batch.column(0).is_null(0));
+        assert!(batch.column(1).is_null(0));
+        assert_eq!(
+            batch
+                .column(0)
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .expect("utf8")
+                .value(1),
+            "x"
+        );
+        assert!(batch.column(1).is_null(1));
+        cleanup(&dest);
+    }
+
+    #[test]
+    fn parquet_multiple_batches_write_all_rows_in_order() {
+        let dest = temp_parquet("batches.parquet");
+        let mut fmt = ParquetFormatter::new(pg_dialect(), dest.clone());
+        fmt.begin(&[col("id", "int8")]).unwrap();
+        for batch_index in 0..3u64 {
+            let rows: Vec<Vec<Option<Value>>> = (0..3)
+                .map(|i| vec![Some(Value::Integer((batch_index * 3 + i) as i64))])
+                .collect();
+            fmt.rows(&rows).unwrap();
+        }
+        fmt.finish().unwrap();
+        let (fields, batches) = read_parquet(&dest);
+        assert_eq!(fields[0].data_type(), &DataType::Int64);
+        assert_eq!(total_rows(&batches), 9);
+        // Whatever batch boundaries the reader produces, the values arrive in
+        // write order.
+        let mut seen = Vec::new();
+        for batch in &batches {
+            let column = batch
+                .column(0)
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .expect("int64");
+            for row in 0..column.len() {
+                seen.push(column.value(row));
+            }
+        }
+        assert_eq!(seen, (0..9).collect::<Vec<i64>>());
+        cleanup(&dest);
+    }
+
+    #[test]
+    fn parquet_row_group_limit_and_snappy_compression() {
+        let dest = temp_parquet("rowgroups.parquet");
+        let mut fmt = ParquetFormatter::new(pg_dialect(), dest.clone());
+        fmt.begin(&[col("id", "int8")]).unwrap();
+        // 200 full 500-row batches + 1 final row = 100,001 rows: the explicit
+        // 100,000-row ceiling must split this into two row groups.
+        for chunk in 0..200i64 {
+            let rows: Vec<Vec<Option<Value>>> = (0..500i64)
+                .map(|i| vec![Some(Value::Integer(chunk * 500 + i))])
+                .collect();
+            fmt.rows(&rows).unwrap();
+        }
+        fmt.rows(&[vec![Some(Value::Integer(-1))]]).unwrap();
+        fmt.finish().unwrap();
+
+        let file = std::fs::File::open(&dest).expect("parquet exists");
+        let builder = ParquetRecordBatchReaderBuilder::try_new(file).expect("open parquet");
+        let metadata = builder.metadata();
+        assert_eq!(metadata.num_row_groups(), 2, "split at the 100,000 limit");
+        assert_eq!(metadata.row_group(0).num_rows(), 100_000);
+        assert_eq!(metadata.row_group(1).num_rows(), 1);
+        assert_eq!(
+            metadata.row_group(0).column(0).compression(),
+            Compression::SNAPPY
+        );
+        drop(builder);
+
+        let (_, batches) = read_parquet(&dest);
+        assert_eq!(total_rows(&batches), 100_001);
+        let mut first: Option<i64> = None;
+        let mut last = 0;
+        for batch in &batches {
+            let column = batch
+                .column(0)
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .expect("int64");
+            if column.len() > 0 {
+                if first.is_none() {
+                    first = Some(column.value(0));
+                }
+                last = column.value(column.len() - 1);
+            }
+        }
+        assert_eq!(first, Some(0));
+        assert_eq!(last, -1);
+        cleanup(&dest);
+    }
+
+    #[test]
+    fn parquet_finish_is_idempotent() {
+        let dest = temp_parquet("idempotent.parquet");
+        let mut fmt = ParquetFormatter::new(pg_dialect(), dest.clone());
+        fmt.begin(&[col("id", "int8")]).unwrap();
+        fmt.rows(&[vec![Some(Value::Integer(7))]]).unwrap();
+        fmt.finish().unwrap();
+        // The post-fetch fallback in write_binary_file may call finish() a
+        // second time; that must be a no-op, not an error.
+        fmt.finish().unwrap();
+        let (_, batches) = read_parquet(&dest);
+        assert_eq!(total_rows(&batches), 1);
+        cleanup(&dest);
+    }
+
+    #[test]
+    fn parquet_protocol_errors_are_validations() {
+        let dest = temp_parquet("protocol.parquet");
+        let mut fmt = ParquetFormatter::new(None, dest.clone());
+        // Rows before the header.
+        let err = fmt.rows(&[vec![Some(Value::Integer(1))]]).unwrap_err();
+        assert!(matches!(err, ExportError::Validation(_)), "got {err:?}");
+        fmt.begin(&[col("id", "int8")]).unwrap();
+        // Second header.
+        let err = fmt.begin(&[col("id", "int8")]).unwrap_err();
+        assert!(matches!(err, ExportError::Validation(_)), "got {err:?}");
+        // finish() without a header: no columns, no file.
+        let mut fresh = ParquetFormatter::new(None, dest.clone());
+        let err = fresh.finish().unwrap_err();
+        assert!(matches!(err, ExportError::Validation(_)), "got {err:?}");
+        assert!(!dest.exists(), "a column-less finish writes nothing");
+        cleanup(&dest);
+    }
+
+    #[test]
+    fn parquet_type_conflict_names_column_and_value_kind() {
+        let dest = temp_parquet("conflict.parquet");
+        let mut fmt = ParquetFormatter::new(pg_dialect(), dest.clone());
+        fmt.begin(&[col("id", "int8"), col("name", "text")])
+            .unwrap();
+        fmt.rows(&[vec![
+            Some(Value::Integer(1)),
+            Some(Value::String("a".into())),
+        ]])
+        .unwrap();
+        let err = fmt
+            .rows(&[vec![Some(Value::String("boom".into())), None]])
+            .unwrap_err();
+        match err {
+            ExportError::Validation(message) => {
+                assert!(message.contains("id"), "names the column: {message}");
+                assert!(message.contains("int64"), "names the type: {message}");
+                assert!(message.contains("String"), "names the kind: {message}");
+            }
+            other => panic!("expected a Validation conflict, got {other:?}"),
+        }
+        // write_binary_file (T5) fails the whole run and removes the partial
+        // file — that contract is covered there, not here.
+        cleanup(&dest);
+    }
+
+    #[test]
+    fn parquet_utf8_columns_render_every_value_kind() {
+        let dest = temp_parquet("utf8render.parquet");
+        let mut fmt = ParquetFormatter::new(pg_dialect(), dest.clone());
+        // "text" maps to Utf8; "money" falls to value inference, and its mixed
+        // first batch fixes Utf8 for it too.
+        fmt.begin(&[col("blob_col", "text"), col("misc", "money")])
+            .unwrap();
+        fmt.rows(&[
+            vec![Some(Value::Integer(42)), Some(Value::Float(1.5))],
+            vec![
+                Some(Value::Bool(true)),
+                Some(Value::Bytes(vec![0x00, 0xff])),
+            ],
+            vec![
+                Some(Value::Timestamp("2026-11-09".into())),
+                Some(Value::Json(serde_json::json!({"k": 1}))),
+            ],
+            vec![Some(Value::String("plain".into())), Some(Value::Null)],
+        ])
+        .unwrap();
+        fmt.finish().unwrap();
+        let (fields, batches) = read_parquet(&dest);
+        assert_eq!(fields[0].data_type(), &DataType::Utf8);
+        assert_eq!(fields[1].data_type(), &DataType::Utf8);
+        assert_eq!(total_rows(&batches), 4);
+        // The reader may re-batch; collect through every batch instead of one.
+        let mut column_values = [Vec::new(), Vec::new()];
+        for batch in &batches {
+            for (column_index, bucket) in column_values.iter_mut().enumerate() {
+                let column = batch
+                    .column(column_index)
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .expect("utf8");
+                for row in 0..column.len() {
+                    if column.is_null(row) {
+                        bucket.push(None);
+                    } else {
+                        bucket.push(Some(column.value(row).to_string()));
+                    }
+                }
+            }
+        }
+        assert_eq!(
+            column_values[0],
+            vec![
+                Some("42".to_string()),
+                Some("true".to_string()),
+                Some("2026-11-09".to_string()),
+                Some("plain".to_string()),
+            ]
+        );
+        assert_eq!(
+            column_values[1],
+            vec![
+                Some("1.5".to_string()),
+                Some("00ff".to_string()),
+                Some("{\"k\":1}".to_string()),
+                None,
+            ]
+        );
+        cleanup(&dest);
+    }
+
+    #[test]
+    fn parquet_no_dialect_infers_unmapped_types_from_values() {
+        let dest = temp_parquet("infer.parquet");
+        let mut fmt = ParquetFormatter::new(None, dest.clone());
+        fmt.begin(&[col("id", "totally_unknown")]).unwrap();
+        fmt.rows(&[vec![Some(Value::Integer(5))]]).unwrap();
+        fmt.finish().unwrap();
+        let (fields, batches) = read_parquet(&dest);
+        assert_eq!(fields[0].data_type(), &DataType::Int64);
+        assert_eq!(total_rows(&batches), 1);
+        cleanup(&dest);
+    }
+}
