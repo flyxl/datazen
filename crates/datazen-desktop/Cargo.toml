@@ -1,6 +1,6 @@
 [package]
 name = "datazen_desktop"
-version = "0.3.0"
+version = "0.3.1"
 description = "DataZen desktop database client (Tauri backend)"
 authors = ["DataZen"]
 edition = "2021"
