@@ -180,3 +180,324 @@ pub fn infer_schema(
             .collect::<Vec<Field>>(),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arrow::datatypes::DataType;
+
+    fn col(name: &str, data_type: &str, nullable: bool) -> ColumnInfo {
+        ColumnInfo {
+            name: name.into(),
+            data_type: data_type.into(),
+            nullable,
+        }
+    }
+
+    /// Schema of one column, over a table of rows.
+    fn single_column_type(
+        data_type: &str,
+        dialect: Option<&str>,
+        rows: &[Vec<Option<Value>>],
+    ) -> DataType {
+        let schema = infer_schema(&[col("c", data_type, true)], dialect, rows);
+        schema.field(0).data_type().clone()
+    }
+
+    fn int_cell(v: i64) -> Option<Value> {
+        Some(Value::Integer(v))
+    }
+
+    #[test]
+    fn postgres_dialect_mapping_table() {
+        let cases: &[(&str, DataType)] = &[
+            ("int2", DataType::Int16),
+            ("int4", DataType::Int32),
+            ("int8", DataType::Int64),
+            ("float4", DataType::Float32),
+            ("float8", DataType::Float64),
+            ("bool", DataType::Boolean),
+            ("bytea", DataType::Binary),
+            ("varchar", DataType::Utf8),
+            ("text", DataType::Utf8),
+            ("char", DataType::Utf8),
+            ("timestamp", DataType::Utf8),
+            ("timestamptz", DataType::Utf8),
+            ("date", DataType::Utf8),
+            ("time", DataType::Utf8),
+            ("uuid", DataType::Utf8),
+            ("json", DataType::Utf8),
+            ("jsonb", DataType::Utf8),
+            ("numeric", DataType::Utf8),
+            ("decimal", DataType::Utf8),
+        ];
+        for (raw, expected) in cases {
+            assert_eq!(
+                single_column_type(raw, Some("postgresql"), &[]),
+                *expected,
+                "postgres {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn mysql_dialect_mapping_table() {
+        let cases: &[(&str, DataType)] = &[
+            ("int", DataType::Int32),
+            ("bigint", DataType::Int64),
+            // tinyint(1) normalizes to tinyint -> Int8; the Boolean reading of
+            // tinyint(1) is PRD §8 Q2, deliberately deferred, not silent.
+            ("tinyint", DataType::Int8),
+            ("tinyint(1)", DataType::Int8),
+            ("float", DataType::Float32),
+            ("double", DataType::Float64),
+            ("decimal", DataType::Utf8),
+            ("decimal(10,2)", DataType::Utf8),
+            ("varchar", DataType::Utf8),
+            ("varchar(255)", DataType::Utf8),
+            ("text", DataType::Utf8),
+            ("datetime", DataType::Utf8),
+            ("timestamp", DataType::Utf8),
+            ("date", DataType::Utf8),
+            ("blob", DataType::Binary),
+            ("json", DataType::Utf8),
+        ];
+        for (raw, expected) in cases {
+            assert_eq!(
+                single_column_type(raw, Some("mysql"), &[]),
+                *expected,
+                "mysql {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn sqlite_dialect_mapping_table() {
+        // SQLite reports declared types in their original case; normalization
+        // is part of the mapping's contract.
+        let cases: &[(&str, DataType)] = &[
+            ("integer", DataType::Int64),
+            ("INTEGER", DataType::Int64),
+            ("real", DataType::Float64),
+            ("REAL", DataType::Float64),
+            ("text", DataType::Utf8),
+            ("TEXT", DataType::Utf8),
+            ("blob", DataType::Binary),
+            ("numeric", DataType::Utf8),
+        ];
+        for (raw, expected) in cases {
+            assert_eq!(
+                single_column_type(raw, Some("sqlite"), &[]),
+                *expected,
+                "sqlite {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn sqlserver_dialect_mapping_table() {
+        let cases: &[(&str, DataType)] = &[
+            ("int", DataType::Int32),
+            ("bigint", DataType::Int64),
+            ("smallint", DataType::Int16),
+            ("tinyint", DataType::UInt8),
+            ("float", DataType::Float64),
+            ("real", DataType::Float32),
+            ("bit", DataType::Boolean),
+            ("varchar", DataType::Utf8),
+            ("nvarchar", DataType::Utf8),
+            ("text", DataType::Utf8),
+            ("datetime", DataType::Utf8),
+            ("datetime2", DataType::Utf8),
+            ("date", DataType::Utf8),
+            ("varbinary", DataType::Binary),
+            ("decimal", DataType::Utf8),
+        ];
+        for (raw, expected) in cases {
+            assert_eq!(
+                single_column_type(raw, Some("sqlserver"), &[]),
+                *expected,
+                "sqlserver {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn dialect_matching_is_trimmed_and_case_insensitive() {
+        for dialect in ["PostgreSQL", " POSTGRESQL ", "postgresql"] {
+            assert_eq!(
+                single_column_type("int4", Some(dialect), &[]),
+                DataType::Int32,
+                "dialect {dialect:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn unmapped_type_in_known_dialect_falls_through_to_value_inference() {
+        // "money" is not in the v1 PG table; the first batch decides.
+        assert_eq!(
+            single_column_type("money", Some("postgresql"), &[vec![int_cell(7)]]),
+            DataType::Int64
+        );
+        assert_eq!(
+            single_column_type(
+                "money",
+                Some("postgresql"),
+                &[vec![Some(Value::Float(1.5))]]
+            ),
+            DataType::Float64
+        );
+        assert_eq!(
+            single_column_type(
+                "money",
+                Some("postgresql"),
+                &[vec![Some(Value::Bool(true))]]
+            ),
+            DataType::Boolean
+        );
+        // The same fall-through holds in every dialect that has a table.
+        for dialect in ["mysql", "sqlite", "sqlserver"] {
+            assert_eq!(
+                single_column_type("money", Some(dialect), &[vec![int_cell(7)]]),
+                DataType::Int64,
+                "dialect {dialect}"
+            );
+        }
+    }
+
+    #[test]
+    fn unmapped_dialect_skips_the_table_and_uses_values() {
+        // questdb / cloudberry / mariadb / oracle ... have no v1 table; value
+        // inference is always safe.
+        assert_eq!(
+            single_column_type("whatever", Some("oracle"), &[vec![int_cell(9)]]),
+            DataType::Int64
+        );
+        assert_eq!(
+            single_column_type("whatever", None, &[vec![int_cell(9)]]),
+            DataType::Int64
+        );
+        assert_eq!(
+            single_column_type("whatever", None, &[vec![Some(Value::Float(2.5))]]),
+            DataType::Float64
+        );
+        assert_eq!(
+            single_column_type("whatever", None, &[vec![Some(Value::Bool(false))]]),
+            DataType::Boolean
+        );
+    }
+
+    #[test]
+    fn string_bytes_timestamp_and_json_values_settle_utf8() {
+        let values: &[Value] = &[
+            Value::String("x".into()),
+            Value::Bytes(vec![1, 2, 3]),
+            Value::Timestamp("2026-11-12 00:00:00".into()),
+            Value::Json(serde_json::Value::String("{}".into())),
+        ];
+        for value in values {
+            assert_eq!(
+                single_column_type("unknown", None, &[vec![Some(value.clone())]]),
+                DataType::Utf8,
+                "value {value:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn all_null_column_falls_back_to_utf8() {
+        // All NULL — including a completely empty table — gives no signal.
+        assert_eq!(
+            single_column_type("unknown", None, &[vec![None], vec![None]]),
+            DataType::Utf8
+        );
+        assert_eq!(single_column_type("unknown", None, &[]), DataType::Utf8);
+        // Mapped types still apply to an empty table: the empty-export schema
+        // is the dialect mapping plus the Utf8 fallback, with no values.
+        assert_eq!(
+            single_column_type("int8", Some("postgresql"), &[]),
+            DataType::Int64
+        );
+    }
+
+    #[test]
+    fn mixed_variants_fall_back_to_utf8() {
+        assert_eq!(
+            single_column_type(
+                "unknown",
+                None,
+                &[vec![int_cell(1)], vec![Some(Value::Float(1.5))]]
+            ),
+            DataType::Utf8
+        );
+        assert_eq!(
+            single_column_type(
+                "unknown",
+                None,
+                &[vec![int_cell(1)], vec![Some(Value::Bool(true))]]
+            ),
+            DataType::Utf8
+        );
+        // NULLs do not count as a variant: Integers plus NULLs stay Int64.
+        assert_eq!(
+            single_column_type(
+                "unknown",
+                None,
+                &[vec![None], vec![int_cell(3)], vec![None]]
+            ),
+            DataType::Int64
+        );
+    }
+
+    #[test]
+    fn dialect_mapping_takes_precedence_over_value_inference() {
+        // A mapped varchar holding integer-looking strings stays Utf8 — the
+        // mapping table decides before any values are consulted.
+        assert_eq!(
+            single_column_type(
+                "varchar",
+                Some("postgresql"),
+                &[vec![int_cell(1)], vec![int_cell(2)]]
+            ),
+            DataType::Utf8
+        );
+    }
+
+    #[test]
+    fn names_and_nullability_come_from_column_info() {
+        let schema = infer_schema(
+            &[col("id", "int8", false), col("note", "text", true)],
+            Some("postgresql"),
+            &[],
+        );
+        assert_eq!(schema.field(0).name().as_str(), "id");
+        assert!(!schema.field(0).is_nullable());
+        assert_eq!(schema.field(0).data_type(), &DataType::Int64);
+        assert_eq!(schema.field(1).name().as_str(), "note");
+        assert!(schema.field(1).is_nullable());
+        assert_eq!(schema.field(1).data_type(), &DataType::Utf8);
+    }
+
+    #[test]
+    fn empty_column_set_yields_empty_schema() {
+        let schema = infer_schema(&[], None, &[]);
+        assert!(schema.fields().is_empty());
+        // Even with stray rows — nothing to infer, no panic.
+        let schema = infer_schema(&[], Some("sqlite"), &[vec![int_cell(1)]]);
+        assert!(schema.fields().is_empty());
+    }
+
+    #[test]
+    fn short_rows_are_silent_for_their_missing_tail() {
+        // Rows narrower than the column list contribute nothing for their
+        // missing tail — same silence as a NULL, not an error.
+        let schema = infer_schema(
+            &[col("a", "unknown", true), col("b", "unknown", true)],
+            None,
+            &[vec![int_cell(1)], vec![int_cell(2)]],
+        );
+        assert_eq!(schema.field(0).data_type(), &DataType::Int64);
+        assert_eq!(schema.field(1).data_type(), &DataType::Utf8);
+    }
+}
