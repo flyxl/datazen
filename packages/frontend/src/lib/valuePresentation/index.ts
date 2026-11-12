@@ -143,6 +143,7 @@ export type {
 export {
   validateColumnPresentationOverride,
   columnOverrideFromSnapshot,
+  snapshotWithoutColumnOverride,
   fallbackSampleForColumn,
   formatColumnPresentationSampleValue,
   computeColumnPresentationPreview,

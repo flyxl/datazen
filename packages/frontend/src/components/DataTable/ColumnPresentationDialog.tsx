@@ -57,6 +57,7 @@ import {
   isValidIanaTimeZoneName,
   isValidTimeZoneName,
   setSessionColumnOverride,
+  snapshotWithoutColumnOverride,
   validateColumnPresentationOverride,
   validateTimestampOptions,
   type TimestampOptions,
@@ -361,21 +362,30 @@ export function ColumnPresentationDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [draft, columnName, columnType, source, snapshot, sample, registry],
   );
-  // 当前生效计划（inherit 预览与生效来源提示共用同一计划）。
+  // 当前生效计划（inherit 预览与生效来源提示共用同一计划）。草稿为
+  // inherit 时按「清除覆盖后」建计划（T09-BUG-001：直接拿合并快照
+  // 建计划会让待清除的覆盖优先于规则）；custom / raw 草稿的来源
+  // 本就是列覆盖，标签不依赖该计划。
   const currentPlan = useMemo(() => {
     const plans = buildColumnPresentationPlans(
       {
         columns: [{ name: columnName, dataType: columnType, hints: cellTypeHints }],
         source,
-        snapshot,
+        snapshot:
+          draft.mode === 'inherit'
+            ? snapshotWithoutColumnOverride(snapshot, source, columnName)
+            : snapshot,
       },
       registry,
     );
     return plans[0];
-  }, [columnName, columnType, cellTypeHints, source, snapshot, registry]);
+  }, [columnName, columnType, cellTypeHints, source, snapshot, registry, draft.mode]);
 
+  // 来源标签按草稿 mode 取值（T09-BUG-001）：custom / raw 保存后即
+  // 为列覆盖；inherit 保存后清除覆盖，来源为剥离后的计划所命中的
+  // 规则或全局默认——不看保存前的 effectiveCurrentOverride。
   const effectiveSourceLabel =
-    effectiveCurrentOverride.mode === 'custom' || effectiveCurrentOverride.mode === 'raw'
+    draft.mode === 'custom' || draft.mode === 'raw'
       ? t('columnPresentation.source.override')
       : currentPlan?.matchedRuleName !== undefined
         ? t('columnPresentation.source.rule', { name: currentPlan.matchedRuleName })

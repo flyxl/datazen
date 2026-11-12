@@ -156,6 +156,25 @@ export function columnOverrideFromSnapshot(
 }
 
 /**
+ * 剥离本列覆盖后的快照副本（T09-BUG-001）：inherit 草稿的预览与
+ * 来源标签按「清除覆盖后」的状态计算，仍存的覆盖不再优先于规则。
+ * 键从复制的 overrides 里删除（不是置 undefined），原快照不动；
+ * 无来源列或本列无条目时返回原快照本身。
+ */
+export function snapshotWithoutColumnOverride(
+  snapshot: ValuePresentationSnapshot,
+  source: Readonly<Omit<ColumnSource, 'column'>> | undefined,
+  columnName: string,
+): ValuePresentationSnapshot {
+  if (source === undefined) return snapshot;
+  const key = columnOverrideKey({ ...source, column: columnName });
+  if (!(key in snapshot.overrides)) return snapshot;
+  const overrides = { ...snapshot.overrides };
+  delete overrides[key];
+  return { ...snapshot, overrides };
+}
+
+/**
  * 按语义种给预览样本（PRD §3.2 双锚点；调用方有真实行值时优先用
  * 真实行值，本函数只在无行值时兜底）：
  * - number → 1705316400000（Unix 毫秒锚点；秒/毫秒由用户显式选，
@@ -241,8 +260,10 @@ export interface ComputeColumnPresentationPreviewInput {
 /**
  * 列配置预览（与运行时同一条路，不另写解析）：
  *
- * - `inherit`：用快照为该列建计划并 `present(sample)`——即全局默认 /
- *   规则命中后的同一结果；
+ * - `inherit`：先剥离本列仍存的覆盖再建计划并 `present(sample)`——
+ *   预览的是清除覆盖后的结果（规则 / 全局默认），而不是仍存覆盖
+ *   的结果（T09-BUG-001：直接拿合并快照建计划会让待清除的 custom
+ *   覆盖优先于规则）；
  * - `raw`：不调 prepare，直接 `unchanged`（原因 `raw-override`），
  *   命中规则的列选原始值后仍显示原值（PRD 验收 4）；
  * - `custom`：贡献缺失 → `unavailable`；`validateConfig` 失败 →
@@ -258,7 +279,11 @@ export function computeColumnPresentationPreview(
   const candidate = input.candidate;
   if (candidate.mode === 'inherit') {
     const plans = buildColumnPresentationPlans(
-      { columns: [input.column], source: input.source, snapshot: input.snapshot },
+      {
+        columns: [input.column],
+        source: input.source,
+        snapshot: snapshotWithoutColumnOverride(input.snapshot, input.source, input.column.name),
+      },
       registry,
     );
     const plan = plans[0];
