@@ -233,6 +233,31 @@ fn tab_strip(state: &AppState, theme: tok::Theme) -> El {
     strip
 }
 
+fn object_tree(state: &AppState, theme: tok::Theme) -> El {
+    let tables = state.workspace.session().map(|session| session.tables.clone()).unwrap_or_default();
+    let rows = tables.len() as f32;
+    let height = if rows == 0.0 { 0.0 } else { rows * 28.0 + (rows - 1.0) * 4.0 };
+    let mut tree = col().key("object-tree").w_full().h(height).gap(4.0);
+    for name in tables {
+        let title = name.clone();
+        tree = tree.child(
+            row()
+                .key(format!("tree-table-{name}"))
+                .w_full()
+                .h(28.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(name).font(type_::LABEL).color(theme.text))
+                .on_press(move |state: &mut AppState| {
+                    state.open_table_tab(&title);
+                }),
+        );
+    }
+    tree
+}
+
 fn connection_list(state: &AppState, theme: tok::Theme) -> El {
     let mut list = col().key("connection-list").w_full().gap(8.0);
     for profile in state.workspace.connections() {
@@ -282,6 +307,7 @@ fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
                 .color(theme.text_secondary),
         )
         .child(navigation)
+        .child(object_tree(state, theme))
         .child(
             col()
                 .w_full()
@@ -567,5 +593,26 @@ mod tests {
         runtime.frame(0.0);
         assert!(runtime.state.tabs.tabs().iter().all(|tab| tab.id != second));
         assert_eq!(runtime.state.tabs.selected().unwrap().id, first);
+    }
+
+    #[test]
+    fn clicking_a_session_table_opens_a_table_tab() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        assert!(runtime.find("object-tree").is_some());
+        assert!(runtime.find("tree-table-customers").is_none());
+
+        let (x, y) = runtime.find("connection-local").expect("connection");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+
+        let (x, y) = runtime.find("tree-table-customers").expect("table in the tree");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.tabs.tabs().len(), 1);
+        assert_eq!(runtime.state.tabs.selected().unwrap().title, "customers");
+        assert_eq!(runtime.state.tabs.selected().unwrap().kind, datazen_ui_api::TabKind::Table);
     }
 }
