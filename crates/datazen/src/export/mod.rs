@@ -249,6 +249,8 @@ pub mod format;
 #[cfg(feature = "export-parquet")]
 pub mod parquet_schema;
 pub use binary::BinaryFormatter;
+#[cfg(feature = "export-parquet")]
+pub use binary::ParquetFormatter;
 #[cfg(feature = "export-xlsx")]
 pub use binary::{sanitize_sheet_name, XlsxFormatter};
 pub use error::ExportError;
@@ -708,21 +710,24 @@ pub async fn write_data_file(
 /// PRD F9). The `DataFormat` variants themselves are not feature-gated, so
 /// a build without the matching sub-feature still accepts the request
 /// shape — it just cannot serve it, and says so instead of silently
-/// falling back to another format. The Parquet formatter arm lands in T5;
-/// the off-feature error arm below lands in T2 so the gating is proven
-/// before the formatter exists.
+/// falling back to another format. The Parquet formatter arm landed in T5;
+/// the off-feature error arms proved the gating before it existed (T2).
 fn binary_formatter(
     format: DataFormat,
     table: &TableExportInput,
     dest: &Path,
+    database_type: Option<&str>,
 ) -> Result<Box<dyn BinaryFormatter>, CommandError> {
-    // With no binary sub-feature enabled, no match arm below uses `table`
-    // or `dest` (every arm is an error); name that explicitly instead of
-    // letting the off-configuration warn. T5 widens this to
-    // `not(any(feature = "export-xlsx", feature = "export-parquet"))`
-    // when the Parquet arm starts using them.
-    #[cfg(not(feature = "export-xlsx"))]
-    let _ = (table, dest);
+    // With no binary sub-feature enabled, no match arm below uses any
+    // parameter; with exactly one enabled, the other arm's parameters stay
+    // unused. Name each case explicitly instead of letting the off-config
+    // build warn.
+    #[cfg(not(any(feature = "export-xlsx", feature = "export-parquet")))]
+    let _ = (table, dest, database_type);
+    #[cfg(all(feature = "export-xlsx", not(feature = "export-parquet")))]
+    let _ = database_type;
+    #[cfg(all(feature = "export-parquet", not(feature = "export-xlsx")))]
+    let _ = table;
     match format {
         #[cfg(feature = "export-xlsx")]
         DataFormat::Xlsx => Ok(Box::new(XlsxFormatter::new(
@@ -735,6 +740,13 @@ fn binary_formatter(
              enabled in this build; enable `export-xlsx` (desktop builds do)"
                 .into(),
         )),
+        // The request's dialect (ExportTablesRequest.database_type) drives
+        // schema inference (T3); None falls through to value inference.
+        #[cfg(feature = "export-parquet")]
+        DataFormat::Parquet => Ok(Box::new(ParquetFormatter::new(
+            database_type.map(str::to_string),
+            dest.to_path_buf(),
+        ))),
         #[cfg(not(feature = "export-parquet"))]
         DataFormat::Parquet => Err(CommandError::Validation(
             "Parquet export requires the `export-parquet` feature, which is not \
@@ -778,14 +790,14 @@ pub async fn write_binary_file(
     // error naming the missing feature — never a silent fallback to
     // another format, and never a panic. `DataFormat` variants themselves
     // stay ungated so the wire shape is stable across builds. The Parquet
-    // formatter arm lands in T5; its off-feature error arm (in
-    // `binary_formatter`) landed in T2.
+    // dispatch carries the request's `database_type` so the formatter's
+    // schema inference can use the dialect mapping (T3/T5).
     //
     // The dispatch lives in its own helper (rather than inline here) so
     // the rest of this function stays reachable — and warning-free — in a
     // build with no binary sub-feature enabled, where every match arm
     // diverges and an inline match would make the tail dead code.
-    let formatter = binary_formatter(format, table, dest)?;
+    let formatter = binary_formatter(format, table, dest, request.database_type.as_deref())?;
     let formatter = Arc::new(Mutex::new(formatter));
 
     // Full ColumnInfo (not just names): the binary formatter needs it for
