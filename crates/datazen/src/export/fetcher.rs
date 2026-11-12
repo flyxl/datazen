@@ -109,6 +109,17 @@ mod tests {
     };
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    // Parquet read-back assertions (T5 integration tests) reuse the parquet
+    // crate's own arrow reader, same as the formatter tests in binary.rs.
+    #[cfg(feature = "export-parquet")]
+    use arrow::array::{Array, Int32Array, Int64Array, StringArray};
+    #[cfg(feature = "export-parquet")]
+    use arrow::datatypes::DataType;
+    #[cfg(feature = "export-parquet")]
+    use arrow::record_batch::RecordBatch;
+    #[cfg(feature = "export-parquet")]
+    use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+
     fn col(name: &str, data_type: &str) -> ColumnInfo {
         ColumnInfo {
             name: name.into(),
@@ -1750,6 +1761,280 @@ mod tests {
             "unexpected error: {err:?}"
         );
         assert!(!dest.exists(), "a rejected export must not create its file");
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    /// Read a written Parquet file back: field list plus every record batch
+    /// (T5 integration tests).
+    #[cfg(feature = "export-parquet")]
+    fn read_parquet(path: &std::path::Path) -> (Vec<arrow::datatypes::Field>, Vec<RecordBatch>) {
+        let file = std::fs::File::open(path).expect("parquet file exists");
+        let builder = ParquetRecordBatchReaderBuilder::try_new(file).expect("open parquet");
+        let fields = builder
+            .schema()
+            .fields()
+            .iter()
+            .map(|field| field.as_ref().clone())
+            .collect();
+        let reader = builder.build().expect("build parquet reader");
+        let batches = reader
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read parquet batches");
+        (fields, batches)
+    }
+
+    /// T5 dispatch: a Parquet request streams through write_binary_file into
+    /// ParquetFormatter, and the request's dialect reaches the schema — the
+    /// whole T3→T4→T5 chain read back in one file. two_cols() reports int4 /
+    /// text; under postgresql int4 maps to Int32 (not the value-inference
+    /// Int64 a missing dialect would produce).
+    #[cfg(feature = "export-parquet")]
+    #[tokio::test]
+    async fn write_binary_file_sql_source_writes_parquet() {
+        let mut req = request(
+            ExportMode::DataOnly,
+            DataFormat::Parquet,
+            vec![table_item(
+                "t",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        req.database_type = Some("postgresql".into());
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.parquet");
+        let n = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Parquet,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(source.stream_calls.load(Ordering::Relaxed), 1);
+        assert!(dest.exists(), "parquet file written");
+        let (fields, batches) = read_parquet(&dest);
+        assert_eq!(fields[0].name(), "id");
+        assert_eq!(fields[0].data_type(), &DataType::Int32);
+        assert_eq!(fields[1].name(), "name");
+        assert_eq!(fields[1].data_type(), &DataType::Utf8);
+        let rows: usize = batches.iter().map(|batch| batch.num_rows()).sum();
+        assert_eq!(rows, 2);
+        let batch = &batches[0];
+        assert_eq!(
+            batch
+                .column(0)
+                .as_any()
+                .downcast_ref::<Int32Array>()
+                .expect("int32")
+                .value(0),
+            1
+        );
+        assert_eq!(
+            batch
+                .column(1)
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .expect("utf8")
+                .value(0),
+            "a"
+        );
+        assert!(batch.column(1).is_null(1), "None is a null slot");
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    /// T5: a request without `database_type` still writes — value inference
+    /// (Integer → Int64) plus the Utf8 fallback decide the schema.
+    #[cfg(feature = "export-parquet")]
+    #[tokio::test]
+    async fn write_binary_file_parquet_without_dialect_still_writes() {
+        let mut req = request(
+            ExportMode::DataOnly,
+            DataFormat::Parquet,
+            vec![table_item(
+                "t",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        req.database_type = None;
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.parquet");
+        let n = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Parquet,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 2);
+        assert!(dest.exists());
+        let (fields, batches) = read_parquet(&dest);
+        // No dialect: int4 is unmapped, the Integer values infer Int64; the
+        // text column holds Strings, so Utf8.
+        assert_eq!(fields[0].data_type(), &DataType::Int64);
+        assert_eq!(fields[1].data_type(), &DataType::Utf8);
+        let rows: usize = batches.iter().map(|batch| batch.num_rows()).sum();
+        assert_eq!(rows, 2);
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    /// T5: the binary path's existing pre-cancel guard applies to Parquet
+    /// too — never create the file, never stream.
+    #[cfg(feature = "export-parquet")]
+    #[tokio::test]
+    async fn write_binary_file_parquet_precancelled_writes_nothing() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Parquet,
+            vec![table_item("t", TableDataSource::Table)],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.parquet");
+        let token = CancelToken::new();
+        token.cancel();
+        let err = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Parquet,
+            &dest,
+            &token,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Cancelled),
+            "unexpected error: {err:?}"
+        );
+        assert!(
+            !dest.exists(),
+            "a cancelled export must not create its file"
+        );
+        assert_eq!(
+            source.stream_calls.load(Ordering::Relaxed),
+            0,
+            "a pre-cancelled run must not stream at all"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    /// T5: the per-batch cancel check on the binary path reuses the shared
+    /// loop (the same one the XLSX test above exercises) — Parquet needs no
+    /// cancel logic of its own.
+    #[cfg(feature = "export-parquet")]
+    #[tokio::test]
+    async fn write_binary_file_parquet_cancels_mid_stream() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Parquet,
+            vec![table_item("t", TableDataSource::Table)],
+        );
+        let token = CancelToken::new();
+        let source =
+            CancellingSource::new(two_cols(), one_row(1, "a"), one_row(2, "b"), token.clone());
+        let dest = temp_file("out.parquet");
+        let err = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Parquet,
+            &dest,
+            &token,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Cancelled),
+            "unexpected error: {err:?}"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    /// T5, closing the T4 report's §5.4 deferred item: when the stream ends
+    /// without a Done event, the post-fetch fallback in write_binary_file
+    /// closes the Parquet writer exactly once — the file reads back complete.
+    #[cfg(feature = "export-parquet")]
+    #[tokio::test]
+    async fn write_binary_file_without_done_still_finishes_parquet() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Parquet,
+            vec![table_item(
+                "t",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        let mut source = StubSource::new(false, false, two_cols(), two_rows());
+        source.emit_done = false;
+        let dest = temp_file("out.parquet");
+        let n = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Parquet,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 2);
+        assert!(dest.exists(), "the fallback finished the file");
+        let (_, batches) = read_parquet(&dest);
+        let rows: usize = batches.iter().map(|batch| batch.num_rows()).sum();
+        assert_eq!(rows, 2, "schema and rows fully written");
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    /// T5: a stream that skips StatementStart gets the header fallback — the
+    /// requested columns are absent, so the loop names col_0/col_1 with
+    /// data_type "text", which the Parquet schema inference maps to Utf8.
+    #[cfg(feature = "export-parquet")]
+    #[tokio::test]
+    async fn write_binary_file_parquet_without_start_falls_back_to_header() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Parquet,
+            vec![table_item("t", TableDataSource::Table)],
+        );
+        let mut source = StubSource::new(false, false, two_cols(), two_rows());
+        source.emit_start = false;
+        let dest = temp_file("out.parquet");
+        let n = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Parquet,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 2);
+        assert!(dest.exists());
+        let (fields, batches) = read_parquet(&dest);
+        assert_eq!(fields[0].name(), "col_0");
+        assert_eq!(fields[1].name(), "col_1");
+        assert_eq!(fields[0].data_type(), &DataType::Utf8);
+        assert_eq!(fields[1].data_type(), &DataType::Utf8);
+        let rows: usize = batches.iter().map(|batch| batch.num_rows()).sum();
+        assert_eq!(rows, 2);
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
