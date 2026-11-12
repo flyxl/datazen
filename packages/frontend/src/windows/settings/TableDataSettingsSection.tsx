@@ -3,6 +3,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { useSettingsStore } from '../../stores/settingsStore';
 import type { DefaultTableSort, GridDensity, RowCountMode } from '../../types/settings';
 import { SettingRow, ToggleRow } from './settingsUi';
+import { ValuePresentationSettingsSection } from './ValuePresentationSettingsSection';
 
 const ROW_COUNT_MODES: readonly RowCountMode[] = ['auto', 'exact', 'estimated', 'none'];
 
@@ -129,6 +130,10 @@ export function TableDataSettingsSection() {
         onChange={(v) => void updateSettings({ gridAutoHideScrollbar: v })}
         testId="settings-grid-auto-hide-scrollbar"
       />
+
+      {/* Time display (issue-32 T07): the global timestamp default lives
+          here because this is the "Data Browsing" section. */}
+      <ValuePresentationSettingsSection />
     </>
   );
 }

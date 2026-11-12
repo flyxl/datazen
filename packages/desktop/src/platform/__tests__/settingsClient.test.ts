@@ -69,6 +69,7 @@ const HOST_BLOB: AppSettings = {
   gridAlternatingRows: true,
   gridRowNumbers: true,
   gridAutoHideScrollbar: false,
+  valuePresentation: { version: 1, renderers: {} },
   onboarding: { completed: true, version: 1 },
   aiPluginToolIds: ['acme.demo'],
   aiWorkflowToolIds: ['daily-report'],

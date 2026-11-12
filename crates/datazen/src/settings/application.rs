@@ -143,6 +143,7 @@ mod tests {
             monitor: Default::default(),
             onboarding: None,
             row_count_mode: "auto".into(),
+            value_presentation: Default::default(),
         }
     }
 
@@ -283,5 +284,43 @@ mod tests {
             SettingsError::Repository(SettingsRepositoryError::BackendUnavailable(message))
                 if message == "write failed"
         ));
+    }
+
+    #[test]
+    fn old_payload_without_value_presentation_loads_with_default() {
+        let mut value = serde_json::to_value(sample_settings()).expect("serialize");
+        value
+            .as_object_mut()
+            .expect("settings serialize to an object")
+            .remove("valuePresentation");
+        let loaded: SharedSettings =
+            serde_json::from_value(value).expect("old payload without the field loads");
+        assert_eq!(
+            loaded.value_presentation,
+            crate::settings::domain::ValuePresentationSettings::default()
+        );
+        assert_eq!(loaded, sample_settings());
+    }
+
+    #[tokio::test]
+    async fn normalize_does_not_reject_unknown_value_presentation_version() {
+        let repository = RecordingRepository {
+            stored: Mutex::new(sample_settings()),
+            fail: false,
+        };
+        let service = SettingsService::new(Arc::new(repository));
+        let mut settings = sample_settings();
+        settings.value_presentation.version = 99;
+        settings.value_presentation.renderers.insert(
+            "acme.future".into(),
+            serde_json::json!({"enabled": true, "options": {"format": "iso"}}),
+        );
+
+        let saved = service
+            .save(settings.clone())
+            .await
+            .expect("unknown value-presentation version must not be rejected");
+        assert_eq!(saved, settings);
+        assert_eq!(service.read().await.expect("read after save"), settings);
     }
 }

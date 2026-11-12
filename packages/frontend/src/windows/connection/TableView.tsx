@@ -71,6 +71,7 @@ import {
   DEFAULT_TABLE_SORT,
 } from '../../types/settings';
 import { Spinner } from '../../components/ui/Spinner';
+import type { ValuePresentationSnapshot } from '../../lib/valuePresentation/presentationPlan';
 
 /** Stable empty fallbacks: a fresh array per render would defeat the memos below. */
 const EMPTY_ROWS: Record<string, unknown>[] = [];
@@ -124,6 +125,15 @@ interface TableViewProps {
    * shipped before DB-16.
    */
   onEditInSql?: () => void;
+  /**
+   * Value-presentation snapshot (issue-32 T05, design §7). Omitted ⇒
+   * DataTable falls back to its default snapshot and the grid renders
+   * exactly as before (default-off); T06 will supply the real snapshot.
+   * The source is derived below, never faked: without a `connectionId`
+   * there is no source at all (BUG-004: a missing field must not collide
+   * with an empty string).
+   */
+  presentationSnapshot?: ValuePresentationSnapshot;
 }
 
 export function TableView({
@@ -138,6 +148,7 @@ export function TableView({
   readOnlyReason: readOnlyReasonProp,
   dataExportCapability,
   onEditInSql,
+  presentationSnapshot,
 }: TableViewProps) {
   const { t } = useI18n();
   const savedConnection = useConnectionStore((s) =>
@@ -1250,6 +1261,25 @@ export function TableView({
         cellEditing={editing.cellEditing}
         cellTypeHints={editing.cellTypeHints}
         enableSetNull={cellWritesEnabled}
+        // Value presentation (issue-32 T05): the snapshot threads through,
+        // the source is this panel's own table identity — and only when a
+        // connectionId exists; without one there is no source to fake.
+        // BUG-006: `database` is a plain string here (`''` when both the
+        // panel and the session leave it unset), while the aside passes
+        // `undefined` for the same absence — the same override then hit
+        // aside-side and missed grid-side. Normalise `''` to `undefined`
+        // in the source only; the `database` prop itself is untouched.
+        presentationSnapshot={presentationSnapshot}
+        presentationSource={
+          connectionId
+            ? {
+                connectionId,
+                database: database === '' ? undefined : database,
+                namespace: schema ?? undefined,
+                table: tableName,
+              }
+            : undefined
+        }
         onRowSelect={actions.selectRow}
         onSelectAll={actions.toggleSelectAll}
         onRowClick={actions.setDetailRow}

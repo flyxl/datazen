@@ -41,6 +41,14 @@
 | 外键跳转 | `src/lib/fkNavigation.ts`、`src/lib/fkNavigationActions.ts`、`src/hooks/useTableForeignKeys.ts` | 目标解析、跳转 9 步、`FK_NAV_MAX_DEPTH` |
 | 结果网格编辑判定 | `src/lib/resultEditability.ts`、`src/stores/panelResultEdit.ts` | `resolveResultWriteBack`、`RESULT_ORIGIN_WRITE_BACK_ENABLED` |
 | 错误码注册表 | `src/lib/gridErrors.ts` | `GRID_ERROR_CODES`、`classifyGridError` |
+| 值呈现：贡献契约与集合注册 | `packages/extension-points/src/valuePresentation/` | `ValuePresentationContribution`、`ValuePresentationRegistry`、`valuePresentationRegistry`、`registerValuePresentation`（见 §14） |
+| 值呈现：宿主计划与快照 | `src/lib/valuePresentation/presentationPlan.ts`、`settings.ts` | `buildColumnPresentationPlans`、`columnOverrideKey`、`buildValuePresentationSnapshot`、`ValuePresentationSnapshot` |
+| 值呈现：时间贡献与时间数学 | `src/lib/valuePresentation/timestampContribution.ts`、`timestampFormat.ts`、`temporalMath.ts`、`timestampConfig.ts` | `datazen.timestamp`、`formatTimestampOutput`、`validateTimestampOptions` |
+| 值呈现：规则与列覆盖 | `src/lib/valuePresentation/valuePresentationRules.ts`、`columnOverrides.ts`、`columnPresentation.ts`、`valuePresentationSave.ts` | `validateValuePresentationRule`、`MAX_VALUE_PRESENTATION_RULES`、`saveColumnOverride`、`MAX_VALUE_PRESENTATION_COLUMN_OVERRIDES` |
+| 值呈现：宿主 hook 与会话 | `src/hooks/useValuePresentation.ts`、`useValuePresentationSnapshot.ts`、`useColumnPresentationSession.ts` | `useValuePresentation`、`useValuePresentationSnapshot` |
+| 值呈现：列配置面板 | `src/components/DataTable/ColumnPresentationDialog.tsx` | `ColumnPresentationDialog`（表头右键与 aside 共用） |
+| 值呈现：设置面板 | `src/windows/settings/ValuePresentationSettingsSection.tsx`、`ValuePresentationRuleEditor.tsx` | `ValuePresentationSettingsSection`（挂在 `TableDataSettingsSection` 末尾） |
+| 值呈现：持久化 | `src/stores/settingsStore.ts`、`crates/datazen/src/settings/domain.rs` | `updateValuePresentationSettings`、`ValuePresentationSettings` |
 
 ## 2. 组件结构与虚拟化
 
@@ -514,3 +522,75 @@
 | 行数三态 | `totalRowsDisplay`、页脚文案、估算提示、计数按钮可见性 |
 | 外键组规则 | `fkNavigation.ts` 聚合、箭头落点、跳转 9 步、面包屑标签 |
 | 结果网格只读原因 | `GridReadOnlyReason`（Rust）↔ `GridReadOnlyReason`（TS）、`query.gridReadOnly.*` 文案、`data-dt-grid-readonly-reason` |
+| 值呈现：开关/格式/规则/覆盖 | `presentationPlan.ts` 的计划决策顺序、`valuePresentationRules.ts` 的上限与受限正则、`columnOverrides.ts` 的键与 200 上限、`settingsStore.ts` 的保存链路、§14 的已知局限 |
+
+## 14. 值呈现（共享展示管线）
+
+网格与右侧详情（aside）对同一字段使用**同一份展示计划**，而不是各写一套格式化。面向用户的行为见 [数据浏览指南](../../features/data-browsing-guide.zh-CN.md) §14；扩展侧的契约见 [扩展性](extensibility.md) §1.7。
+
+### 14.1 管线
+
+```text
+设置仓储 → 宿主配置快照（ValuePresentationSnapshot）
+驱动类型 / 可靠列来源 ────────────┐
+展示贡献集合与环境快照 ──────────┤
+                                 ↓
+                      面板列展示计划（prepare，每列一次）
+                                 ↓
+原值 ───────────────→ 统一 present(value)
+                           ↙           ↘
+                     GridCell         DetailPanel
+```
+
+- **快照是唯一输入**：`useValuePresentationSnapshot` 从 `settingsStore` 读 `valuePresentation` 配置，经 `buildValuePresentationSnapshot`（`settings.ts`）验证、组装成不可变快照（`revision` / `environment` / `configs` / `enabledRendererIds` / `overrides` / `rules`）。三处提供方——`PanelContentRenderer`、表/视图面板的 `ContentView`、查询结果的 `ResultTableView`——各自调用该 hook，把快照经 props 传给 `DataTable`；aside 的 `DetailPanel` 经 `ContentViewDrawers` 拿到同一面板的快照与来源（`presentationSource`）。组件不直接读 Store 或 IPC。
+- **计划每列建一次**：`buildColumnPresentationPlans` 在面板层为每列调一次贡献的 `prepare`，得到 `ColumnPresentationPlan`；`GridCell` 把本列计划传给 `CellRenderer`，`DetailPanel` 的 `FieldRow` 用同一计划渲染非编辑态。计划缓存键包含来源身份、列元数据版本、配置修订、贡献修订、locale、localTimeZone；覆盖内容与 enabled 集合只经 `snapshot.revision` 间接覆盖——调用方必须保证「快照内容变则 revision 变」。
+- **贡献缺失与异常都回退**：计划状态分 `ready` / `default` / `disabled` / `missing-renderer` / `invalid-config` / `raw` / `error` 等；贡献缺失、配置无效、prepare 抛错时，计划回退到宿主默认展示，不崩溃、不让整列消失。`PreparedPresentation` 本身无状态字段，宿主无法从一个 `ready` 计划区分「真实 prepared」与「固定返回 unchanged 的 stub」——不要以 `status === 'ready'` 判断「可渲染」。
+
+### 14.2 计划决策顺序
+
+对一列建计划时，按以下顺序决策（`presentationPlan.ts` 文件头与 `buildOneColumnPlan`）：
+
+1. **列覆盖 `raw`** → 状态 `raw`：跳过自定义展示，不调 `prepare`，不继续匹配规则。
+2. **列覆盖 `custom`** → 显式选择目标渲染器，**bypass enabled 门禁**：总开关关闭时已保存的 custom 覆盖仍生效（见指南 §14.1 的提醒）。贡献缺失 → `missing-renderer`；options 无效 → `invalid-config`。
+3. **规则**：按列表顺序首条命中冻结整列解释；命中后不因某一行解析失败回落到低优先级规则。规则只在 prepare 阶段编译一次，不逐行编译。
+4. **默认路由**：原生时间列默认路由至 `datazen.timestamp`；需先过 enabled 门禁（不在 `enabledRendererIds` → `disabled`），再检查贡献在场与全局配置有效性。
+5. 其余列（或以上皆未命中）→ 状态 `default`，走原有 `CellRenderer` 分支。
+
+`CellRenderer` 的顺序是：编辑态（原值）→ NULL → 展示计划的 `text` 结果 → 原有 bool / number / datetime / json / 默认分支。因此显式时间计划可以在默认数字分支返回前处理 BIGINT 列。`DetailPanel` 的 `InlineFieldEditor` 进入编辑时从原值初始化，取消恢复展示，提交仍用既有类型校验；格式化文本永不写进行数据或 pending changes。
+
+### 14.3 原值不变量
+
+- 显示为时间**不改变原值**：编辑器用原值初始化；复制、排序、过滤、导出、提交继续用原值；格式变化不产生脏记录。
+- 呈示文本的悬停提示（`title`）是原值字符串；aside 的呈示用可换行的 `<pre>`，grid 的呈示 span 用 CSS `truncate`（无 120 字 JS 截断，与 datetime 分支一致）。
+- NULL 在计划之前返回，仍渲染为斜体 `NULL`；但 `semanticKind` 为 `other` 的列的 NULL 由贡献判定为 `not-applicable`，整列不适用时间展示，宿主默认分支仍正常渲染 NULL。
+- `0` 与负 Unix 时间按有效值处理；不安全整数、非法数字字符串、越界时间返回 `unchanged`，不猜测、不截断。
+
+### 14.4 覆盖键与来源隔离
+
+`columnOverrideKey(source)`（`presentationPlan.ts`）=`JSON.stringify([connectionId, database ?? null, namespace ?? null, table, column])`：数据库与命名空间**缺失记为 `null`，与空字符串区分**；标识符大小写保留，不统一小写。键里不含用户/组织作用域——作用域由存储层负责；面板 ID、会话 ID 不能作为持久化身份。
+
+- 覆盖上限 **200 条**：解析已存记录时超限只保留前 200 条有效条目（静默截断）；保存新键超限则拒绝（`too-many-overrides`），不截断。
+- 无可靠表列来源的查询结果列没有覆盖（`source === undefined` 时查不到覆盖），面板禁用「保存为表列覆盖」；规则仍可用，但表级条件（连接/数据库/namespace/表）要求来源字段存在，缺失来源不能满足表级条件。
+- 会话覆盖（`columnPresentationSession.ts`）是未保存的本地层：面板保存时先写会话、持久成功后清除同一键的会话条目；`applySessionColumnOverrides` 把会话合并进快照时 revision +1。
+
+### 14.5 配置模型与持久化
+
+`valuePresentation` 是版本化用户偏好（当前 `version: 1`），按渲染器 ID 命名空间保存，全局时间项在 `renderers['datazen.timestamp']`（`{ enabled, options }`，options 为 `TimestampOptions`）；规则在顶层 `rules` 数组（顺序即优先级）；列覆盖在顶层 `columnOverrides` 记录（键见 §14.4）。
+
+- Rust 侧（`crates/datazen/src/settings/domain.rs` 的 `ValuePresentationSettings`）只做不透明存储：`version` / `renderers` / `rules` / `columnOverrides` 四个定型字段，`renderers` 与 `columnOverrides` 的值是 `serde_json::Value`；**结构体没有 `flatten` 兜底字段**，未知顶层字段经该结构体往返不会保留。未知版本（`version !== 1`）在前端解析层不解析 `rules` / `columnOverrides`、只保留 `version` 与 `renderers`；前端保存链路（`updateValuePresentationSettings`，T11-BUG-001 修复后）在未知版本时以权威响应里的原始对象作更新基底，透传未知字段。
+- 保存只写实际改过的路径：`updateValuePresentationSettings(updater)` 先重读权威配置，再对重读值应用只改一条路径的 updater（`withTimestampRenderer` / `withValuePresentationRules` / `withColumnOverride`），其余字段取重读值；成功后发布 `datazen:settings-changed` **纯通知**（不携带可信快照），接收端（`useSettingsSync`）重新读取权威配置。设置页对外部更新只提示、不静默丢弃草稿，用户点「重新加载已保存的设置」才覆盖；`ColumnPresentationDialog` 打开期间不提示外部更新（保存时走 updater，只改本列路径，不覆盖他窗字段）。
+- 全局配置体不在宿主边界验证：宿主只认版本与存在性，配置体有效性由贡献 `prepare` 内部校验；custom 覆盖的 options 在宿主边界验证。两者分工不同，不要写反。
+
+### 14.6 跨窗口同步与停用回退
+
+- 保存后跨窗口同步靠 §14.5 的通知 + 权威重读；规则列表整体是一条路径，两窗同时改规则仍是 last-writer-wins；重读→保存之间仍有毫秒级竞态窗口（保存无修订号/ETag 条件），彻底关闭需后端版本条件更新。
+- 停用是 **per-JS-context** 的：注册中心是每个窗口一份实例，一窗 `unregister` 不影响另一窗的注册表；跨窗口同步的范围是配置，不是注册表状态。停用后本窗口内 grid 与 aside 同时回退默认展示，配置保留；重新注册后恢复，无旧缓存残留（计划缓存键含贡献修订）。
+- 通用 `updateSettings(partial)` 仍从本窗口本地 store 合并整份后保存，不走 T11 的重读 + updater 路径；两窗口同时改不同通用字段时仍可能互相覆盖。
+
+### 14.7 已知局限（实现现状，非待办）
+
+- locale 格式的 `Intl.DateTimeFormat` 在每格新建（`timestampFormat.ts`），prepare 只解析配置与时区、未缓存格式器；计划缓存只避免跨渲染重复 `prepare`，不改变每格 Intl 构造。
+- `data.valuePresentation` 能力名没有代码级常量声明（`contracts.ts:133` 注明由宿主侧声明）；不要在新代码里再散落该字符串，应补常量后统一引用。
+- `valuePresentationRegistry` 是全局单例；`useValuePresentation` 的缓存键不含 registry 实例身份，同 revision 下替换 registry 实例不会重建计划——实际使用中 registry 从不替换，hook 的 registry 入参主要为测试注入。
+- 规则解析超限静默截断（>20 条只留前 20；>200 条覆盖只留前 200）：一份已存超限记录经解析 → 面板保存后，超限部分会被丢掉。
+- `settingsStore.ts` 与 `GridCell.tsx` 的函数覆盖率在 T05/T06 验证时恰为 80.0（踩线），改动这两文件时须先确认覆盖率仍在门禁之上；`useValuePresentationSnapshot.ts` 等 hook 文件不在根 vitest 覆盖 include 清单内，无单文件覆盖率数字。

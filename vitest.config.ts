@@ -115,7 +115,10 @@ export default defineConfig({
       // SDK package tests run on the Host toolchain too (PRD F8).
       'packages/wapp-sdk/__tests__/**/*.test.{ts,tsx}',
       'packages/extension-points/__tests__/**/*.test.{ts,tsx}',
-      'packages/extension-points/src/__tests__/**/*.test.{ts,tsx}',
+      // issue-32: EP module directories keep their tests colocated
+      // (src/<module>/__tests__/), matching the frontend convention; the
+      // generalized pattern still covers the top-level src/__tests__.
+      'packages/extension-points/src/**/__tests__/**/*.test.{ts,tsx}',
       'packages/driver-sdk/__tests__/**/*.test.{ts,tsx}',
       'packages/backend-client/__tests__/**/*.test.{ts,tsx}',
       'packages/ui/src/__tests__/**/*.test.{ts,tsx}',

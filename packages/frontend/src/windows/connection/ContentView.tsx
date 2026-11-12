@@ -8,6 +8,7 @@ import {
   type MutableRefObject,
 } from 'react';
 import { useI18n } from '../../hooks/useI18n';
+import { useValuePresentationSnapshot } from '../../hooks/useValuePresentationSnapshot';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { useSchemaStore, useConnectionSchemaField } from '../../stores/schemaStore';
 import { useTableDataStore } from '../../stores/tableDataStore';
@@ -86,6 +87,10 @@ export function ContentView({
   const { t } = useI18n();
   const { contribution: queryBuilder } = useQueryBuilderContribution();
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
+  // Value presentation (issue-32 T06): the stored snapshot threads through
+  // to the drawers' DetailPanel; the grid next to it gets the same snapshot
+  // from PanelContentRenderer, so cell and aside stay consistent.
+  const presentationSnapshot = useValuePresentationSnapshot();
 
   const allPanels = usePanelStore((s) => s.panels);
   const activePanelId = usePanelStore((s) => s.activePanelId);
@@ -720,6 +725,7 @@ export function ContentView({
           onDraftConsumed={handleDraftConsumed}
           onRunCode={handleRunCodeFromChat}
           onNewQuery={handleNewQueryFromChat}
+          presentationSnapshot={presentationSnapshot}
         />
       </div>
 

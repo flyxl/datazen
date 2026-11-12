@@ -43,6 +43,7 @@ import { bootstrapDefaultIconResolver } from '../lib/bootstrapIconResolver';
 import { startLocaleSync } from '../lib/localeSync';
 import { getCachedTableSchema } from '../lib/schemaCache';
 import { initProExtensions } from '../extensions/generated-pro';
+import { registerBundledValuePresentationContributions } from '../lib/valuePresentation/registerBundledContributions';
 import { useSchemaStore } from '../stores/schemaStore';
 import { useTableDataStore } from '../stores/tableDataStore';
 import { useFkNavigationStore } from '../stores/fkNavigationStore';
@@ -163,6 +164,11 @@ export function startSharedApp(options: StartSharedAppOptions = {}): void {
 
   bootstrapDefaultIconResolver();
   initProExtensions();
+  // Value presentation (issue-32 T06): register the core built-in
+  // contributions (currently only `datazen.timestamp`) once at startup.
+  // Activation only registers capability (design §6); config loading stays
+  // with the settings store / snapshot hook. Never unregistered.
+  registerBundledValuePresentationContributions();
   // Keep the viewport anchored at (0,0): programmatic scrolls (WebDriver
   // scrollIntoView/click, focus()) must never shift the fixed chrome.
   installDocumentScrollLock();
