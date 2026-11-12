@@ -30,7 +30,13 @@ import {
   type PresentationPlanColumn,
   type ValuePresentationSnapshot,
 } from '../presentationPlan';
-import { TIMESTAMP_CONTRIBUTION_ID, timestampContribution, type TimestampOptions } from '../index';
+import {
+  TIMESTAMP_CONTRIBUTION_ID,
+  timestampContribution,
+  validateValuePresentationRule,
+  type TimestampOptions,
+  type ValuePresentationRule,
+} from '../index';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -93,6 +99,7 @@ interface SnapshotOptions {
   configs?: Readonly<Record<string, VersionedPresentationConfig>>;
   enabled?: ReadonlyArray<string>;
   overrides?: Readonly<Record<string, ColumnPresentationOverride>>;
+  rules?: ReadonlyArray<ValuePresentationRule>;
 }
 
 function makeSnapshot(options: SnapshotOptions = {}): ValuePresentationSnapshot {
@@ -104,7 +111,7 @@ function makeSnapshot(options: SnapshotOptions = {}): ValuePresentationSnapshot 
     },
     enabledRendererIds: options.enabled ?? [TIMESTAMP_CONTRIBUTION_ID],
     overrides: options.overrides ?? {},
-    rules: [],
+    rules: options.rules ?? [],
   };
 }
 
@@ -824,5 +831,133 @@ describe('PRD anchors end-to-end (via plan.present)', () => {
       text: '2024-01-15T19:00:00+08:00',
       interpretation: 'unix',
     });
+  });
+});
+
+describe('buildColumnPresentationPlans: global rules (issue-32 T08)', () => {
+  function rule(input: unknown): ValuePresentationRule {
+    const validated = validateValuePresentationRule(input);
+    if (!validated.ok) {
+      throw new Error(`test fixture invalid: ${JSON.stringify(validated.problems)}`);
+    }
+    return validated.rule;
+  }
+
+  const unixMsRule = () =>
+    rule({
+      name: 'unix-ms',
+      enabled: true,
+      match: {
+        column: { kind: 'regex', source: '^(created_at|updated_at)$' },
+        databaseTypeName: { kind: 'exact', value: 'BIGINT' },
+      },
+      options: UNIX_MS_SHANGHAI_ISO_TZ,
+    });
+
+  it('applies the first matching rule to a number column and records matchedRuleName', () => {
+    const snapshot = makeSnapshot({ rules: [unixMsRule()] });
+    const plan = planFor([col('created_at', 'BIGINT')], snapshot, makeRegistry());
+    expect(plan.status).toBe('ready');
+    expect(plan.matchedRuleName).toBe('unix-ms');
+    expect(plan.present(1705316400000)).toEqual({
+      kind: 'text',
+      text: '2024-01-15T19:00:00+08:00',
+      interpretation: 'unix',
+    });
+  });
+
+  it('skips disabled rules and falls through to the global default', () => {
+    const disabled = rule({
+      name: 'off',
+      enabled: false,
+      match: { column: { kind: 'exact', value: 'created_at' } },
+      options: UNIX_MS_SHANGHAI_ISO_TZ,
+    });
+    const snapshot = makeSnapshot({ rules: [disabled] });
+    const plan = planFor([col('created_at', 'BIGINT')], snapshot, makeRegistry());
+    expect(plan.status).toBe('default');
+    expect(plan.matchedRuleName).toBeUndefined();
+  });
+
+  it('freezes on the first matching rule even when a later rule would also match', () => {
+    const first = unixMsRule();
+    const second = rule({
+      name: 'unix-s',
+      enabled: true,
+      match: { column: { kind: 'exact', value: 'created_at' } },
+      options: {
+        interpretation: { kind: 'unix', unit: 'seconds' },
+        format: 'iso',
+        displayTimeZone: { kind: 'utc' },
+      },
+    });
+    const snapshot = makeSnapshot({ rules: [first, second] });
+    const plan = planFor([col('created_at', 'BIGINT')], snapshot, makeRegistry());
+    expect(plan.matchedRuleName).toBe('unix-ms');
+    expect(plan.present(1705316400000)).toEqual({
+      kind: 'text',
+      text: '2024-01-15T19:00:00+08:00',
+      interpretation: 'unix',
+    });
+  });
+
+  it('does not apply a rule whose table condition lacks a source (query results)', () => {
+    const tableRule = rule({
+      name: 'orders-only',
+      enabled: true,
+      match: { table: { kind: 'exact', value: 'orders' } },
+      options: UNIX_MS_SHANGHAI_ISO_TZ,
+    });
+    const snapshot = makeSnapshot({ rules: [tableRule] });
+    // 注意：planFor 的 source 参数缺省为 SOURCE，此处必须直调构建器传 undefined。
+    const plans = buildColumnPresentationPlans(
+      { columns: [col('created_at', 'BIGINT')], source: undefined, snapshot },
+      makeRegistry(),
+    );
+    const plan = plans[0];
+    expect(plan?.status).toBe('default');
+    expect(plan?.matchedRuleName).toBeUndefined();
+  });
+
+  it('applies a column-only rule without a source', () => {
+    const snapshot = makeSnapshot({ rules: [unixMsRule()] });
+    const plans = buildColumnPresentationPlans(
+      { columns: [col('created_at', 'BIGINT')], source: undefined, snapshot },
+      makeRegistry(),
+    );
+    const plan = plans[0];
+    expect(plan?.status).toBe('ready');
+    expect(plan?.matchedRuleName).toBe('unix-ms');
+  });
+
+  it('a column override beats a matching rule', () => {
+    const snapshot = makeSnapshot({
+      rules: [unixMsRule()],
+      overrides: {
+        [columnOverrideKey({ ...SOURCE, column: 'created_at' })]: { mode: 'raw' },
+      },
+    });
+    const plan = planFor([col('created_at', 'BIGINT')], snapshot, makeRegistry());
+    expect(plan.status).toBe('raw');
+    expect(plan.matchedRuleName).toBeUndefined();
+  });
+
+  it('falls through to the global default when no rule matches', () => {
+    const snapshot = makeSnapshot({ rules: [unixMsRule()] });
+    const plan = planFor([col('created_at', 'timestamptz')], snapshot, makeRegistry());
+    expect(plan.status).toBe('ready');
+    expect(plan.matchedRuleName).toBeUndefined();
+    expect(plan.present('2026-01-15T14:30:00Z')).toEqual({
+      kind: 'text',
+      text: '2026-01-15T22:30:00+08:00',
+      interpretation: 'native',
+    });
+  });
+
+  it('does not apply rules when the contribution is missing', () => {
+    const snapshot = makeSnapshot({ rules: [unixMsRule()] });
+    const plan = planFor([col('created_at', 'BIGINT')], snapshot, makeRegistry(false));
+    expect(plan.status).toBe('default');
+    expect(plan.matchedRuleName).toBeUndefined();
   });
 });

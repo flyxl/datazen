@@ -17,9 +17,11 @@ import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/re
 import { ValuePresentationRegistryImpl } from '@datazen/extension-points';
 import {
   timestampContribution,
+  validateValuePresentationRule,
   type StoredRendererSettings,
   type StoredValuePresentationSettings,
   type TimestampOptions,
+  type ValuePresentationRule,
 } from '../../../lib/valuePresentation/index';
 import {
   ValuePresentationSettingsSection,
@@ -98,6 +100,27 @@ const NATIVE_ISO: TimestampOptions = {
   displayTimeZone: { kind: 'local' },
 };
 
+/** PRD §3.1 例规则（T08 UI 用例共用）。 */
+const VALID_RULE_INPUT = {
+  name: 'unix-ms',
+  enabled: true,
+  match: {
+    column: { kind: 'regex', source: '^(created_at|updated_at)$' },
+    databaseTypeName: { kind: 'exact', value: 'BIGINT' },
+  },
+  options: {
+    interpretation: { kind: 'unix', unit: 'milliseconds' },
+    format: 'iso-tz',
+    displayTimeZone: { kind: 'iana', name: 'Asia/Shanghai' },
+  },
+};
+
+function validRule(name = 'unix-ms'): ValuePresentationRule {
+  const validated = validateValuePresentationRule({ ...VALID_RULE_INPUT, name });
+  if (!validated.ok) throw new Error('test fixture invalid');
+  return validated.rule;
+}
+
 describe('ValuePresentationSettingsSection', () => {
   beforeEach(() => {
     mocks.state.valuePresentation = { version: 1, renderers: {} };
@@ -130,6 +153,7 @@ describe('ValuePresentationSettingsSection', () => {
       expect(mocks.updateValuePresentationSettings).toHaveBeenCalledWith({
         version: 1,
         renderers: { [TIMESTAMP_ID]: { enabled: true, options: NATIVE_ISO } },
+        rules: [],
       }),
     );
     expect(screen.getByTestId('value-presentation-saved')).toBeInTheDocument();
@@ -167,6 +191,7 @@ describe('ValuePresentationSettingsSection', () => {
             },
           },
         },
+        rules: [],
       }),
     );
   });
@@ -309,6 +334,7 @@ describe('ValuePresentationSettingsSection', () => {
             },
           },
         },
+        rules: [],
       }),
     );
   });
@@ -375,6 +401,7 @@ describe('ValuePresentationSettingsSection', () => {
       expect(mocks.updateValuePresentationSettings).toHaveBeenCalledWith({
         version: 1,
         renderers: { [TIMESTAMP_ID]: { enabled: false, options: NATIVE_ISO } },
+        rules: [],
       }),
     );
   });
@@ -388,18 +415,19 @@ describe('ValuePresentationSettingsSection', () => {
     );
   });
 
-  it('rules list renders future rules by name without crashing', () => {
+  it('rules list renders valid stored rules and drops invalid entries', () => {
     setStored({
       version: 1,
       renderers: {},
-      rules: [{ name: 'created_at → Unix milliseconds' }, {}],
+      rules: [VALID_RULE_INPUT, { name: 'broken' }, {}],
     } as unknown as StoredValuePresentationSettings);
     renderSection();
     fireEvent.click(screen.getByTestId('value-presentation-rules-toggle'));
+    expect(screen.getByTestId('value-presentation-rules-list')).toHaveTextContent('unix-ms');
     expect(screen.getByTestId('value-presentation-rules-list')).toHaveTextContent(
-      'created_at → Unix milliseconds',
+      'column=/^(created_at|updated_at)$/, type=BIGINT',
     );
-    expect(screen.getByTestId('value-presentation-rules-list')).toHaveTextContent('#2');
+    expect(screen.getByTestId('value-presentation-rules-list')).not.toHaveTextContent('broken');
   });
 
   it('a non-array future rules field degrades to the empty state', () => {
@@ -444,6 +472,7 @@ describe('ValuePresentationSettingsSection', () => {
             },
           },
         },
+        rules: [],
       }),
     );
   });
@@ -556,5 +585,357 @@ describe('computeTimestampPreview (pure)', () => {
       reason: 'invalid-locale',
       sample: '2026-01-15T14:30:00Z',
     });
+  });
+});
+
+describe('ValuePresentationSettingsSection rules editor (issue-32 T08)', () => {
+  beforeEach(() => {
+    mocks.state.valuePresentation = { version: 1, renderers: {} };
+    mocks.updateValuePresentationSettings.mockClear();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  function setField(testId: string, value: string) {
+    fireEvent.change(screen.getByTestId(testId), { target: { value } });
+  }
+
+  function openRules() {
+    fireEvent.click(screen.getByTestId('value-presentation-rules-toggle'));
+  }
+
+  function openNewRuleEditor() {
+    openRules();
+    fireEvent.click(screen.getByTestId('value-presentation-rule-add'));
+  }
+
+  /** 按 PRD 例填表：列名正则 + BIGINT，显示时区 Asia/Shanghai。 */
+  function fillPrdRule() {
+    setField('value-presentation-rule-name', 'unix-ms');
+    setField('value-presentation-rule-column-value', '^(created_at|updated_at)$');
+    setField('value-presentation-rule-type-value', 'BIGINT');
+    setField('value-presentation-rule-display-timezone', 'iana');
+    setField('value-presentation-rule-display-iana-name', 'Asia/Shanghai');
+  }
+
+  function fillSample(value: string, column: string, type = 'BIGINT') {
+    setField('value-presentation-rule-sample-value', value);
+    setField('value-presentation-rule-sample-column', column);
+    setField('value-presentation-rule-sample-type', type);
+  }
+
+  it('adds a rule with a live sample preview and saves it to the store', async () => {
+    renderSection();
+    openNewRuleEditor();
+    // 未填样本时仍允许配置，只提示无样本，不编造数据。
+    expect(screen.getByTestId('value-presentation-rule-sample-preview')).toHaveTextContent(
+      'settings.valuePresentation.rules.editor.sampleHint',
+    );
+    fillPrdRule();
+    fillSample('1705316400000', 'created_at');
+    expect(screen.getByTestId('value-presentation-rule-sample-match')).toHaveTextContent(
+      'settings.valuePresentation.rules.editor.matchHit',
+    );
+    expect(screen.getByTestId('value-presentation-rule-sample-preview')).toHaveTextContent(
+      '2024-01-15T19:00:00+08:00',
+    );
+    fireEvent.click(screen.getByTestId('value-presentation-rule-save'));
+    expect(screen.queryByTestId('value-presentation-rule-editor')).toBeNull();
+    expect(screen.getByTestId('value-presentation-rule-0')).toHaveTextContent('unix-ms');
+    await clickSave();
+    await waitFor(() =>
+      expect(mocks.updateValuePresentationSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rules: [
+            {
+              name: 'unix-ms',
+              enabled: true,
+              match: {
+                column: { kind: 'regex', source: '^(created_at|updated_at)$' },
+                databaseTypeName: { kind: 'exact', value: 'BIGINT' },
+              },
+              options: {
+                interpretation: { kind: 'unix', unit: 'milliseconds' },
+                format: 'iso-tz',
+                displayTimeZone: { kind: 'iana', name: 'Asia/Shanghai' },
+              },
+            },
+          ],
+        }),
+      ),
+    );
+  });
+
+  it('shows the sample miss state when the sample does not match', () => {
+    renderSection();
+    openNewRuleEditor();
+    fillPrdRule();
+    fillSample('1705316400000', 'other_col');
+    expect(screen.getByTestId('value-presentation-rule-sample-match')).toHaveTextContent(
+      'settings.valuePresentation.rules.editor.matchMiss',
+    );
+  });
+
+  it('rejects an invalid regex in the editor and keeps the editor open', () => {
+    renderSection();
+    openNewRuleEditor();
+    setField('value-presentation-rule-name', 'bad-regex');
+    setField('value-presentation-rule-column-value', '(a+)+');
+    fireEvent.click(screen.getByTestId('value-presentation-rule-save'));
+    expect(screen.getByTestId('value-presentation-rule-error')).toHaveTextContent(
+      'settings.valuePresentation.rules.editor.invalidRule',
+    );
+    expect(screen.getByTestId('value-presentation-rule-editor')).toBeInTheDocument();
+    expect(screen.queryByTestId('value-presentation-rules-list')).toBeNull();
+  });
+
+  it('rejects a rule with no match condition', () => {
+    renderSection();
+    openNewRuleEditor();
+    setField('value-presentation-rule-name', 'no-match');
+    fireEvent.click(screen.getByTestId('value-presentation-rule-save'));
+    expect(screen.getByTestId('value-presentation-rule-error')).toHaveTextContent(
+      'settings.valuePresentation.rules.editor.invalidRule',
+    );
+    expect(screen.getByTestId('value-presentation-rule-error')).toHaveTextContent('match');
+  });
+
+  it('rejects a duplicate rule name', () => {
+    setStored({ version: 1, renderers: {}, rules: [validRule()] });
+    renderSection();
+    openNewRuleEditor();
+    fillPrdRule();
+    fireEvent.click(screen.getByTestId('value-presentation-rule-save'));
+    expect(screen.getByTestId('value-presentation-rule-error')).toHaveTextContent(
+      'settings.valuePresentation.rules.editor.duplicateName',
+    );
+    expect(screen.getByTestId('value-presentation-rule-editor')).toBeInTheDocument();
+  });
+
+  it('edits an existing rule', async () => {
+    setStored({ version: 1, renderers: {}, rules: [validRule()] });
+    renderSection();
+    openRules();
+    fireEvent.click(screen.getByTestId('value-presentation-rule-edit-0'));
+    setField('value-presentation-rule-name', 'unix-ms-v2');
+    fireEvent.click(screen.getByTestId('value-presentation-rule-save'));
+    expect(screen.getByTestId('value-presentation-rule-0')).toHaveTextContent('unix-ms-v2');
+    await clickSave();
+    await waitFor(() =>
+      expect(mocks.updateValuePresentationSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ rules: [expect.objectContaining({ name: 'unix-ms-v2' })] }),
+      ),
+    );
+  });
+
+  it('deletes a rule and saves the empty list', async () => {
+    setStored({ version: 1, renderers: {}, rules: [validRule()] });
+    renderSection();
+    openRules();
+    fireEvent.click(screen.getByTestId('value-presentation-rule-delete-0'));
+    expect(screen.getByTestId('value-presentation-rules-empty')).toBeInTheDocument();
+    await clickSave();
+    await waitFor(() =>
+      expect(mocks.updateValuePresentationSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ rules: [] }),
+      ),
+    );
+  });
+
+  it('disabling a rule keeps it listed and saves enabled:false', async () => {
+    setStored({ version: 1, renderers: {}, rules: [validRule()] });
+    renderSection();
+    openRules();
+    fireEvent.click(screen.getByTestId('value-presentation-rule-toggle-0'));
+    expect(screen.getByTestId('value-presentation-rule-0')).toHaveTextContent(
+      'settings.valuePresentation.rules.disabled',
+    );
+    await clickSave();
+    await waitFor(() =>
+      expect(mocks.updateValuePresentationSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ rules: [expect.objectContaining({ enabled: false })] }),
+      ),
+    );
+  });
+
+  it('reorders rules with up/down', async () => {
+    setStored({
+      version: 1,
+      renderers: {},
+      rules: [validRule('first'), validRule('second')],
+    });
+    renderSection();
+    openRules();
+    expect(screen.getByTestId('value-presentation-rule-0')).toHaveTextContent('first');
+    fireEvent.click(screen.getByTestId('value-presentation-rule-down-0'));
+    expect(screen.getByTestId('value-presentation-rule-0')).toHaveTextContent('second');
+    expect(screen.getByTestId('value-presentation-rule-1')).toHaveTextContent('first');
+    await clickSave();
+    await waitFor(() =>
+      expect(mocks.updateValuePresentationSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rules: [
+            expect.objectContaining({ name: 'second' }),
+            expect.objectContaining({ name: 'first' }),
+          ],
+        }),
+      ),
+    );
+  });
+
+  it('a save failure reports the error and keeps the rule draft', async () => {
+    renderSection();
+    openNewRuleEditor();
+    fillPrdRule();
+    fireEvent.click(screen.getByTestId('value-presentation-rule-save'));
+    mocks.updateValuePresentationSettings.mockRejectedValueOnce(new Error('boom'));
+    await clickSave();
+    await waitFor(() =>
+      expect(screen.getByTestId('value-presentation-error')).toHaveTextContent(
+        'settings.valuePresentation.saveFailed',
+      ),
+    );
+    expect(screen.queryByTestId('value-presentation-saved')).toBeNull();
+    // 草稿保留：规则仍在列表里。
+    expect(screen.getByTestId('value-presentation-rule-0')).toHaveTextContent('unix-ms');
+  });
+
+  it('fills every editor field and saves the full rule', async () => {
+    renderSection();
+    openNewRuleEditor();
+    setField('value-presentation-rule-name', 'full-rule');
+    fireEvent.click(screen.getByTestId('value-presentation-rule-enabled'));
+    setField('value-presentation-rule-connection', 'conn-1');
+    setField('value-presentation-rule-database', 'shop');
+    setField('value-presentation-rule-namespace', 'public');
+    setField('value-presentation-rule-table-mode', 'regex');
+    setField('value-presentation-rule-table-value', '^orders$');
+    fireEvent.click(screen.getByTestId('value-presentation-rule-table-ignore-case'));
+    setField('value-presentation-rule-column-mode', 'regex');
+    setField('value-presentation-rule-column-value', '^(created_at|updated_at)$');
+    fireEvent.click(screen.getByTestId('value-presentation-rule-column-ignore-case'));
+    setField('value-presentation-rule-type-mode', 'regex');
+    setField('value-presentation-rule-type-value', '^bigint$');
+    fireEvent.click(screen.getByTestId('value-presentation-rule-type-ignore-case'));
+    setField('value-presentation-rule-interpretation', 'text');
+    setField('value-presentation-rule-format', 'locale');
+    setField('value-presentation-rule-display-timezone', 'utc');
+    setField('value-presentation-rule-source-timezone', 'iana');
+    setField('value-presentation-rule-source-iana-name', 'Asia/Shanghai');
+    setField('value-presentation-rule-sample-value', '2026-01-15 14:30:00');
+    setField('value-presentation-rule-sample-column', 'created_at');
+    setField('value-presentation-rule-sample-type', 'BIGINT');
+    setField('value-presentation-rule-sample-table', 'orders');
+    setField('value-presentation-rule-sample-connection', 'conn-1');
+    setField('value-presentation-rule-sample-database', 'shop');
+    setField('value-presentation-rule-sample-namespace', 'public');
+    // 文本解释不适用于 number 列：命中但 present 回退 unchanged。
+    expect(screen.getByTestId('value-presentation-rule-sample-match')).toHaveTextContent(
+      'settings.valuePresentation.rules.editor.matchHit',
+    );
+    expect(screen.getByTestId('value-presentation-rule-sample-preview')).toHaveTextContent(
+      'settings.valuePresentation.preview.unchanged',
+    );
+    fireEvent.click(screen.getByTestId('value-presentation-rule-save'));
+    expect(screen.queryByTestId('value-presentation-rule-editor')).toBeNull();
+    await clickSave();
+    await waitFor(() =>
+      expect(mocks.updateValuePresentationSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rules: [
+            {
+              name: 'full-rule',
+              enabled: false,
+              match: {
+                connectionId: 'conn-1',
+                database: 'shop',
+                namespace: 'public',
+                table: { kind: 'regex', source: '^orders$', flags: 'i' },
+                column: { kind: 'regex', source: '^(created_at|updated_at)$', flags: 'i' },
+                databaseTypeName: { kind: 'regex', source: '^bigint$', flags: 'i' },
+              },
+              options: {
+                interpretation: { kind: 'text' },
+                format: 'locale',
+                displayTimeZone: { kind: 'utc' },
+                sourceTimeZone: { kind: 'iana', name: 'Asia/Shanghai' },
+              },
+            },
+          ],
+        }),
+      ),
+    );
+  });
+
+  it('previews a matched text rule through the wall-clock path', () => {
+    renderSection();
+    openNewRuleEditor();
+    setField('value-presentation-rule-name', 'text-rule');
+    setField('value-presentation-rule-column-value', 'start_at');
+    setField('value-presentation-rule-type-value', 'TIMESTAMP');
+    setField('value-presentation-rule-interpretation', 'text');
+    setField('value-presentation-rule-format', 'iso-tz');
+    setField('value-presentation-rule-display-timezone', 'utc');
+    setField('value-presentation-rule-source-timezone', 'iana');
+    setField('value-presentation-rule-source-iana-name', 'Asia/Shanghai');
+    setField('value-presentation-rule-sample-value', '2026-01-15 14:30:00');
+    setField('value-presentation-rule-sample-column', 'start_at');
+    setField('value-presentation-rule-sample-type', 'TIMESTAMP');
+    expect(screen.getByTestId('value-presentation-rule-sample-match')).toHaveTextContent(
+      'settings.valuePresentation.rules.editor.matchHit',
+    );
+    expect(screen.getByTestId('value-presentation-rule-sample-preview')).toHaveTextContent(
+      '2026-01-15T06:30:00+00:00',
+    );
+  });
+
+  it('shows the sample preview as unavailable when the contribution is missing', () => {
+    renderSection(new ValuePresentationRegistryImpl());
+    openNewRuleEditor();
+    fillPrdRule();
+    fillSample('1705316400000', 'created_at');
+    expect(screen.getByTestId('value-presentation-rule-sample-preview')).toHaveTextContent(
+      'settings.valuePresentation.preview.unavailable',
+    );
+  });
+
+  it('disables adding at the rule limit and shows the limits note', () => {
+    const rules = Array.from({ length: 20 }, (_, i) => validRule(`rule-${i}`));
+    setStored({ version: 1, renderers: {}, rules });
+    renderSection();
+    openRules();
+    expect(screen.getByTestId('value-presentation-rule-add')).toBeDisabled();
+    expect(screen.getByText('settings.valuePresentation.rules.limits')).toBeInTheDocument();
+  });
+});
+
+describe('ValuePresentationRuleEditor pure preview (issue-32 T08)', () => {
+  it('computeRuleSamplePreview covers no-sample / miss / unavailable / unchanged / matched', async () => {
+    const { computeRuleSamplePreview } = await import('../ValuePresentationRuleEditor');
+    const rule = validRule();
+    const environment = { locale: 'en-US', localTimeZone: 'UTC' };
+    const base = {
+      rule,
+      sampleColumn: 'created_at',
+      sampleTypeName: 'BIGINT',
+      contribution: timestampContribution,
+      environment,
+    };
+    expect(computeRuleSamplePreview({ ...base, sampleValue: '' })).toEqual({ kind: 'no-sample' });
+    expect(computeRuleSamplePreview({ ...base, sampleValue: '1705316400000' })).toEqual({
+      kind: 'matched',
+      text: '2024-01-15T19:00:00+08:00',
+      interpretation: 'unix',
+    });
+    expect(
+      computeRuleSamplePreview({ ...base, sampleValue: '1705316400000', sampleColumn: 'other' }),
+    ).toEqual({ kind: 'not-matched' });
+    expect(
+      computeRuleSamplePreview({ ...base, sampleValue: '1705316400000', contribution: undefined }),
+    ).toEqual({ kind: 'unavailable' });
+    const unchanged = computeRuleSamplePreview({ ...base, sampleValue: 'not-a-number' });
+    expect(unchanged.kind).toBe('matched-unchanged');
   });
 });

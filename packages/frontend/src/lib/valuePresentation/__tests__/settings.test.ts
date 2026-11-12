@@ -263,3 +263,95 @@ describe('buildValuePresentationSnapshot', () => {
     expect(snapshot.configs[TIMESTAMP_CONTRIBUTION_ID]).toBeUndefined();
   });
 });
+
+describe('parseStoredValuePresentationSettings: rules (issue-32 T08)', () => {
+  const RULE = {
+    name: 'unix-ms',
+    enabled: true,
+    match: {
+      column: { kind: 'regex', source: '^(created_at|updated_at)$' },
+      databaseTypeName: { kind: 'exact', value: 'BIGINT' },
+    },
+    options: UNIX_MS_SHANGHAI,
+  };
+
+  it('defaults to no rules key for an old payload without rules', () => {
+    const parsed = parseStoredValuePresentationSettings({ version: 1, renderers: {} });
+    expect(parsed).toEqual({ version: 1, renderers: {} });
+    expect(parsed.rules).toBeUndefined();
+  });
+
+  it('keeps valid rules and drops invalid entries', () => {
+    const parsed = parseStoredValuePresentationSettings({
+      version: 1,
+      renderers: {},
+      rules: [RULE, { ...RULE, name: '' }, 'not-a-rule', { ...RULE, name: 'second' }],
+    });
+    expect(parsed.rules?.map((r) => r.name)).toEqual(['unix-ms', 'second']);
+  });
+
+  it('ignores a non-array rules field', () => {
+    expect(parseStoredValuePresentationSettings({ version: 1, renderers: {}, rules: 'x' })).toEqual(
+      { version: 1, renderers: {} },
+    );
+  });
+
+  it('does not parse rules for an unknown top-level version', () => {
+    const parsed = parseStoredValuePresentationSettings({
+      version: 99,
+      renderers: {},
+      rules: [RULE],
+    });
+    expect(parsed).toEqual({ version: 99, renderers: {} });
+    expect(parsed.rules).toBeUndefined();
+  });
+});
+
+describe('buildValuePresentationSnapshot: rules (issue-32 T08)', () => {
+  const RULE_INPUT = {
+    name: 'unix-ms',
+    enabled: true,
+    match: { column: { kind: 'exact', value: 'created_at' } },
+    options: UNIX_MS_SHANGHAI,
+  };
+
+  function storedWithRules(enabled: boolean): StoredValuePresentationSettings {
+    return {
+      version: 1,
+      renderers: {
+        [TIMESTAMP_CONTRIBUTION_ID]: { enabled, options: NATIVE_UTC_ISO },
+      },
+      rules: [RULE_INPUT] as unknown as StoredValuePresentationSettings['rules'],
+    };
+  }
+
+  it('carries validated rules when the timestamp renderer is enabled', () => {
+    const snapshot = buildValuePresentationSnapshot(
+      storedWithRules(true),
+      ENV,
+      registryWithTimestamp(),
+      1,
+    );
+    expect(snapshot.rules.map((r) => r.name)).toEqual(['unix-ms']);
+  });
+
+  it('carries no rules when the timestamp renderer is disabled', () => {
+    const snapshot = buildValuePresentationSnapshot(
+      storedWithRules(false),
+      ENV,
+      registryWithTimestamp(),
+      1,
+    );
+    expect(snapshot.rules).toEqual([]);
+  });
+
+  it('carries no rules for an unknown top-level version', () => {
+    const snapshot = buildValuePresentationSnapshot(
+      { ...storedWithRules(true), version: 99 },
+      ENV,
+      registryWithTimestamp(),
+      1,
+    );
+    expect(snapshot.rules).toEqual([]);
+  });
+});

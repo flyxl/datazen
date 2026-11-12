@@ -107,6 +107,49 @@ fn value_presentation_round_trips_through_shared_settings() {
     assert_eq!(fresh.value_presentation, local.value_presentation);
 }
 
+/// Issue-32 T08: `value_presentation.rules` is an opaque JSON array on the
+/// Rust side (the frontend validates rule entries); it must survive a
+/// shared-settings round trip and a JSON round trip instead of being
+/// dropped by the typed struct — otherwise the next load would lose the
+/// rules the user just saved.
+#[test]
+fn value_presentation_rules_round_trip_through_shared_settings() {
+    let mut local = AppSettings::default();
+    local.value_presentation = datazen::settings::ValuePresentationSettings {
+        version: 1,
+        renderers: serde_json::Map::new(),
+        rules: vec![serde_json::json!({
+            "name": "unix-ms",
+            "enabled": true,
+            "match": {
+                "column": { "kind": "regex", "source": "^(created_at|updated_at)$" },
+                "databaseTypeName": { "kind": "exact", "value": "BIGINT" },
+            },
+            "options": {
+                "interpretation": { "kind": "unix", "unit": "milliseconds" },
+                "format": "iso-tz",
+                "displayTimeZone": { "kind": "iana", "name": "Asia/Shanghai" },
+            },
+        })],
+    };
+    let shared = local.shared_settings();
+    assert_eq!(shared.value_presentation, local.value_presentation);
+    assert_eq!(
+        serde_json::to_value(&shared).unwrap()["valuePresentation"]["rules"][0]["name"],
+        "unix-ms"
+    );
+
+    let mut fresh = AppSettings::default();
+    fresh.apply_shared_settings(shared).unwrap();
+    assert_eq!(fresh.value_presentation, local.value_presentation);
+    assert_eq!(fresh.value_presentation.rules.len(), 1);
+
+    // JSON round trip keeps the rules too.
+    let reparsed: AppSettings =
+        serde_json::from_value(serde_json::to_value(&local).unwrap()).unwrap();
+    assert_eq!(reparsed.value_presentation, local.value_presentation);
+}
+
 /// Old settings files carry no `valuePresentation` key; they must load as
 /// the default (version 1, no renderers), not fail.
 #[test]
@@ -120,6 +163,8 @@ fn old_settings_file_without_value_presentation_defaults() {
     );
     assert_eq!(parsed.value_presentation.version, 1);
     assert!(parsed.value_presentation.renderers.is_empty());
+    // T08: old files carry no rules either — they load as an empty list.
+    assert!(parsed.value_presentation.rules.is_empty());
 }
 
 /// Pre-promotion builds stored the value opaquely in the `extra` catch-all,
