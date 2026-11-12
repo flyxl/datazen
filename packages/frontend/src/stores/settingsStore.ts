@@ -239,7 +239,14 @@ function normalizeLoadedSettings(raw: Partial<AppSettings>): AppSettings {
  * 有的 valuePresentation，见 valuePresentationSave.ts 文件头裁决 3）。
  */
 async function readAuthoritativeSettings(): Promise<AppSettings | null> {
-  const raw: unknown = await settingsCommands.getSettings().catch((): null => null);
+  // await + try/catch（不用 .catch()）：getSettings 恒返回 Promise，
+  // 但同步抛错或返回非 Promise 时也不应把保存链路一起拖垮。
+  let raw: unknown;
+  try {
+    raw = await settingsCommands.getSettings();
+  } catch {
+    return null;
+  }
   if (typeof raw !== 'object' || raw === null) return null;
   if ((raw as Partial<AppSettings>).valuePresentation === undefined) return null;
   return normalizeLoadedSettings(raw as Partial<AppSettings>);
