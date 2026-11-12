@@ -2038,6 +2038,195 @@ mod tests {
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
+    /// T7 boundary: a multi-table Parquet plan never enters the text merge
+    /// branch — the same binary guard that refuses concatenated XLSX bytes
+    /// refuses concatenated Parquet, format-agnostic by construction.
+    #[tokio::test]
+    async fn run_single_export_refuses_parquet_multi_plan() {
+        // The guard keys on `is_binary()`, not on a specific format, so this
+        // test is deliberately ungated: it must hold in every build.
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Parquet,
+            vec![
+                table_item("a", TableDataSource::Table),
+                table_item("b", TableDataSource::Table),
+            ],
+        );
+        let plans = build_file_plans(&req).unwrap();
+        assert_eq!(plans.len(), 2);
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.parquet");
+        let err = crate::export::run_single_export(
+            &NoopEvents,
+            &source,
+            &req,
+            &plans,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Validation(ref m) if m.contains("zip")),
+            "unexpected error: {err:?}"
+        );
+        assert!(!dest.exists());
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    /// T7 boundary: multi-table Parquet rides the zip container — two
+    /// `.parquet` entries, never merged — and every entry reads back through
+    /// the parquet crate's reader with its own schema and rows.
+    #[cfg(feature = "export-parquet")]
+    #[tokio::test]
+    async fn run_zip_export_writes_parquet_entries() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Parquet,
+            vec![
+                table_item("a", TableDataSource::Table),
+                table_item("b", TableDataSource::Table),
+            ],
+        );
+        let plans = build_file_plans(&req).unwrap();
+        assert_eq!(plans.len(), 2);
+        // request() carries the sqlite dialect: int4 is unmapped there, so
+        // the Integer values infer Int64; text maps to Utf8.
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.zip");
+        let n = crate::export::run_zip_export(
+            &NoopEvents,
+            &source,
+            &req,
+            &plans,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 4);
+        let file = std::fs::File::open(&dest).unwrap();
+        let mut zip = zip::ZipArchive::new(file).unwrap();
+        let names: Vec<String> = zip.file_names().map(str::to_string).collect();
+        assert_eq!(
+            names,
+            vec!["a.parquet".to_string(), "b.parquet".to_string()]
+        );
+        for entry_name in ["a.parquet", "b.parquet"] {
+            let mut entry = zip.by_name(entry_name).unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut entry, &mut bytes).unwrap();
+            let entry_path = dest.parent().unwrap().join(entry_name);
+            std::fs::write(&entry_path, &bytes).unwrap();
+            let (fields, batches) = read_parquet(&entry_path);
+            assert_eq!(fields[0].name(), "id");
+            assert_eq!(fields[0].data_type(), &DataType::Int64);
+            assert_eq!(fields[1].name(), "name");
+            assert_eq!(fields[1].data_type(), &DataType::Utf8);
+            let rows: usize = batches.iter().map(|batch| batch.num_rows()).sum();
+            assert_eq!(rows, 2, "{entry_name} reads back both rows");
+        }
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    /// T7 boundary (PRD F3 tail rule through the real dispatch): the first
+    /// batch fixes the schema (int4 → Int32 under postgresql), and a later
+    /// batch carrying a String in that column fails the whole run with a
+    /// validation error naming the column, the expected type and the value
+    /// kind — never a silent rewrite, never a silent NULL.
+    #[cfg(feature = "export-parquet")]
+    #[tokio::test]
+    async fn write_binary_file_parquet_type_conflict_fails_the_run_with_column_name() {
+        struct TwoBatchSource {
+            driver: Arc<dyn DatabaseDriver>,
+            columns: Vec<ColumnInfo>,
+            first: Vec<Vec<Option<Value>>>,
+            second: Vec<Vec<Option<Value>>>,
+        }
+        #[async_trait::async_trait]
+        impl ExportSource for TwoBatchSource {
+            async fn resolve_source(
+                &self,
+                _session_id: &str,
+            ) -> Result<(Arc<dyn DatabaseDriver>, bool, bool), ExportError> {
+                Ok((self.driver.clone(), false, false))
+            }
+            async fn stream_query(
+                &self,
+                _session_id: &str,
+                sql: &str,
+                _target: datazen_driver_api::SqlTarget<'_>,
+                callback: QueryStreamCallback,
+            ) -> Result<(), ExportError> {
+                callback(QueryStreamEvent::StatementStart {
+                    index: 0,
+                    sql: sql.to_string(),
+                    columns: self.columns.clone(),
+                });
+                callback(QueryStreamEvent::Rows {
+                    index: 0,
+                    rows: self.first.clone(),
+                });
+                callback(QueryStreamEvent::Rows {
+                    index: 1,
+                    rows: self.second.clone(),
+                });
+                callback(QueryStreamEvent::StatementEnd {
+                    index: 0,
+                    rows_affected: None,
+                    execution_time_ms: 0,
+                    truncated: false,
+                });
+                callback(QueryStreamEvent::Done { total_time_ms: 0 });
+                Ok(())
+            }
+        }
+        let mut req = request(
+            ExportMode::DataOnly,
+            DataFormat::Parquet,
+            vec![table_item(
+                "t",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        req.database_type = Some("postgresql".into());
+        let source = TwoBatchSource {
+            driver: test_driver(),
+            columns: vec![col("id", "int4"), col("name", "text")],
+            first: vec![vec![
+                Some(Value::Integer(1)),
+                Some(Value::String("a".into())),
+            ]],
+            second: vec![vec![Some(Value::String("boom".into())), None]],
+        };
+        let dest = temp_file("out.parquet");
+        let err = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Parquet,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Validation(ref m)
+                if m.contains("binary export failed")
+                    && m.contains("id")
+                    && m.contains("int32")
+                    && m.contains("String")),
+            "unexpected error: {err:?}"
+        );
+        // The partial file is left for the run-level caller's cleanup — the
+        // same writer/caller split the xlsx cancel tests document.
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
     #[test]
     fn prepare_export_forces_zip_for_multi_plan_xlsx() {
         let req = request(

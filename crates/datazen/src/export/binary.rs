@@ -1483,4 +1483,72 @@ mod parquet_tests {
         assert_eq!(total_rows(&batches), 1);
         cleanup(&dest);
     }
+
+    /// Manual acceptance helper (plan §T7): writes one representative file
+    /// covering every column type and value kind — plus nulls, unicode and
+    /// row-group compression — to a stable path under the temp dir, for
+    /// read-back by pyarrow and DuckDB outside the Rust suite. `#[ignore]`d
+    /// so normal runs and CI suites skip it; run explicitly with
+    /// `cargo test parquet_acceptance -- --ignored --nocapture` and point the
+    /// external readers at the printed path. The file self-verifies through
+    /// the parquet reader first, so a manual run is itself an acceptance.
+    #[test]
+    #[ignore = "manual acceptance helper (plan §T7): run with --ignored to (re)write the file"]
+    fn parquet_acceptance_dump_writes_representative_file() {
+        let dir = std::env::temp_dir().join("datazen-parquet-acceptance");
+        std::fs::create_dir_all(&dir).expect("create acceptance dir");
+        let dest = dir.join("representative.parquet");
+        let mut fmt = ParquetFormatter::new(pg_dialect(), dest.clone());
+        fmt.begin(&[
+            col("id", "int4"),
+            col("score", "float8"),
+            col("name", "text"),
+            col("active", "bool"),
+            col("payload", "bytea"),
+            col("created", "timestamptz"),
+            col("meta", "jsonb"),
+        ])
+        .unwrap();
+        fmt.rows(&[
+            vec![
+                Some(Value::Integer(1)),
+                Some(Value::Float(1.5)),
+                Some(Value::String("alpha, βeta".into())),
+                Some(Value::Bool(true)),
+                Some(Value::Bytes(vec![0x00, 0xff, 0xfe])),
+                Some(Value::Timestamp("2026-11-12 08:00:00".into())),
+                Some(Value::Json(serde_json::json!({"k": 1}))),
+            ],
+            vec![
+                Some(Value::Integer(-42)),
+                Some(Value::Float(-0.25)),
+                Some(Value::String("quote \" and | pipe".into())),
+                Some(Value::Bool(false)),
+                None,
+                Some(Value::Timestamp("2026-11-12 09:30:00".into())),
+                None,
+            ],
+            vec![None, None, None, None, None, None, None],
+        ])
+        .unwrap();
+        fmt.finish().unwrap();
+        let (fields, batches) = read_parquet(&dest);
+        assert_eq!(
+            total_rows(&batches),
+            3,
+            "three rows including the all-null row"
+        );
+        assert_eq!(fields[0].data_type(), &DataType::Int32);
+        assert_eq!(fields[4].data_type(), &DataType::Binary);
+        let last = batches.last().expect("at least one batch");
+        for column in 0..7 {
+            assert!(
+                last.column(column).is_null(2),
+                "column {column} row 3 is null"
+            );
+        }
+        println!("parquet acceptance file: {}", dest.display());
+        // Deliberately not cleaned up: the point is handing it to pyarrow /
+        // DuckDB, which delete it after recording their read-back results.
+    }
 }
