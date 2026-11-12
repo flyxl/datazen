@@ -3,6 +3,10 @@
 //! Hosts implement [`WorkspaceApi`]. The memory workspace is only a stand-in so the
 //! interface can run before the desktop and HTTP adapters exist.
 
+mod tabs;
+
+pub use tabs::{Tab, TabKind, Tabs};
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConnectionProfile {
     pub id: String,

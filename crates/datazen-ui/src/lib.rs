@@ -7,7 +7,7 @@ mod data_grid;
 mod sql_editor;
 
 use data_grid::DataGrid;
-use datazen_ui_api::{MemoryWorkspace, WorkspaceApi};
+use datazen_ui_api::{MemoryWorkspace, TabKind, Tabs, WorkspaceApi};
 use rune::tok::{self, type_};
 use rune::{App, AppSpec, Cx, El, Ime, KeyEvent, Tx, col, row, text};
 use sql_editor::SqlEditor;
@@ -83,6 +83,7 @@ struct AppState {
     sql: SqlEditor,
     grid: DataGrid,
     workspace: MemoryWorkspace,
+    tabs: Tabs,
 }
 
 impl Default for AppState {
@@ -92,6 +93,7 @@ impl Default for AppState {
             sql: SqlEditor::new(),
             grid: DataGrid::new(),
             workspace: MemoryWorkspace::new(),
+            tabs: Tabs::new(),
         }
     }
 }
@@ -109,6 +111,22 @@ impl AppState {
             self.grid.load_page(&page);
             self.active = Section::DataBrowser;
         }
+    }
+
+    fn open_table_tab(&mut self, title: &str) -> Option<u32> {
+        self.tabs.open(TabKind::Table, title)
+    }
+
+    fn open_query_tab(&mut self, title: &str) -> Option<u32> {
+        self.tabs.open(TabKind::Query, title)
+    }
+
+    fn select_tab(&mut self, id: u32) -> bool {
+        self.tabs.select(id)
+    }
+
+    fn close_tab(&mut self, id: u32) -> bool {
+        self.tabs.close(id)
     }
 
     fn commit_grid_edit(&mut self) {
@@ -180,6 +198,39 @@ fn page_body(state: &AppState, theme: tok::Theme) -> El {
                 .color(theme.text_secondary)
                 .w_full(),
         )
+}
+
+fn tab_strip(state: &AppState, theme: tok::Theme) -> El {
+    let mut strip = row().key("tab-strip").w_full().h(32.0).gap(6.0).center_y();
+    for tab in state.tabs.tabs() {
+        let id = tab.id;
+        let selected = state.tabs.selected().is_some_and(|open| open.id == id);
+        strip = strip.child(
+            row()
+                .key(format!("tab-{id}"))
+                .h(28.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(if selected { tok::accent(0, true) } else { theme.control_off })
+                .child(text(tab.title.clone()).font(type_::LABEL).color(theme.text))
+                .on_press(move |state: &mut AppState| {
+                    state.select_tab(id);
+                }),
+        );
+        strip = strip.child(
+            row()
+                .key(format!("tab-close-{id}"))
+                .h(28.0)
+                .px(6.0)
+                .center_y()
+                .child(text("×").font(type_::LABEL).color(theme.text))
+                .on_press(move |state: &mut AppState| {
+                    state.close_tab(id);
+                }),
+        );
+    }
+    strip
 }
 
 fn connection_list(state: &AppState, theme: tok::Theme) -> El {
@@ -270,6 +321,7 @@ fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
         .gap(16.0)
         .fill(theme.bg)
         .child(header)
+        .child(tab_strip(state, theme))
         .child(
             text(state.active.description())
                 .font(type_::LABEL)
@@ -494,5 +546,26 @@ mod tests {
         runtime.state.grid.editor.insert("-edited");
         runtime.state.commit_grid_edit();
         assert_eq!(runtime.state.workspace.open_table("customers").unwrap().rows[0][1], "customer-0-edited");
+    }
+
+    #[test]
+    fn tab_strip_selects_and_closes_table_tabs() {
+        let mut runtime = runtime();
+        let first = runtime.state.open_table_tab("customers").unwrap();
+        let second = runtime.state.open_table_tab("orders").unwrap();
+        runtime.frame(0.0);
+
+        let (x, y) = runtime.find(&format!("tab-{first}")).expect("first tab");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.tabs.selected().unwrap().id, first);
+
+        let (x, y) = runtime.find(&format!("tab-close-{second}")).expect("close second");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.state.tabs.tabs().iter().all(|tab| tab.id != second));
+        assert_eq!(runtime.state.tabs.selected().unwrap().id, first);
     }
 }
