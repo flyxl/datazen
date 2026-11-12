@@ -1,19 +1,18 @@
 ## Current Task
-- **任务**: 阶段 1，UI 端口和第一条数据路径
+- **任务**: S1 标签模型
 - **负责人**: Coder Agent
-- **状态**: `datazen-ui-api` 和内存工作区已接上 DataGrid。未跑 Tester。
+- **状态**: 未开始。计划已按一天一件重写。
 - **计划**: [plan.md](plan.md)
 
-## Completed Work
-- [x] SQL Editor POC
-- [x] DataGrid POC（虚拟行、列窗口、编辑、TSV）
-- [x] 全量迁移计划 `docs/development/rune-migration/plan.md`
-- [x] `crates/datazen-ui-api`：连接、打开表、暂存单元格
-- [ ] 阶段 2 工作区壳（对象树和标签页）
-- [ ] 阶段 3 接到真实 table browsing / editing
+## 约束
+React 页面和组件保留。不删除、不改成空壳、不把现有入口摘掉。Rune 是并行的另一套界面。
 
-## 阶段 1
-连接列表来自 `WorkspaceApi`。点 Local Postgres 后，网格装入 `customers` 这一页，不再显示占位的 `r0c0`。提交编辑会写回端口里的那一页。桌面和 HTTP 适配器还没换进去。
+## Completed Work
+- [x] R0 Rune crate 能编译
+- [x] R1 SQL Editor POC
+- [x] R2 DataGrid POC
+- [x] R3 UI 端口和内存表页
+- [ ] S1 标签模型
 
 ## Verification
 `cargo test -p datazen-ui-api --lib`：1 passed。`cargo test -p datazen-ui --lib`：17 passed。
