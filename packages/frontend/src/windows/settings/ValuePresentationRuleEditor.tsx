@@ -12,8 +12,8 @@
  * 2. 样本预览与运行时同一条路：验证后的规则 options 经贡献
  *    prepare/present 计算命中结果与预览（computeRuleSamplePreview）。
  *    样本全空时仍允许配置，显示「无样本」提示，不编造真实数据。
- * 3. 下拉框用原生 <select>（密集表单，data-testid 可直测）；面板
- *    其它控件沿用共享 Select，两者视觉样式保持一致。
+ * 3. 下拉框用共享 Select（components/ui/Select，listbox 触发器；
+ *    data-testid 落在触发器上，选项经 select-option 直测）。
  * 4. 正则大小写开关：regex 模式下「忽略大小写」对应 flags 'i'，
  *    其余 flags 一律不提供（受限子集，见 valuePresentationRules）。
  */
@@ -25,6 +25,7 @@ import type {
   ValuePresentationContribution,
 } from '@datazen/extension-points';
 import { Button } from '../../components/ui/Button';
+import { Select } from '../../components/ui/Select';
 import { useI18n } from '../../hooks/useI18n';
 import {
   matchValuePresentationRule,
@@ -168,6 +169,31 @@ function patternInput(
 
 function timeZoneSpec(kind: 'local' | 'utc' | 'iana', ianaName: string): TimeZoneSpec {
   return kind === 'iana' ? { kind: 'iana', name: ianaName.trim() } : { kind };
+}
+
+function isPatternMode(value: string): value is PatternMode {
+  return value === 'exact' || value === 'regex';
+}
+
+function isInterpretationChoice(value: string): value is InterpretationChoice {
+  return (
+    value === 'native' ||
+    value === 'unix-seconds' ||
+    value === 'unix-milliseconds' ||
+    value === 'text'
+  );
+}
+
+function isTimestampOutputFormat(value: string): value is TimestampOutputFormat {
+  return value === 'iso' || value === 'iso-tz' || value === 'locale';
+}
+
+function isTimeZoneKindChoice(value: string): value is 'local' | 'utc' | 'iana' {
+  return value === 'local' || value === 'utc' || value === 'iana';
+}
+
+function isSourceTimeZoneChoice(value: string): value is SourceTimeZoneChoice {
+  return value === 'none' || value === 'local' || value === 'utc' || value === 'iana';
 }
 
 /** 表单拼成规则输入（unknown），唯一验证入口是 validateValuePresentationRule。 */
@@ -460,52 +486,40 @@ export function ValuePresentationRuleEditor({
           {t('settings.valuePresentation.rules.editor.optionsTitle')}
         </legend>
         <SettingRow label={t('settings.valuePresentation.rules.editor.interpretation')}>
-          <select
+          <Select
             value={form.interpretation}
-            onChange={(event) =>
-              update({ interpretation: event.target.value as InterpretationChoice })
-            }
-            className={INPUT_CLASS}
+            options={interpretationOptions}
+            onChange={(next) => {
+              if (isInterpretationChoice(next)) update({ interpretation: next });
+            }}
             data-testid="value-presentation-rule-interpretation"
-          >
-            {interpretationOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          />
         </SettingRow>
         <SettingRow label={t('settings.valuePresentation.format')}>
-          <select
+          <Select
             value={form.format}
-            onChange={(event) => update({ format: event.target.value as TimestampOutputFormat })}
-            className={INPUT_CLASS}
+            options={(['iso', 'iso-tz', 'locale'] as const).map((format) => ({
+              value: format,
+              label: t(`settings.valuePresentation.format.${format}`),
+            }))}
+            onChange={(next) => {
+              if (isTimestampOutputFormat(next)) update({ format: next });
+            }}
             data-testid="value-presentation-rule-format"
-          >
-            {(['iso', 'iso-tz', 'locale'] as const).map((format) => (
-              <option key={format} value={format}>
-                {t(`settings.valuePresentation.format.${format}`)}
-              </option>
-            ))}
-          </select>
+          />
         </SettingRow>
         <SettingRow label={t('settings.valuePresentation.displayTimeZone')}>
-          <select
+          <Select
             value={form.displayTimeZoneKind}
-            onChange={(event) =>
-              update({
-                displayTimeZoneKind: event.target.value as 'local' | 'utc' | 'iana',
-              })
-            }
-            className={INPUT_CLASS}
+            options={(['local', 'utc', 'iana'] as const).map((kind) => ({
+              value: kind,
+              label: t(`settings.valuePresentation.timeZone.${kind}`),
+            }))}
+            onChange={(next) => {
+              if (isTimeZoneKindChoice(next)) update({ displayTimeZoneKind: next });
+            }}
             data-testid="value-presentation-rule-display-timezone"
-          >
-            {(['local', 'utc', 'iana'] as const).map((kind) => (
-              <option key={kind} value={kind}>
-                {t(`settings.valuePresentation.timeZone.${kind}`)}
-              </option>
-            ))}
-          </select>
+          />
         </SettingRow>
         {form.displayTimeZoneKind === 'iana' && (
           <SettingRow label={t('settings.valuePresentation.ianaName')}>
@@ -521,23 +535,23 @@ export function ValuePresentationRuleEditor({
         )}
         {showSourceTimeZone && (
           <SettingRow label={t('settings.valuePresentation.rules.editor.sourceTimeZone')}>
-            <select
+            <Select
               value={form.sourceTimeZoneKind}
-              onChange={(event) =>
-                update({ sourceTimeZoneKind: event.target.value as SourceTimeZoneChoice })
-              }
-              className={INPUT_CLASS}
+              options={[
+                {
+                  value: 'none',
+                  label: t('settings.valuePresentation.rules.editor.sourceTimeZone.none'),
+                },
+                ...(['local', 'utc', 'iana'] as const).map((kind) => ({
+                  value: kind,
+                  label: t(`settings.valuePresentation.timeZone.${kind}`),
+                })),
+              ]}
+              onChange={(next) => {
+                if (isSourceTimeZoneChoice(next)) update({ sourceTimeZoneKind: next });
+              }}
               data-testid="value-presentation-rule-source-timezone"
-            >
-              <option value="none">
-                {t('settings.valuePresentation.rules.editor.sourceTimeZone.none')}
-              </option>
-              {(['local', 'utc', 'iana'] as const).map((kind) => (
-                <option key={kind} value={kind}>
-                  {t(`settings.valuePresentation.timeZone.${kind}`)}
-                </option>
-              ))}
-            </select>
+            />
           </SettingRow>
         )}
         {showSourceTimeZone && form.sourceTimeZoneKind === 'iana' && (
@@ -716,16 +730,20 @@ function PatternField({
   return (
     <SettingRow label={label}>
       <div className="flex items-center gap-2">
-        <select
+        <Select
           value={mode}
-          onChange={(event) => onModeChange(event.target.value as PatternMode)}
-          className="h-9 shrink-0 rounded-md border border-edge bg-surface px-2 text-sm text-fg outline-none focus:border-accent"
+          options={[
+            { value: 'exact', label: t('settings.valuePresentation.rules.editor.exact') },
+            { value: 'regex', label: t('settings.valuePresentation.rules.editor.regex') },
+          ]}
+          onChange={(next) => {
+            if (isPatternMode(next)) onModeChange(next);
+          }}
+          fitContent
+          className="shrink-0"
+          title={label}
           data-testid={modeTestId}
-          aria-label={label}
-        >
-          <option value="exact">{t('settings.valuePresentation.rules.editor.exact')}</option>
-          <option value="regex">{t('settings.valuePresentation.rules.editor.regex')}</option>
-        </select>
+        />
         <input
           type="text"
           value={value}

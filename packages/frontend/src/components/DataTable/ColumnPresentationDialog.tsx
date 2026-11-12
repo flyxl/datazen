@@ -45,6 +45,7 @@ import type {
 import { valuePresentationRegistry } from '@datazen/extension-points';
 import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
+import { Select } from '../ui/Select';
 import { useI18n } from '../../hooks/useI18n';
 import { useSettingsStore } from '../../stores/settingsStore';
 import type { CellTypeHints } from '../../lib/cellTypes';
@@ -578,81 +579,63 @@ export function ColumnPresentationDialog({
         {draft.mode === 'custom' && (
           <div className="space-y-3">
             <div>
-              <label
-                htmlFor="column-presentation-interpretation"
-                className="mb-1 block text-sm font-medium text-fg"
-              >
+              <span className="mb-1 block text-sm font-medium text-fg">
                 {t('settings.valuePresentation.rules.editor.interpretation')}
-              </label>
-              <select
-                id="column-presentation-interpretation"
+              </span>
+              <Select
                 value={draft.interpretation}
-                onChange={(event) => {
-                  if (isInterpretationChoice(event.target.value)) {
-                    updateDraft({ interpretation: event.target.value });
+                options={INTERPRETATIONS.map((interpretation) => ({
+                  value: interpretation,
+                  label: t(`settings.valuePresentation.preview.source.${interpretation}`),
+                }))}
+                onChange={(next) => {
+                  if (isInterpretationChoice(next)) {
+                    updateDraft({ interpretation: next });
                   }
                 }}
-                className={INPUT_CLASS}
+                title={t('settings.valuePresentation.rules.editor.interpretation')}
                 data-testid="column-presentation-interpretation"
-              >
-                {INTERPRETATIONS.map((interpretation) => (
-                  <option key={interpretation} value={interpretation}>
-                    {t(`settings.valuePresentation.preview.source.${interpretation}`)}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
 
             <div>
-              <label
-                htmlFor="column-presentation-format"
-                className="mb-1 block text-sm font-medium text-fg"
-              >
+              <span className="mb-1 block text-sm font-medium text-fg">
                 {t('settings.valuePresentation.format')}
-              </label>
-              <select
-                id="column-presentation-format"
+              </span>
+              <Select
                 value={draft.format}
-                onChange={(event) => {
-                  if (isOutputFormat(event.target.value)) {
-                    updateDraft({ format: event.target.value });
+                options={OUTPUT_FORMATS.map((format) => ({
+                  value: format,
+                  label: t(`settings.valuePresentation.format.${format}`),
+                }))}
+                onChange={(next) => {
+                  if (isOutputFormat(next)) {
+                    updateDraft({ format: next });
                   }
                 }}
-                className={INPUT_CLASS}
+                title={t('settings.valuePresentation.format')}
                 data-testid="column-presentation-format"
-              >
-                {OUTPUT_FORMATS.map((format) => (
-                  <option key={format} value={format}>
-                    {t(`settings.valuePresentation.format.${format}`)}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
 
             <div>
-              <label
-                htmlFor="column-presentation-display-timezone"
-                className="mb-1 block text-sm font-medium text-fg"
-              >
+              <span className="mb-1 block text-sm font-medium text-fg">
                 {t('settings.valuePresentation.displayTimeZone')}
-              </label>
-              <select
-                id="column-presentation-display-timezone"
+              </span>
+              <Select
                 value={draft.displayTimeZoneKind}
-                onChange={(event) => {
-                  if (isTimeZoneKindChoice(event.target.value)) {
-                    updateDraft({ displayTimeZoneKind: event.target.value });
+                options={TIME_ZONE_KINDS.map((kind) => ({
+                  value: kind,
+                  label: t(`settings.valuePresentation.timeZone.${kind}`),
+                }))}
+                onChange={(next) => {
+                  if (isTimeZoneKindChoice(next)) {
+                    updateDraft({ displayTimeZoneKind: next });
                   }
                 }}
-                className={INPUT_CLASS}
+                title={t('settings.valuePresentation.displayTimeZone')}
                 data-testid="column-presentation-display-timezone"
-              >
-                {TIME_ZONE_KINDS.map((kind) => (
-                  <option key={kind} value={kind}>
-                    {t(`settings.valuePresentation.timeZone.${kind}`)}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
 
             {draft.displayTimeZoneKind === 'iana' && (
@@ -677,31 +660,26 @@ export function ColumnPresentationDialog({
 
             {showSourceTimeZone && (
               <div>
-                <label
-                  htmlFor="column-presentation-source-timezone"
-                  className="mb-1 block text-sm font-medium text-fg"
-                >
+                <span className="mb-1 block text-sm font-medium text-fg">
                   {t('columnPresentation.sourceTimeZone')}
-                </label>
-                <select
-                  id="column-presentation-source-timezone"
+                </span>
+                <Select
                   value={draft.sourceTimeZoneKind}
-                  onChange={(event) => {
-                    if (isSourceTimeZoneChoice(event.target.value)) {
-                      updateDraft({ sourceTimeZoneKind: event.target.value });
+                  options={SOURCE_TIME_ZONE_CHOICES.map((kind) => ({
+                    value: kind,
+                    label:
+                      kind === 'none'
+                        ? t('settings.valuePresentation.rules.editor.sourceTimeZone.none')
+                        : t(`settings.valuePresentation.timeZone.${kind}`),
+                  }))}
+                  onChange={(next) => {
+                    if (isSourceTimeZoneChoice(next)) {
+                      updateDraft({ sourceTimeZoneKind: next });
                     }
                   }}
-                  className={INPUT_CLASS}
+                  title={t('columnPresentation.sourceTimeZone')}
                   data-testid="column-presentation-source-timezone"
-                >
-                  {SOURCE_TIME_ZONE_CHOICES.map((kind) => (
-                    <option key={kind} value={kind}>
-                      {kind === 'none'
-                        ? t('settings.valuePresentation.rules.editor.sourceTimeZone.none')
-                        : t(`settings.valuePresentation.timeZone.${kind}`)}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
             )}
 
