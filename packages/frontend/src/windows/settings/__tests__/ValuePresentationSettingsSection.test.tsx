@@ -604,6 +604,16 @@ describe('ValuePresentationSettingsSection rules editor (issue-32 T08)', () => {
     fireEvent.change(screen.getByTestId(testId), { target: { value } });
   }
 
+  /** 打开规则编辑器里的 listbox Select 并点选指定 label 的选项。 */
+  function setSelect(testId: string, optionLabel: string) {
+    fireEvent.click(screen.getByTestId(testId));
+    const option = screen
+      .getAllByTestId('select-option')
+      .find((el) => el.textContent?.includes(optionLabel));
+    expect(option).toBeTruthy();
+    fireEvent.mouseDown(option as HTMLElement);
+  }
+
   function openRules() {
     fireEvent.click(screen.getByTestId('value-presentation-rules-toggle'));
   }
@@ -618,7 +628,10 @@ describe('ValuePresentationSettingsSection rules editor (issue-32 T08)', () => {
     setField('value-presentation-rule-name', 'unix-ms');
     setField('value-presentation-rule-column-value', '^(created_at|updated_at)$');
     setField('value-presentation-rule-type-value', 'BIGINT');
-    setField('value-presentation-rule-display-timezone', 'iana');
+    setSelect(
+      'value-presentation-rule-display-timezone',
+      'settings.valuePresentation.timeZone.iana',
+    );
     setField('value-presentation-rule-display-iana-name', 'Asia/Shanghai');
   }
 
@@ -800,19 +813,34 @@ describe('ValuePresentationSettingsSection rules editor (issue-32 T08)', () => {
     setField('value-presentation-rule-connection', 'conn-1');
     setField('value-presentation-rule-database', 'shop');
     setField('value-presentation-rule-namespace', 'public');
-    setField('value-presentation-rule-table-mode', 'regex');
+    setSelect(
+      'value-presentation-rule-table-mode',
+      'settings.valuePresentation.rules.editor.regex',
+    );
     setField('value-presentation-rule-table-value', '^orders$');
     fireEvent.click(screen.getByTestId('value-presentation-rule-table-ignore-case'));
-    setField('value-presentation-rule-column-mode', 'regex');
+    setSelect(
+      'value-presentation-rule-column-mode',
+      'settings.valuePresentation.rules.editor.regex',
+    );
     setField('value-presentation-rule-column-value', '^(created_at|updated_at)$');
     fireEvent.click(screen.getByTestId('value-presentation-rule-column-ignore-case'));
-    setField('value-presentation-rule-type-mode', 'regex');
+    setSelect('value-presentation-rule-type-mode', 'settings.valuePresentation.rules.editor.regex');
     setField('value-presentation-rule-type-value', '^bigint$');
     fireEvent.click(screen.getByTestId('value-presentation-rule-type-ignore-case'));
-    setField('value-presentation-rule-interpretation', 'text');
-    setField('value-presentation-rule-format', 'locale');
-    setField('value-presentation-rule-display-timezone', 'utc');
-    setField('value-presentation-rule-source-timezone', 'iana');
+    setSelect(
+      'value-presentation-rule-interpretation',
+      'settings.valuePresentation.preview.source.text',
+    );
+    setSelect('value-presentation-rule-format', 'settings.valuePresentation.format.locale');
+    setSelect(
+      'value-presentation-rule-display-timezone',
+      'settings.valuePresentation.timeZone.utc',
+    );
+    setSelect(
+      'value-presentation-rule-source-timezone',
+      'settings.valuePresentation.timeZone.iana',
+    );
     setField('value-presentation-rule-source-iana-name', 'Asia/Shanghai');
     setField('value-presentation-rule-sample-value', '2026-01-15 14:30:00');
     setField('value-presentation-rule-sample-column', 'created_at');
@@ -861,10 +889,19 @@ describe('ValuePresentationSettingsSection rules editor (issue-32 T08)', () => {
     setField('value-presentation-rule-name', 'text-rule');
     setField('value-presentation-rule-column-value', 'start_at');
     setField('value-presentation-rule-type-value', 'TIMESTAMP');
-    setField('value-presentation-rule-interpretation', 'text');
-    setField('value-presentation-rule-format', 'iso-tz');
-    setField('value-presentation-rule-display-timezone', 'utc');
-    setField('value-presentation-rule-source-timezone', 'iana');
+    setSelect(
+      'value-presentation-rule-interpretation',
+      'settings.valuePresentation.preview.source.text',
+    );
+    setSelect('value-presentation-rule-format', 'settings.valuePresentation.format.iso-tz');
+    setSelect(
+      'value-presentation-rule-display-timezone',
+      'settings.valuePresentation.timeZone.utc',
+    );
+    setSelect(
+      'value-presentation-rule-source-timezone',
+      'settings.valuePresentation.timeZone.iana',
+    );
     setField('value-presentation-rule-source-iana-name', 'Asia/Shanghai');
     setField('value-presentation-rule-sample-value', '2026-01-15 14:30:00');
     setField('value-presentation-rule-sample-column', 'start_at');

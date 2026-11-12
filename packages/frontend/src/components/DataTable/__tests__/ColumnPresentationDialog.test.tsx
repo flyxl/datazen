@@ -163,10 +163,21 @@ function chooseMode(mode: 'inherit' | 'raw' | 'custom'): void {
   fireEvent.click(screen.getByTestId(`column-presentation-mode-${mode}`));
 }
 
+/** 打开一个 listbox Select（非原生 select）并点选指定 label 的选项。 */
+function pickSelectOption(testId: string, optionLabel: string): void {
+  fireEvent.click(screen.getByTestId(testId));
+  const option = screen
+    .getAllByTestId('select-option')
+    .find((el) => el.textContent?.includes(optionLabel));
+  expect(option).toBeTruthy();
+  fireEvent.mouseDown(option as HTMLElement);
+}
+
 function chooseInterpretation(value: string): void {
-  fireEvent.change(screen.getByTestId('column-presentation-interpretation'), {
-    target: { value },
-  });
+  pickSelectOption(
+    'column-presentation-interpretation',
+    `settings.valuePresentation.preview.source.${value}`,
+  );
 }
 
 beforeEach(() => {
@@ -271,9 +282,10 @@ describe('ColumnPresentationDialog preview', () => {
     chooseInterpretation('text');
     // No source time zone yet: the runtime refuses to guess (unchanged).
     expect(previewResult()).toContain('missing-source-time-zone');
-    fireEvent.change(screen.getByTestId('column-presentation-source-timezone'), {
-      target: { value: 'utc' },
-    });
+    pickSelectOption(
+      'column-presentation-source-timezone',
+      'settings.valuePresentation.timeZone.utc',
+    );
     expect(previewResult()).toBe('2026-01-15T22:30:00+08:00');
   });
 
@@ -386,9 +398,10 @@ describe('ColumnPresentationDialog save', () => {
   it('refuses to save an invalid IANA name and reports the error in place', () => {
     const { onSave } = renderDialog();
     chooseMode('custom');
-    fireEvent.change(screen.getByTestId('column-presentation-display-timezone'), {
-      target: { value: 'iana' },
-    });
+    pickSelectOption(
+      'column-presentation-display-timezone',
+      'settings.valuePresentation.timeZone.iana',
+    );
     fireEvent.change(screen.getByTestId('column-presentation-display-iana-name'), {
       target: { value: 'not a zone' },
     });
