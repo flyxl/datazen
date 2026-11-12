@@ -45,8 +45,12 @@ fn default_row_count_mode() -> String {
 /// `packages/frontend/src/lib/valuePresentation/timestampConfig.ts`;
 /// the backend-client mirror is
 /// `SettingsValuePresentationRendererSettings`).
-/// `rules` are NOT in this version's shape (T08 extends it, and the
-/// version / field handling is revisited then). Table-column overrides are
+/// `rules` (T08, design §5) is an opaque JSON array of global rules
+/// (canonical rule type:
+/// `packages/frontend/src/lib/valuePresentation/valuePresentationRules.ts`;
+/// the backend-client mirror is `SettingsValuePresentationRule`).
+/// The host never interprets rule entries; the frontend validates them.
+/// Old payloads without `rules` load as `[]`. Table-column overrides are
 /// NOT stored here either (T10).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -55,6 +59,8 @@ pub struct ValuePresentationSettings {
     pub version: u32,
     #[serde(default)]
     pub renderers: serde_json::Map<String, serde_json::Value>,
+    #[serde(default)]
+    pub rules: Vec<serde_json::Value>,
 }
 
 fn default_value_presentation_version() -> u32 {
@@ -66,6 +72,7 @@ impl Default for ValuePresentationSettings {
         Self {
             version: 1,
             renderers: serde_json::Map::new(),
+            rules: Vec::new(),
         }
     }
 }

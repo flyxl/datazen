@@ -74,14 +74,15 @@ function unchanged(reason: string): PresentationResult {
 // ---------------------------------------------------------------------------
 
 /**
- * 把验证后的 TimestampOptions 重建成 PresentationConfigValue。
+ * 把验证后的 TimestampOptions 重建成 PresentationConfigValue（T08 导出，
+ * 供 presentationPlan 把命中规则的 options 作为生效配置传给 prepare）。
  *
  * 不用断言：TimestampOptions 是具名 interface，TypeScript 不给它隐式
  * 索引签名，直接赋值给 `{ readonly [key: string]: … }` 会失败；此处按
  * 字段逐一重建为对象字面量（只含已验证字段，sourceTimeZone 缺省时
  * 不出现该键，与 validateTimestampOptions 的规范形状一致）。
  */
-function toPresentationConfigValue(options: TimestampOptions): PresentationConfigValue {
+export function timestampOptionsToConfigValue(options: TimestampOptions): PresentationConfigValue {
   const interpretation: PresentationConfigValue =
     options.interpretation.kind === 'unix'
       ? { kind: 'unix', unit: options.interpretation.unit }
@@ -107,7 +108,7 @@ function validateTimestampConfig(input: unknown): ConfigValidationResult {
     // 路径与 message 原样透传，不抛异常、不返回部分配置。
     return { ok: false, problems: validated.problems };
   }
-  return { ok: true, config: toPresentationConfigValue(validated.options) };
+  return { ok: true, config: timestampOptionsToConfigValue(validated.options) };
 }
 
 // ---------------------------------------------------------------------------

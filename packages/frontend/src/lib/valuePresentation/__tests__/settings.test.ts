@@ -209,6 +209,7 @@ describe('buildValuePresentationSnapshot', () => {
       configs: {},
       enabledRendererIds: [],
       overrides: {},
+      rules: [],
     });
     // 原文保留在 store：构建不改写 stored，也不返回默认值。
     expect(stored.version).toBe(99);

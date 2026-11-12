@@ -74,6 +74,7 @@ export {
   TIMESTAMP_CONTRIBUTION_ID,
   TIMESTAMP_CONTRIBUTION_CONFIG_VERSION,
   timestampContribution,
+  timestampOptionsToConfigValue,
 } from './timestampContribution';
 
 export type {
@@ -95,6 +96,32 @@ export {
   buildColumnPresentationPlans,
   computePresentationPlanCacheKey,
 } from './presentationPlan';
+
+// T08（全局规则，设计 §5 / PRD §3.1）：规则模型、受限正则验证、匹配。
+export type {
+  ValuePresentationNamePattern,
+  ValuePresentationRuleMatch,
+  ValuePresentationRule,
+  ValuePresentationRuleContext,
+  ValuePresentationRuleProblem,
+  ValuePresentationRuleValidation,
+  RestrictedPatternValidation,
+} from './valuePresentationRules';
+export {
+  MAX_VALUE_PRESENTATION_RULES,
+  MAX_PATTERN_LENGTH,
+  MAX_RULE_NAME_LENGTH,
+  MAX_MATCH_VALUE_LENGTH,
+  validateRestrictedPattern,
+  matchNamePattern,
+  describeNamePattern,
+  validateValuePresentationRule,
+  validateValuePresentationRules,
+  findDuplicateRuleName,
+  matchValuePresentationRule,
+  findFirstMatchingRule,
+  describeRuleMatch,
+} from './valuePresentationRules';
 
 // T06（设置持久化链路，设计 §5/§6）：存储形状、宽容解析、快照构建与
 // 核心内置贡献的启动注册。设置 UI / 规则 / 列覆盖持久化不在 T06。

@@ -80,6 +80,7 @@ fn value_presentation_with_timestamp() -> datazen::settings::ValuePresentationSe
     datazen::settings::ValuePresentationSettings {
         version: 1,
         renderers,
+        rules: vec![],
     }
 }
 

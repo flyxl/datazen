@@ -101,13 +101,47 @@ export interface SettingsValuePresentationRendererSettings {
 }
 
 /**
+ * A name pattern inside a rule match (issue-32 T08, design §5).
+ * Mirror of `ValuePresentationNamePattern` in
+ * `packages/frontend/src/lib/valuePresentation/valuePresentationRules.ts`
+ * — written field by field, never imported from frontend. Only the
+ * pattern source and restricted flags are stored, never a RegExp.
+ */
+export type SettingsValuePresentationNamePattern =
+  | { kind: 'exact'; value: string }
+  | { kind: 'regex'; source: string; flags?: string };
+
+/** One rule's match conditions: all present conditions are ANDed. */
+export interface SettingsValuePresentationRuleMatch {
+  connectionId?: string;
+  database?: string;
+  namespace?: string;
+  table?: SettingsValuePresentationNamePattern;
+  column?: SettingsValuePresentationNamePattern;
+  databaseTypeName?: SettingsValuePresentationNamePattern;
+}
+
+/**
+ * One global value-presentation rule (issue-32 T08, design §5).
+ * Mirror of `ValuePresentationRule` in
+ * `packages/frontend/src/lib/valuePresentation/valuePresentationRules.ts`.
+ */
+export interface SettingsValuePresentationRule {
+  name: string;
+  enabled: boolean;
+  match: SettingsValuePresentationRuleMatch;
+  options: SettingsTimestampOptions;
+}
+
+/**
  * Versioned value-presentation settings, namespaced per renderer id.
- * `rules` are not in this version's shape (T08 extends it); table-column
+ * `rules` (T08) is an optional array of global rules; table-column
  * overrides are not stored here either (T10).
  */
 export interface SettingsValuePresentationSettings {
   version: number;
   renderers: Record<string, SettingsValuePresentationRendererSettings>;
+  rules?: ReadonlyArray<SettingsValuePresentationRule>;
 }
 
 /** Dashboard monitor settings (form-split F4: behavior field, shared). Mirrors `datazen::dashboard::types::MonitorSettings`. */

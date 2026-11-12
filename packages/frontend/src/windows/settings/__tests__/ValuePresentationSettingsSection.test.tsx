@@ -26,7 +26,6 @@ import {
   buildPreviewOptions,
   computeTimestampPreview,
   draftFromStored,
-  readStoredRules,
 } from '../ValuePresentationSettingsSection';
 
 const mocks = vi.hoisted(() => {
@@ -450,7 +449,7 @@ describe('ValuePresentationSettingsSection', () => {
   });
 });
 
-describe('draftFromStored / readStoredRules / buildPreviewOptions (pure)', () => {
+describe('draftFromStored / buildPreviewOptions (pure)', () => {
   it('draftFromStored returns the disabled default without an entry', () => {
     expect(draftFromStored({ version: 1, renderers: {} })).toEqual({
       enabled: false,
@@ -460,17 +459,6 @@ describe('draftFromStored / readStoredRules / buildPreviewOptions (pure)', () =>
         displayTimeZone: { kind: 'local' },
       },
     });
-  });
-
-  it('readStoredRules returns [] for a missing or non-array rules field', () => {
-    expect(readStoredRules({ version: 1, renderers: {} })).toEqual([]);
-    expect(
-      readStoredRules({
-        version: 1,
-        renderers: {},
-        rules: 42,
-      } as unknown as StoredValuePresentationSettings),
-    ).toEqual([]);
   });
 
   it('buildPreviewOptions drops sourceTimeZone for unix and defaults it to UTC for text', () => {

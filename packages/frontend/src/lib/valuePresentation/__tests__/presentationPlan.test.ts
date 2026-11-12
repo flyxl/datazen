@@ -104,6 +104,7 @@ function makeSnapshot(options: SnapshotOptions = {}): ValuePresentationSnapshot 
     },
     enabledRendererIds: options.enabled ?? [TIMESTAMP_CONTRIBUTION_ID],
     overrides: options.overrides ?? {},
+    rules: [],
   };
 }
 

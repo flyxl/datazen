@@ -141,6 +141,7 @@ mod tests {
         let expected = ValuePresentationSettings {
             version: 1,
             renderers,
+            rules: vec![],
         };
 
         // Shared path: save via SettingsService → read returns the same value.

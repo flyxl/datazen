@@ -60,6 +60,7 @@ function makeSnapshot(): ValuePresentationSnapshot {
         },
       },
     },
+    rules: [],
   };
 }
 

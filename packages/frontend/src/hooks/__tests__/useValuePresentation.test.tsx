@@ -69,6 +69,7 @@ function makeSnapshot(options: TimestampOptions, revision = 1): ValuePresentatio
     configs: { [TIMESTAMP_CONTRIBUTION_ID]: timestampConfig(options) },
     enabledRendererIds: [TIMESTAMP_CONTRIBUTION_ID],
     overrides: {},
+    rules: [],
   };
 }
 

@@ -19,9 +19,10 @@
  *    prepare/present（T03），不另写解析。贡献缺失时预览不可用，
  *    面板提示所需扩展不可用，配置保留、可继续保存（保存校验走
  *    T02 纯验证，不依赖贡献在场）。
- * 4. 规则列表只做展示：v1 存储形状没有 rules 字段（T08 再扩展），
- *    无规则时显示空态；未来出现 rules 字段时只读列出名称，不崩。
- *    规则的新增/编辑/删除/启停/调序是 T08 的活，不在这里实现。
+ * 4. 规则列表可编辑（T08，PRD §3.1）：新增/编辑/删除/启停/调序，
+ *    挂在同一面板的可折叠规则列表内。规则草稿随面板草稿一起保存
+ *    （同一份 valuePresentation，经 updateValuePresentationSettings
+ *    走正常保存链路）；编辑器见 ValuePresentationRuleEditor。
  * 5. 未启用时不改变既有行为：开关关闭只影响保存的 enabled 位；
  *    本面板挂载、改草稿、看预览都不会写 store，也不会触动网格
  *    与详情的展示（PRD 验收 1）。
@@ -41,16 +42,22 @@ import { useI18n } from '../../hooks/useI18n';
 import { useSettingsStore } from '../../stores/settingsStore';
 import {
   TIMESTAMP_CONTRIBUTION_ID,
+  MAX_PATTERN_LENGTH,
+  MAX_VALUE_PRESENTATION_RULES,
+  describeRuleMatch,
   isValidIanaTimeZoneName,
   isValidTimeZoneName,
   parseStoredValuePresentationSettings,
   resolvePresentationEnvironment,
   validateTimestampOptions,
+  validateValuePresentationRule,
   type StoredValuePresentationSettings,
   type TimestampOptions,
   type TimestampOutputFormat,
   type TimeZoneSpec,
+  type ValuePresentationRule,
 } from '../../lib/valuePresentation/index';
+import { ValuePresentationRuleEditor } from './ValuePresentationRuleEditor';
 import { SettingRow, ToggleRow } from './settingsUi';
 
 // ---------------------------------------------------------------------------
@@ -84,33 +91,6 @@ export function draftFromStored(stored: StoredValuePresentationSettings): Timest
     enabled: entry.enabled === true,
     options: validated.ok ? validated.options : DEFAULT_TIMESTAMP_OPTIONS,
   };
-}
-
-// ---------------------------------------------------------------------------
-// 规则列表：v1 无 rules 字段，只读、防崩（T08 再扩展）
-// ---------------------------------------------------------------------------
-
-export interface StoredRuleSummary {
-  name: string | undefined;
-}
-
-/**
- * 防御性读未来可能出现的顶层 rules 字段：输入为原始设置值（T06 宽容
- * 解析只保留 version/renderers，会丢掉 rules，故不在解析后读）；缺失
- * 或非数组 → 空列表；数组元素只取字符串 name（缺失则 undefined，
- * 渲染时用 `#n` 占位）。
- */
-export function readStoredRules(input: unknown): ReadonlyArray<StoredRuleSummary> {
-  if (typeof input !== 'object' || input === null || Array.isArray(input)) return [];
-  const raw = (input as Record<string, unknown>).rules;
-  if (!Array.isArray(raw)) return [];
-  return raw.map((entry) => {
-    if (typeof entry === 'object' && entry !== null && !Array.isArray(entry)) {
-      const name = (entry as Record<string, unknown>).name;
-      return { name: typeof name === 'string' ? name : undefined };
-    }
-    return { name: undefined };
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -312,6 +292,13 @@ export function ValuePresentationSettingsSection({
   const [previewInterpretation, setPreviewInterpretation] =
     useState<PreviewInterpretation>('native');
   const [rulesOpen, setRulesOpen] = useState(false);
+  // 规则草稿（T08）：随面板草稿一起保存；初始值取解析后的 stored.rules
+  // （T08 起宽容解析不再丢 rules，T07 的读原始值 workaround 已移除）。
+  const [ruleDrafts, setRuleDrafts] = useState<ReadonlyArray<ValuePresentationRule>>(
+    () => stored.rules ?? [],
+  );
+  // 正在编辑的规则：'new' 为新增，{ index } 为编辑第 index 条，null 为未编辑。
+  const [editingRule, setEditingRule] = useState<{ index: number } | 'new' | null>(null);
 
   // 外部 store 变化（跨窗口同步、保存成功回写）时用已保存值重建草稿；
   // 本地编辑不触发（appliedStoredJson 只在 store 真变时更新）。
@@ -324,6 +311,8 @@ export function ValuePresentationSettingsSection({
     setIanaName(
       next.options.displayTimeZone.kind === 'iana' ? next.options.displayTimeZone.name : '',
     );
+    setRuleDrafts(stored.rules ?? []);
+    setEditingRule(null);
     setError(null);
     setSaved(false);
   }, [stored, appliedStoredJson]);
@@ -371,16 +360,12 @@ export function ValuePresentationSettingsSection({
     [contribution, optionsToSave, previewInterpretation, environment],
   );
 
-  // 规则读原始设置值：宽容解析后的 stored 不含 rules（见 readStoredRules）。
-  const rules = useMemo(
-    () => readStoredRules(settings.valuePresentation),
-    [settings.valuePresentation],
-  );
-
   const savedDraft = useMemo(() => draftFromStored(stored), [stored]);
+  const savedRules: ReadonlyArray<ValuePresentationRule> = stored.rules ?? [];
   const isDirty =
     draft.enabled !== savedDraft.enabled ||
-    JSON.stringify(optionsToSave) !== JSON.stringify(savedDraft.options);
+    JSON.stringify(optionsToSave) !== JSON.stringify(savedDraft.options) ||
+    JSON.stringify(ruleDrafts) !== JSON.stringify(savedRules);
 
   function validateDraftForSave(): TimestampOptions | null {
     if (draft.options.displayTimeZone.kind === 'iana') {
@@ -419,6 +404,19 @@ export function ValuePresentationSettingsSection({
   async function handleSave(): Promise<void> {
     const options = validateDraftForSave();
     if (options === null) return;
+    // 规则草稿再验证一次（编辑器只交回验证后的规则，此处为防御性复核；
+    // 非法规则禁止保存，就地说明原因）。
+    for (const rule of ruleDrafts) {
+      const validated = validateValuePresentationRule(rule);
+      if (!validated.ok) {
+        setError(
+          `${t('settings.valuePresentation.invalidConfig')}: ${validated.problems
+            .map((problem) => `${problem.path}: ${problem.message}`)
+            .join('; ')}`,
+        );
+        return;
+      }
+    }
     if (typeof updateValuePresentationSettings !== 'function') {
       setError(t('settings.valuePresentation.saveUnavailable'));
       return;
@@ -427,12 +425,14 @@ export function ValuePresentationSettingsSection({
     setError(null);
     // 未知顶层 version 原样保留（T06：未知版本保留原文，不用默认值写回）；
     // 其余 renderer 条目原样保留，只替换 datazen.timestamp 一项。
+    // rules 只在 version === 1 时写（未知版本不按 v1 形状解释其 rules）。
     const next: StoredValuePresentationSettings = {
       version: stored.version,
       renderers: {
         ...stored.renderers,
         [TIMESTAMP_CONTRIBUTION_ID]: { enabled: draft.enabled, options },
       },
+      ...(stored.version === 1 ? { rules: [...ruleDrafts] } : {}),
     };
     try {
       await updateValuePresentationSettings(next);
@@ -452,7 +452,36 @@ export function ValuePresentationSettingsSection({
     setIanaName(
       next.options.displayTimeZone.kind === 'iana' ? next.options.displayTimeZone.name : '',
     );
+    setRuleDrafts(stored.rules ?? []);
+    setEditingRule(null);
     setError(null);
+    setSaved(false);
+  }
+
+  function handleRuleSave(rule: ValuePresentationRule): void {
+    setRuleDrafts((prev) =>
+      editingRule === 'new'
+        ? [...prev, rule]
+        : prev.map((entry, index) =>
+            editingRule !== null && index === editingRule.index ? rule : entry,
+          ),
+    );
+    setEditingRule(null);
+    setSaved(false);
+  }
+
+  function moveRule(index: number, direction: -1 | 1): void {
+    setRuleDrafts((prev) => {
+      const target = index + direction;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      const entry = next[index];
+      const other = next[target];
+      if (entry === undefined || other === undefined) return prev;
+      next[index] = other;
+      next[target] = entry;
+      return next;
+    });
     setSaved(false);
   }
 
@@ -638,28 +667,124 @@ export function ValuePresentationSettingsSection({
           className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-fg-secondary"
         >
           <span>
-            {t('settings.valuePresentation.rules.title')} ({rules.length})
+            {t('settings.valuePresentation.rules.title')} ({ruleDrafts.length})
           </span>
           <span aria-hidden="true">{rulesOpen ? '▾' : '▸'}</span>
         </button>
         {rulesOpen && (
           <div className="border-t border-edge px-3 py-2">
-            {rules.length === 0 ? (
+            {ruleDrafts.length === 0 ? (
               <p data-testid="value-presentation-rules-empty" className="text-sm text-fg-muted">
                 {t('settings.valuePresentation.rules.empty')}
               </p>
             ) : (
               <ul
                 data-testid="value-presentation-rules-list"
-                className="space-y-1 text-sm text-fg-secondary"
+                className="space-y-2 text-sm text-fg-secondary"
               >
-                {rules.map((rule, index) => (
-                  <li key={index}>{rule.name ?? `#${index + 1}`}</li>
+                {ruleDrafts.map((rule, index) => (
+                  <li
+                    key={`${rule.name}-${index}`}
+                    data-testid={`value-presentation-rule-${index}`}
+                    className="rounded-md border border-edge bg-surface-alt px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-fg">{rule.name}</span>
+                      <span className="text-xs text-fg-muted">
+                        {rule.enabled
+                          ? t('settings.valuePresentation.rules.enabled')
+                          : t('settings.valuePresentation.rules.disabled')}
+                      </span>
+                    </div>
+                    <p className="mt-1 font-mono text-xs text-fg-muted">
+                      {describeRuleMatch(rule.match)}
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={editingRule !== null}
+                        onClick={() => setEditingRule({ index })}
+                        data-testid={`value-presentation-rule-edit-${index}`}
+                        className="rounded px-2 py-1 text-xs text-accent hover:bg-accent/10 disabled:opacity-40"
+                      >
+                        {t('settings.valuePresentation.rules.edit')}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={editingRule !== null}
+                        onClick={() => setRuleDrafts((prev) => prev.filter((_, i) => i !== index))}
+                        data-testid={`value-presentation-rule-delete-${index}`}
+                        className="rounded px-2 py-1 text-xs text-red-500 hover:bg-red-500/10 disabled:opacity-40"
+                      >
+                        {t('settings.valuePresentation.rules.delete')}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={editingRule !== null || index === 0}
+                        onClick={() => moveRule(index, -1)}
+                        data-testid={`value-presentation-rule-up-${index}`}
+                        className="rounded px-2 py-1 text-xs text-fg-secondary hover:bg-surface disabled:opacity-40"
+                      >
+                        {t('settings.valuePresentation.rules.moveUp')}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={editingRule !== null || index === ruleDrafts.length - 1}
+                        onClick={() => moveRule(index, 1)}
+                        data-testid={`value-presentation-rule-down-${index}`}
+                        className="rounded px-2 py-1 text-xs text-fg-secondary hover:bg-surface disabled:opacity-40"
+                      >
+                        {t('settings.valuePresentation.rules.moveDown')}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={editingRule !== null}
+                        onClick={() =>
+                          setRuleDrafts((prev) =>
+                            prev.map((entry, i) =>
+                              i === index ? { ...entry, enabled: !entry.enabled } : entry,
+                            ),
+                          )
+                        }
+                        data-testid={`value-presentation-rule-toggle-${index}`}
+                        className="rounded px-2 py-1 text-xs text-fg-secondary hover:bg-surface disabled:opacity-40"
+                      >
+                        {rule.enabled
+                          ? t('settings.valuePresentation.rules.disable')
+                          : t('settings.valuePresentation.rules.enable')}
+                      </button>
+                    </div>
+                  </li>
                 ))}
               </ul>
             )}
+            {editingRule !== null && (
+              <ValuePresentationRuleEditor
+                initialRule={editingRule === 'new' ? null : (ruleDrafts[editingRule.index] ?? null)}
+                otherNames={ruleDrafts
+                  .filter((_, i) => editingRule === 'new' || i !== editingRule.index)
+                  .map((rule) => rule.name)}
+                contribution={contribution}
+                environment={environment}
+                onSave={handleRuleSave}
+                onCancel={() => setEditingRule(null)}
+              />
+            )}
+            <div className="mt-2 flex items-center gap-2">
+              <Button
+                variant="ghost"
+                disabled={editingRule !== null || ruleDrafts.length >= MAX_VALUE_PRESENTATION_RULES}
+                onClick={() => setEditingRule('new')}
+                data-testid="value-presentation-rule-add"
+              >
+                {t('settings.valuePresentation.rules.add')}
+              </Button>
+            </div>
             <p className="mt-2 text-xs text-fg-muted">
-              {t('settings.valuePresentation.rules.editHint')}
+              {t('settings.valuePresentation.rules.limits', {
+                maxRules: MAX_VALUE_PRESENTATION_RULES,
+                maxPattern: MAX_PATTERN_LENGTH,
+              })}
             </p>
           </div>
         )}

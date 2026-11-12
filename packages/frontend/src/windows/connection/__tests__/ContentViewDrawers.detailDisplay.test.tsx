@@ -77,6 +77,7 @@ function makeSnapshot(): ValuePresentationSnapshot {
         },
       },
     },
+    rules: [],
   };
 }
 

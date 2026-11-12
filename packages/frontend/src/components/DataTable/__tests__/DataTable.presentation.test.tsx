@@ -136,6 +136,7 @@ function makeSnapshot(): ValuePresentationSnapshot {
         },
       },
     },
+    rules: [],
   };
 }
 

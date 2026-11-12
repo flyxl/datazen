@@ -15,15 +15,23 @@
  *    `override.options`，失败为 `invalid-config`；成功则生效配置取
  *    校验后 config。显式 custom 覆盖 **bypass enabled 门禁**：具体选择
  *    胜过全局开关（裁决）。
- * 4. 覆盖 `inherit` 或无覆盖 → 默认路由：时间语义列（instant /
- *    local-datetime / date / time）默认渲染器为 `datazen.timestamp`；
- *    number / text / other 无默认渲染器 → 状态 `default`。默认路由依次
- *    检查 enabled 门禁（不在 `enabledRendererIds` → `disabled`）、贡献
- *    缺失（→ `missing-renderer`）、配置缺失（→ `missing-config`）。
- * 5. `effectiveConfig.configVersion !== contribution.configVersion` 时
+ * 4. 规则（T08，PRD §4：表列覆盖 > 全局规则 > 全局默认）：覆盖之后、
+ *    全局默认之前。快照 rules 只在时间渲染器启用时非空（快照构建时
+ *    门控，见 settings.ts）；首条命中规则的 options 作为生效配置
+ *    prepare，命中后冻结整列解释，不再找低优先级规则；规则不要求
+ *    全局 options 有效（自带完整 options），但要求贡献在场（缺失时
+ *    落到默认路由，由默认路由报 missing-renderer / default）。
+ *    计划记录 `matchedRuleName`（命中来源提示用，PRD §3.3）。
+ * 5. 覆盖 `inherit` 或无覆盖且无规则命中 → 默认路由：时间语义列
+ *    （instant / local-datetime / date / time）默认渲染器为
+ *    `datazen.timestamp`；number / text / other 无默认渲染器 →
+ *    状态 `default`。默认路由依次检查 enabled 门禁（不在
+ *    `enabledRendererIds` → `disabled`）、贡献缺失（→
+ *    `missing-renderer`）、配置缺失（→ `missing-config`）。
+ * 6. `effectiveConfig.configVersion !== contribution.configVersion` 时
  *    不调 prepare，直接 `invalid-config`（未知版本不覆盖旧配置，设计
  *    §4 / §6）。
- * 6. prepare 抛异常（契约要求不抛，但宿主隔离，设计 §7）→ 捕获为
+ * 7. prepare 抛异常（契约要求不抛，但宿主隔离，设计 §7）→ 捕获为
  *    状态 `error`、原因 `plan-error`，不记录原始行值。
  *
  * 分工（T03 / T04 边界）：
@@ -50,7 +58,12 @@ import type {
 import { valuePresentationRegistry } from '@datazen/extension-points';
 import type { CellType, CellTypeHints } from '@datazen/extension-points';
 import { isZonedCellType, resolveCellType } from '../cellTypes';
-import { TIMESTAMP_CONTRIBUTION_ID } from './timestampContribution';
+import { TIMESTAMP_CONTRIBUTION_ID, timestampOptionsToConfigValue } from './timestampContribution';
+import {
+  findFirstMatchingRule,
+  type ValuePresentationRule,
+  type ValuePresentationRuleContext,
+} from './valuePresentationRules';
 
 /** 展示语义种：与 PresentationColumnContext['semanticKind'] 同义。 */
 export type PresentationSemanticKind = PresentationColumnContext['semanticKind'];
@@ -167,10 +180,17 @@ export interface ValuePresentationSnapshot {
   readonly configs: Readonly<Record<string, VersionedPresentationConfig>>;
   readonly enabledRendererIds: ReadonlyArray<string>;
   readonly overrides: Readonly<Record<string, ColumnPresentationOverride>>;
+  /**
+   * 全局规则（T08）：按列表顺序即优先级。仅当时间渲染器在存储中启用
+   * 时非空（快照构建时门控）；缺省时消费处按 [] 处理。规则变化与
+   * 全局配置共用同一 revision，故缓存键不另加规则因子（见
+   * computePresentationPlanCacheKey）。
+   */
+  readonly rules: ReadonlyArray<ValuePresentationRule>;
 }
 
 /**
- * 默认快照（revision 0、configs {}、enabled []、overrides {}），对应
+ * 默认快照（revision 0、configs {}、enabled []、overrides {}、rules []），对应
  * 设计 §6 加载态 1「初次加载中使用同一个默认快照」——此时时间列一律
  * 'disabled'，走默认展示。
  */
@@ -183,6 +203,7 @@ export function createDefaultValuePresentationSnapshot(
     configs: {},
     enabledRendererIds: [],
     overrides: {},
+    rules: [],
   };
 }
 
@@ -233,6 +254,8 @@ export interface ColumnPresentationPlan {
   readonly rendererId?: string;
   readonly reason?: string;
   readonly prepared?: PreparedPresentation;
+  /** 命中的全局规则名（T08，PRD §3.3 配置来源提示用）；无规则命中时缺省。 */
+  readonly matchedRuleName?: string;
   present(value: PresentationValue): PresentationResult;
 }
 
@@ -368,7 +391,43 @@ function buildOneColumnPlan(
     );
   }
 
-  // d. 覆盖 'inherit' 或无覆盖 → 默认路由。
+  // d. 规则（T08）：覆盖之后、全局默认之前。首条命中冻结整列解释。
+  //    快照 rules 只在时间渲染器启用时非空（快照构建时门控）；贡献缺失
+  //    时不报规则错，落到默认路由由其报 missing-renderer / default。
+  //    表级条件要求来源在场：source 缺省（查询结果）时只有列名/类型名
+  //    条件可命中；命中规则的 options 直接作为生效配置 prepare。
+  if (snapshot.rules.length > 0) {
+    const ruleContribution = registry.get(TIMESTAMP_CONTRIBUTION_ID);
+    if (ruleContribution !== undefined) {
+      const ruleContext: ValuePresentationRuleContext = {
+        connectionId: columnContext.source?.connectionId,
+        database: columnContext.source?.database,
+        namespace: columnContext.source?.namespace,
+        table: columnContext.source?.table,
+        column: column.name,
+        databaseTypeName: column.dataType,
+      };
+      const rule = findFirstMatchingRule(snapshot.rules, ruleContext);
+      if (rule !== undefined) {
+        const effectiveConfig: VersionedPresentationConfig = {
+          configVersion: ruleContribution.configVersion,
+          config: timestampOptionsToConfigValue(rule.options),
+        };
+        const plan = preparePlan(
+          column.name,
+          columnContext,
+          TIMESTAMP_CONTRIBUTION_ID,
+          ruleContribution,
+          effectiveConfig,
+          undefined,
+          snapshot.environment,
+        );
+        return { ...plan, matchedRuleName: rule.name };
+      }
+    }
+  }
+
+  // e. 覆盖 'inherit' 或无覆盖且无规则命中 → 默认路由。
   const semanticKind = columnContext.semanticKind;
   const isTemporal =
     semanticKind === 'instant' ||
@@ -435,7 +494,8 @@ export interface PresentationPlanCacheKeyInput {
  *
  * 覆盖设计 §7 的全部失效因子：来源身份、列元数据（每列 name + dataType +
  * semanticKind）、配置修订、贡献修订、locale、localTimeZone；columnsRevision
- * 提供时一并纳入。
+ * 提供时一并纳入。规则（T08）不另加因子：规则变化与全局配置共用同一
+ * configRevision（同一保存写同一份 valuePresentation，修订 +1）。
  */
 export function computePresentationPlanCacheKey(
   input: Readonly<PresentationPlanCacheKeyInput>,

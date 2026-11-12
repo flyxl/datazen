@@ -69,6 +69,7 @@ function makeSnapshot(
         },
       },
     },
+    rules: [],
   };
 }
 
