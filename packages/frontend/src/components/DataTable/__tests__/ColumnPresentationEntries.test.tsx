@@ -15,6 +15,8 @@ import { DataTable } from '../DataTable';
 import { DetailPanel } from '../DetailPanel';
 import {
   TIMESTAMP_CONTRIBUTION_ID,
+  buildValuePresentationSnapshot,
+  parseStoredValuePresentationSettings,
   resetColumnPresentationSession,
   timestampContribution,
   type StoredValuePresentationSettings,
@@ -121,10 +123,11 @@ function makeRegistry(): ValuePresentationRegistryImpl {
   return registry;
 }
 
-function renderGridAndAside() {
-  const snapshot = makeSnapshot();
-  const registry = makeRegistry();
-  const { container } = render(
+function renderWithSnapshot(
+  snapshot: ValuePresentationSnapshot,
+  registry: ValuePresentationRegistryImpl,
+) {
+  return render(
     <>
       <DataTable
         columns={COLS}
@@ -144,7 +147,31 @@ function renderGridAndAside() {
       />
     </>,
   );
-  return { container, snapshot, registry };
+}
+
+function renderGridAndAside() {
+  const snapshot = makeSnapshot();
+  const registry = makeRegistry();
+  const rendered = renderWithSnapshot(snapshot, registry);
+  return { ...rendered, snapshot, registry };
+}
+
+/**
+ * 生产链路里快照来自 settingsStore（useValuePresentationSnapshot）：
+ * 面板保存成功后会话条目清除，快照即持久值。本测试用已持久化的
+ * stored 值重建快照再渲染，模拟这一链路（T10：保存变异步持久化，
+ * 固定快照 prop 不再自动带上覆盖）。
+ */
+function persistedSnapshot(
+  registry: ValuePresentationRegistryImpl,
+  revision: number,
+): ValuePresentationSnapshot {
+  return buildValuePresentationSnapshot(
+    parseStoredValuePresentationSettings(mocks.state.valuePresentation),
+    ENVIRONMENT,
+    registry,
+    revision,
+  );
 }
 
 async function openHeaderMenu(container: HTMLElement): Promise<MenuItem[]> {
@@ -173,7 +200,7 @@ describe('column presentation entries (issue-32 T09)', () => {
   });
 
   it('grid entry and aside entry open the same panel and apply to both places', async () => {
-    const { container } = renderGridAndAside();
+    const { container, rerender, registry } = renderGridAndAside();
     // Before any override the BIGINT column shows its raw digits in both places.
     expect(cellText(container, 'epoch_ms')).toBe('1705316400000');
     expect(screen.getAllByText('1705316400000')).toHaveLength(2);
@@ -193,7 +220,35 @@ describe('column presentation entries (issue-32 T09)', () => {
     );
     fireEvent.click(screen.getByTestId('column-presentation-save'));
 
-    // Grid cell and aside field now read the same presented text.
+    // 保存是异步持久化：等写盘完成、面板关闭后，用已持久化的值重建
+    // 快照再渲染——grid cell 与 aside field 读同一份持久覆盖。
+    await waitFor(() => {
+      expect(mocks.updateValuePresentationSettings).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('column-presentation-dialog-body')).toBeNull();
+    });
+    const persisted = persistedSnapshot(registry, 2);
+    rerender(
+      <>
+        <DataTable
+          columns={COLS}
+          rows={ROWS}
+          presentationSnapshot={persisted}
+          presentationSource={SOURCE}
+          presentationRegistry={registry}
+        />
+        <DetailPanel
+          open
+          columns={COLS}
+          row={ROW_RECORD}
+          rowIndex={0}
+          presentationSnapshot={persisted}
+          presentationSource={SOURCE}
+          presentationRegistry={registry}
+        />
+      </>,
+    );
     expect(cellText(container, 'epoch_ms')).toBe('2024-01-15T19:00:00+08:00');
     expect(screen.getAllByText('2024-01-15T19:00:00+08:00')).toHaveLength(2);
 
@@ -206,6 +261,33 @@ describe('column presentation entries (issue-32 T09)', () => {
     // Switch the same column back to raw: both places fall back to the raw value.
     fireEvent.click(screen.getByTestId('column-presentation-mode-raw'));
     fireEvent.click(screen.getByTestId('column-presentation-save'));
+    await waitFor(() => {
+      expect(mocks.updateValuePresentationSettings).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('column-presentation-dialog-body')).toBeNull();
+    });
+    const persistedAfterRaw = persistedSnapshot(registry, 3);
+    rerender(
+      <>
+        <DataTable
+          columns={COLS}
+          rows={ROWS}
+          presentationSnapshot={persistedAfterRaw}
+          presentationSource={SOURCE}
+          presentationRegistry={registry}
+        />
+        <DetailPanel
+          open
+          columns={COLS}
+          row={ROW_RECORD}
+          rowIndex={0}
+          presentationSnapshot={persistedAfterRaw}
+          presentationSource={SOURCE}
+          presentationRegistry={registry}
+        />
+      </>,
+    );
     expect(cellText(container, 'epoch_ms')).toBe('1705316400000');
     expect(screen.getAllByText('1705316400000')).toHaveLength(2);
   });

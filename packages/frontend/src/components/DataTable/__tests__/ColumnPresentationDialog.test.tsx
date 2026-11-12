@@ -14,7 +14,7 @@
  * 路径使用。
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { ValuePresentationRegistryImpl, type ColumnSource } from '@datazen/extension-points';
 import {
   TIMESTAMP_CONTRIBUTION_ID,
@@ -399,6 +399,104 @@ describe('ColumnPresentationDialog save', () => {
     });
     fireEvent.click(screen.getByTestId('column-presentation-save'));
     expect(onSave).not.toHaveBeenCalled();
+  });
+});
+
+describe('ColumnPresentationDialog persistent save (issue-32 T10)', () => {
+  function renderDialogWithoutOnSave() {
+    const onClose = vi.fn();
+    render(
+      <ColumnPresentationDialog
+        open
+        columnName="epoch_ms"
+        columnType="bigint"
+        source={SOURCE}
+        snapshot={makeSnapshot()}
+        sampleValue={1705316400000}
+        registry={registryWithTimestamp()}
+        onClose={onClose}
+      />,
+    );
+    return { onClose };
+  }
+
+  it('persists the override and clears the session entry on success', async () => {
+    const { onClose } = renderDialogWithoutOnSave();
+    chooseMode('raw');
+    fireEvent.click(screen.getByTestId('column-presentation-save'));
+    await waitFor(() => {
+      expect(mocks.updateValuePresentationSettings).toHaveBeenCalledTimes(1);
+    });
+    const next = mocks.updateValuePresentationSettings.mock.calls[0]![0];
+    expect(next.columnOverrides).toEqual({
+      [columnOverrideKey({ ...SOURCE, column: 'epoch_ms' })]: { mode: 'raw' },
+    });
+    await waitFor(() => {
+      expect(getColumnPresentationSessionState().overrides).toEqual({});
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the session entry, reports the failure in place and stays open when saving fails', async () => {
+    const { onClose } = renderDialogWithoutOnSave();
+    mocks.updateValuePresentationSettings.mockRejectedValueOnce(new Error('disk full'));
+    chooseMode('raw');
+    fireEvent.click(screen.getByTestId('column-presentation-save'));
+    await waitFor(() => {
+      expect(screen.getByTestId('column-presentation-error').textContent).toContain(
+        'settings.valuePresentation.saveFailed',
+      );
+    });
+    expect(onClose).not.toHaveBeenCalled();
+    // 会话条目保留：用户刚改的配置不丢，旧配置继续生效。
+    expect(
+      getColumnPresentationSessionState().overrides[
+        columnOverrideKey({ ...SOURCE, column: 'epoch_ms' })
+      ],
+    ).toEqual({ mode: 'raw' });
+    // 重试成功后关闭，会话条目随之清除。
+    fireEvent.click(screen.getByTestId('column-presentation-save'));
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(getColumnPresentationSessionState().overrides).toEqual({});
+    });
+  });
+
+  it('deletes the stored entry when inherit is saved by default', async () => {
+    mocks.state.valuePresentation = {
+      version: 1,
+      renderers: {},
+      columnOverrides: {
+        [columnOverrideKey({ ...SOURCE, column: 'epoch_ms' })]: {
+          mode: 'raw',
+        },
+      },
+    };
+    const onClose = vi.fn();
+    render(
+      <ColumnPresentationDialog
+        open
+        columnName="epoch_ms"
+        columnType="bigint"
+        source={SOURCE}
+        snapshot={makeSnapshot({
+          [columnOverrideKey({ ...SOURCE, column: 'epoch_ms' })]: { mode: 'raw' },
+        })}
+        sampleValue={1705316400000}
+        registry={registryWithTimestamp()}
+        onClose={onClose}
+      />,
+    );
+    chooseMode('inherit');
+    fireEvent.click(screen.getByTestId('column-presentation-save'));
+    await waitFor(() => {
+      expect(mocks.updateValuePresentationSettings).toHaveBeenCalledTimes(1);
+    });
+    const next = mocks.updateValuePresentationSettings.mock.calls[0]![0];
+    expect(next.columnOverrides).toEqual({});
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
 

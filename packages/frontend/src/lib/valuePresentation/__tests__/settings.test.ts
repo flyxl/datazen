@@ -8,7 +8,10 @@
  * ValuePresentationRegistryImpl，不动全局单例。
  */
 import { describe, expect, it } from 'vitest';
-import { ValuePresentationRegistryImpl } from '@datazen/extension-points';
+import {
+  ValuePresentationRegistryImpl,
+  type ColumnPresentationOverride,
+} from '@datazen/extension-points';
 import { TIMESTAMP_CONTRIBUTION_ID, timestampContribution, type TimestampOptions } from '../index';
 import {
   DEFAULT_VALUE_PRESENTATION_SETTINGS,
@@ -229,7 +232,7 @@ describe('buildValuePresentationSnapshot', () => {
     expect(snapshot.overrides).toEqual({});
   });
 
-  it('overrides is always empty in T06 (T10 fills it)', () => {
+  it('overrides is empty when nothing is stored', () => {
     const registry = registryWithTimestamp();
     const snapshot = buildValuePresentationSnapshot(
       storedWith({ [TIMESTAMP_CONTRIBUTION_ID]: { enabled: true, options: NATIVE_UTC_ISO } }),
@@ -304,6 +307,104 @@ describe('parseStoredValuePresentationSettings: rules (issue-32 T08)', () => {
     });
     expect(parsed).toEqual({ version: 99, renderers: {} });
     expect(parsed.rules).toBeUndefined();
+  });
+});
+
+describe('parseStoredValuePresentationSettings: columnOverrides (issue-32 T10)', () => {
+  const KEY = JSON.stringify(['conn-1', 'shop', 'public', 'orders', 'epoch_ms']);
+  const RAW: ColumnPresentationOverride = { mode: 'raw' };
+  const CUSTOM: ColumnPresentationOverride = {
+    mode: 'custom',
+    rendererId: TIMESTAMP_CONTRIBUTION_ID,
+    options: UNIX_MS_SHANGHAI,
+  };
+
+  it('defaults to no columnOverrides key for an old payload without the field', () => {
+    const parsed = parseStoredValuePresentationSettings({ version: 1, renderers: {} });
+    expect(parsed).toEqual({ version: 1, renderers: {} });
+    expect(parsed.columnOverrides).toBeUndefined();
+  });
+
+  it('keeps valid overrides and drops invalid keys, invalid overrides and inherit entries', () => {
+    const parsed = parseStoredValuePresentationSettings({
+      version: 1,
+      renderers: {},
+      columnOverrides: {
+        [KEY]: RAW,
+        [JSON.stringify(['conn-1', 'shop', 'public', 'orders', 'created_at'])]: CUSTOM,
+        'not-a-key': RAW,
+        [JSON.stringify(['conn-1', 'shop', 'public', 'orders', 'bad'])]: { mode: 'inherit' },
+        [JSON.stringify(['conn-1', 'shop', 'public', 'orders', 'also-bad'])]: { mode: 'bogus' },
+      },
+    });
+    expect(parsed.columnOverrides).toEqual({
+      [KEY]: RAW,
+      [JSON.stringify(['conn-1', 'shop', 'public', 'orders', 'created_at'])]: CUSTOM,
+    });
+  });
+
+  it('ignores a non-object columnOverrides field', () => {
+    expect(
+      parseStoredValuePresentationSettings({ version: 1, renderers: {}, columnOverrides: 'x' }),
+    ).toEqual({ version: 1, renderers: {} });
+  });
+
+  it('does not parse columnOverrides for an unknown top-level version', () => {
+    const parsed = parseStoredValuePresentationSettings({
+      version: 99,
+      renderers: {},
+      columnOverrides: { [KEY]: RAW },
+    });
+    expect(parsed).toEqual({ version: 99, renderers: {} });
+    expect(parsed.columnOverrides).toBeUndefined();
+  });
+});
+
+describe('buildValuePresentationSnapshot: columnOverrides (issue-32 T10)', () => {
+  const KEY = JSON.stringify(['conn-1', 'shop', 'public', 'orders', 'epoch_ms']);
+  const RAW: ColumnPresentationOverride = { mode: 'raw' };
+
+  it('fills snapshot overrides from stored columnOverrides', () => {
+    const snapshot = buildValuePresentationSnapshot(
+      {
+        version: 1,
+        renderers: { [TIMESTAMP_CONTRIBUTION_ID]: { enabled: true, options: NATIVE_UTC_ISO } },
+        columnOverrides: { [KEY]: RAW },
+      },
+      ENV,
+      registryWithTimestamp(),
+      1,
+    );
+    expect(snapshot.overrides).toEqual({ [KEY]: RAW });
+  });
+
+  it('carries no overrides for an unknown top-level version', () => {
+    const snapshot = buildValuePresentationSnapshot(
+      {
+        version: 99,
+        renderers: { [TIMESTAMP_CONTRIBUTION_ID]: { enabled: true, options: NATIVE_UTC_ISO } },
+        columnOverrides: { [KEY]: RAW },
+      } as unknown as StoredValuePresentationSettings,
+      ENV,
+      registryWithTimestamp(),
+      1,
+    );
+    expect(snapshot.overrides).toEqual({});
+  });
+
+  it('carries overrides even when the timestamp renderer is disabled (raw needs no switch)', () => {
+    const snapshot = buildValuePresentationSnapshot(
+      {
+        version: 1,
+        renderers: {},
+        columnOverrides: { [KEY]: RAW },
+      },
+      ENV,
+      registryWithTimestamp(),
+      1,
+    );
+    expect(snapshot.overrides).toEqual({ [KEY]: RAW });
+    expect(snapshot.enabledRendererIds).toEqual([]);
   });
 });
 
