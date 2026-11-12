@@ -115,7 +115,7 @@ impl AppState {
 
     fn open_table_tab(&mut self, title: &str) -> Option<u32> {
         let id = self.tabs.open(TabKind::Table, title)?;
-        self.show_table(title);
+        self.sync_grid_to_selected_tab();
         Some(id)
     }
 
@@ -127,14 +127,7 @@ impl AppState {
         if !self.tabs.select(id) {
             return false;
         }
-        let title = self
-            .tabs
-            .selected()
-            .filter(|tab| tab.kind == TabKind::Table)
-            .map(|tab| tab.title.clone());
-        if let Some(title) = title {
-            self.show_table(&title);
-        }
+        self.sync_grid_to_selected_tab();
         true
     }
 
@@ -149,8 +142,26 @@ impl AppState {
         }
     }
 
+    fn sync_grid_to_selected_tab(&mut self) {
+        let title = self
+            .tabs
+            .selected()
+            .filter(|tab| tab.kind == TabKind::Table)
+            .map(|tab| tab.title.clone());
+        if let Some(title) = title {
+            self.show_table(&title);
+        }
+    }
+
     fn close_tab(&mut self, id: u32) -> bool {
-        self.tabs.close(id)
+        let previous = self.tabs.selected().map(|tab| tab.id);
+        if !self.tabs.close(id) {
+            return false;
+        }
+        if self.tabs.selected().map(|tab| tab.id) != previous {
+            self.sync_grid_to_selected_tab();
+        }
+        true
     }
 
     fn commit_grid_edit(&mut self) {
@@ -671,5 +682,28 @@ mod tests {
         assert_eq!(runtime.state.tabs.selected().unwrap().id, orders);
         assert_eq!(runtime.state.grid.cell(0, 1), "order-0");
         assert_ne!(customers, orders);
+    }
+
+    #[test]
+    fn closing_the_selected_table_tab_follows_the_remaining_table() {
+        use datazen_ui_api::WorkspaceApi;
+        let mut runtime = runtime();
+        runtime.state.workspace.connect("local").unwrap();
+        let orders = runtime.state.open_table_tab("orders").unwrap();
+        let customers = runtime.state.open_table_tab("customers").unwrap();
+        assert!(runtime.state.close_tab(customers));
+        assert_eq!(runtime.state.tabs.selected().unwrap().id, orders);
+        assert_eq!(runtime.state.grid.cell(0, 1), "order-0");
+    }
+
+    #[test]
+    fn a_padded_table_title_loads_the_trimmed_table() {
+        use datazen_ui_api::WorkspaceApi;
+        let mut runtime = runtime();
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.state.open_table_tab(" orders ").unwrap();
+        assert_eq!(runtime.state.tabs.selected().unwrap().title, "orders");
+        assert_eq!(runtime.state.grid.cell(0, 1), "order-0");
     }
 }
