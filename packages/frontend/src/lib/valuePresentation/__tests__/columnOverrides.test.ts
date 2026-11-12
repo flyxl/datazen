@@ -19,6 +19,7 @@ import {
 import {
   TIMESTAMP_CONTRIBUTION_ID,
   applySessionColumnOverrides,
+  applyValuePresentationUpdate,
   buildColumnPresentationPlans,
   buildValuePresentationSnapshot,
   columnOverrideFromSnapshot,
@@ -29,6 +30,7 @@ import {
   timestampContribution,
   type StoredValuePresentationSettings,
   type TimestampOptions,
+  type ValuePresentationSettingsUpdate,
 } from '../index';
 import {
   MAX_VALUE_PRESENTATION_COLUMN_OVERRIDES,
@@ -222,7 +224,7 @@ describe('withColumnOverride', () => {
 
 describe('saveColumnOverride', () => {
   function persistSpy() {
-    return vi.fn(async (_next: StoredValuePresentationSettings) => {});
+    return vi.fn(async (_update: ValuePresentationSettingsUpdate) => {});
   }
 
   it('persists the override and clears the session entry on success', async () => {
@@ -237,15 +239,19 @@ describe('saveColumnOverride', () => {
     });
     expect(result).toEqual({ ok: true });
     expect(persist).toHaveBeenCalledTimes(1);
-    expect(persist.mock.calls[0]![0].columnOverrides).toEqual({
-      [keyFor(SOURCE, 'epoch_ms')]: RAW,
-    });
+    // T11：persist 收的是 updater，不是按旧基底拼好的整份对象；对
+    // 传入的 stored 应用它，应得到本列覆盖。
+    expect(applyValuePresentationUpdate(stored, persist.mock.calls[0]![0]).columnOverrides).toEqual(
+      {
+        [keyFor(SOURCE, 'epoch_ms')]: RAW,
+      },
+    );
     // 成功后会话条目已清除，不再遮住持久值。
     expect(getColumnPresentationSessionState().overrides).toEqual({});
   });
 
   it('keeps the session entry and the old config when persistence fails', async () => {
-    const persist = vi.fn(async (_next: StoredValuePresentationSettings) => {
+    const persist = vi.fn(async (_update: ValuePresentationSettingsUpdate) => {
       throw new Error('disk full');
     });
     const stored: StoredValuePresentationSettings = { version: 1, renderers: {} };
@@ -278,9 +284,11 @@ describe('saveColumnOverride', () => {
       persist,
     });
     expect(result).toEqual({ ok: true });
-    expect(persist.mock.calls[0]![0].columnOverrides).toEqual({
-      [keyFor(SOURCE, 'other')]: RAW,
-    });
+    expect(applyValuePresentationUpdate(stored, persist.mock.calls[0]![0]).columnOverrides).toEqual(
+      {
+        [keyFor(SOURCE, 'other')]: RAW,
+      },
+    );
     expect(getColumnPresentationSessionState().overrides).toEqual({});
   });
 
@@ -374,6 +382,44 @@ describe('saveColumnOverride', () => {
     const snapshot = buildValuePresentationSnapshot(stored, ENV, registryWithTimestamp(), 1);
     expect(applySessionColumnOverrides(snapshot)).toBe(snapshot);
     expect(snapshot.revision).toBe(1);
+  });
+
+  it('passes an updater that applies the override to the fresh authoritative value (T11)', async () => {
+    const persist = persistSpy();
+    // 本窗口的旧基底：无规则、无其他覆盖。
+    const stored: StoredValuePresentationSettings = { version: 1, renderers: {} };
+    const result = await saveColumnOverride({
+      stored,
+      source: SOURCE,
+      columnName: 'epoch_ms',
+      override: CUSTOM_MS,
+      persist,
+    });
+    expect(result).toEqual({ ok: true });
+    expect(persist).toHaveBeenCalledTimes(1);
+    // 另一窗口同时保存的规则与覆盖在权威值里；updater 只改本列一条。
+    const fresh: StoredValuePresentationSettings = {
+      version: 1,
+      renderers: { [TIMESTAMP_CONTRIBUTION_ID]: { enabled: true, options: NATIVE_UTC_ISO } },
+      rules: [
+        {
+          name: 'unix-ms',
+          enabled: true,
+          match: { column: { kind: 'exact', value: 'epoch_ms' } },
+          options: UNIX_MS_SHANGHAI,
+        },
+      ],
+      columnOverrides: {
+        [keyFor(SOURCE, 'other')]: RAW,
+      },
+    };
+    const next = applyValuePresentationUpdate(fresh, persist.mock.calls[0]![0]);
+    expect(next.columnOverrides).toEqual({
+      [keyFor(SOURCE, 'epoch_ms')]: CUSTOM_MS,
+      [keyFor(SOURCE, 'other')]: RAW,
+    });
+    expect(next.rules).toHaveLength(1);
+    expect(next.renderers).toEqual(fresh.renderers);
   });
 });
 
@@ -614,16 +660,14 @@ describe('override beats rule; restart restores the override', () => {
   it('restores the override after a simulated restart (store rebuild → snapshot rebuild → plan rebuild)', async () => {
     // 保存 → 持久 JSON → 模拟重启：store 重建（重新 parse）→ 快照
     // 重建 → 计划重建，覆盖仍在且仍优先于规则。
-    const persist = vi.fn(async (next: StoredValuePresentationSettings) => {
-      savedJson = JSON.stringify(next);
-    });
-    let savedJson = '';
+    const storedValue: StoredValuePresentationSettings = {
+      version: 1,
+      renderers: { [TIMESTAMP_CONTRIBUTION_ID]: { enabled: true, options: NATIVE_UTC_ISO } },
+      rules: [RULE] as StoredValuePresentationSettings['rules'],
+    };
+    const persist = vi.fn(async (_update: ValuePresentationSettingsUpdate) => {});
     const saved = await saveColumnOverride({
-      stored: {
-        version: 1,
-        renderers: { [TIMESTAMP_CONTRIBUTION_ID]: { enabled: true, options: NATIVE_UTC_ISO } },
-        rules: [RULE] as StoredValuePresentationSettings['rules'],
-      },
+      stored: storedValue,
       source: SOURCE,
       columnName: 'epoch_ms',
       override: CUSTOM_SECONDS,
@@ -631,6 +675,10 @@ describe('override beats rule; restart restores the override', () => {
     });
     expect(saved).toEqual({ ok: true });
     expect(persist).toHaveBeenCalledTimes(1);
+    // T11：persist 收 updater；对保存时的 stored 应用它得到持久 JSON。
+    const savedJson = JSON.stringify(
+      applyValuePresentationUpdate(storedValue, persist.mock.calls[0]![0]),
+    );
 
     const reloaded = parseStoredValuePresentationSettings(JSON.parse(savedJson));
     expect(reloaded.columnOverrides).toEqual({

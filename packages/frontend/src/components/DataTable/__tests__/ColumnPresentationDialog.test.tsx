@@ -14,10 +14,11 @@
  * 路径使用。
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
 import { ValuePresentationRegistryImpl, type ColumnSource } from '@datazen/extension-points';
 import {
   TIMESTAMP_CONTRIBUTION_ID,
+  applyValuePresentationUpdate,
   columnOverrideKey,
   resetColumnPresentationSession,
   getColumnPresentationSessionState,
@@ -26,6 +27,7 @@ import {
   type StoredValuePresentationSettings,
   type TimestampOptions,
   type ValuePresentationRule,
+  type ValuePresentationSettingsUpdate,
   type ValuePresentationSnapshot,
 } from '../../../lib/valuePresentation/index';
 import {
@@ -39,8 +41,10 @@ const mocks = vi.hoisted(() => {
   const state: { valuePresentation: StoredValuePresentationSettings } = {
     valuePresentation: { version: 1, renderers: {} },
   };
-  const updateValuePresentationSettings = vi.fn(async (next: StoredValuePresentationSettings) => {
-    state.valuePresentation = next;
+  // T11：mock 按生产 store 的语义应用 updater（只改拥有路径，其余
+  // 取当前已存值），断言读 mocks.state.valuePresentation 即是结果。
+  const updateValuePresentationSettings = vi.fn(async (input: ValuePresentationSettingsUpdate) => {
+    state.valuePresentation = applyValuePresentationUpdate(state.valuePresentation, input);
   });
   return { state, updateValuePresentationSettings };
 });
@@ -427,7 +431,7 @@ describe('ColumnPresentationDialog persistent save (issue-32 T10)', () => {
     await waitFor(() => {
       expect(mocks.updateValuePresentationSettings).toHaveBeenCalledTimes(1);
     });
-    const next = mocks.updateValuePresentationSettings.mock.calls[0]![0];
+    const next = mocks.state.valuePresentation;
     expect(next.columnOverrides).toEqual({
       [columnOverrideKey({ ...SOURCE, column: 'epoch_ms' })]: { mode: 'raw' },
     });
@@ -494,7 +498,7 @@ describe('ColumnPresentationDialog persistent save (issue-32 T10)', () => {
     await waitFor(() => {
       expect(mocks.updateValuePresentationSettings).toHaveBeenCalledTimes(1);
     });
-    const next = mocks.updateValuePresentationSettings.mock.calls[0]![0];
+    const next = mocks.state.valuePresentation;
     expect(next.columnOverrides).toEqual({});
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -567,7 +571,7 @@ describe('ColumnPresentationDialog total switch off', () => {
     await vi.waitFor(() => {
       expect(mocks.updateValuePresentationSettings).toHaveBeenCalledTimes(1);
     });
-    const next = mocks.updateValuePresentationSettings.mock.calls[0]![0];
+    const next = mocks.state.valuePresentation;
     expect(next.renderers[TIMESTAMP_CONTRIBUTION_ID]?.enabled).toBe(true);
     expect(next.renderers[TIMESTAMP_CONTRIBUTION_ID]?.options).toEqual(GLOBAL_OPTIONS);
   });
@@ -658,5 +662,34 @@ describe('column presentation draft helpers', () => {
       format: 'iso',
       displayTimeZoneKind: 'utc',
     });
+  });
+});
+
+describe('ColumnPresentationDialog contribution missing while open (issue-32 T11)', () => {
+  it('shows the missing notice when the contribution is unregistered while open, and hides it on re-register', () => {
+    const registry = registryWithTimestamp();
+    render(
+      <ColumnPresentationDialog
+        open
+        columnName="epoch_ms"
+        columnType="bigint"
+        source={SOURCE}
+        snapshot={makeSnapshot()}
+        sampleValue={1705316400000}
+        registry={registry}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId('column-presentation-contribution-missing')).toBeNull();
+
+    act(() => {
+      registry.unregister(TIMESTAMP_CONTRIBUTION_ID);
+    });
+    expect(screen.getByTestId('column-presentation-contribution-missing')).toBeInTheDocument();
+
+    act(() => {
+      registry.register(timestampContribution);
+    });
+    expect(screen.queryByTestId('column-presentation-contribution-missing')).toBeNull();
   });
 });

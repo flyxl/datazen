@@ -15,11 +15,13 @@ import { DataTable } from '../DataTable';
 import { DetailPanel } from '../DetailPanel';
 import {
   TIMESTAMP_CONTRIBUTION_ID,
+  applyValuePresentationUpdate,
   buildValuePresentationSnapshot,
   parseStoredValuePresentationSettings,
   resetColumnPresentationSession,
   timestampContribution,
   type StoredValuePresentationSettings,
+  type ValuePresentationSettingsUpdate,
   type ValuePresentationSnapshot,
 } from '../../../lib/valuePresentation/index';
 
@@ -54,8 +56,13 @@ const mocks = vi.hoisted(() => ({
   state: {
     valuePresentation: { version: 1, renderers: {} } as StoredValuePresentationSettings,
   },
-  updateValuePresentationSettings: vi.fn(async (next: StoredValuePresentationSettings) => {
-    mocks.state.valuePresentation = next;
+  updateValuePresentationSettings: vi.fn(async (input: ValuePresentationSettingsUpdate) => {
+    // T11：mock 按生产 store 的语义应用 updater；persistedSnapshot 读
+    // mocks.state.valuePresentation 即是已持久化的值。
+    mocks.state.valuePresentation = applyValuePresentationUpdate(
+      mocks.state.valuePresentation,
+      input,
+    );
   }),
 }));
 

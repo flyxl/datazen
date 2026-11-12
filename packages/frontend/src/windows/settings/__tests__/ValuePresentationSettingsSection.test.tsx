@@ -11,17 +11,22 @@
  * settings.valuePresentation 与写回的 updateValuePresentationSettings，
  * 后端行为是 store 自身测试的范围）；注册中心由 props 注入全新实例，
  * 不动全局单例；i18n mock 为 key 直通，language 固定 'en-US'。
+ *
+ * T11 追加：他窗保存时脏草稿保留 + 外部更新提示与重新加载、干净
+ * 草稿自动跟随、保存只写脏路径（他窗规则保留）。
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { ValuePresentationRegistryImpl } from '@datazen/extension-points';
 import {
+  applyValuePresentationUpdate,
   timestampContribution,
   validateValuePresentationRule,
   type StoredRendererSettings,
   type StoredValuePresentationSettings,
   type TimestampOptions,
   type ValuePresentationRule,
+  type ValuePresentationSettingsUpdate,
 } from '../../../lib/valuePresentation/index';
 import {
   ValuePresentationSettingsSection,
@@ -34,8 +39,10 @@ const mocks = vi.hoisted(() => {
   const state: { valuePresentation: StoredValuePresentationSettings } = {
     valuePresentation: { version: 1, renderers: {} },
   };
-  const updateValuePresentationSettings = vi.fn(async (next: StoredValuePresentationSettings) => {
-    state.valuePresentation = next;
+  // T11：mock 按生产 store 的语义应用 updater（只改拥有路径，其余
+  // 取当前已存值）；断言读 mocks.state.valuePresentation 即是结果。
+  const updateValuePresentationSettings = vi.fn(async (input: ValuePresentationSettingsUpdate) => {
+    state.valuePresentation = applyValuePresentationUpdate(state.valuePresentation, input);
   });
   return { state, updateValuePresentationSettings };
 });
@@ -150,10 +157,9 @@ describe('ValuePresentationSettingsSection', () => {
     fireEvent.click(screen.getByTestId('value-presentation-enable'));
     await clickSave();
     await waitFor(() =>
-      expect(mocks.updateValuePresentationSettings).toHaveBeenCalledWith({
+      expect(mocks.state.valuePresentation).toEqual({
         version: 1,
         renderers: { [TIMESTAMP_ID]: { enabled: true, options: NATIVE_ISO } },
-        rules: [],
       }),
     );
     expect(screen.getByTestId('value-presentation-saved')).toBeInTheDocument();
@@ -179,7 +185,7 @@ describe('ValuePresentationSettingsSection', () => {
     fireEvent.click(screen.getByTestId('value-presentation-enable'));
     await clickSave();
     await waitFor(() =>
-      expect(mocks.updateValuePresentationSettings).toHaveBeenCalledWith({
+      expect(mocks.state.valuePresentation).toEqual({
         version: 1,
         renderers: {
           [TIMESTAMP_ID]: {
@@ -191,7 +197,6 @@ describe('ValuePresentationSettingsSection', () => {
             },
           },
         },
-        rules: [],
       }),
     );
   });
@@ -322,7 +327,7 @@ describe('ValuePresentationSettingsSection', () => {
     });
     await clickSave();
     await waitFor(() =>
-      expect(mocks.updateValuePresentationSettings).toHaveBeenCalledWith({
+      expect(mocks.state.valuePresentation).toEqual({
         version: 1,
         renderers: {
           [TIMESTAMP_ID]: {
@@ -334,7 +339,6 @@ describe('ValuePresentationSettingsSection', () => {
             },
           },
         },
-        rules: [],
       }),
     );
   });
@@ -398,10 +402,9 @@ describe('ValuePresentationSettingsSection', () => {
     fireEvent.click(screen.getByTestId('value-presentation-enable'));
     await clickSave();
     await waitFor(() =>
-      expect(mocks.updateValuePresentationSettings).toHaveBeenCalledWith({
+      expect(mocks.state.valuePresentation).toEqual({
         version: 1,
         renderers: { [TIMESTAMP_ID]: { enabled: false, options: NATIVE_ISO } },
-        rules: [],
       }),
     );
   });
@@ -460,7 +463,7 @@ describe('ValuePresentationSettingsSection', () => {
     pickOption('value-presentation-format', 'settings.valuePresentation.format.iso-tz');
     await clickSave();
     await waitFor(() =>
-      expect(mocks.updateValuePresentationSettings).toHaveBeenCalledWith({
+      expect(mocks.state.valuePresentation).toEqual({
         version: 1,
         renderers: {
           [TIMESTAMP_ID]: {
@@ -472,7 +475,6 @@ describe('ValuePresentationSettingsSection', () => {
             },
           },
         },
-        rules: [],
       }),
     );
   });
@@ -646,25 +648,21 @@ describe('ValuePresentationSettingsSection rules editor (issue-32 T08)', () => {
     expect(screen.getByTestId('value-presentation-rule-0')).toHaveTextContent('unix-ms');
     await clickSave();
     await waitFor(() =>
-      expect(mocks.updateValuePresentationSettings).toHaveBeenCalledWith(
-        expect.objectContaining({
-          rules: [
-            {
-              name: 'unix-ms',
-              enabled: true,
-              match: {
-                column: { kind: 'regex', source: '^(created_at|updated_at)$' },
-                databaseTypeName: { kind: 'exact', value: 'BIGINT' },
-              },
-              options: {
-                interpretation: { kind: 'unix', unit: 'milliseconds' },
-                format: 'iso-tz',
-                displayTimeZone: { kind: 'iana', name: 'Asia/Shanghai' },
-              },
-            },
-          ],
-        }),
-      ),
+      expect(mocks.state.valuePresentation.rules).toEqual([
+        {
+          name: 'unix-ms',
+          enabled: true,
+          match: {
+            column: { kind: 'regex', source: '^(created_at|updated_at)$' },
+            databaseTypeName: { kind: 'exact', value: 'BIGINT' },
+          },
+          options: {
+            interpretation: { kind: 'unix', unit: 'milliseconds' },
+            format: 'iso-tz',
+            displayTimeZone: { kind: 'iana', name: 'Asia/Shanghai' },
+          },
+        },
+      ]),
     );
   });
 
@@ -724,9 +722,9 @@ describe('ValuePresentationSettingsSection rules editor (issue-32 T08)', () => {
     expect(screen.getByTestId('value-presentation-rule-0')).toHaveTextContent('unix-ms-v2');
     await clickSave();
     await waitFor(() =>
-      expect(mocks.updateValuePresentationSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ rules: [expect.objectContaining({ name: 'unix-ms-v2' })] }),
-      ),
+      expect(mocks.state.valuePresentation.rules).toEqual([
+        expect.objectContaining({ name: 'unix-ms-v2' }),
+      ]),
     );
   });
 
@@ -737,11 +735,7 @@ describe('ValuePresentationSettingsSection rules editor (issue-32 T08)', () => {
     fireEvent.click(screen.getByTestId('value-presentation-rule-delete-0'));
     expect(screen.getByTestId('value-presentation-rules-empty')).toBeInTheDocument();
     await clickSave();
-    await waitFor(() =>
-      expect(mocks.updateValuePresentationSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ rules: [] }),
-      ),
-    );
+    await waitFor(() => expect(mocks.state.valuePresentation.rules).toEqual([]));
   });
 
   it('disabling a rule keeps it listed and saves enabled:false', async () => {
@@ -754,9 +748,9 @@ describe('ValuePresentationSettingsSection rules editor (issue-32 T08)', () => {
     );
     await clickSave();
     await waitFor(() =>
-      expect(mocks.updateValuePresentationSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ rules: [expect.objectContaining({ enabled: false })] }),
-      ),
+      expect(mocks.state.valuePresentation.rules).toEqual([
+        expect.objectContaining({ enabled: false }),
+      ]),
     );
   });
 
@@ -774,14 +768,10 @@ describe('ValuePresentationSettingsSection rules editor (issue-32 T08)', () => {
     expect(screen.getByTestId('value-presentation-rule-1')).toHaveTextContent('first');
     await clickSave();
     await waitFor(() =>
-      expect(mocks.updateValuePresentationSettings).toHaveBeenCalledWith(
-        expect.objectContaining({
-          rules: [
-            expect.objectContaining({ name: 'second' }),
-            expect.objectContaining({ name: 'first' }),
-          ],
-        }),
-      ),
+      expect(mocks.state.valuePresentation.rules).toEqual([
+        expect.objectContaining({ name: 'second' }),
+        expect.objectContaining({ name: 'first' }),
+      ]),
     );
   });
 
@@ -842,30 +832,26 @@ describe('ValuePresentationSettingsSection rules editor (issue-32 T08)', () => {
     expect(screen.queryByTestId('value-presentation-rule-editor')).toBeNull();
     await clickSave();
     await waitFor(() =>
-      expect(mocks.updateValuePresentationSettings).toHaveBeenCalledWith(
-        expect.objectContaining({
-          rules: [
-            {
-              name: 'full-rule',
-              enabled: false,
-              match: {
-                connectionId: 'conn-1',
-                database: 'shop',
-                namespace: 'public',
-                table: { kind: 'regex', source: '^orders$', flags: 'i' },
-                column: { kind: 'regex', source: '^(created_at|updated_at)$', flags: 'i' },
-                databaseTypeName: { kind: 'regex', source: '^bigint$', flags: 'i' },
-              },
-              options: {
-                interpretation: { kind: 'text' },
-                format: 'locale',
-                displayTimeZone: { kind: 'utc' },
-                sourceTimeZone: { kind: 'iana', name: 'Asia/Shanghai' },
-              },
-            },
-          ],
-        }),
-      ),
+      expect(mocks.state.valuePresentation.rules).toEqual([
+        {
+          name: 'full-rule',
+          enabled: false,
+          match: {
+            connectionId: 'conn-1',
+            database: 'shop',
+            namespace: 'public',
+            table: { kind: 'regex', source: '^orders$', flags: 'i' },
+            column: { kind: 'regex', source: '^(created_at|updated_at)$', flags: 'i' },
+            databaseTypeName: { kind: 'regex', source: '^bigint$', flags: 'i' },
+          },
+          options: {
+            interpretation: { kind: 'text' },
+            format: 'locale',
+            displayTimeZone: { kind: 'utc' },
+            sourceTimeZone: { kind: 'iana', name: 'Asia/Shanghai' },
+          },
+        },
+      ]),
     );
   });
 
@@ -937,5 +923,102 @@ describe('ValuePresentationRuleEditor pure preview (issue-32 T08)', () => {
     ).toEqual({ kind: 'unavailable' });
     const unchanged = computeRuleSamplePreview({ ...base, sampleValue: 'not-a-number' });
     expect(unchanged.kind).toBe('matched-unchanged');
+  });
+});
+
+describe('ValuePresentationSettingsSection external updates (issue-32 T11)', () => {
+  beforeEach(() => {
+    mocks.state.valuePresentation = { version: 1, renderers: {} };
+    mocks.updateValuePresentationSettings.mockClear();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('keeps a dirty draft and shows a notice when another window saves, and reload restores the saved values', () => {
+    const registry = registryWithTimestamp();
+    const { rerender } = render(<ValuePresentationSettingsSection registry={registry} />);
+    // 改格式为 iso-tz（未保存）：预览为 UTC 下的 +00:00。
+    pickOption('value-presentation-format', 'settings.valuePresentation.format.iso-tz');
+    expect(previewResult()).toBe('2026-01-15T14:30:00+00:00');
+    // 另一窗口保存了 locale 格式。
+    setStored(
+      storedWith({
+        [TIMESTAMP_ID]: {
+          enabled: false,
+          options: {
+            interpretation: { kind: 'native' },
+            format: 'locale',
+            displayTimeZone: { kind: 'local' },
+          },
+        },
+      }),
+    );
+    rerender(<ValuePresentationSettingsSection registry={registry} />);
+    // 草稿保留：预览仍是 iso-tz 草稿，并提示外部更新。
+    expect(screen.getByTestId('value-presentation-external-update')).toHaveTextContent(
+      'settings.valuePresentation.externalUpdate',
+    );
+    expect(previewResult()).toBe('2026-01-15T14:30:00+00:00');
+    expect(screen.getByTestId('value-presentation-save')).not.toBeDisabled();
+    // 点重新加载：草稿跟随已保存的 locale，提示消失，保存禁用。
+    fireEvent.click(screen.getByTestId('value-presentation-reload-saved'));
+    expect(screen.queryByTestId('value-presentation-external-update')).toBeNull();
+    expect(screen.getByTestId('value-presentation-save')).toBeDisabled();
+    const localeResult = previewResult();
+    expect(localeResult).toContain('2026');
+    expect(localeResult).not.toBe('2026-01-15T14:30:00+00:00');
+  });
+
+  it('applies an external update automatically when the draft is clean', () => {
+    const registry = registryWithTimestamp();
+    const { rerender } = render(<ValuePresentationSettingsSection registry={registry} />);
+    expect(previewResult()).toBe('2026-01-15T14:30:00Z');
+    setStored(
+      storedWith({
+        [TIMESTAMP_ID]: {
+          enabled: true,
+          options: {
+            interpretation: { kind: 'native' },
+            format: 'iso-tz',
+            displayTimeZone: { kind: 'iana', name: 'Asia/Shanghai' },
+          },
+        },
+      }),
+    );
+    rerender(<ValuePresentationSettingsSection registry={registry} />);
+    expect(screen.queryByTestId('value-presentation-external-update')).toBeNull();
+    expect(screen.getByTestId('value-presentation-enable').getAttribute('aria-checked')).toBe(
+      'true',
+    );
+    expect(previewResult()).toBe('2026-01-15T22:30:00+08:00');
+  });
+
+  it('saving after an external rules update keeps the other window rule (path-scoped save)', async () => {
+    const registry = registryWithTimestamp();
+    const { rerender } = render(<ValuePresentationSettingsSection registry={registry} />);
+    // 改格式为 iso-tz（未保存）。
+    pickOption('value-presentation-format', 'settings.valuePresentation.format.iso-tz');
+    // 另一窗口新增了一条规则（格式仍为 iso）。
+    setStored({
+      version: 1,
+      renderers: {},
+      rules: [validRule()],
+    });
+    rerender(<ValuePresentationSettingsSection registry={registry} />);
+    expect(screen.getByTestId('value-presentation-external-update')).toBeInTheDocument();
+    // 保存：只写格式路径，另一窗口的规则保留。
+    await clickSave();
+    await waitFor(() => expect(mocks.updateValuePresentationSettings).toHaveBeenCalledTimes(1));
+    expect(mocks.state.valuePresentation.renderers[TIMESTAMP_ID]).toEqual({
+      enabled: false,
+      options: {
+        interpretation: { kind: 'native' },
+        format: 'iso-tz',
+        displayTimeZone: { kind: 'local' },
+      },
+    });
+    expect(mocks.state.valuePresentation.rules).toEqual([validRule()]);
   });
 });
