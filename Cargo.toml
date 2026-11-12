@@ -81,7 +81,7 @@ rust_xlsxwriter = { version = "0.102", features = ["constant_memory"] }
 # Parquet export T1 (PRD §8 Q1): parquet 58.x tracks arrow 58.x, the same
 # line the duckdb driver already pulls in (lock: arrow 58.4.0; duckdb
 # requires arrow ^58). Pinning the "58" line keeps a single arrow in the
-# graph — cargo resolves both to 58.4.1, a patch bump only. Do NOT bump to
+# graph — cargo resolves both to 58.4.0, a patch bump only. Do NOT bump to
 # parquet 59+ / arrow 59 without re-checking the duckdb driver.
 parquet = "58"
 arrow = "58"

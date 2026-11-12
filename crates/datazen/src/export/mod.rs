@@ -3,7 +3,7 @@
 //! After the user picks a destination file, this module streams each selected
 //! table's query directly on the Rust side (`driver.query_stream`), formats rows
 //! in batches (CSV / TSV / JSON / Markdown / SQL INSERT / SQL UPDATE, or XLSX
-//! via the parallel [`BinaryFormatter`](binary::BinaryFormatter) branch) and
+//! / Parquet via the parallel [`BinaryFormatter`](binary::BinaryFormatter) branch) and
 //! writes them straight to disk — avoiding holding the whole table in memory
 //! and the JS↔Rust data round-trip.
 //!
@@ -61,7 +61,8 @@ pub trait ExportEvents: Send + Sync {
 
 pub const SQL_INSERT_BATCH_SIZE: usize = 500;
 const APPEND_FLUSH_BYTES: usize = 64 * 1024;
-pub const ALLOWED_EXPORT_EXTS: &[&str] = &["sql", "csv", "tsv", "json", "md", "xlsx", "zip"];
+pub const ALLOWED_EXPORT_EXTS: &[&str] =
+    &["sql", "csv", "tsv", "json", "md", "xlsx", "parquet", "zip"];
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -152,6 +153,7 @@ pub enum DataFormat {
     SqlInsert,
     SqlUpdate,
     Xlsx,
+    Parquet,
 }
 
 impl DataFormat {
@@ -163,13 +165,14 @@ impl DataFormat {
             DataFormat::Markdown => "md",
             DataFormat::SqlInsert | DataFormat::SqlUpdate => "sql",
             DataFormat::Xlsx => "xlsx",
+            DataFormat::Parquet => "parquet",
         }
     }
 
     /// Binary formats go through the parallel [`BinaryFormatter`](binary::BinaryFormatter)
     /// branch (`write_binary_file`); they can never be concatenated as text.
     pub fn is_binary(self) -> bool {
-        matches!(self, DataFormat::Xlsx)
+        matches!(self, DataFormat::Xlsx | DataFormat::Parquet)
     }
 }
 
@@ -701,7 +704,9 @@ pub async fn write_data_file(
 /// PRD F9). The `DataFormat` variants themselves are not feature-gated, so
 /// a build without the matching sub-feature still accepts the request
 /// shape — it just cannot serve it, and says so instead of silently
-/// falling back to another format. The Parquet arm lands in T5.
+/// falling back to another format. The Parquet formatter arm lands in T5;
+/// the off-feature error arm below lands in T2 so the gating is proven
+/// before the formatter exists.
 fn binary_formatter(
     format: DataFormat,
     table: &TableExportInput,
@@ -724,6 +729,12 @@ fn binary_formatter(
         DataFormat::Xlsx => Err(CommandError::Validation(
             "XLSX export requires the `export-xlsx` feature, which is not \
              enabled in this build; enable `export-xlsx` (desktop builds do)"
+                .into(),
+        )),
+        #[cfg(not(feature = "export-parquet"))]
+        DataFormat::Parquet => Err(CommandError::Validation(
+            "Parquet export requires the `export-parquet` feature, which is not \
+             enabled in this build; enable `export-parquet` (desktop builds do)"
                 .into(),
         )),
         _ => Err(CommandError::Validation(format!(
@@ -763,7 +774,8 @@ pub async fn write_binary_file(
     // error naming the missing feature — never a silent fallback to
     // another format, and never a panic. `DataFormat` variants themselves
     // stay ungated so the wire shape is stable across builds. The Parquet
-    // arm lands in T5, once `DataFormat::Parquet` exists (T2).
+    // formatter arm lands in T5; its off-feature error arm (in
+    // `binary_formatter`) landed in T2.
     //
     // The dispatch lives in its own helper (rather than inline here) so
     // the rest of this function stays reachable — and warning-free — in a
