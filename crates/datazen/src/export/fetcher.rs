@@ -896,6 +896,8 @@ mod tests {
         assert_eq!(DataFormat::SqlUpdate.extension(), "sql");
         assert_eq!(DataFormat::Xlsx.extension(), "xlsx");
         assert!(DataFormat::Xlsx.is_binary());
+        assert_eq!(DataFormat::Parquet.extension(), "parquet");
+        assert!(DataFormat::Parquet.is_binary());
         for format in [
             DataFormat::Csv,
             DataFormat::Tsv,
@@ -915,11 +917,22 @@ mod tests {
             serde_json::from_str::<DataFormat>("\"xlsx\"").unwrap(),
             DataFormat::Xlsx
         );
+        assert_eq!(
+            serde_json::to_string(&DataFormat::Parquet).unwrap(),
+            "\"parquet\""
+        );
+        assert_eq!(
+            serde_json::from_str::<DataFormat>("\"parquet\"").unwrap(),
+            DataFormat::Parquet
+        );
     }
 
     #[test]
-    fn validate_export_path_accepts_new_extensions() {
-        for ext in ["tsv", "md", "xlsx", "csv", "json", "sql", "zip"] {
+    fn validate_export_path_still_refuses_illegal_extension() {
+        // T2 added "parquet" to the allow-list; the old ".parquet refused"
+        // assertion is replaced by the invariant it used to pin: unknown
+        // extensions are still rejected, and an extension-less path is.
+        for ext in ["tsv", "md", "xlsx", "parquet", "csv", "json", "sql", "zip"] {
             let path = std::path::PathBuf::from(format!("export.{ext}"));
             assert!(
                 crate::export::validate_export_path(&path).is_ok(),
@@ -927,7 +940,12 @@ mod tests {
             );
         }
         assert!(
-            crate::export::validate_export_path(std::path::Path::new("export.parquet")).is_err()
+            crate::export::validate_export_path(std::path::Path::new("export.exe")).is_err(),
+            "unknown extensions must stay rejected"
+        );
+        assert!(
+            crate::export::validate_export_path(std::path::Path::new("export")).is_err(),
+            "extension-less paths must stay rejected"
         );
     }
 
@@ -1695,6 +1713,46 @@ mod tests {
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
+    /// T2 gating proof, closing the T1 report's §5.5 deferred item: with
+    /// `export` but WITHOUT `export-parquet`, a Parquet request is a clear
+    /// validation error naming the missing feature — not a panic, not a
+    /// silent fallback to another format, and no file is created. The
+    /// Parquet formatter arm itself lands in T4/T5; until then this is the
+    /// same helper (`binary_formatter`) the XLSX proof above exercises.
+    #[cfg(not(feature = "export-parquet"))]
+    #[tokio::test]
+    async fn write_binary_file_parquet_without_export_parquet_feature_is_a_clear_error() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Parquet,
+            vec![table_item(
+                "t",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.parquet");
+        let err = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Parquet,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Validation(ref m) if m.contains("export-parquet")),
+            "unexpected error: {err:?}"
+        );
+        assert!(!dest.exists(), "a rejected export must not create its file");
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
     #[test]
     fn prepare_export_forces_zip_for_multi_plan_xlsx() {
         let req = request(
@@ -1814,6 +1872,22 @@ mod tests {
         let mut f =
             crate::export::StreamFormatter::new(DataFormat::Xlsx, "t".into(), None, test_driver());
         assert_eq!(f.header(&["id".to_string()]), "");
+    }
+
+    #[test]
+    fn stream_formatter_parquet_header_and_tail_are_empty_by_construction() {
+        // Binary formats never go through the text formatter (write_data_file
+        // rejects them first); the Parquet arms in StreamFormatter only exist
+        // so construction cannot panic if one is ever routed here. Both the
+        // header and the tail are empty by construction, same as Xlsx.
+        let mut f = crate::export::StreamFormatter::new(
+            DataFormat::Parquet,
+            "t".into(),
+            None,
+            test_driver(),
+        );
+        assert_eq!(f.header(&["id".to_string()]), "");
+        assert_eq!(f.tail(&["id".to_string()]).unwrap(), "");
     }
 
     #[cfg(feature = "export-xlsx")]

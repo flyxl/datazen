@@ -52,6 +52,16 @@ describe('formatExtension / isBinaryFormat / isSqlDataFormat', () => {
     expect(isBinaryFormat('sql_insert')).toBe(false);
   });
 
+  it("accepts 'parquet' as an ExportDataFormat (T2 wires the wire type only)", () => {
+    // T2 grew the `ExportDataFormat` union with 'parquet' (file.ts); the
+    // planner mirrors — formatExtension('parquet') === 'parquet' and
+    // isBinaryFormat('parquet') === true — land with the T6 wiring, so this
+    // test only pins the wire type: the shared request types accept the
+    // format without narrowing.
+    const request = REQUEST({ dataFormat: 'parquet' });
+    expect(request.dataFormat).toBe('parquet');
+  });
+
   it('marks only the sql formats as sql formats', () => {
     expect(isSqlDataFormat('sql_insert')).toBe(true);
     expect(isSqlDataFormat('sql_update')).toBe(true);
@@ -123,15 +133,7 @@ describe('resolveDdl / ddlForStructure', () => {
 });
 
 describe('buildProvidedExportFilename parity with build_file_plans (task 6)', () => {
-  it.each([
-    'csv',
-    'tsv',
-    'json',
-    'markdown',
-    'sql_insert',
-    'sql_update',
-    'xlsx',
-  ] as const)(
+  it.each(['csv', 'tsv', 'json', 'markdown', 'sql_insert', 'sql_update', 'xlsx'] as const)(
     'names a provided %s export exactly like the Rust data-only plan ({table}.{ext})',
     (dataFormat: ExportDataFormat) => {
       const plans = buildFilePlans(
@@ -163,7 +165,8 @@ describe('validateTableSource', () => {
     ).toThrow("SQL data source 'users' must not be empty");
   });
 
-  it('rejects provided data without columns, with duplicate columns, or with a short row', () => {    expect(() =>
+  it('rejects provided data without columns, with duplicate columns, or with a short row', () => {
+    expect(() =>
       validateTableSource({
         tableName: 'users',
         columns: [],
@@ -367,11 +370,7 @@ describe('defaultExportName', () => {
       'export_structure_2026-11-09-05-00-00.sql',
     );
     expect(
-      defaultExportName(
-        REQUEST({ mode: 'structure_only', dataFormat: 'xlsx' }),
-        false,
-        PINNED_NOW,
-      ),
+      defaultExportName(REQUEST({ mode: 'structure_only', dataFormat: 'xlsx' }), false, PINNED_NOW),
     ).toBe('export_structure_2026-11-09-05-00-00.sql');
     expect(defaultExportName(REQUEST({ mode: 'data_and_structure' }), false, PINNED_NOW)).toBe(
       'export_full_2026-11-09-05-00-00.csv',
@@ -386,11 +385,7 @@ describe('defaultExportName', () => {
       'export_data_2026-11-09-05-00-00.zip',
     );
     expect(
-      defaultExportName(
-        REQUEST({ mode: 'structure_only', dataFormat: 'xlsx' }),
-        true,
-        PINNED_NOW,
-      ),
+      defaultExportName(REQUEST({ mode: 'structure_only', dataFormat: 'xlsx' }), true, PINNED_NOW),
     ).toBe('export_structure_2026-11-09-05-00-00.zip');
   });
 });
