@@ -3,7 +3,9 @@ import { DEFAULT_THEME_PREFERENCE } from '../../types/theme';
 import type { StoredValuePresentationSettings } from '../../lib/valuePresentation/settings';
 import {
   columnOverrideKey,
+  withColumnOverride,
   withTimestampRenderer,
+  withValuePresentationRules,
   type ValuePresentationRule,
 } from '../../lib/valuePresentation/index';
 
@@ -701,6 +703,121 @@ describe('settingsStore', () => {
     };
     expect(saved.valuePresentation.rules).toEqual([T11_RULE]);
     expect(saved.valuePresentation.renderers['datazen.timestamp']?.options.format).toBe('iso-tz');
+  });
+
+  // T11-BUG-001 回归：未知版本（v99）权威值——含未来版本才有的字段。
+  // StoredValuePresentationSettings 类型本身没有 futureField：用交叉
+  // 类型表示“未知版本可能带任意顶层字段”的原文。
+  type UnknownVersionValuePresentation = StoredValuePresentationSettings & {
+    futureField: { kept: boolean };
+  };
+
+  function v99Authoritative(): UnknownVersionValuePresentation {
+    return {
+      version: 99,
+      renderers: {
+        'datazen.timestamp': { enabled: true, options: { ...T11_ISO_UTC } },
+      },
+      rules: [T11_RULE],
+      columnOverrides: {
+        [columnOverrideKey({
+          connectionId: 'conn-1',
+          database: 'shop',
+          namespace: 'public',
+          table: 'orders',
+          column: 'epoch_ms',
+        })]: { mode: 'raw' },
+      },
+      futureField: { kept: true },
+    };
+  }
+
+  it('updateValuePresentationSettings keeps unknown-version fields when saving the timestamp renderer (T11-BUG-001, P7b)', async () => {
+    const authoritative = v99Authoritative();
+    mockSettingsCommands.getSettings.mockResolvedValueOnce({
+      theme: { mode: 'dark', packId: null },
+      language: 'en',
+      valuePresentation: authoritative,
+    });
+    mockSettingsCommands.saveSettings.mockResolvedValue(undefined);
+
+    await useSettingsStore
+      .getState()
+      .updateValuePresentationSettings((fresh) =>
+        withTimestampRenderer(fresh, true, { ...T11_ISO_TZ_SHANGHAI }),
+      );
+
+    const saved = mockSettingsCommands.saveSettings.mock.lastCall?.[0] as {
+      valuePresentation: UnknownVersionValuePresentation;
+    };
+    expect(saved.valuePresentation.version).toBe(99);
+    expect(saved.valuePresentation.renderers['datazen.timestamp']?.options.format).toBe('iso-tz');
+    // 未知版本字段原样保留：rules / columnOverrides / 未知顶层字段。
+    expect(saved.valuePresentation.rules).toEqual([T11_RULE]);
+    expect(saved.valuePresentation.columnOverrides).toEqual(authoritative.columnOverrides);
+    expect(saved.valuePresentation.futureField).toEqual({ kept: true });
+    // store 内的副本仍是 parse 后的值（T06 既有行为：未知版本不解析
+    // rules / columnOverrides）；丢的是 store 副本的未知字段，不是
+    // 后端写回值。
+    expect(useSettingsStore.getState().settings.valuePresentation).toEqual({
+      version: 99,
+      renderers: {
+        'datazen.timestamp': { enabled: true, options: { ...T11_ISO_TZ_SHANGHAI } },
+      },
+    });
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(1);
+  });
+
+  it('updateValuePresentationSettings keeps unknown-version fields when saving rules (T11-BUG-001, P7c)', async () => {
+    const authoritative = v99Authoritative();
+    mockSettingsCommands.getSettings.mockResolvedValueOnce({
+      theme: { mode: 'dark', packId: null },
+      language: 'en',
+      valuePresentation: authoritative,
+    });
+    mockSettingsCommands.saveSettings.mockResolvedValue(undefined);
+
+    // 换一份规则列表：未知版本不按 v1 解释 rules，写回的仍是原文 rules。
+    await useSettingsStore
+      .getState()
+      .updateValuePresentationSettings((fresh) =>
+        withValuePresentationRules(fresh, [{ ...T11_RULE, name: 'other-rule' }]),
+      );
+
+    const saved = mockSettingsCommands.saveSettings.mock.lastCall?.[0] as {
+      valuePresentation: UnknownVersionValuePresentation;
+    };
+    expect(saved.valuePresentation.version).toBe(99);
+    expect(saved.valuePresentation.rules).toEqual([T11_RULE]);
+    expect(saved.valuePresentation.columnOverrides).toEqual(authoritative.columnOverrides);
+    expect(saved.valuePresentation.futureField).toEqual({ kept: true });
+  });
+
+  it('updateValuePresentationSettings keeps unknown-version fields when saving a column override (T11-BUG-001)', async () => {
+    const authoritative = v99Authoritative();
+    mockSettingsCommands.getSettings.mockResolvedValueOnce({
+      theme: { mode: 'dark', packId: null },
+      language: 'en',
+      valuePresentation: authoritative,
+    });
+    mockSettingsCommands.saveSettings.mockResolvedValue(undefined);
+
+    await useSettingsStore
+      .getState()
+      .updateValuePresentationSettings((fresh) =>
+        withColumnOverride(
+          fresh,
+          { connectionId: 'conn-1', database: 'shop', namespace: 'public', table: 'orders' },
+          'epoch_ms',
+          { mode: 'raw' },
+        ),
+      );
+
+    const saved = mockSettingsCommands.saveSettings.mock.lastCall?.[0] as {
+      valuePresentation: UnknownVersionValuePresentation;
+    };
+    // withColumnOverride 对非 v1 原样返回 fresh：写回值就是权威原文。
+    expect(saved.valuePresentation).toEqual(authoritative);
   });
 
   it('loadSettings discards a stale response that resolves after a newer load', async () => {
