@@ -1,6 +1,8 @@
 use crate::mcp::McpServerConfig;
 use datazen::mcp::permission::McpPermissionMode;
-use datazen::settings::{ExecutionSettings, SharedSettings, UserPreferences};
+use datazen::settings::{
+    ExecutionSettings, SharedSettings, UserPreferences, ValuePresentationSettings,
+};
 pub use datazen::settings::{MonitorEmailSettings, MonitorSettings, OnboardingState};
 pub use datazen::settings::{SqlFormatOptions, SqlSnippet};
 use serde::{Deserialize, Serialize};
@@ -177,6 +179,11 @@ pub struct AppSettings {
     /// `extra` catch-all because it is now a shared-settings field).
     #[serde(default = "default_row_count_mode")]
     pub row_count_mode: String,
+    /// Value-presentation settings (issue-32 T06: form-split F4-style
+    /// promotion — promoted from the `extra` catch-all because it is now a
+    /// shared-settings field).
+    #[serde(default)]
+    pub value_presentation: ValuePresentationSettings,
 }
 
 fn default_row_count_mode() -> String {
@@ -275,6 +282,7 @@ impl Default for AppSettings {
             auto_chart_on_query: false,
             monitor: MonitorSettings::default(),
             row_count_mode: default_row_count_mode(),
+            value_presentation: ValuePresentationSettings::default(),
             driver_settings: serde_json::Map::new(),
             wapp_settings: serde_json::Map::new(),
             mcp_client_servers: Vec::new(),
@@ -346,13 +354,7 @@ impl AppSettings {
             monitor: self.monitor.clone(),
             onboarding: self.onboarding.clone(),
             row_count_mode: self.row_count_mode.clone(),
-            // Issue-32 T06: the desktop AppSettings projection does not own
-            // this field (no `value_presentation` host field yet — F4-style
-            // promotion is a follow-up); the shared path therefore reports
-            // the default here. The full-blob path keeps the frontend value
-            // opaquely in `extra` (flatten catch-all), so nothing is lost
-            // on disk, but the shared read does not surface it.
-            value_presentation: Default::default(),
+            value_presentation: self.value_presentation.clone(),
         }
     }
     pub fn apply_shared_settings(&mut self, value: SharedSettings) -> Result<(), String> {
@@ -406,6 +408,7 @@ impl AppSettings {
             self.onboarding = value.onboarding;
         }
         self.row_count_mode = value.row_count_mode;
+        self.value_presentation = value.value_presentation;
         Ok(())
     }
 }
