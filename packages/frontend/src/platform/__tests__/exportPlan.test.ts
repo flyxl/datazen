@@ -52,14 +52,29 @@ describe('formatExtension / isBinaryFormat / isSqlDataFormat', () => {
     expect(isBinaryFormat('sql_insert')).toBe(false);
   });
 
-  it("accepts 'parquet' as an ExportDataFormat (T2 wires the wire type only)", () => {
-    // T2 grew the `ExportDataFormat` union with 'parquet' (file.ts); the
-    // planner mirrors — formatExtension('parquet') === 'parquet' and
-    // isBinaryFormat('parquet') === true — land with the T6 wiring, so this
-    // test only pins the wire type: the shared request types accept the
-    // format without narrowing.
+  it("treats 'parquet' as a binary format with its own extension (T6 wires the planner mirrors)", () => {
+    // T2 grew the `ExportDataFormat` union with 'parquet' (file.ts) and this
+    // test pinned only the wire type; T6 wires the planner mirrors, so the
+    // full contract is asserted now: extension and binary flag (same shape
+    // as the Rust `DataFormat::extension` / `is_binary`), plus the multi-table
+    // zip rule — parquet plans are never `.sql`, so a multi-table parquet
+    // export always zips, same as XLSX.
     const request = REQUEST({ dataFormat: 'parquet' });
     expect(request.dataFormat).toBe('parquet');
+    expect(formatExtension('parquet')).toBe('parquet');
+    expect(isBinaryFormat('parquet')).toBe(true);
+    expect(isSqlDataFormat('parquet')).toBe(false);
+    const { plans, useZip } = prepareExport(
+      REQUEST({
+        dataFormat: 'parquet',
+        tables: [
+          { tableName: 'users', columns: ['id'] },
+          { tableName: 'orders', columns: ['id'] },
+        ],
+      }),
+    );
+    expect(useZip).toBe(true);
+    expect(plans.map((plan) => plan.filename)).toEqual(['users.parquet', 'orders.parquet']);
   });
 
   it('marks only the sql formats as sql formats', () => {
