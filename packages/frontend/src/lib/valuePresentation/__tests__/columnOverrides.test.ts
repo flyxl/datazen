@@ -18,6 +18,7 @@ import {
 } from '@datazen/extension-points';
 import {
   TIMESTAMP_CONTRIBUTION_ID,
+  applySessionColumnOverrides,
   buildColumnPresentationPlans,
   buildValuePresentationSnapshot,
   columnOverrideFromSnapshot,
@@ -353,6 +354,26 @@ describe('saveColumnOverride', () => {
     });
     expect(result).toEqual({ ok: true });
     expect(persist).not.toHaveBeenCalled();
+  });
+
+  it('clears the session entry when saving an override identical to the stored one (T10-BUG-001)', async () => {
+    const persist = persistSpy();
+    const stored = storedWithOverrides({ [keyFor(SOURCE, 'epoch_ms')]: CUSTOM_MS });
+    const result = await saveColumnOverride({
+      stored,
+      source: SOURCE,
+      columnName: 'epoch_ms',
+      override: CUSTOM_MS,
+      persist,
+    });
+    expect(result).toEqual({ ok: true });
+    // 无变化不写持久化，但乐观写进会话的条目必须清除，否则与持久
+    // 值相同的残留条目会抬高合并快照 revision。
+    expect(persist).not.toHaveBeenCalled();
+    expect(getColumnPresentationSessionState().overrides).toEqual({});
+    const snapshot = buildValuePresentationSnapshot(stored, ENV, registryWithTimestamp(), 1);
+    expect(applySessionColumnOverrides(snapshot)).toBe(snapshot);
+    expect(snapshot.revision).toBe(1);
   });
 });
 

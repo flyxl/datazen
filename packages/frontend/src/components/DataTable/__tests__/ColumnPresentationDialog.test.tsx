@@ -498,6 +498,39 @@ describe('ColumnPresentationDialog persistent save (issue-32 T10)', () => {
     expect(next.columnOverrides).toEqual({});
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it('clears the session entry when saving an unchanged stored override (T10-BUG-001)', async () => {
+    mocks.state.valuePresentation = {
+      version: 1,
+      renderers: {},
+      columnOverrides: {
+        [columnOverrideKey({ ...SOURCE, column: 'epoch_ms' })]: { mode: 'raw' },
+      },
+    };
+    const onClose = vi.fn();
+    render(
+      <ColumnPresentationDialog
+        open
+        columnName="epoch_ms"
+        columnType="bigint"
+        source={SOURCE}
+        snapshot={makeSnapshot({
+          [columnOverrideKey({ ...SOURCE, column: 'epoch_ms' })]: { mode: 'raw' },
+        })}
+        sampleValue={1705316400000}
+        registry={registryWithTimestamp()}
+        onClose={onClose}
+      />,
+    );
+    // 不改动直接保存：草稿即已存 raw 覆盖。
+    fireEvent.click(screen.getByTestId('column-presentation-save'));
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+    // 无变化不写持久化，会话条目仍须清除。
+    expect(mocks.updateValuePresentationSettings).not.toHaveBeenCalled();
+    expect(getColumnPresentationSessionState().overrides).toEqual({});
+  });
 });
 
 describe('ColumnPresentationDialog total switch off', () => {
