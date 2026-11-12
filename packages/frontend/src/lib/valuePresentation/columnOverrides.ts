@@ -201,7 +201,11 @@ export async function saveColumnOverride(
   setSessionColumnOverride(source, columnName, validated.override);
   const next = withColumnOverride(stored, source, columnName, validated.override);
   if (next === stored) {
-    // 无变化（如删除不存在的条目）：会话已与持久值一致，直接成功。
+    // 无变化（如与已存值相同、删除不存在的条目）：不写持久化，但
+    // 仍须清除同一键的会话条目——上面已乐观写会话，custom/raw 与
+    // 已存值相同时残留条目会遮住持久值、抬高合并快照 revision
+    //（T10-BUG-001）；inherit-删不存在条目时清除为空操作。
+    clearSessionColumnOverride(source, columnName);
     return { ok: true };
   }
   try {
