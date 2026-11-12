@@ -737,7 +737,8 @@ fn binary_formatter(
         #[cfg(not(feature = "export-xlsx"))]
         DataFormat::Xlsx => Err(CommandError::Validation(
             "XLSX export requires the `export-xlsx` feature, which is not \
-             enabled in this build; enable `export-xlsx` (desktop builds do)"
+             enabled in this build; enable `export-xlsx` in the host build to \
+             serve it"
                 .into(),
         )),
         // The request's dialect (ExportTablesRequest.database_type) drives
@@ -750,7 +751,8 @@ fn binary_formatter(
         #[cfg(not(feature = "export-parquet"))]
         DataFormat::Parquet => Err(CommandError::Validation(
             "Parquet export requires the `export-parquet` feature, which is not \
-             enabled in this build; enable `export-parquet` (desktop builds do)"
+             enabled in this build; enable `export-parquet` in the host build \
+             to serve it"
                 .into(),
         )),
         _ => Err(CommandError::Validation(format!(
