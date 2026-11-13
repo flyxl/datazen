@@ -243,6 +243,8 @@ fn features() -> String {
         "wapps",
         "language_packs",
         "export",
+        "export-xlsx",
+        "export-parquet",
         "history",
         "workflow",
         "dashboard",
