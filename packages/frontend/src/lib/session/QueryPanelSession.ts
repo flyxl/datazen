@@ -105,7 +105,7 @@ export async function switchDatabaseSession(
   try {
     const current = (await controller.refresh()) ?? controller.snapshot;
     const txState = current?.observedContext?.transactionState;
-    if (txState === 'active' || txState === 'aborted' || txState === 'unknown') {
+    if (txState === 'active' || txState === 'aborted') {
       const ok = options.confirmTransaction
         ? await options.confirmTransaction(current as SessionView)
         : false;
