@@ -40,7 +40,7 @@ fi
 echo "Bumping version: $OLD → $NEW"
 echo ""
 
-# ── 1. Config files (bare semver) ────────────────────────────────────
+# ── 1. Current application version sources ───────────────────────────
 
 update_file() {
   local file="$1" old_pat="$2" new_pat="$3"
@@ -60,38 +60,38 @@ update_file() {
   fi
 }
 
-echo "[1/5] Updating config files..."
-update_file "package.json"               "\"version\": \"$OLD\""  "\"version\": \"$NEW\""
-update_file "src-tauri/Cargo.toml"       "version = \"$OLD\""     "version = \"$NEW\""
-update_file "src-tauri/tauri.conf.json"  "\"version\": \"$OLD\""  "\"version\": \"$NEW\""
+echo "[1/4] Updating application version sources..."
+update_file "package.json"                          "\"version\": \"$OLD\""  "\"version\": \"$NEW\""
+update_file "crates/datazen-desktop/Cargo.toml"    "version = \"$OLD\""     "version = \"$NEW\""
+update_file "crates/datazen-desktop/tauri.conf.json" "\"version\": \"$OLD\""  "\"version\": \"$NEW\""
 
-# ── 2. Display strings (DataZen vX.Y.Z) ─────────────────────────────
-
-echo ""
-echo "[2/5] Updating display strings..."
-
-DISPLAY_FILES=(
-  "src/windows/main/MainPage.tsx"
-  "src/windows/data-sync/DataSyncWindow.tsx"
-  "e2e/specs/homepage-features.ts"
-)
-
-for f in "${DISPLAY_FILES[@]}"; do
-  update_file "$f" "DataZen v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*" "DataZen v$NEW"
-done
-
-# ── 3. Regenerate Cargo.lock ─────────────────────────────────────────
+# ── 2. Regenerate Cargo.lock ─────────────────────────────────────────
 
 echo ""
-echo "[3/5] Regenerating Cargo.lock..."
-(cd src-tauri && cargo check --quiet 2>/dev/null)
-echo "  ✓ src-tauri/Cargo.lock"
+echo "[2/4] Regenerating Cargo.lock..."
+cargo check -p datazen_desktop --lib
+echo "  ✓ Cargo.lock"
+
+# ── 3. Release guards ────────────────────────────────────────────────
+
+echo ""
+echo "[3/5] Running release guards..."
+node scripts/check-version-consistency.mjs
+node scripts/check-ci-docs-consistency.mjs
+node scripts/check-structure-editor-guardrails.mjs
+node scripts/i18n-sync-check.mjs
+git diff --check
 
 # ── 4. Commit ────────────────────────────────────────────────────────
 
 echo ""
 echo "[4/5] Committing..."
-git add -A
+git add package.json \
+  crates/datazen-desktop/Cargo.toml \
+  crates/datazen-desktop/tauri.conf.json \
+  Cargo.lock \
+  .cursor/skills/bump-version/SKILL.md \
+  .cursor/skills/bump-version/scripts/bump.sh
 git commit -m "chore: bump version to v$NEW"
 echo "  ✓ Committed"
 

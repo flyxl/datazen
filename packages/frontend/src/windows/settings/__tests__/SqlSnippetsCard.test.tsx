@@ -66,6 +66,7 @@ const mockSettings: AppSettings = {
   gridAlternatingRows: true,
   gridRowNumbers: true,
   gridAutoHideScrollbar: false,
+  valuePresentation: { version: 1, renderers: {} },
 };
 
 describe('SqlSnippetsCard', () => {

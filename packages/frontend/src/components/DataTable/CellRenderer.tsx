@@ -12,6 +12,8 @@ import {
   type CellType,
 } from '../../lib/cellTypes';
 import type { Value } from '../../types';
+import type { ColumnPresentationPlan } from '../../lib/valuePresentation/presentationPlan';
+import type { PresentationValue } from '@datazen/extension-points';
 
 export interface CellRendererProps {
   columnName: string;
@@ -38,6 +40,17 @@ export interface CellRendererProps {
    * candidates dropdown even though its type says number or text.
    */
   editorKindOverride?: CellEditorKind;
+  /**
+   * The column's presentation plan (issue-32 T05, design §7).
+   *
+   * Only consulted **after** the editing and NULL branches: editing always
+   * shows the editor on the raw value, and NULL always renders `NULL`.
+   * A plan that returns `text` wins over the family branches below (so a
+   * BIGINT with an explicit Unix plan renders as a timestamp, not a number);
+   * `unchanged` (or no plan) falls through to the original branches, so
+   * without a snapshot the cell renders exactly as before (default-off).
+   */
+  presentationPlan?: ColumnPresentationPlan;
 }
 
 export const CellRenderer = memo(function CellRenderer({
@@ -54,6 +67,7 @@ export const CellRenderer = memo(function CellRenderer({
   onCancel,
   loadCandidates,
   editorKindOverride,
+  presentationPlan,
 }: CellRendererProps) {
   /**
    * The editor control of this cell.
@@ -106,6 +120,19 @@ export const CellRenderer = memo(function CellRenderer({
   // and its editor then cannot give two answers (05 §3.4).
   const family = cellTypeToDataTypeFamily(cellType ?? resolveCellType(dataType));
   const colorClass = cellValueTextClassFor(cellType ?? resolveCellType(dataType), value);
+
+  // Issue-32 T05: the presentation plan runs after editing / NULL and
+  // before the family branches. A `text` result renders in the datetime
+  // branch's own style, with the raw value in the tooltip — the editor
+  // above still initialises from the raw value, never from this text.
+  const presented = presentationPlan?.present(value as PresentationValue);
+  if (presented?.kind === 'text') {
+    return (
+      <span className={cn('truncate font-mono text-xs', colorClass)} title={String(value)}>
+        {presented.text}
+      </span>
+    );
+  }
 
   if (family === 'bool') {
     return <span className={cn('truncate font-mono text-sm', colorClass)}>{String(value)}</span>;

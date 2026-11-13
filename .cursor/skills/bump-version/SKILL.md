@@ -8,8 +8,8 @@ description: >-
 
 # Bump Version
 
-Run the bump script to update the version across all source files, commit,
-tag, and push to all remotes in one step.
+Run the bump script to update the app version sources, regenerate `Cargo.lock`,
+commit, tag, and push to `origin` in one step.
 
 ## Usage
 
@@ -29,21 +29,17 @@ Examples:
 ## What the Script Does
 
 1. Reads the current version from `package.json`.
-2. Updates bare semver in config files:
-   - `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`
-3. Updates `DataZen vX.Y.Z` display strings in:
-   - `src/windows/main/MainPage.tsx`
-   - `src/windows/data-sync/DataSyncWindow.tsx`
-   - `e2e/specs/homepage-features.ts`
-4. Runs `cargo check` to regenerate `Cargo.lock`.
-5. Commits all changes: `chore: bump version to vX.Y.Z`.
-6. Creates git tag `vX.Y.Z` and pushes to `origin` (GitHub; default) and
-   optional `gitee` mirror if that remote exists.
-   If the tag already exists remotely, it is deleted and re-created to
-   trigger a fresh GitHub Actions release build.
+2. Updates bare semver in `package.json`, `crates/datazen-desktop/Cargo.toml`,
+   and `crates/datazen-desktop/tauri.conf.json`.
+3. Runs `cargo check -p datazen_desktop --lib` to regenerate `Cargo.lock`.
+4. Runs the version, CI docs, structure-editor, and i18n release guards, then
+   checks the diff.
+5. Commits the version sources, lockfile, and bump skill as
+   `chore: bump version to vX.Y.Z`.
+6. Creates git tag `vX.Y.Z` and pushes `main` and the tag to `origin` to trigger
+   the GitHub release build. If a `gitee` remote is configured, it also pushes
+   there.
 
 ## Adding New Version References
 
-If a new file starts referencing the app version, add it to the script:
-- Config pattern → add to the "Config files" section
-- Display string → add the path to the `DISPLAY_FILES` array
+If the app version gains another source, add its update pattern and path to the script.

@@ -98,3 +98,28 @@ SQL 编辑器的增强能力通过 `sqlEditorEnhancedEP`（`packages/extension-p
 **测试落点（重要）：** 宿主 `e2e/` 构建的 Community 版里，上述 Pro 钩子全部走空实现，因此在 `e2e/specs/` 里断言 Pro 行为必然失败——不是用例写错，是被测代码根本不在宿主里。**凡由 EP 钩子实现的能力，其 E2E 必须写在 Pro 包内**（`packages/pro-extensions/sql-editor-pro/e2e/specs/`），与「驱动测试写在驱动 crate 内」是同一条纪律。这条规则的直接后果：改 Pro 代码后必须先重新 stage（`resolve-pro` 对已存在的 `builtin-ep` 目录会跳过重新打包），否则测的是上一次的产物。
 
 Pro 包是**独立 git 仓库**（gitignored），需独立 commit / pull / push；宿主 PR 不会带上它的改动。
+
+### 1.7 值呈现集合贡献（`data.valuePresentation`）
+
+字段展示能力通过**集合注册**接入宿主，而不是单实现扩展点：多个展示器可以同时注册，由配置指定每列用哪一个。首版只交付时间展示器 `datazen.timestamp`；URL、图片展示器不在本轮范围，也不要提前开放 link/image 或任意 HTML/ReactNode 输出。
+
+**契约**（`packages/extension-points/src/valuePresentation/`，`contracts.ts` / `registry.ts` / `lifecycle.ts`）：
+
+| 内容 | 落点 |
+| --- | --- |
+| 贡献契约 | `ValuePresentationContribution`：`id`、`configVersion: number`、`validateConfig(input: unknown): ConfigValidationResult`、`prepare(input: PresentationPrepareInput): PreparedPresentation` |
+| 输出协议 | 首版只开放 text 输出：`PresentationResult = { kind: 'text'; text; interpretation? } \| { kind: 'unchanged'; reason? }`；`PreparedPresentation.present(value)` 是纯函数，不调 IPC、不读 Store |
+| 集合注册 | `ValuePresentationRegistry`（`register` / `get` / `list` / `subscribe`）+ 全局单例 `valuePresentationRegistry`；**重复贡献 ID 显式拒绝**，不覆盖已有实现；卸载句柄绑定注册实例，不能移除之后重新注册的新实例 |
+| 注册帮助函数 | `registerValuePresentation(context, contribution, registry?)`：把释放句柄记入 `ExtensionContext.subscriptions`，与 `registerExtensionPoint` 同款语义——扩展卸载与激活失败清理时按 LIFO 自动释放 |
+
+**与单实现 EP 的区别**：`ExtensionRegistry` 每个 EP ID 只保存一个实现、后注册覆盖前实现；`ValuePresentationRegistry` 是按贡献 ID 索引的集合，重复 ID 抛错。能力名 `data.valuePresentation` 目前**没有代码级常量声明**（`contracts.ts:133` 注明由宿主侧声明），不要在新代码里再散落该字符串。
+
+**首个贡献 `datazen.timestamp` 是核心内置的，不是独立扩展包**：它实现在 `packages/frontend/src/lib/valuePresentation/timestampContribution.ts`，随应用启动由 `registerBundledValuePresentationContributions()`（`registerBundledContributions.ts`）注册进全局单例（`startSharedApp.tsx` 调用，幂等、永不卸载）。设计提案里「时间实现应落在独立 EP 包」的说法是提案快照，**实际交付不在此列**——不要按它找包或写新包。第三方展示器仍可经 `registerValuePresentation` 从扩展模块注册；宿主是唯一的配置持有方，贡献只负责验证、准备与呈现。
+
+**职责划分（已交付）**：
+
+- 宿主：来源身份、配置 IO、作用域、跨窗口同步、贡献集合、展示计划缓存、渲染与编辑边界。配置加载后验证，以不可变快照传入 `prepare`；全局配置体有效性由贡献 `prepare` 内部校验，custom 覆盖的 options 在宿主边界验证（两者分工不同，见 [DataTable 架构](data-table.md) §14.5）。
+- 时间贡献：配置验证、纯迁移、规则解释、列适用性、时间转换与设置表单内容。配置与公共契约必须是 JSON 可序列化结构；`PreparedPresentation` 中的函数仅存在于进程内，不持久化；`pattern` 只保存 source 与受限 flags，不持久化 `RegExp`。
+- 驱动：数据库类型语义，特别是伪时间类型与方言差异；宿主不硬编码驱动名称。
+
+**停用回退**：扩展停用（`unregister`）后，宿主计划对该渲染器返回 `missing-renderer`，网格与 aside 同时回退默认展示，已保存配置保留；重新注册后恢复，无旧缓存残留。停用是 per-JS-context 的（每个窗口一份注册中心实例），跨窗口同步的范围是配置，不是注册表状态。

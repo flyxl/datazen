@@ -34,10 +34,15 @@ const pack = {
   'settings.appearance.morePlaceholder':
     'Зарезервировано для будущих опций, таких как плотность, размер шрифта и др.',
   'settings.updater.title': 'Обновления',
+  'settings.updater.sidebarAvailable': 'Обновить {version}',
+  'settings.updater.sidebarInstalling': 'Обновление…',
+  'settings.updater.sidebarRestartReady': 'Перезапуск для {version}',
   'settings.updater.description':
     'Проверка GitHub Releases на наличие подписанных обновлений Basic.',
   'settings.updater.check': 'Проверить обновления',
   'settings.updater.downloadInstall': 'Скачать и установить',
+  'settings.updater.restartNow': 'Перезапустить сейчас',
+  'settings.updater.restartLater': 'Позже',
   'settings.updater.checkOnStartup': 'Проверять обновления при запуске',
   'settings.updater.checking': 'Проверка обновлений…',
   'settings.updater.upToDate': 'Установлена последняя версия',
@@ -45,7 +50,13 @@ const pack = {
   'settings.updater.downloading': 'Загрузка… {pct}%',
   'settings.updater.downloadingIndeterminate': 'Загрузка…',
   'settings.updater.installing': 'Установка обновления…',
-  'settings.updater.installed': 'Установлено {version} — перезагрузка…',
+  'settings.updater.readyToRestart':
+    'Версия {version} готова — перезапустите для применения обновления.',
+  'settings.updater.restartPrompt':
+    'Версия {version} загружена и установлена. Перезапустить сейчас, чтобы применить обновление?\n\nЕсли выбрать «Отмена», оно будет применено при следующем запуске.',
+  'settings.updater.restartLaterHint':
+    'Версия {version} установлена и будет применена при следующем запуске.',
+  'settings.updater.installed': 'Установлено {version} — перезапустите для применения.',
   'settings.updater.unavailable': 'Автообновление недоступно в этой сборке',
   'settings.language': 'Язык',
   'settings.langZh': '简体中文',

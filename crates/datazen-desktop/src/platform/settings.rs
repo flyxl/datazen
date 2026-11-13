@@ -108,4 +108,77 @@ mod tests {
             .expect("full settings save should succeed");
         assert_eq!(stored["language"], "en-US");
     }
+
+    /// Issue-32 T06 desktop promotion (F4-style): the loss scenario. Before
+    /// the promotion, `shared_settings()` hard-coded the default, so a
+    /// `value_presentation` saved through either path read back as the
+    /// default — and the next save overwrote the real value with it.
+    #[tokio::test]
+    async fn adapter_round_trips_value_presentation_through_shared_and_full_document() {
+        use datazen::settings::ValuePresentationSettings;
+
+        let temp = tempfile::tempdir().expect("temporary settings directory");
+        let store = Arc::new(
+            DesktopRepository::init_with_path(temp.path(), KeyBackend::File)
+                .await
+                .expect("desktop repository should initialize"),
+        );
+        let adapter = DesktopSettingsRepository::new(store.clone());
+        let service = datazen::settings::SettingsService::new(std::sync::Arc::new(adapter));
+
+        let mut renderers = serde_json::Map::new();
+        renderers.insert(
+            "datazen.timestamp".into(),
+            serde_json::json!({
+                "enabled": true,
+                "options": {
+                    "interpretation": "instant",
+                    "format": "iso",
+                    "displayTimeZone": "UTC",
+                },
+            }),
+        );
+        let expected = ValuePresentationSettings {
+            version: 1,
+            renderers,
+            rules: vec![],
+            column_overrides: serde_json::Map::new(),
+        };
+
+        // Shared path: save via SettingsService → read returns the same value.
+        let mut shared = service.read().await.expect("module read should succeed");
+        shared.value_presentation = expected.clone();
+        let saved = service
+            .save(shared.clone())
+            .await
+            .expect("module save should succeed");
+        assert_eq!(saved.value_presentation, expected);
+        let reread = service.read().await.expect("module re-read should succeed");
+        assert_eq!(
+            reread.value_presentation, expected,
+            "shared read must return the saved value, not the default"
+        );
+
+        // Full-document path: save_app_settings with valuePresentation in the
+        // doc → the shared read presents the same value.
+        let mut full = service
+            .read_app_settings()
+            .await
+            .expect("full settings read should succeed");
+        full["valuePresentation"] =
+            serde_json::to_value(&expected).expect("value presentation serializes");
+        let stored = service
+            .save_app_settings(full)
+            .await
+            .expect("full settings save should succeed");
+        assert_eq!(
+            stored["valuePresentation"]["renderers"]["datazen.timestamp"]["enabled"],
+            true
+        );
+        let via_shared = service.read().await.expect("module read should succeed");
+        assert_eq!(
+            via_shared.value_presentation, expected,
+            "shared read after a full-document save must present the saved value"
+        );
+    }
 }

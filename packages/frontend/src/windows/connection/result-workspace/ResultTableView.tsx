@@ -3,6 +3,7 @@ import { AlertTriangle, Search } from 'lucide-react';
 import { DataTable } from '../../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../../components/DataTable/TableHeader';
 import { useI18n } from '../../../hooks/useI18n';
+import { useValuePresentationSnapshot } from '../../../hooks/useValuePresentationSnapshot';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import {
   DEFAULT_GRID_ALTERNATING_ROWS,
@@ -94,6 +95,10 @@ export function ResultTableView({
   const { t } = useI18n();
   const queryResultLimit = useSettingsStore((s) => s.settings.queryResultLimit);
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
+  // Value presentation (issue-32 T06): query results have no table source,
+  // so no column overrides apply — the snapshot only carries the global
+  // renderer config, same as the table grid.
+  const presentationSnapshot = useValuePresentationSnapshot();
   /* ── Grid appearance (DB-17), same four as the table grid. The result grid's
      own default is 32px — the density shifts it, `standard` leaves it be. ── */
   const gridDensity = useSettingsStore((s) => s.settings.gridDensity ?? DEFAULT_GRID_DENSITY);
@@ -415,6 +420,7 @@ export function ResultTableView({
           // no session at all.
           dbSessionId={result.runtimeBinding?.handle.dbSessionId}
           dataExportCapability={dataExportCapability}
+          presentationSnapshot={presentationSnapshot}
           className="mr-1 min-h-[9rem] rounded-b-md rounded-t-none border-x border-b border-t-0"
         />
         {result.rows.length === 0 && (

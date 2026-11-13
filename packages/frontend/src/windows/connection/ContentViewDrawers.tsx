@@ -25,6 +25,8 @@ import type { AiChatContextSnapshot, ColumnSchema, DatabaseType } from '../../ty
 import type { KvSlotState } from '@datazen/driver-sdk';
 import type { AiChatDraftRequest } from './query/aiDraftBridge';
 import type { KvKeyPropsSidebarBinding } from './useKvWorkspaceSlots';
+import type { ValuePresentationSnapshot } from '../../lib/valuePresentation/presentationPlan';
+import type { ColumnSource } from '@datazen/extension-points';
 
 const NO_COLUMNS: ColumnSchema[] = [];
 const NO_ROWS: Record<string, unknown>[] = [];
@@ -81,6 +83,13 @@ export interface ContentViewDrawersProps {
   onRunCode?: (code: string, language: string) => void;
   /** Create a new query tab prefilled with a SQL code block. */
   onNewQuery?: (code: string) => void;
+  /**
+   * Value-presentation snapshot (issue-32 T05, design §7). Omitted ⇒
+   * DetailPanel falls back to its default snapshot and the aside renders
+   * exactly as before (default-off); T06 will supply the real snapshot.
+   * The source is derived from the active panel below, never faked.
+   */
+  presentationSnapshot?: ValuePresentationSnapshot;
 }
 
 /**
@@ -107,6 +116,7 @@ export function ContentViewDrawers({
   onDraftConsumed,
   onRunCode,
   onNewQuery,
+  presentationSnapshot,
 }: ContentViewDrawersProps) {
   const { t } = useI18n();
   const { size: aiSidebarWidth, handleRef: aiHandleRef } = useResizable({
@@ -292,6 +302,35 @@ export function ContentViewDrawers({
     return null;
   }, [activePanel?.type, detailRowIndex, tableRows, activeQueryResult, resultDetailRowIndex]);
 
+  /**
+   * Value-presentation source (issue-32 T05): the aside's table identity,
+   * derived from the active panel only when it is a table/view panel with
+   * a connectionId and a table name. Query panels and anything else get
+   * no source (no table overrides there), and a missing field is never
+   * faked as an empty string (BUG-004).
+   *
+   * `database` prefers the panel's own pinned database and falls back to
+   * the session's current database — the same value TableView passes to
+   * the grid (`panel.database ?? currentDatabase`), so grid and aside
+   * build their plans from the same triple and read identically.
+   */
+  const presentationSource: Readonly<Omit<ColumnSource, 'column'>> | undefined =
+    activePanel?.type === 'table'
+      ? {
+          connectionId: activePanel.connectionId,
+          database: activePanel.database ?? currentDatabase ?? undefined,
+          namespace: activePanel.tableSchema ?? undefined,
+          table: activePanel.tableName,
+        }
+      : activePanel?.type === 'view'
+        ? {
+            connectionId: activePanel.connectionId,
+            database: activePanel.database ?? currentDatabase ?? undefined,
+            namespace: activePanel.viewSchema ?? undefined,
+            table: activePanel.viewName,
+          }
+        : undefined;
+
   const handleDetailFieldEdit = useCallback(
     (row: number, col: string, value: unknown) => {
       const store = useTableDataStore.getState();
@@ -401,6 +440,10 @@ export function ContentViewDrawers({
                 // reads the same driver declaration (05 §3.1).
                 cellTypeHints={databaseType ? DB_REGISTRY[databaseType]?.cellTypes : undefined}
                 onFieldEdit={handleDetailFieldEdit}
+                // Value presentation (issue-32 T05): the snapshot threads
+                // through; the source above is this panel's table identity.
+                presentationSnapshot={presentationSnapshot}
+                presentationSource={presentationSource}
               />
             </div>
           </>

@@ -41,6 +41,30 @@ export type {
   QueryBuilderRelationCandidate,
 } from './queryBuilder';
 
+// Value presentation collection registry (issue-32 §3/§4): contribution
+// contracts, the multi-contribution registry, and lifecycle wiring.
+export type {
+  PresentationValue,
+  ColumnSource,
+  PresentationColumnContext,
+  PresentationEnvironment,
+  PresentationResult,
+  PreparedPresentation,
+  PresentationConfigValue,
+  ConfigValidationProblem,
+  ConfigValidationResult,
+  VersionedPresentationConfig,
+  ColumnPresentationOverride,
+  PresentationPrepareInput,
+  ValuePresentationContribution,
+  ValuePresentationRegistry,
+} from './valuePresentation';
+export {
+  ValuePresentationRegistryImpl,
+  valuePresentationRegistry,
+  registerValuePresentation,
+} from './valuePresentation';
+
 // SQL Editor Contracts & Semantics
 export * from './sql-editor';
 

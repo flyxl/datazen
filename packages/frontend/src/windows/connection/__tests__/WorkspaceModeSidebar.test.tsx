@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   channel: vi.fn(),
   check: vi.fn(),
   install: vi.fn(),
+  relaunch: vi.fn(),
 }));
 
 vi.mock('../../../hooks/useI18n', () => ({
@@ -14,8 +15,14 @@ vi.mock('../../../hooks/useI18n', () => ({
       const labels: Record<string, string> = {
         'settings.updater.sidebarAvailable': 'Update {version}',
         'settings.updater.downloading': 'Downloading… {pct}%',
+        'settings.updater.downloadingIndeterminate': 'Downloading…',
         'settings.updater.installing': 'Installing…',
         'settings.updater.sidebarInstalling': 'Updating…',
+        'settings.updater.sidebarRestartReady': 'Restart to update {version}',
+        'settings.updater.restartPrompt': 'Restart now to apply {version}?',
+        'settings.updater.restartNow': 'Restart now',
+        'settings.updater.restartLater': 'Later',
+        'settings.updater.title': 'Updates',
       };
       return labels[key] ?? key;
     },
@@ -30,6 +37,7 @@ vi.mock('../../../lib/updater', () => ({
   getUpdateChannel: mocks.channel,
   checkForUpdates: mocks.check,
   downloadAndInstallUpdate: mocks.install,
+  relaunchToApplyUpdate: mocks.relaunch,
 }));
 
 import { WorkspaceModeSidebar } from '../WorkspaceModeSidebar';
@@ -55,6 +63,8 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocks.channel.mockReturnValue('auto');
   mocks.check.mockResolvedValue({ status: 'upToDate' } satisfies UpdateCheckResult);
+  mocks.relaunch.mockResolvedValue(undefined);
+  vi.spyOn(window, 'confirm').mockReturnValue(false);
   useUpdateReminderStore.setState(useUpdateReminderStore.getInitialState(), true);
 });
 
@@ -99,7 +109,7 @@ describe('WorkspaceModeSidebar update reminder', () => {
     );
   });
 
-  it('shows download progress, blocks repeat clicks, and removes the reminder after install', async () => {
+  it('shows download progress, blocks repeat clicks, and prompts restart after install', async () => {
     let finishInstall: ((result: UpdateCheckResult) => void) | undefined;
     mocks.install.mockImplementationOnce((onProgress: (progress: UpdateProgress) => void) => {
       onProgress({ phase: 'downloading', downloaded: 5, total: 10 });
@@ -119,7 +129,19 @@ describe('WorkspaceModeSidebar update reminder', () => {
     );
 
     finishInstall?.({ status: 'installed', version: '0.3.1' });
-    await waitFor(() => expect(screen.queryByTestId('workspace-nav-update')).toBeNull());
+    await waitFor(() =>
+      expect(screen.getByTestId('workspace-nav-update')).toHaveAttribute(
+        'aria-label',
+        'Restart to update 0.3.1',
+      ),
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Later' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Later' }));
+    await waitFor(() => expect(mocks.relaunch).not.toHaveBeenCalled());
+    expect(screen.getByTestId('workspace-nav-update')).toBeEnabled();
+
+    fireEvent.click(screen.getByTestId('workspace-nav-update'));
+    await waitFor(() => expect(mocks.relaunch).toHaveBeenCalledOnce());
   });
 
   it('keeps the update button available and exposes the failure after an install error', async () => {

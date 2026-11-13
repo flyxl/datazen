@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import {
   checkForUpdates as runUpdateCheck,
   downloadAndInstallUpdate as runUpdateInstall,
+  relaunchToApplyUpdate as runRelaunchToApplyUpdate,
 } from '../lib/updater';
 import type { UpdateProgress } from '../platform/contracts';
 
@@ -10,6 +11,7 @@ const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 interface UpdateReminderState {
   lastCheckAttemptAt: number | null;
   availableVersion: string | null;
+  pendingRestartVersion: string | null;
   isChecking: boolean;
   isInstalling: boolean;
   progress: UpdateProgress | null;
@@ -17,11 +19,13 @@ interface UpdateReminderState {
   checkForUpdates: () => Promise<void>;
   checkForUpdatesIfDue: () => Promise<void>;
   installUpdate: () => Promise<void>;
+  restartToApplyUpdate: () => Promise<void>;
 }
 
 export const useUpdateReminderStore = create<UpdateReminderState>((set, get) => ({
   lastCheckAttemptAt: null,
   availableVersion: null,
+  pendingRestartVersion: null,
   isChecking: false,
   isInstalling: false,
   progress: null,
@@ -73,12 +77,23 @@ export const useUpdateReminderStore = create<UpdateReminderState>((set, get) => 
       } else if (result.status === 'error') {
         set({ error: result.message, progress: null });
       } else if (result.status === 'installed') {
-        set({ availableVersion: null, progress: null });
+        // Installed and staged; user chooses when to restart (applies on next
+        // restart if deferred).
+        set({ availableVersion: null, pendingRestartVersion: result.version, progress: null });
       }
     } catch (error) {
       set({ error: error instanceof Error ? error.message : String(error), progress: null });
     } finally {
       set({ isInstalling: false });
+    }
+  },
+
+  async restartToApplyUpdate() {
+    if (!get().pendingRestartVersion) return;
+    try {
+      await runRelaunchToApplyUpdate();
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : String(error) });
     }
   },
 }));
