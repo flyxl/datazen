@@ -50,11 +50,7 @@
  */
 
 import { escapeCsvField } from '../lib/gridClipboard';
-import {
-  applyCsvFormulaGuard,
-  formatRowsAsText,
-  formatRowsAsXlsx,
-} from '../lib/exportFormat';
+import { applyCsvFormulaGuard, formatRowsAsText, formatRowsAsXlsx } from '../lib/exportFormat';
 import type { TablesExporterPort, TablesExportRequest } from './contracts';
 import { defaultExportName, prepareExport, type ExportFilePlan } from './exportPlan';
 
@@ -161,7 +157,8 @@ export function createBlobTablesExporter(
   },
 ): TablesExporterPort {
   const deliver =
-    options?.deliver ?? ((contents, fileName, mimeType) => downloadBlob(contents, fileName, mimeType));
+    options?.deliver ??
+    ((contents, fileName, mimeType) => downloadBlob(contents, fileName, mimeType));
   const now = options?.now ?? (() => new Date());
   return {
     async exportTables(
@@ -292,6 +289,12 @@ export function createBlobTablesExporter(
             });
             return { content: base64ToBytes(dataBase64), mimeType };
           }
+          if (request.dataFormat === 'parquet') {
+            // Provided-data Parquet is a PRD non-goal (the dialogs grey it
+            // out for these scopes); a smuggled request fails loudly instead
+            // of silently rendering a wrong-format file.
+            throw new Error("provided-data export cannot format 'parquet'");
+          }
           const { content, mimeType } = formatRowsAsText({
             tableName: table.tableName,
             columns,
@@ -301,8 +304,7 @@ export function createBlobTablesExporter(
             primaryKey: table.primaryKey ?? undefined,
           });
           return {
-            content:
-              plan.ddlPrefix !== undefined ? `${plan.ddlPrefix}\n\n${content}` : content,
+            content: plan.ddlPrefix !== undefined ? `${plan.ddlPrefix}\n\n${content}` : content,
             mimeType,
           };
         }

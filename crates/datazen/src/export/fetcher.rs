@@ -109,6 +109,17 @@ mod tests {
     };
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    // Parquet read-back assertions (T5 integration tests) reuse the parquet
+    // crate's own arrow reader, same as the formatter tests in binary.rs.
+    #[cfg(feature = "export-parquet")]
+    use arrow::array::{Array, Int32Array, Int64Array, StringArray};
+    #[cfg(feature = "export-parquet")]
+    use arrow::datatypes::DataType;
+    #[cfg(feature = "export-parquet")]
+    use arrow::record_batch::RecordBatch;
+    #[cfg(feature = "export-parquet")]
+    use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+
     fn col(name: &str, data_type: &str) -> ColumnInfo {
         ColumnInfo {
             name: name.into(),
@@ -699,6 +710,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
+    #[cfg(feature = "export-xlsx")]
     #[tokio::test]
     async fn write_binary_file_emits_progress_events() {
         let req = request(
@@ -895,6 +907,8 @@ mod tests {
         assert_eq!(DataFormat::SqlUpdate.extension(), "sql");
         assert_eq!(DataFormat::Xlsx.extension(), "xlsx");
         assert!(DataFormat::Xlsx.is_binary());
+        assert_eq!(DataFormat::Parquet.extension(), "parquet");
+        assert!(DataFormat::Parquet.is_binary());
         for format in [
             DataFormat::Csv,
             DataFormat::Tsv,
@@ -914,11 +928,22 @@ mod tests {
             serde_json::from_str::<DataFormat>("\"xlsx\"").unwrap(),
             DataFormat::Xlsx
         );
+        assert_eq!(
+            serde_json::to_string(&DataFormat::Parquet).unwrap(),
+            "\"parquet\""
+        );
+        assert_eq!(
+            serde_json::from_str::<DataFormat>("\"parquet\"").unwrap(),
+            DataFormat::Parquet
+        );
     }
 
     #[test]
-    fn validate_export_path_accepts_new_extensions() {
-        for ext in ["tsv", "md", "xlsx", "csv", "json", "sql", "zip"] {
+    fn validate_export_path_still_refuses_illegal_extension() {
+        // T2 added "parquet" to the allow-list; the old ".parquet refused"
+        // assertion is replaced by the invariant it used to pin: unknown
+        // extensions are still rejected, and an extension-less path is.
+        for ext in ["tsv", "md", "xlsx", "parquet", "csv", "json", "sql", "zip"] {
             let path = std::path::PathBuf::from(format!("export.{ext}"));
             assert!(
                 crate::export::validate_export_path(&path).is_ok(),
@@ -926,7 +951,12 @@ mod tests {
             );
         }
         assert!(
-            crate::export::validate_export_path(std::path::Path::new("export.parquet")).is_err()
+            crate::export::validate_export_path(std::path::Path::new("export.exe")).is_err(),
+            "unknown extensions must stay rejected"
+        );
+        assert!(
+            crate::export::validate_export_path(std::path::Path::new("export")).is_err(),
+            "extension-less paths must stay rejected"
         );
     }
 
@@ -1619,6 +1649,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
+    #[cfg(feature = "export-xlsx")]
     #[tokio::test]
     async fn write_binary_file_sql_source_writes_xlsx() {
         let req = request(
@@ -1650,6 +1681,549 @@ mod tests {
         let file = std::fs::File::open(&dest).unwrap();
         let mut zip = zip::ZipArchive::new(file).unwrap();
         assert!(zip.by_name("xl/worksheets/sheet1.xml").is_ok());
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    /// T1 gating proof: with `export` but WITHOUT `export-xlsx`, an XLSX
+    /// request is a clear validation error naming the missing feature —
+    /// not a panic, not a silent fallback to another format, and no file
+    /// is created. A Parquet-specific error-path test cannot exist yet:
+    /// `DataFormat::Parquet` lands in T2; its error path is verified in
+    /// T2/T5, with the gating mechanism proven here via Xlsx.
+    #[cfg(not(feature = "export-xlsx"))]
+    #[tokio::test]
+    async fn write_binary_file_xlsx_without_export_xlsx_feature_is_a_clear_error() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Xlsx,
+            vec![table_item(
+                "t",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.xlsx");
+        let err = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Xlsx,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Validation(ref m) if m.contains("export-xlsx")),
+            "unexpected error: {err:?}"
+        );
+        assert!(!dest.exists(), "a rejected export must not create its file");
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    /// T2 gating proof, closing the T1 report's §5.5 deferred item: with
+    /// `export` but WITHOUT `export-parquet`, a Parquet request is a clear
+    /// validation error naming the missing feature — not a panic, not a
+    /// silent fallback to another format, and no file is created. The
+    /// Parquet formatter arm itself lands in T4/T5; until then this is the
+    /// same helper (`binary_formatter`) the XLSX proof above exercises.
+    #[cfg(not(feature = "export-parquet"))]
+    #[tokio::test]
+    async fn write_binary_file_parquet_without_export_parquet_feature_is_a_clear_error() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Parquet,
+            vec![table_item(
+                "t",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.parquet");
+        let err = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Parquet,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Validation(ref m) if m.contains("export-parquet")),
+            "unexpected error: {err:?}"
+        );
+        assert!(!dest.exists(), "a rejected export must not create its file");
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    /// Read a written Parquet file back: field list plus every record batch
+    /// (T5 integration tests).
+    #[cfg(feature = "export-parquet")]
+    fn read_parquet(path: &std::path::Path) -> (Vec<arrow::datatypes::Field>, Vec<RecordBatch>) {
+        let file = std::fs::File::open(path).expect("parquet file exists");
+        let builder = ParquetRecordBatchReaderBuilder::try_new(file).expect("open parquet");
+        let fields = builder
+            .schema()
+            .fields()
+            .iter()
+            .map(|field| field.as_ref().clone())
+            .collect();
+        let reader = builder.build().expect("build parquet reader");
+        let batches = reader
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read parquet batches");
+        (fields, batches)
+    }
+
+    /// T5 dispatch: a Parquet request streams through write_binary_file into
+    /// ParquetFormatter, and the request's dialect reaches the schema — the
+    /// whole T3→T4→T5 chain read back in one file. two_cols() reports int4 /
+    /// text; under postgresql int4 maps to Int32 (not the value-inference
+    /// Int64 a missing dialect would produce).
+    #[cfg(feature = "export-parquet")]
+    #[tokio::test]
+    async fn write_binary_file_sql_source_writes_parquet() {
+        let mut req = request(
+            ExportMode::DataOnly,
+            DataFormat::Parquet,
+            vec![table_item(
+                "t",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        req.database_type = Some("postgresql".into());
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.parquet");
+        let n = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Parquet,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(source.stream_calls.load(Ordering::Relaxed), 1);
+        assert!(dest.exists(), "parquet file written");
+        let (fields, batches) = read_parquet(&dest);
+        assert_eq!(fields[0].name(), "id");
+        assert_eq!(fields[0].data_type(), &DataType::Int32);
+        assert_eq!(fields[1].name(), "name");
+        assert_eq!(fields[1].data_type(), &DataType::Utf8);
+        let rows: usize = batches.iter().map(|batch| batch.num_rows()).sum();
+        assert_eq!(rows, 2);
+        let batch = &batches[0];
+        assert_eq!(
+            batch
+                .column(0)
+                .as_any()
+                .downcast_ref::<Int32Array>()
+                .expect("int32")
+                .value(0),
+            1
+        );
+        assert_eq!(
+            batch
+                .column(1)
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .expect("utf8")
+                .value(0),
+            "a"
+        );
+        assert!(batch.column(1).is_null(1), "None is a null slot");
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    /// T5: a request without `database_type` still writes — value inference
+    /// (Integer → Int64) plus the Utf8 fallback decide the schema.
+    #[cfg(feature = "export-parquet")]
+    #[tokio::test]
+    async fn write_binary_file_parquet_without_dialect_still_writes() {
+        let mut req = request(
+            ExportMode::DataOnly,
+            DataFormat::Parquet,
+            vec![table_item(
+                "t",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        req.database_type = None;
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.parquet");
+        let n = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Parquet,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 2);
+        assert!(dest.exists());
+        let (fields, batches) = read_parquet(&dest);
+        // No dialect: int4 is unmapped, the Integer values infer Int64; the
+        // text column holds Strings, so Utf8.
+        assert_eq!(fields[0].data_type(), &DataType::Int64);
+        assert_eq!(fields[1].data_type(), &DataType::Utf8);
+        let rows: usize = batches.iter().map(|batch| batch.num_rows()).sum();
+        assert_eq!(rows, 2);
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    /// T5: the binary path's existing pre-cancel guard applies to Parquet
+    /// too — never create the file, never stream.
+    #[cfg(feature = "export-parquet")]
+    #[tokio::test]
+    async fn write_binary_file_parquet_precancelled_writes_nothing() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Parquet,
+            vec![table_item("t", TableDataSource::Table)],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.parquet");
+        let token = CancelToken::new();
+        token.cancel();
+        let err = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Parquet,
+            &dest,
+            &token,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Cancelled),
+            "unexpected error: {err:?}"
+        );
+        assert!(
+            !dest.exists(),
+            "a cancelled export must not create its file"
+        );
+        assert_eq!(
+            source.stream_calls.load(Ordering::Relaxed),
+            0,
+            "a pre-cancelled run must not stream at all"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    /// T5: the per-batch cancel check on the binary path reuses the shared
+    /// loop (the same one the XLSX test above exercises) — Parquet needs no
+    /// cancel logic of its own.
+    #[cfg(feature = "export-parquet")]
+    #[tokio::test]
+    async fn write_binary_file_parquet_cancels_mid_stream() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Parquet,
+            vec![table_item("t", TableDataSource::Table)],
+        );
+        let token = CancelToken::new();
+        let source =
+            CancellingSource::new(two_cols(), one_row(1, "a"), one_row(2, "b"), token.clone());
+        let dest = temp_file("out.parquet");
+        let err = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Parquet,
+            &dest,
+            &token,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Cancelled),
+            "unexpected error: {err:?}"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    /// T5, closing the T4 report's §5.4 deferred item: when the stream ends
+    /// without a Done event, the post-fetch fallback in write_binary_file
+    /// closes the Parquet writer exactly once — the file reads back complete.
+    #[cfg(feature = "export-parquet")]
+    #[tokio::test]
+    async fn write_binary_file_without_done_still_finishes_parquet() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Parquet,
+            vec![table_item(
+                "t",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        let mut source = StubSource::new(false, false, two_cols(), two_rows());
+        source.emit_done = false;
+        let dest = temp_file("out.parquet");
+        let n = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Parquet,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 2);
+        assert!(dest.exists(), "the fallback finished the file");
+        let (_, batches) = read_parquet(&dest);
+        let rows: usize = batches.iter().map(|batch| batch.num_rows()).sum();
+        assert_eq!(rows, 2, "schema and rows fully written");
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    /// T5: a stream that skips StatementStart gets the header fallback — the
+    /// requested columns are absent, so the loop names col_0/col_1 with
+    /// data_type "text", which the Parquet schema inference maps to Utf8.
+    #[cfg(feature = "export-parquet")]
+    #[tokio::test]
+    async fn write_binary_file_parquet_without_start_falls_back_to_header() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Parquet,
+            vec![table_item("t", TableDataSource::Table)],
+        );
+        let mut source = StubSource::new(false, false, two_cols(), two_rows());
+        source.emit_start = false;
+        let dest = temp_file("out.parquet");
+        let n = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Parquet,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 2);
+        assert!(dest.exists());
+        let (fields, batches) = read_parquet(&dest);
+        assert_eq!(fields[0].name(), "col_0");
+        assert_eq!(fields[1].name(), "col_1");
+        assert_eq!(fields[0].data_type(), &DataType::Utf8);
+        assert_eq!(fields[1].data_type(), &DataType::Utf8);
+        let rows: usize = batches.iter().map(|batch| batch.num_rows()).sum();
+        assert_eq!(rows, 2);
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    /// T7 boundary: a multi-table Parquet plan never enters the text merge
+    /// branch — the same binary guard that refuses concatenated XLSX bytes
+    /// refuses concatenated Parquet, format-agnostic by construction.
+    #[tokio::test]
+    async fn run_single_export_refuses_parquet_multi_plan() {
+        // The guard keys on `is_binary()`, not on a specific format, so this
+        // test is deliberately ungated: it must hold in every build.
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Parquet,
+            vec![
+                table_item("a", TableDataSource::Table),
+                table_item("b", TableDataSource::Table),
+            ],
+        );
+        let plans = build_file_plans(&req).unwrap();
+        assert_eq!(plans.len(), 2);
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.parquet");
+        let err = crate::export::run_single_export(
+            &NoopEvents,
+            &source,
+            &req,
+            &plans,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Validation(ref m) if m.contains("zip")),
+            "unexpected error: {err:?}"
+        );
+        assert!(!dest.exists());
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    /// T7 boundary: multi-table Parquet rides the zip container — two
+    /// `.parquet` entries, never merged — and every entry reads back through
+    /// the parquet crate's reader with its own schema and rows.
+    #[cfg(feature = "export-parquet")]
+    #[tokio::test]
+    async fn run_zip_export_writes_parquet_entries() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Parquet,
+            vec![
+                table_item("a", TableDataSource::Table),
+                table_item("b", TableDataSource::Table),
+            ],
+        );
+        let plans = build_file_plans(&req).unwrap();
+        assert_eq!(plans.len(), 2);
+        // request() carries the sqlite dialect: int4 is unmapped there, so
+        // the Integer values infer Int64; text maps to Utf8.
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.zip");
+        let n = crate::export::run_zip_export(
+            &NoopEvents,
+            &source,
+            &req,
+            &plans,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 4);
+        let file = std::fs::File::open(&dest).unwrap();
+        let mut zip = zip::ZipArchive::new(file).unwrap();
+        let names: Vec<String> = zip.file_names().map(str::to_string).collect();
+        assert_eq!(
+            names,
+            vec!["a.parquet".to_string(), "b.parquet".to_string()]
+        );
+        for entry_name in ["a.parquet", "b.parquet"] {
+            let mut entry = zip.by_name(entry_name).unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut entry, &mut bytes).unwrap();
+            let entry_path = dest.parent().unwrap().join(entry_name);
+            std::fs::write(&entry_path, &bytes).unwrap();
+            let (fields, batches) = read_parquet(&entry_path);
+            assert_eq!(fields[0].name(), "id");
+            assert_eq!(fields[0].data_type(), &DataType::Int64);
+            assert_eq!(fields[1].name(), "name");
+            assert_eq!(fields[1].data_type(), &DataType::Utf8);
+            let rows: usize = batches.iter().map(|batch| batch.num_rows()).sum();
+            assert_eq!(rows, 2, "{entry_name} reads back both rows");
+        }
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    /// T7 boundary (PRD F3 tail rule through the real dispatch): the first
+    /// batch fixes the schema (int4 → Int32 under postgresql), and a later
+    /// batch carrying a String in that column fails the whole run with a
+    /// validation error naming the column, the expected type and the value
+    /// kind — never a silent rewrite, never a silent NULL.
+    #[cfg(feature = "export-parquet")]
+    #[tokio::test]
+    async fn write_binary_file_parquet_type_conflict_fails_the_run_with_column_name() {
+        struct TwoBatchSource {
+            driver: Arc<dyn DatabaseDriver>,
+            columns: Vec<ColumnInfo>,
+            first: Vec<Vec<Option<Value>>>,
+            second: Vec<Vec<Option<Value>>>,
+        }
+        #[async_trait::async_trait]
+        impl ExportSource for TwoBatchSource {
+            async fn resolve_source(
+                &self,
+                _session_id: &str,
+            ) -> Result<(Arc<dyn DatabaseDriver>, bool, bool), ExportError> {
+                Ok((self.driver.clone(), false, false))
+            }
+            async fn stream_query(
+                &self,
+                _session_id: &str,
+                sql: &str,
+                _target: datazen_driver_api::SqlTarget<'_>,
+                callback: QueryStreamCallback,
+            ) -> Result<(), ExportError> {
+                callback(QueryStreamEvent::StatementStart {
+                    index: 0,
+                    sql: sql.to_string(),
+                    columns: self.columns.clone(),
+                });
+                callback(QueryStreamEvent::Rows {
+                    index: 0,
+                    rows: self.first.clone(),
+                });
+                callback(QueryStreamEvent::Rows {
+                    index: 1,
+                    rows: self.second.clone(),
+                });
+                callback(QueryStreamEvent::StatementEnd {
+                    index: 0,
+                    rows_affected: None,
+                    execution_time_ms: 0,
+                    truncated: false,
+                });
+                callback(QueryStreamEvent::Done { total_time_ms: 0 });
+                Ok(())
+            }
+        }
+        let mut req = request(
+            ExportMode::DataOnly,
+            DataFormat::Parquet,
+            vec![table_item(
+                "t",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        req.database_type = Some("postgresql".into());
+        let source = TwoBatchSource {
+            driver: test_driver(),
+            columns: vec![col("id", "int4"), col("name", "text")],
+            first: vec![vec![
+                Some(Value::Integer(1)),
+                Some(Value::String("a".into())),
+            ]],
+            second: vec![vec![Some(Value::String("boom".into())), None]],
+        };
+        let dest = temp_file("out.parquet");
+        let err = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Parquet,
+            &dest,
+            &CancelToken::new(),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Validation(ref m)
+                if m.contains("binary export failed")
+                    && m.contains("id")
+                    && m.contains("int32")
+                    && m.contains("String")),
+            "unexpected error: {err:?}"
+        );
+        // The partial file is left for the run-level caller's cleanup — the
+        // same writer/caller split the xlsx cancel tests document.
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
@@ -1698,6 +2272,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
+    #[cfg(feature = "export-xlsx")]
     #[tokio::test]
     async fn run_zip_export_writes_xlsx_entries() {
         let req = request(
@@ -1773,6 +2348,23 @@ mod tests {
         assert_eq!(f.header(&["id".to_string()]), "");
     }
 
+    #[test]
+    fn stream_formatter_parquet_header_and_tail_are_empty_by_construction() {
+        // Binary formats never go through the text formatter (write_data_file
+        // rejects them first); the Parquet arms in StreamFormatter only exist
+        // so construction cannot panic if one is ever routed here. Both the
+        // header and the tail are empty by construction, same as Xlsx.
+        let mut f = crate::export::StreamFormatter::new(
+            DataFormat::Parquet,
+            "t".into(),
+            None,
+            test_driver(),
+        );
+        assert_eq!(f.header(&["id".to_string()]), "");
+        assert_eq!(f.tail(&["id".to_string()]).unwrap(), "");
+    }
+
+    #[cfg(feature = "export-xlsx")]
     #[tokio::test]
     async fn write_binary_file_begin_failure_is_reported() {
         // The 16_385-column schema arrives over the SQL stream's
@@ -1808,6 +2400,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
+    #[cfg(feature = "export-xlsx")]
     #[tokio::test]
     async fn write_binary_file_rows_before_start_fall_back_to_requested_columns() {
         // A stream that skips StatementStart still gets a header, from the
@@ -1899,6 +2492,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dest2.parent().unwrap());
     }
 
+    #[cfg(feature = "export-xlsx")]
     /// Read back a `write_binary_file` product for table "t": it must be a
     /// valid zip containing the sheet XML, and calamine must read exactly
     /// header ["id", "name"] plus the two canned rows.
@@ -1933,6 +2527,7 @@ mod tests {
         assert_eq!(rows[2][1], calamine::Data::Empty, "null reads back empty");
     }
 
+    #[cfg(feature = "export-xlsx")]
     #[tokio::test]
     async fn write_binary_file_without_done_still_finishes_xlsx() {
         // The Done event never arrives: only the finish() fallback at the
@@ -1972,6 +2567,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
+    #[cfg(feature = "export-xlsx")]
     #[tokio::test]
     async fn write_binary_file_done_arriving_finishes_xlsx_once() {
         // Control for the fallback test: same stream with Done delivered,
@@ -2012,6 +2608,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
+    #[cfg(feature = "export-xlsx")]
     #[tokio::test]
     async fn write_binary_file_row_wider_than_excel_columns_is_rejected() {
         // The canned row is wider than the schema: the library's column
@@ -2364,6 +2961,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
+    #[cfg(feature = "export-xlsx")]
     #[tokio::test]
     async fn write_binary_file_cancels_mid_stream() {
         let req = request(
@@ -2423,6 +3021,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
+    #[cfg(feature = "export-xlsx")]
     #[tokio::test]
     async fn run_single_export_cancels_mid_stream_and_removes_partial_xlsx() {
         let req = request(

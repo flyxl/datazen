@@ -17,12 +17,13 @@ import type { ExportScope } from '../exportData';
  * it now.
  */
 
-const ALL_ARRAY = ['csv', 'tsv', 'json', 'markdown', 'xlsx', 'sql_insert', 'sql_update'];
-const ALL_OBJECT = ['csv', 'json', 'markdown', 'xlsx', 'sql_insert', 'sql_update'];
+const ALL_ARRAY = ['csv', 'tsv', 'json', 'markdown', 'xlsx', 'parquet', 'sql_insert', 'sql_update'];
+const ALL_OBJECT = ['csv', 'json', 'markdown', 'xlsx', 'parquet', 'sql_insert', 'sql_update'];
+const PARQUET_REASON = 'export.formatDisabledParquetRustOnly';
 
 describe('buildExportFormatOptions', () => {
-  it.each(['current_page', 'selected', 'entire_table', 'filtered_table'] as const)(
-    'on desktop enables every format for the %s scope when a key column exists',
+  it.each(['entire_table', 'filtered_table'] as const)(
+    'on desktop enables every format for the SQL %s scope when a key column exists',
     (scope: ExportScope) => {
       expect(
         buildExportFormatOptions({
@@ -50,8 +51,27 @@ describe('buildExportFormatOptions', () => {
     },
   );
 
-  it.each(['current_page', 'selected', 'entire_table', 'filtered_table'] as const)(
-    'on desktop disables only SQL UPDATE without a key column, for the %s scope',
+  it.each(['current_page', 'selected'] as const)(
+    'on desktop greys out only Parquet for the provided %s scope — Rust-only, no frontend writer',
+    (scope: ExportScope) => {
+      for (const options of [ARRAY_EXPORT_FORMAT_OPTIONS, OBJECT_EXPORT_FORMAT_OPTIONS]) {
+        const result = buildExportFormatOptions({
+          options,
+          scope,
+          isDesktop: true,
+          hasKeyColumn: true,
+        });
+        expect(result.map((o) => o.value)).toEqual(
+          options === ARRAY_EXPORT_FORMAT_OPTIONS ? ALL_ARRAY : ALL_OBJECT,
+        );
+        expect(result.filter((o) => o.disabled).map((o) => o.value)).toEqual(['parquet']);
+        expect(result.find((o) => o.value === 'parquet')?.disabledReasonKey).toBe(PARQUET_REASON);
+      }
+    },
+  );
+
+  it.each(['entire_table', 'filtered_table'] as const)(
+    'on desktop disables only SQL UPDATE without a key column, for the SQL %s scope',
     (scope: ExportScope) => {
       for (const options of [ARRAY_EXPORT_FORMAT_OPTIONS, OBJECT_EXPORT_FORMAT_OPTIONS]) {
         const result = buildExportFormatOptions({
@@ -61,9 +81,32 @@ describe('buildExportFormatOptions', () => {
           hasKeyColumn: false,
         });
         expect(result.filter((o) => o.disabled).map((o) => o.value)).toEqual(['sql_update']);
-        expect(
-          result.find((o) => o.value === 'sql_update')?.disabledReasonKey,
-        ).toBe('export.formatDisabledNoKey');
+        expect(result.find((o) => o.value === 'sql_update')?.disabledReasonKey).toBe(
+          'export.formatDisabledNoKey',
+        );
+      }
+    },
+  );
+
+  it.each(['current_page', 'selected'] as const)(
+    'on desktop without a key column greys out Parquet and SQL UPDATE for the provided %s scope',
+    (scope: ExportScope) => {
+      for (const options of [ARRAY_EXPORT_FORMAT_OPTIONS, OBJECT_EXPORT_FORMAT_OPTIONS]) {
+        const result = buildExportFormatOptions({
+          options,
+          scope,
+          isDesktop: true,
+          hasKeyColumn: false,
+        });
+        // Options order puts Parquet before the SQL formats.
+        expect(result.filter((o) => o.disabled).map((o) => o.value)).toEqual([
+          'parquet',
+          'sql_update',
+        ]);
+        expect(result.find((o) => o.value === 'parquet')?.disabledReasonKey).toBe(PARQUET_REASON);
+        expect(result.find((o) => o.value === 'sql_update')?.disabledReasonKey).toBe(
+          'export.formatDisabledNoKey',
+        );
       }
     },
   );
@@ -81,20 +124,27 @@ describe('buildExportFormatOptions', () => {
   });
 
   it.each(['current_page', 'selected'] as const)(
-    'on web enables every format for the provided %s scope when a key column exists',
+    'on web enables every format except Parquet for the provided %s scope when a key column exists',
     (scope: ExportScope) => {
       for (const options of [ARRAY_EXPORT_FORMAT_OPTIONS, OBJECT_EXPORT_FORMAT_OPTIONS]) {
-        expect(
-          buildExportFormatOptions({ options, scope, isDesktop: false, hasKeyColumn: true }).filter(
-            (o) => o.disabled,
+        const result = buildExportFormatOptions({
+          options,
+          scope,
+          isDesktop: false,
+          hasKeyColumn: true,
+        });
+        expect(result.filter((o) => !o.disabled).map((o) => o.value)).toEqual(
+          (options === ARRAY_EXPORT_FORMAT_OPTIONS ? ALL_ARRAY : ALL_OBJECT).filter(
+            (value) => value !== 'parquet',
           ),
-        ).toEqual([]);
+        );
+        expect(result.find((o) => o.value === 'parquet')?.disabledReasonKey).toBe(PARQUET_REASON);
       }
     },
   );
 
   it.each(['entire_table', 'filtered_table'] as const)(
-    'on web disables every non-CSV format with the web reason for the SQL %s scope',
+    'on web disables every non-CSV format with the web reason for the SQL %s scope, except Parquet which carries its own',
     (scope: ExportScope) => {
       for (const options of [ARRAY_EXPORT_FORMAT_OPTIONS, OBJECT_EXPORT_FORMAT_OPTIONS]) {
         const result = buildExportFormatOptions({
@@ -104,9 +154,13 @@ describe('buildExportFormatOptions', () => {
           hasKeyColumn: true,
         });
         expect(result.filter((o) => !o.disabled).map((o) => o.value)).toEqual(['csv']);
-        expect(
-          new Set(result.filter((o) => o.disabled).map((o) => o.disabledReasonKey)),
-        ).toEqual(new Set(['export.formatDisabledWebSqlScope']));
+        expect(result.find((o) => o.value === 'parquet')?.disabledReasonKey).toBe(PARQUET_REASON);
+        expect(result.find((o) => o.value === 'xlsx')?.disabledReasonKey).toBe(
+          'export.formatDisabledWebSqlScope',
+        );
+        expect(new Set(result.filter((o) => o.disabled).map((o) => o.disabledReasonKey))).toEqual(
+          new Set(['export.formatDisabledWebSqlScope', PARQUET_REASON]),
+        );
       }
     },
   );
@@ -124,10 +178,33 @@ describe('buildExportFormatOptions', () => {
     expect(result.find((o) => o.value === 'xlsx')?.disabledReasonKey).toBe(
       'export.formatDisabledWebSqlScope',
     );
-    expect(
-      new Set(result.filter((o) => o.disabled).map((o) => o.disabledReasonKey)),
-    ).toEqual(
-      new Set(['export.formatDisabledWebSqlScope', 'export.formatDisabledNoKey']),
+    expect(new Set(result.filter((o) => o.disabled).map((o) => o.disabledReasonKey))).toEqual(
+      new Set(['export.formatDisabledWebSqlScope', 'export.formatDisabledNoKey', PARQUET_REASON]),
     );
+  });
+
+  it('Parquet is offered everywhere but greyed out except on desktop SQL scopes (PRD F8)', () => {
+    // Offered-but-disabled, never hidden: the option stays in the list for
+    // every scope/platform combination, only its availability flips.
+    for (const scope of ['current_page', 'selected', 'entire_table', 'filtered_table'] as const) {
+      for (const isDesktop of [false, true]) {
+        for (const options of [ARRAY_EXPORT_FORMAT_OPTIONS, OBJECT_EXPORT_FORMAT_OPTIONS]) {
+          const result = buildExportFormatOptions({
+            options,
+            scope,
+            isDesktop,
+            hasKeyColumn: true,
+          });
+          const parquet = result.find((o) => o.value === 'parquet');
+          expect(parquet, `parquet offered for ${scope} isDesktop=${isDesktop}`).toBeTruthy();
+          const streaming = scope === 'entire_table' || scope === 'filtered_table';
+          const available = isDesktop && streaming;
+          expect(Boolean(parquet?.disabled)).toBe(!available);
+          if (!available) {
+            expect(parquet?.disabledReasonKey).toBe(PARQUET_REASON);
+          }
+        }
+      }
+    }
   });
 });

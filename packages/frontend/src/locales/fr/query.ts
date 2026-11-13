@@ -548,6 +548,8 @@ const pack = {
     "SQL UPDATE a besoin d'une colonne clé primaire pour sa clause WHERE.",
   'export.formatDisabledWebSqlScope':
     'Sur le web, les exports de table entière et de résultats filtrés ne prennent en charge que le CSV — il n’existe pas de chemin d’export SQL.',
+  'export.formatDisabledParquetRustOnly':
+    'L’export Parquet passe par l’exporteur Rust de l’application de bureau ; indisponible pour la page actuelle / les lignes sélectionnées et sur le web.',
   'export.progressRows': '{rows} lignes écrites…',
   'export.cancelExport': "Annuler l'export",
   'export.cancelling': 'Annulation…',

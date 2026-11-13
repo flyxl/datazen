@@ -78,6 +78,13 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 # tree). CI pins the stable toolchain, so rust-version 1.85 -> 1.88 in the
 # manifests that declare it (datazen-desktop, datazen-cli) is safe.
 rust_xlsxwriter = { version = "0.102", features = ["constant_memory"] }
+# Parquet export T1 (PRD §8 Q1): parquet 58.x tracks arrow 58.x, the same
+# line the duckdb driver already pulls in (lock: arrow 58.4.0; duckdb
+# requires arrow ^58). Pinning the "58" line keeps a single arrow in the
+# graph — cargo resolves both to 58.4.0, a patch bump only. Do NOT bump to
+# parquet 59+ / arrow 59 without re-checking the duckdb driver.
+parquet = "58"
+arrow = "58"
 russh = "0.60"
 tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 tokio-rustls = "0.26"

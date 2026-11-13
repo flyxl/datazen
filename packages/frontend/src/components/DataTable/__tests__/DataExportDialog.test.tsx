@@ -32,8 +32,7 @@ const cancelExportTablesMock = vi.fn();
 
 const downloadBlobMock = vi.hoisted(() => vi.fn());
 vi.mock('../../../platform/blobTablesExporter', async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import('../../../platform/blobTablesExporter')>();
+  const actual = await importOriginal<typeof import('../../../platform/blobTablesExporter')>();
   return { ...actual, downloadBlob: (...args: unknown[]) => downloadBlobMock(...args) };
 });
 
@@ -60,8 +59,7 @@ function bindFakeExporter(): void {
     },
     tablesExporter: {
       exportTables: (...args: unknown[]) => exportTablesStream(...(args as [never])),
-      cancelExportTables: (...args: unknown[]) =>
-        cancelExportTablesMock(...(args as [never])),
+      cancelExportTables: (...args: unknown[]) => cancelExportTablesMock(...(args as [never])),
     },
   });
 }
@@ -136,11 +134,7 @@ describe('DataExportDialog', () => {
     await waitFor(() => {
       // Current page is a provided export now: formatted in the frontend
       // and Blob-downloaded, never sent to the Rust exporter.
-      expect(downloadBlobMock).toHaveBeenCalledWith(
-        'id,name\n1,a',
-        'users.csv',
-        'text/csv',
-      );
+      expect(downloadBlobMock).toHaveBeenCalledWith('id,name\n1,a', 'users.csv', 'text/csv');
       expect(exportTablesStream).not.toHaveBeenCalled();
       expect(getByText('export.success')).toBeInTheDocument();
     });
@@ -165,11 +159,7 @@ describe('DataExportDialog', () => {
     );
     fireEvent.click(getByText('export.export'));
     await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1));
-    expect(downloadBlobMock).toHaveBeenCalledWith(
-      'id,name\n1,a\n2,b',
-      'users.csv',
-      'text/csv',
-    );
+    expect(downloadBlobMock).toHaveBeenCalledWith('id,name\n1,a\n2,b', 'users.csv', 'text/csv');
     expect(exportTablesStream).not.toHaveBeenCalled();
     await waitFor(() => expect(getByText('export.success')).toBeInTheDocument());
   });
@@ -193,11 +183,7 @@ describe('DataExportDialog', () => {
     );
     fireEvent.click(getByText('export.export'));
     await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1));
-    expect(downloadBlobMock).toHaveBeenCalledWith(
-      'id,name\n3,c',
-      'users.csv',
-      'text/csv',
-    );
+    expect(downloadBlobMock).toHaveBeenCalledWith('id,name\n3,c', 'users.csv', 'text/csv');
     expect(exportTablesStream).not.toHaveBeenCalled();
   });
 
@@ -220,6 +206,7 @@ describe('DataExportDialog', () => {
       'json',
       'markdown',
       'xlsx',
+      'parquet',
       'sql_insert',
       'sql_update',
     ]);
@@ -244,9 +231,7 @@ describe('DataExportDialog', () => {
     });
     const [bytes, filename, mimeType] = downloadBlobMock.mock.calls[0]!;
     expect(filename).toBe('users.xlsx');
-    expect(mimeType).toBe(
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    );
+    expect(mimeType).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     expect(bytes).toBeInstanceOf(Uint8Array);
     const wb = XLSX.read(bytes as Uint8Array, { type: 'array' });
     const matrix = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets['Sheet1']!, {
@@ -480,11 +465,7 @@ describe('DataExportDialog without a session (task 4)', () => {
     );
     fireEvent.click(getByText('export.export'));
     await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1));
-    expect(downloadBlobMock).toHaveBeenCalledWith(
-      'id,name\n1,a\n2,b',
-      'users.csv',
-      'text/csv',
-    );
+    expect(downloadBlobMock).toHaveBeenCalledWith('id,name\n1,a\n2,b', 'users.csv', 'text/csv');
     expect(exportTablesStream).not.toHaveBeenCalled();
     await waitFor(() => expect(getByText('export.success')).toBeInTheDocument());
   });
@@ -507,11 +488,7 @@ describe('DataExportDialog without a session (task 4)', () => {
     );
     fireEvent.click(getByText('export.export'));
     await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1));
-    expect(downloadBlobMock).toHaveBeenCalledWith(
-      'id,name\n3,c',
-      'users.csv',
-      'text/csv',
-    );
+    expect(downloadBlobMock).toHaveBeenCalledWith('id,name\n3,c', 'users.csv', 'text/csv');
     expect(exportTablesStream).not.toHaveBeenCalled();
   });
 
@@ -619,7 +596,10 @@ describe('DataExportDialog cancellation (item 1b)', () => {
   it('cancels mid-flight and reports the partial file deleted', async () => {
     let resolveExport!: (result: unknown) => void;
     exportTablesStream.mockImplementation(
-      () => new Promise((resolve) => { resolveExport = resolve; }),
+      () =>
+        new Promise((resolve) => {
+          resolveExport = resolve;
+        }),
     );
     const { getByText, getByTestId, queryByText } = renderEntireTable();
     fireEvent.click(getByText('export.export'));
@@ -639,9 +619,7 @@ describe('DataExportDialog cancellation (item 1b)', () => {
     expect(cancelExportTablesMock).toHaveBeenCalledWith(request.cancelToken);
 
     resolveExport({ Aborted: { partialDeleted: true } });
-    await waitFor(() =>
-      expect(getByTestId('export-aborted-panel')).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(getByTestId('export-aborted-panel')).toBeInTheDocument());
     expect(getByText('export.cancelledPartialDeleted')).toBeInTheDocument();
     expect(queryByText('export.success')).not.toBeInTheDocument();
     // The aborted panel leaves only Close in the footer.
@@ -652,16 +630,17 @@ describe('DataExportDialog cancellation (item 1b)', () => {
   it('reports the partial file kept when the backend could not delete it', async () => {
     let resolveExport!: (result: unknown) => void;
     exportTablesStream.mockImplementation(
-      () => new Promise((resolve) => { resolveExport = resolve; }),
+      () =>
+        new Promise((resolve) => {
+          resolveExport = resolve;
+        }),
     );
     const { getByText, getByTestId } = renderEntireTable();
     fireEvent.click(getByText('export.export'));
     await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
     fireEvent.click(getByText('export.cancelExport'));
     resolveExport({ Aborted: { partialDeleted: false } });
-    await waitFor(() =>
-      expect(getByTestId('export-aborted-panel')).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(getByTestId('export-aborted-panel')).toBeInTheDocument());
     expect(getByText('export.cancelledPartialKept')).toBeInTheDocument();
   });
 
@@ -710,7 +689,7 @@ describe('DataExportDialog web format supply (task 6, plan §2.8)', () => {
     );
   }
 
-  it('offers every format for the provided current-page scope on web', () => {
+  it('offers every format for the provided current-page scope on web, Parquet greyed out (Rust-only)', () => {
     renderWebDialog();
     expect(formatValues()).toEqual([
       'csv',
@@ -718,9 +697,15 @@ describe('DataExportDialog web format supply (task 6, plan §2.8)', () => {
       'json',
       'markdown',
       'xlsx',
+      'parquet',
       'sql_insert',
       'sql_update',
     ]);
+    const disabled = new Map(Array.from(formatSelect().options).map((o) => [o.value, o.disabled]));
+    expect(disabled.get('parquet')).toBe(true);
+    for (const value of ['csv', 'tsv', 'json', 'markdown', 'xlsx', 'sql_insert']) {
+      expect(disabled.get(value)).toBe(false);
+    }
   });
 
   it('disables every non-CSV format with its reasons for the entire-table scope on web', () => {
@@ -732,21 +717,33 @@ describe('DataExportDialog web format supply (task 6, plan §2.8)', () => {
       'json',
       'markdown',
       'xlsx',
+      'parquet',
       'sql_insert',
       'sql_update',
     ]);
-    const disabled = new Map(
-      Array.from(formatSelect().options).map((o) => [o.value, o.disabled]),
-    );
+    const disabled = new Map(Array.from(formatSelect().options).map((o) => [o.value, o.disabled]));
     expect(disabled.get('csv')).toBe(false);
-    for (const value of ['tsv', 'json', 'markdown', 'xlsx', 'sql_insert', 'sql_update']) {
+    for (const value of [
+      'tsv',
+      'json',
+      'markdown',
+      'xlsx',
+      'parquet',
+      'sql_insert',
+      'sql_update',
+    ]) {
       expect(disabled.get(value)).toBe(true);
     }
-    // No key column is passed here, so both reasons show: the web rule for
-    // the streaming scope and the no-key rule for SQL UPDATE.
+    // No key column is passed here, so every reason shows: the web rule for
+    // the streaming scope, the Rust-only rule for Parquet, and the no-key
+    // rule for SQL UPDATE.
     expect(
       screen.getAllByTestId('export-format-disabled-reason').map((el) => el.textContent),
-    ).toEqual(['export.formatDisabledWebSqlScope', 'export.formatDisabledNoKey']);
+    ).toEqual([
+      'export.formatDisabledWebSqlScope',
+      'export.formatDisabledParquetRustOnly',
+      'export.formatDisabledNoKey',
+    ]);
   });
 
   it('disables every non-CSV format with its reasons for the filtered scope on web', () => {
@@ -761,12 +758,17 @@ describe('DataExportDialog web format supply (task 6, plan §2.8)', () => {
       'json',
       'markdown',
       'xlsx',
+      'parquet',
       'sql_insert',
       'sql_update',
     ]);
     expect(
       screen.getAllByTestId('export-format-disabled-reason').map((el) => el.textContent),
-    ).toEqual(['export.formatDisabledWebSqlScope', 'export.formatDisabledNoKey']);
+    ).toEqual([
+      'export.formatDisabledWebSqlScope',
+      'export.formatDisabledParquetRustOnly',
+      'export.formatDisabledNoKey',
+    ]);
   });
 
   it('resets a non-CSV format to CSV when switching to an entire-table scope on web', () => {
@@ -783,12 +785,11 @@ describe('DataExportDialog web format supply (task 6, plan §2.8)', () => {
       'json',
       'markdown',
       'xlsx',
+      'parquet',
       'sql_insert',
       'sql_update',
     ]);
-    expect(
-      Array.from(formatSelect().options).find((o) => o.value === 'xlsx')?.disabled,
-    ).toBe(true);
+    expect(Array.from(formatSelect().options).find((o) => o.value === 'xlsx')?.disabled).toBe(true);
   });
 
   it('exports the current page as JSON on web via the frontend formatter', async () => {
@@ -832,9 +833,7 @@ describe('DataExportDialog column selection (item 1a)', () => {
   it('renders the shared picker with the columns in display order and a PK badge', () => {
     renderDialog();
     const list = screen.getByTestId('export-columns-list');
-    const labels = Array.from(list.querySelectorAll('label')).map(
-      (label) => label.textContent,
-    );
+    const labels = Array.from(list.querySelectorAll('label')).map((label) => label.textContent);
     expect(labels).toEqual(['idPKinteger', 'namevarchar']);
     expect(screen.getByTestId('export-column-id')).toBeChecked();
     expect(screen.getByTestId('export-column-name')).toBeChecked();
@@ -935,15 +934,21 @@ describe('DataExportDialog format availability (item 1c)', () => {
     expect(formatOption('sql_update').disabled).toBe(true);
     expect(formatOption('csv').disabled).toBe(false);
     expect(formatOption('xlsx').disabled).toBe(false);
-    expect(screen.getByTestId('export-format-disabled-reason')).toHaveTextContent(
-      'export.formatDisabledNoKey',
-    );
+    // Parquet is Rust-only: on the web provided scope it is greyed out with
+    // its own reason, ahead of SQL UPDATE in the option order.
+    expect(formatOption('parquet').disabled).toBe(true);
+    expect(
+      screen.getAllByTestId('export-format-disabled-reason').map((el) => el.textContent),
+    ).toEqual(['export.formatDisabledParquetRustOnly', 'export.formatDisabledNoKey']);
   });
 
-  it('enables SQL UPDATE and shows no reason when a key column exists', () => {
+  it('enables SQL UPDATE and leaves only the Parquet reason when a key column exists', () => {
     renderDialog({ primaryKeyColumns: ['id'] });
     expect(formatOption('sql_update').disabled).toBe(false);
-    expect(screen.queryByTestId('export-format-disabled-reason')).not.toBeInTheDocument();
+    expect(formatOption('parquet').disabled).toBe(true);
+    expect(
+      screen.getAllByTestId('export-format-disabled-reason').map((el) => el.textContent),
+    ).toEqual(['export.formatDisabledParquetRustOnly']);
   });
 
   it('ignores selecting a disabled format', () => {
@@ -967,9 +972,9 @@ describe('DataExportDialog format availability (item 1c)', () => {
       />,
     );
     expect(formatSelect()).toHaveValue('csv');
-    expect(screen.getByTestId('export-format-disabled-reason')).toHaveTextContent(
-      'export.formatDisabledNoKey',
-    );
+    expect(
+      screen.getAllByTestId('export-format-disabled-reason').map((el) => el.textContent),
+    ).toEqual(['export.formatDisabledParquetRustOnly', 'export.formatDisabledNoKey']);
   });
 
   it('never disables XLSX for a streaming scope on desktop', () => {

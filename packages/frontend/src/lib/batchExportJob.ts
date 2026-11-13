@@ -19,7 +19,8 @@ export type BatchExportDataFormat =
   | 'markdown'
   | 'sql_insert'
   | 'sql_update'
-  | 'xlsx';
+  | 'xlsx'
+  | 'parquet';
 
 export interface BatchExportTableInput {
   tableName: string;
@@ -113,9 +114,7 @@ export interface SingleTableExportOptions {
    * (`batch-export-progress`). Threaded through to the `SqlDataFetcher`
    * so a test that injects `exportTables` need not bind a platform.
    */
-  subscribeProgress?: (
-    handler: (event: ExportProgressEvent) => void,
-  ) => Promise<() => void>;
+  subscribeProgress?: (handler: (event: ExportProgressEvent) => void) => Promise<() => void>;
   /**
    * Receives the cancel function for the run, before the export starts
    * (the fetcher mints its token at construction). The dialogs wire
@@ -223,8 +222,7 @@ export async function exportSingleTableStructureViaRust(
     schema,
     tableName,
     ddl,
-    exportTables = (request: ExportTablesRequest) =>
-      requireTablesExporter().exportTables(request),
+    exportTables = (request: ExportTablesRequest) => requireTablesExporter().exportTables(request),
   } = options;
 
   if (!dbSessionId) {

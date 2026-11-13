@@ -629,6 +629,8 @@ const pack = {
     'SQL UPDATE benötigt eine Primärschllüsselspalte für die WHERE-Klausel.',
   'export.formatDisabledWebSqlScope':
     'Im Web unterstützen Exporte der gesamten Tabelle und gefilterter Ergebnisse nur CSV — es gibt keinen SQL-Exportpfad.',
+  'export.formatDisabledParquetRustOnly':
+    'Der Parquet-Export läuft über den Desktop-Rust-Exporter; für die aktuelle Seite / ausgewählte Zeilen und im Web nicht verfügbar.',
   'export.progressRows': '{rows} Zeilen geschrieben…',
   'export.cancelExport': 'Export abbrechen',
   'export.cancelling': 'Wird abgebrochen…',
