@@ -122,7 +122,6 @@
     "e2e:shots:sync": "node scripts/sync-e2e-assets.mjs --shots",
     "e2e:demo:sync": "node scripts/sync-e2e-assets.mjs --demo"
   },
-  "dependencies": {},
   "devDependencies": {
     "@datazen/backend-client": "workspace:*",
     "@datazen/driver-sdk": "workspace:*",
@@ -153,6 +152,7 @@
     "husky": "^9.1.7",
     "jsdom": "^29.0.2",
     "lucide-react": "^0.487.0",
+    "nyc": "^18.0.0",
     "opencc-js": "^1.4.1",
     "postcss": "^8.5.3",
     "prettier": "3.6.2",
@@ -163,6 +163,7 @@
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "7.0.2",
     "vite": "^6.2.5",
+    "vite-plugin-istanbul": "^9.0.1",
     "vitest": "^4.1.10",
     "yaml": "^2.9.0",
     "zustand": "^5.0.3"
