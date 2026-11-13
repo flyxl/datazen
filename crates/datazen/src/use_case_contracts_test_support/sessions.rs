@@ -24,8 +24,7 @@
 //! 与 connections 域的「宿主装配句」相对照：本域用例失败直接是
 //! [`ApiError`]（code + 脱敏 message 是 application 自己的产物），两条腿
 //! 拿到的是**同一份错误**——scenario 因此可以逐字断言 message（含
-//! `convert::runtime` 的收敛句「connection runtime operation failed」，
-//! 那本身就是 application 决定不外传细节的词汇）。
+//! `convert::runtime` 产出的安全、可操作文案）。
 //!
 //! # 装配登记（可收窄面）
 //!
@@ -459,8 +458,8 @@ pub async fn a_stale_expected_context_revision_is_refused_as_context_conflict(
         "the CAS conflict carries the contract code on both legs"
     );
     assert_eq!(
-        failure.message, "connection runtime operation failed",
-        "the collapsed application sentence travels verbatim"
+        failure.message, "连接上下文已变更，请刷新后重试",
+        "the safe actionable application sentence travels verbatim"
     );
 
     let still = binding

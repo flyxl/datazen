@@ -158,9 +158,54 @@ pub fn error(error: ResourceError) -> rc::ProviderError {
         ResourceError::Driver(datazen_driver_api::DriverError::SessionLost) => {
             rc::ProviderError::ResourceLost("retained physical session lost".into())
         }
-        ResourceError::Driver(_) => rc::ProviderError::SqlError("driver execution failed".into()),
+        ResourceError::Driver(driver_err) => {
+            use datazen_driver_api::DriverError;
+            tracing::warn!(error = ?driver_err, "driver resource operation failed");
+            match driver_err {
+                DriverError::InvalidConfig(msg) if is_safe_driver_message(&msg) => {
+                    rc::ProviderError::ProtocolError(format!("连接配置无效: {msg}"))
+                }
+                DriverError::AuthenticationFailed(msg) if is_safe_driver_message(&msg) => {
+                    rc::ProviderError::ProtocolError(format!("认证失败: {msg}"))
+                }
+                DriverError::ConnectionFailed(msg) if is_safe_driver_message(&msg) => {
+                    rc::ProviderError::ProtocolError(format!("连接失败: {msg}"))
+                }
+                DriverError::NotSupported(msg) if is_safe_driver_message(&msg) => {
+                    rc::ProviderError::ProtocolError(format!("当前操作不支持: {msg}"))
+                }
+                DriverError::Unsupported(msg) if is_safe_driver_message(&msg) => {
+                    rc::ProviderError::ProtocolError(format!("当前操作不支持: {msg}"))
+                }
+                DriverError::ConnectionTimeout => {
+                    rc::ProviderError::Timeout("driver operation timed out")
+                }
+                _ => rc::ProviderError::SqlError("driver execution failed".into()),
+            }
+        }
     }
 }
+
+fn is_safe_driver_message(msg: &str) -> bool {
+    let trimmed = msg.trim();
+    if trimmed.is_empty() || trimmed.len() > 240 {
+        return false;
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    // Avoid leaking credentials, connection strings, or absolute sensitive paths.
+    !lower.contains("password=")
+        && !lower.contains("pwd=")
+        && !lower.contains("://")
+        && !lower.contains("jdbc:")
+        && !lower.contains("postgresql://")
+        && !lower.contains("mysql://")
+        && !lower.contains("mongodb://")
+        && !lower.contains("redis://")
+        && !trimmed.contains("/Users/")
+        && !trimmed.contains("/home/")
+        && !trimmed.contains("C:\\")
+}
+
 pub fn handles(
     handles: &[ds::SessionHandleRef],
     resource_id: &str,
