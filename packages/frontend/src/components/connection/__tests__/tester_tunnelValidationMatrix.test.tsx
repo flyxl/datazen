@@ -150,6 +150,26 @@ const VARIANTS: Variant[] = [
     supportsSSH: true,
     base: { host: 'db.internal', port: 1433, database: 'master', username: 'sa' },
   },
+  {
+    label: 'server-url (kiwi)',
+    databaseType: 'kiwi',
+    formVariant: 'kiwi',
+    hasDriverValidator: false,
+    supportsSSH: false,
+    base: { host: 'https://kiwi.akusre.com', port: 4, username: 'kiwi-user' },
+  },
+  {
+    label: 'driver-validator (superset)',
+    databaseType: 'superset',
+    formVariant: 'superset',
+    hasDriverValidator: true,
+    supportsSSH: false,
+    base: {
+      host: 'https://superset.example.com',
+      username: 'superset-user',
+      password: 'superset-password',
+    },
+  },
 ];
 
 function renderVariant(variant: Variant, tunnel: Partial<ConnectionConfig> = {}) {
@@ -210,7 +230,7 @@ describe('[tester] validate() variant matrix is exhaustive for this build', () =
     // from going vacuous — emptying `hasDriverValidator` would shrink `declared` until
     // nothing could ever be uncovered while the matrix stopped exercising those forms.
     const declared = VARIANTS.filter((v) => v.hasDriverValidator).map((v) => v.formVariant);
-    expect(declared).toEqual(['redis', 'sqlserver']);
+    expect(declared).toEqual(['redis', 'sqlserver', 'superset']);
 
     // One direction only, the same shape as the connectionForm guard above: every form
     // this build registers a validator for needs a VARIANTS row declaring it. The reverse

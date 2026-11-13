@@ -120,6 +120,7 @@ const BACKTICK_DIALECTS: ReadonlySet<string> = new Set([
   'starrocks',
   'manticore',
   'ob_oracle',
+  'kiwi',
 ]);
 // SQL Server brackets identifiers; the no-SQL drivers below leave
 // identifiers bare; everything else double-quotes (also the fallback for
@@ -141,6 +142,21 @@ function sqlQuoteChar(databaseType?: string): '`' | '"' | '[' | '' {
   if (NO_QUOTE_DIALECTS.has(databaseType)) return '';
   return '"';
 }
+
+/**
+ * Drivers whose metas declare `escapeSqlValue` (the MySQL-family escaper).
+ * Backtick quoting and backslash escaping are independent meta facts — `kiwi`
+ * quotes with backticks but keeps the default escaper — so this set is a
+ * strict subset of `BACKTICK_DIALECTS`.
+ */
+const MYSQL_ESCAPE_DIALECTS: ReadonlySet<string> = new Set([
+  'mysql',
+  'mariadb',
+  'doris',
+  'starrocks',
+  'manticore',
+  'ob_oracle',
+]);
 
 function escapeSqlIdent(name: string, databaseType?: string): string {
   const q = sqlQuoteChar(databaseType);
@@ -175,7 +191,7 @@ function mysqlEscapeSqlLiteral(value: unknown): string {
 }
 
 function escapeSqlLiteral(value: unknown, databaseType?: string): string {
-  if (databaseType && BACKTICK_DIALECTS.has(databaseType)) {
+  if (databaseType && MYSQL_ESCAPE_DIALECTS.has(databaseType)) {
     return mysqlEscapeSqlLiteral(value);
   }
   return defaultEscapeSqlLiteral(value);

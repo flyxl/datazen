@@ -39,6 +39,13 @@ export async function runEditorQuery(
       ...(settings.limitSelectResults && settings.queryResultLimit > 0
         ? { limit: settings.queryResultLimit }
         : {}),
+      // F7: envelope targeting → command input. The session-execution path has
+      // no envelope target of its own, so the panel-resolved target rides in
+      // the input: drivers with dialect-aware qualification inline it, and
+      // per-request path drivers (Superset) land on the caller-selected
+      // namespace without a session-level switch.
+      ...(database ? { database } : {}),
+      ...(schema ? { schema } : {}),
     },
   });
   onEvent({ type: 'executionStarted', executionId: receipt.executionId });

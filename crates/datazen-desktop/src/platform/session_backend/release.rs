@@ -1,4 +1,7 @@
 use super::*;
+use datazen_driver_api::capabilities::{
+    Availability as CapAvailability, SessionScopedHandleSupport, TransactionObservation,
+};
 impl DesktopSessionBackend {
     pub(super) async fn finalize_resource_handles(
         &self,
@@ -114,6 +117,22 @@ impl DesktopSessionBackend {
             .await
             .unwrap_or_else(|_| ds::SessionObservation::unobservable());
         let confirmed = resource.finalized_transaction.lock().await.is_some();
+        let capabilities = resource.provider.capabilities();
+        let tx_impossible = capabilities.capabilities.transaction_observation
+            == TransactionObservation::Unsupported
+            && capabilities
+                .capabilities
+                .transactions
+                .isolation_levels
+                .is_empty()
+            && capabilities.capabilities.transactions.savepoints == CapAvailability::Unsupported
+            && capabilities.capabilities.session_scoped_handles
+                == SessionScopedHandleSupport::Unsupported;
+        let tx_state_blocks = match observation.transaction.state {
+            ds::TransactionState::Active | ds::TransactionState::Aborted => true,
+            ds::TransactionState::Unknown => !confirmed && !tx_impossible,
+            ds::TransactionState::Idle | ds::TransactionState::Unsupported => false,
+        };
         if !(observation.protocol_drained
             || resource
                 .protocol_drained
@@ -122,11 +141,7 @@ impl DesktopSessionBackend {
             || observation.handles.iter().any(|handle| {
                 !handle.closed && !(confirmed && handle.kind == ds::SessionHandleKind::Transaction)
             })
-            || matches!(
-                observation.transaction.state,
-                ds::TransactionState::Active | ds::TransactionState::Aborted
-            )
-            || (observation.transaction.state == ds::TransactionState::Unknown && !confirmed)
+            || tx_state_blocks
         {
             self.unbind_live_resource_by_resource(&request.resource_id)
                 .await;

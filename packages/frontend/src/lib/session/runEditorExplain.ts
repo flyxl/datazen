@@ -22,7 +22,13 @@ export async function runEditorExplain(
   );
   const receipt = await controller.execute({
     command: 'explain',
-    input: { sql, ...(params && Object.keys(params).length > 0 ? { params } : {}) },
+    // F7: same envelope targeting rule as `query` (see runEditorQuery).
+    input: {
+      sql,
+      ...(params && Object.keys(params).length > 0 ? { params } : {}),
+      ...(database ? { database } : {}),
+      ...(schema ? { schema } : {}),
+    },
   });
   const projection = new ExecutionProjection(
     controller.client,
