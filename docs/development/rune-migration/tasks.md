@@ -23,8 +23,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | S3 | 已完成 | 63d75d2, 4fe37e5 | testing/S3-table-tab.md, testing/S3-table-tab-r2.md |
 | S4 | 已完成 | e5f29ca | testing/S4-query-tab.md |
 | S5 | 已完成 | 0f21ead | testing/S5-disconnect.md |
-| S6 | 进行中 | | |
-| B1 | 未开始 | | |
+| S6 | 已完成 | 3b78739 | testing/S6-sidebar.md |
+| B1 | 进行中 | | |
 | B2 | 未开始 | | |
 | B3 | 未开始 | | |
 | B4 | 未开始 | | |
