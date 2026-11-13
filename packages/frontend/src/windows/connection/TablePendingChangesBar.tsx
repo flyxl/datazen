@@ -18,8 +18,7 @@ export interface TableTransactionControlsProps {
   onReload: () => void;
 }
 
-const TX_ERROR_CLASS =
-  'border-b border-red-500/30 bg-red-500/10 px-3 py-1 text-xs text-red-400';
+const TX_ERROR_CLASS = 'border-b border-red-500/30 bg-red-500/10 px-3 py-1 text-xs text-red-400';
 const TX_CONTROLS_CLASS =
   'flex shrink-0 items-center gap-2 border-b border-edge px-3 py-1 text-xs text-fg-muted';
 const TX_ACTION_CLASS = 'text-accent hover:underline disabled:opacity-50';
@@ -53,7 +52,10 @@ export function TableTransactionControls({
       const snapshot = await controller.refresh();
       setTxLost(snapshot?.state === 'lost' || snapshot?.state === 'closed');
       const state = snapshot?.observedContext.transactionState;
-      setInTx(state === 'active' || state === 'aborted' || state === 'unknown');
+      // Treat only confirmed tx states as in-transaction; `unknown` is
+      // unconfirmed and must not block/show as transactional on drivers
+      // that cannot observe transactions.
+      setInTx(state === 'active' || state === 'aborted');
     } catch (error) {
       const controller = await tableSessionController(panelId, context);
       setTxLost(controller.snapshot?.state === 'lost' || controller.snapshot?.state === 'closed');
@@ -243,7 +245,9 @@ export function TablePendingChangesBar({
         {t('tableData.pendingChanges', { count: pendingCount })}
       </span>
       {insertCount > 0 && (
-        <span className="text-fg-muted">{t('tableData.pendingInserts', { count: insertCount })}</span>
+        <span className="text-fg-muted">
+          {t('tableData.pendingInserts', { count: insertCount })}
+        </span>
       )}
       {updateCount > 0 && (
         <span className="text-fg-muted">

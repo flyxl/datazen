@@ -199,6 +199,12 @@ impl RuntimeConnectionUseCases {
             }
             Err(error) => return Err(error),
         };
+        if view.observed_context.transaction_state
+            == crate::execution::TransactionState::Unsupported
+        {
+            lock(&self.inner.transaction_unknown).remove(&view.handle);
+            return Ok(false);
+        }
         if lock(&self.inner.transaction_unknown).contains(&view.handle)
             || view.observed_context.transaction_state
                 == crate::execution::TransactionState::Unknown

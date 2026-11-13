@@ -374,10 +374,14 @@ impl RuntimeResultSink {
                     entry.view.runtime_binding = None;
                     if resource_lost {
                         if let Some(provenance) = entry.view.provenance.as_mut() {
-                            provenance.context_after.transaction_state =
-                                crate::execution::TransactionState::Unknown;
-                            provenance.context_after.confidence =
-                                crate::execution::ContextConfidence::Unknown;
+                            if provenance.context_after.transaction_state
+                                != crate::execution::TransactionState::Unsupported
+                            {
+                                provenance.context_after.transaction_state =
+                                    crate::execution::TransactionState::Unknown;
+                                provenance.context_after.confidence =
+                                    crate::execution::ContextConfidence::Unknown;
+                            }
                         }
                     }
                 }

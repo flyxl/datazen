@@ -156,7 +156,9 @@ pub(super) async fn release(
     // 事务状态：无法确认终结时**必须停止报 Active**。
     // 继续报 Active 会让上层在一条可能已经回滚的链上接着提交。
     if let Some(cause) = undecidable {
-        state.view.observed_context.transaction_state = TransactionState::Unknown;
+        if state.view.observed_context.transaction_state != TransactionState::Unsupported {
+            state.view.observed_context.transaction_state = TransactionState::Unknown;
+        }
         emit(
             state,
             AuditFacts {

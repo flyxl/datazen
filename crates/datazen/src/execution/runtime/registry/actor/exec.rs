@@ -152,10 +152,14 @@ pub(super) async fn apply_completion(
                 )
                 .await;
                 state.view.state = SessionState::Lost;
-                state.view.observed_context.transaction_state =
-                    crate::execution::runtime::connection::TransactionState::Unknown;
-                state.view.observed_context.confidence =
-                    crate::execution::runtime::connection::ContextConfidence::Unknown;
+                if state.view.observed_context.transaction_state
+                    != crate::execution::runtime::connection::TransactionState::Unsupported
+                {
+                    state.view.observed_context.transaction_state =
+                        crate::execution::runtime::connection::TransactionState::Unknown;
+                    state.view.observed_context.confidence =
+                        crate::execution::runtime::connection::ContextConfidence::Unknown;
+                }
             }
             state.handles.release_execution(&active.execution_id);
             remember(state, active.execution_id.clone(), ExecutionState::Failed);

@@ -63,7 +63,10 @@ export function useQueryTransaction({
     if (!controller) throw new Error('Query transaction requires a persistent connection owner');
     const session = await controller.refresh();
     const state = session?.observedContext?.transactionState;
-    return state === 'active' || state === 'aborted' || state === 'unknown';
+    // `unknown` means unconfirmed/unobservable — do not present it as an
+    // active transaction (e.g. HTTP drivers with no transaction support).
+    // Runtime guards still protect real control operations.
+    return state === 'active' || state === 'aborted';
   }, [ownedController]);
 
   const transaction = useCallback(
@@ -422,7 +425,12 @@ export function QueryResultsPane({
   return (
     <>
       <div className="flex min-h-0 flex-1 flex-col">
-        {publishedArtifacts && <QueryArtifactExport key={publishedArtifacts.executionId} artifacts={publishedArtifacts} />}
+        {publishedArtifacts && (
+          <QueryArtifactExport
+            key={publishedArtifacts.executionId}
+            artifacts={publishedArtifacts}
+          />
+        )}
         {showExplain && !running && (
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="flex shrink-0 items-center gap-0 border-b border-edge bg-surface-alt px-1">
@@ -582,9 +590,7 @@ export function QueryResultsPane({
                   result={activeResult}
                   writeBackKey={resultEditKey(dbSessionId, activeResultIdx)}
                   cellTypeHints={
-                    databaseType
-                      ? DB_REGISTRY[databaseType as DatabaseType]?.cellTypes
-                      : undefined
+                    databaseType ? DB_REGISTRY[databaseType as DatabaseType]?.cellTypes : undefined
                   }
                   onCellEdit={running ? undefined : onCellEdit}
                   view={running ? 'table' : resultViewMode}
