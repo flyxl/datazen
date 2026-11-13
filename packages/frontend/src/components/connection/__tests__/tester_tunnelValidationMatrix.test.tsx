@@ -94,13 +94,13 @@ function editExisting(overrides: Partial<ConnectionConfig> = {}): ConnectionConf
 /**
  * `ConnectionConfig['databaseType']` is the codegen-derived union from
  * `generated.ts`, so it only admits the drivers the current `--drivers` set
- * injected — naming `sqlserver` under `--drivers=basic` is a type error even
- * though the matrix must cover it. This keeps the union and adds the ids the
+ * injected — naming drivers absent from a given build is a type error even
+ * though the matrix must cover them. This keeps the union and adds the ids the
  * matrix deliberately spans builds for; each one is still checked against the
  * live `DB_REGISTRY` at runtime (see the exhaustiveness guard and
  * `expectedFormVariant` below), so nothing here widens to an unchecked string.
  */
-type CrossBuildDatabaseType = ConnectionConfig['databaseType'] | 'sqlserver';
+type CrossBuildDatabaseType = ConnectionConfig['databaseType'] | 'sqlserver' | 'kiwi' | 'superset';
 
 interface Variant {
   label: string;
