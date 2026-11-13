@@ -66,6 +66,12 @@ impl DataGrid {
         self.origin_col
     }
 
+    /// True once a table page has been loaded. The fresh grid is only the POC
+    /// demo surface and is not a product page.
+    pub fn has_page(&self) -> bool {
+        self.source.is_some()
+    }
+
     pub fn focus(&self) -> (u32, u32) {
         self.focus
     }

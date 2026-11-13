@@ -16,30 +16,17 @@ use sql_editor::SqlEditor;
 enum Section {
     #[default]
     Connections,
-    SqlEditor,
-    DataBrowser,
-    Schema,
-    Workflows,
+    Workspace,
     Settings,
 }
 
 impl Section {
-    const ALL: [Self; 6] = [
-        Self::Connections,
-        Self::SqlEditor,
-        Self::DataBrowser,
-        Self::Schema,
-        Self::Workflows,
-        Self::Settings,
-    ];
+    const ALL: [Self; 3] = [Self::Connections, Self::Workspace, Self::Settings];
 
     const fn key(self) -> &'static str {
         match self {
             Self::Connections => "connections",
-            Self::SqlEditor => "sql-editor",
-            Self::DataBrowser => "data-browser",
-            Self::Schema => "schema",
-            Self::Workflows => "workflows",
+            Self::Workspace => "workspace",
             Self::Settings => "settings",
         }
     }
@@ -47,33 +34,8 @@ impl Section {
     const fn label(self) -> &'static str {
         match self {
             Self::Connections => "Connections",
-            Self::SqlEditor => "SQL Editor",
-            Self::DataBrowser => "Data Browser",
-            Self::Schema => "Schema",
-            Self::Workflows => "Workflows",
+            Self::Workspace => "Workspace",
             Self::Settings => "Settings",
-        }
-    }
-
-    const fn description(self) -> &'static str {
-        match self {
-            Self::Connections => "Manage database profiles and open a session.",
-            Self::SqlEditor => "SQL with multiple carets, syntax color and horizontal scroll. Not CodeMirror yet.",
-            Self::DataBrowser => "Rows stay in the grid model. Only the visible rows and a window of columns are drawn.",
-            Self::Schema => "Explore databases, schemas and database objects.",
-            Self::Workflows => "Compose repeatable database and automation workflows.",
-            Self::Settings => "Configure appearance, editor behaviour and platform options.",
-        }
-    }
-
-    const fn next_step(self) -> &'static str {
-        match self {
-            Self::Connections => "Next implementation: connect this screen to ConnectionUseCases.",
-            Self::SqlEditor => "POC is on this page. Execution against a session is not wired.",
-            Self::DataBrowser => "DataGrid POC is on this page. It is not connected to a database session.",
-            Self::Schema => "Schema metadata will be supplied by the shared DataZen application API.",
-            Self::Workflows => "Workflow execution stays in the existing DataZen business core.",
-            Self::Settings => "Platform-specific settings will be exposed as explicit host capabilities.",
         }
     }
 }
@@ -110,7 +72,7 @@ impl AppState {
         if let Ok(page) = self.workspace.open_table("customers") {
             self.grid.load_page(&page);
             self.grid.set_editable(true);
-            self.active = Section::DataBrowser;
+            self.active = Section::Workspace;
         }
     }
 
@@ -145,21 +107,23 @@ impl AppState {
             Ok(page) => {
                 self.grid.load_page(&page);
                 self.grid.set_editable(true);
-                self.active = Section::DataBrowser;
+                self.active = Section::Workspace;
                 true
             }
             Err(_) => false,
         }
     }
 
+    /// Any tab event lands in the workspace: the selected tab decides what the
+    /// workspace shows, so the tab strip and its content stay on one page.
     fn sync_grid_to_selected_tab(&mut self) {
+        self.active = Section::Workspace;
         let selected = self.tabs.selected().map(|tab| (tab.kind, tab.title.clone()));
         match selected {
             Some((TabKind::Table, title)) => {
                 self.show_table(&title);
             }
-            Some((TabKind::Query, _)) => self.active = Section::SqlEditor,
-            None => {}
+            Some((TabKind::Query, _)) | None => {}
         }
     }
 
@@ -218,21 +182,29 @@ fn query_selected(state: &AppState) -> bool {
 }
 
 fn page_body(state: &AppState, theme: tok::Theme) -> El {
+    match state.active {
+        Section::Connections => connection_list(state, theme),
+        Section::Workspace => workspace_body(state, theme),
+        Section::Settings => settings_page(theme),
+    }
+}
+
+/// The workspace is driven by the tabs: a query tab shows the SQL editor above the
+/// results, a loaded table page shows the grid, and anything else is an empty state.
+/// The old standalone editor and demo-grid sections are no longer product pages.
+fn workspace_body(state: &AppState, theme: tok::Theme) -> El {
     if query_selected(state) {
         return query_workspace(state, theme);
     }
-    if state.active == Section::SqlEditor {
-        return sql_editor::panel(&state.sql, theme.text, theme.text_secondary);
-    }
-    if state.active == Section::DataBrowser {
+    if state.grid.has_page() {
         return data_grid::panel(&state.grid, theme.text, theme.text_secondary, theme.control_off);
     }
-    if state.active == Section::Connections {
-        return connection_list(state, theme);
-    }
+    workspace_empty(theme)
+}
 
+fn workspace_empty(theme: tok::Theme) -> El {
     col()
-        .key("datazen-preview-card")
+        .key("workspace-empty")
         .w_full()
         .h(220.0)
         .px(20.0)
@@ -240,15 +212,28 @@ fn page_body(state: &AppState, theme: tok::Theme) -> El {
         .gap(12.0)
         .radius(12.0)
         .fill(theme.control_off)
-        .child(text("Shared Rune view is running").font(type_::TITLE).color(theme.text))
+        .child(text("No tab open").font(type_::TITLE).color(theme.text))
         .child(
-            text("This interactive shell is the first UI slice shared by the native desktop binary and the WebAssembly entrypoint.")
+            text("Open a table from the session object tree, or start a new query from the sidebar.")
                 .font(type_::LABEL)
                 .color(theme.text_secondary)
                 .w_full(),
         )
+}
+
+fn settings_page(theme: tok::Theme) -> El {
+    col()
+        .key("settings-empty")
+        .w_full()
+        .h(220.0)
+        .px(20.0)
+        .py(20.0)
+        .gap(12.0)
+        .radius(12.0)
+        .fill(theme.control_off)
+        .child(text("Settings are not wired into the Rune workspace yet").font(type_::TITLE).color(theme.text))
         .child(
-            text(state.active.next_step())
+            text("This page arrives with the settings port. The existing settings screen is unchanged.")
                 .font(type_::LABEL)
                 .color(theme.text_secondary)
                 .w_full(),
@@ -454,12 +439,11 @@ fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
         .gap(16.0)
         .fill(theme.bg)
         .child(header)
-        .child(tab_strip(state, theme))
-        .child(
-            text(state.active.description())
-                .font(type_::LABEL)
-                .color(theme.text),
-        )
+        .child(if state.active == Section::Workspace {
+            tab_strip(state, theme)
+        } else {
+            row().key("tab-strip-absent").h(0.0)
+        })
         .child(page_body(state, theme))
         .child(
             row()
@@ -494,21 +478,27 @@ pub fn run() {
 }
 
 fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
-    if state.active == Section::SqlEditor || query_selected(state) {
+    if state.active != Section::Workspace {
+        return false;
+    }
+    if query_selected(state) {
         return sql_editor::on_key(&mut state.sql, ev);
     }
-    if state.active == Section::DataBrowser {
+    if state.grid.has_page() {
         return data_grid::on_key(&mut state.grid, ev, tx);
     }
     false
 }
 
 fn app_poll(state: &mut AppState, _: f64, _: &mut Tx) -> bool {
-    state.active == Section::DataBrowser && state.grid.sync_scroll()
+    state.active == Section::Workspace
+        && !query_selected(state)
+        && state.grid.has_page()
+        && state.grid.sync_scroll()
 }
 
 fn app_ime(state: &mut AppState, ev: &Ime, _: &mut Tx) -> bool {
-    (state.active == Section::SqlEditor || query_selected(state)) && sql_editor::on_ime(&mut state.sql, ev)
+    state.active == Section::Workspace && query_selected(state) && sql_editor::on_ime(&mut state.sql, ev)
 }
 
 /// WebAssembly entrypoint consumed by wasm-bindgen.
@@ -520,7 +510,7 @@ pub fn start() {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppState, Section, view};
+    use super::{AppState, Section, query_selected, view};
     use rune::{Env, Runtime};
 
     fn runtime() -> Runtime<AppState> {
@@ -544,24 +534,56 @@ mod tests {
     }
 
     #[test]
+    fn the_sidebar_lists_only_connections_workspace_and_settings() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+
+        for key in ["connections", "workspace", "settings"] {
+            let id = format!("nav-{key}");
+            assert!(runtime.find(&id).is_some(), "missing navigation node: {id}");
+        }
+        for key in ["sql-editor", "data-browser", "schema", "workflows"] {
+            let id = format!("nav-{key}");
+            assert!(runtime.find(&id).is_none(), "{id} is not a product page anymore");
+        }
+    }
+
+    #[test]
     fn clicking_navigation_changes_the_active_section() {
         let mut runtime = runtime();
         runtime.frame(0.0);
 
         let (x, y) = runtime
-            .find("nav-sql-editor")
-            .expect("SQL Editor navigation item should exist");
+            .find("nav-workspace")
+            .expect("Workspace navigation item should exist");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0 / 60.0);
 
-        assert_eq!(runtime.state.active, Section::SqlEditor);
+        assert_eq!(runtime.state.active, Section::Workspace);
+    }
+
+    #[test]
+    fn a_workspace_without_a_tab_or_a_loaded_page_is_not_the_demo_grid() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+
+        let (x, y) = runtime.find("nav-workspace").expect("workspace navigation");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+
+        assert_eq!(runtime.state.active, Section::Workspace);
+        assert!(runtime.find("workspace-empty").is_some(), "the workspace has an empty state");
+        assert!(runtime.find("data-grid").is_none(), "the POC demo grid is not a product page");
+        assert!(runtime.find("grid-row-0").is_none(), "no demo row is mounted");
+        assert!(runtime.find("datazen-preview-card").is_none(), "the placeholder card is gone");
     }
 
     #[test]
     fn sql_editor_scrolls_a_surface_wider_than_the_viewport() {
         let mut runtime = runtime();
-        runtime.state.active = Section::SqlEditor;
+        runtime.state.open_query_tab("Query");
         runtime.frame(0.0);
 
         let field = runtime.presented("sql-editor-field").expect("editor field");
@@ -575,8 +597,10 @@ mod tests {
         use rune::{Key, KeyEvent, Mods};
 
         let mut runtime = runtime();
-        runtime.on_key = Some(|state, ev, _| state.active == Section::SqlEditor && on_key(&mut state.sql, ev));
-        runtime.state.active = Section::SqlEditor;
+        runtime.on_key = Some(|state, ev, _| {
+            state.active == Section::Workspace && query_selected(state) && on_key(&mut state.sql, ev)
+        });
+        runtime.state.open_query_tab("Query");
         runtime.state.sql.focus();
         runtime.frame(0.0);
         assert!(runtime.presented("sql-caret").is_some(), "main caret is the input-method cursor");
@@ -600,11 +624,22 @@ mod tests {
     #[test]
     fn data_grid_mounts_a_row_window_and_a_column_window() {
         use super::app_poll;
-        use super::data_grid;
+        use datazen_ui_api::TablePage;
 
         let mut runtime = runtime();
         runtime.poll = Some(app_poll);
-        runtime.state.active = Section::DataBrowser;
+        let columns: Vec<String> = (0..200).map(|index| format!("c{index}")).collect();
+        let rows: Vec<Vec<String>> = (0..6000)
+            .map(|row| columns.iter().map(|col| format!("{col}-{row}")).collect())
+            .collect();
+        runtime.state.grid.load_page(&TablePage {
+            table: "wide".into(),
+            columns,
+            rows,
+            page: 0,
+            page_size: 6000,
+        });
+        runtime.state.active = Section::Workspace;
         runtime.frame(0.0);
 
         assert!(runtime.find("grid-row-0").is_some());
@@ -621,7 +656,7 @@ mod tests {
         }
         assert!(mounted > 0 && mounted < 80, "mounted rows {mounted}");
 
-        runtime.state.grid.scroll_x().set(data_grid::COL_W * 50.0);
+        runtime.state.grid.scroll_x().set(super::data_grid::COL_W * 50.0);
         runtime.frame(0.0);
         assert_eq!(runtime.state.grid.origin_col(), 50);
         assert!(runtime.find("cell-0-0").is_some(), "frozen column");
@@ -635,9 +670,14 @@ mod tests {
         use rune::{Key, KeyEvent, Mods};
 
         let mut runtime = runtime();
-        runtime.on_key = Some(|state, ev, tx| state.active == Section::DataBrowser && on_key(&mut state.grid, ev, tx));
-        runtime.state.active = Section::DataBrowser;
+        runtime.on_key = Some(|state, ev, tx| {
+            state.active == Section::Workspace && !query_selected(state) && on_key(&mut state.grid, ev, tx)
+        });
         runtime.frame(0.0);
+        let (x, y) = runtime.find("connection-local").expect("connection row");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
 
         let (x, y) = runtime.find("cell-0-1").expect("cell");
         runtime.pointer_down(x, y);
@@ -671,7 +711,7 @@ mod tests {
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
 
-        assert_eq!(runtime.state.active, Section::DataBrowser);
+        assert_eq!(runtime.state.active, Section::Workspace);
         assert_eq!(runtime.state.grid.cell(0, 1), "customer-0");
         assert_eq!(runtime.state.grid.column_name(1), Some("name"));
         runtime.state.grid.select(0, 1);
@@ -802,6 +842,46 @@ mod tests {
         runtime.frame(0.0);
         assert!(runtime.state.sql.doc().starts_with("select 1"), "{}", runtime.state.sql.doc());
         assert!(runtime.find("query-results").is_some());
+    }
+
+    #[test]
+    fn a_query_tab_stays_in_the_workspace_and_off_the_connections_page() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("open-query").expect("new query");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.find("sql-editor-field").is_some());
+        assert!(runtime.find("tab-strip").is_some());
+
+        let (x, y) = runtime.find("nav-connections").expect("connections navigation");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+
+        assert_eq!(runtime.state.active, Section::Connections);
+        assert!(runtime.find("connection-local").is_some());
+        assert!(runtime.find("sql-editor-field").is_none(), "the editor belongs to the workspace");
+        assert!(runtime.find("query-results").is_none(), "the results area belongs to the workspace");
+        assert!(runtime.find("tab-strip").is_none(), "tabs are a workspace control");
+        assert_eq!(runtime.state.tabs.tabs().len(), 1, "the query tab itself is kept");
+    }
+
+    #[test]
+    fn the_settings_page_is_an_empty_state_not_the_old_preview_card() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-settings").expect("settings navigation");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+
+        assert_eq!(runtime.state.active, Section::Settings);
+        assert!(runtime.find("settings-empty").is_some());
+        assert!(runtime.find("datazen-preview-card").is_none(), "the placeholder card is gone");
+        assert!(runtime.find("connection-local").is_none(), "the connection list is its own page");
+        assert!(runtime.find("workspace-empty").is_none(), "the workspace empty state is not here");
     }
 
     #[test]
