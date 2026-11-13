@@ -118,8 +118,17 @@ function resetAppDataDir(dir, keep) {
 }
 
 const args = process.argv.slice(2);
+const coverageRun = args.includes('--coverage');
 const skipBuild = args.includes('--skip-build');
 const screenshotTrace = args.includes('--screenshot');
+
+if (coverageRun) {
+  process.env.E2E_COVERAGE = '1';
+  process.env.VITE_E2E_COVERAGE = '1';
+  const nycOutputDir = path.join(ROOT, '.nyc_output');
+  fs.rmSync(nycOutputDir, { recursive: true, force: true });
+  fs.mkdirSync(nycOutputDir, { recursive: true });
+}
 // 截图 / 录屏链路需要窗口处在系统正常的前台与合成状态（合成器才会把窗口内容
 // 交给 WebDriver 的 saveScreenshot 与系统录屏），静默模式会破坏这类运行，
 // 因此 e2e:shots / e2e:demo / --capture / --screenshot 默认关闭静默。
@@ -258,6 +267,7 @@ const wdioArgs = [];
   const filtered = args.filter(
     (a, i) =>
       a !== '--skip-build' &&
+      a !== '--coverage' &&
       a !== '--minimal-drivers' &&
       a !== '--minimal-plugins' &&
       a !== '--screenshot' &&
@@ -1094,12 +1104,54 @@ if (isFullRun && INSTANCE_COUNT > 1 && !forceSerialIsolated) {
 
   cleanup();
   runEnvTeardown();
+  maybeGenerateCoverageReport();
   if (overallFailed) {
     log('Full E2E completed with failures.');
     process.exit(1);
   }
   log('Full E2E passed (parallel + serial phases).');
   process.exit(0);
+}
+
+function maybeGenerateCoverageReport() {
+  if (!coverageRun) return;
+  const nycOutputDir = path.join(ROOT, '.nyc_output');
+  const hasCoverage = fs.existsSync(nycOutputDir) && fs.readdirSync(nycOutputDir).some((f) => f.endsWith('.json'));
+  if (!hasCoverage) {
+    log('Coverage enabled but no coverage files were collected in .nyc_output/');
+    return;
+  }
+  const reportDir = path.join(ROOT, 'coverage', 'e2e-webdriver');
+  const vpInclude = [
+    '--include=packages/frontend/src/lib/valuePresentation/**',
+    '--include=packages/frontend/src/windows/settings/ValuePresentation*.tsx',
+    '--include=packages/frontend/src/windows/settings/ValuePresentation*.ts',
+    '--include=packages/frontend/src/components/DataTable/ColumnPresentationDialog.tsx',
+    '--include=packages/frontend/src/components/DataTable/columnPresentation.ts',
+    '--include=packages/frontend/src/hooks/useValuePresentationSnapshot.ts',
+    '--include=packages/frontend/src/components/DataTable/useColumnPresentationSession.ts',
+  ];
+  try {
+    log(`Generating E2E coverage report -> ${reportDir}`);
+    execSync(
+      [
+        'npx --no-install nyc report',
+        '--temp-dir .nyc_output',
+        `--report-dir ${JSON.stringify(reportDir)}`,
+        '--reporter=text-summary',
+        '--reporter=lcov',
+        '--reporter=json-summary',
+        '--reporter=html',
+        '--all',
+        '--exclude-after-remap=false',
+        ...vpInclude,
+      ].join(' '),
+      { stdio: 'inherit', cwd: ROOT, env: process.env },
+    );
+    log(`Coverage report: ${path.join(reportDir, 'index.html')} and lcov/text-summary above`);
+  } catch (err) {
+    log(`WARNING: failed to generate coverage report: ${String(err?.message || err)}`);
+  }
 }
 
 if (INSTANCE_COUNT > 1) {
@@ -1131,6 +1183,7 @@ if (INSTANCE_COUNT > 1) {
   });
   cleanup();
   runEnvTeardown();
+  maybeGenerateCoverageReport();
   if (maxCode === 0) {
     log('All tests passed!');
     process.exit(0);
@@ -1171,6 +1224,7 @@ if (isolateSpecs) {
   });
   cleanup();
   runEnvTeardown();
+  maybeGenerateCoverageReport();
   if (failures.length === 0) {
     log(`All ${specs.length} isolated spec files passed!`);
     process.exit(0);
@@ -1202,6 +1256,7 @@ if (isolateSpecs) {
 
   cleanup();
   runEnvTeardown();
+  maybeGenerateCoverageReport();
   log(exitCode === 0 ? 'All tests passed!' : `Tests failed (exit code ${exitCode})`);
   process.exit(exitCode);
 }

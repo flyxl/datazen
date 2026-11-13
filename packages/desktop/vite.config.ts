@@ -1,6 +1,7 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
+import istanbul from 'vite-plugin-istanbul';
 import { resolve } from 'path';
 
 // Track B: the Pro extension is NOT statically bundled. PROD loads the staged
@@ -16,7 +17,26 @@ export default defineConfig({
   // (`src/platform/desktop/env.ts`). `tauri dev`/`tauri build` inject them;
   // plain `vite dev` leaves them undefined → browser branch.
   envPrefix: ['VITE_', 'TAURI_ENV_'],
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    ...(process.env.VITE_E2E_COVERAGE
+      ? [
+          istanbul({
+            include: [
+              'packages/frontend/src/**/*',
+              'packages/desktop/src/**/*',
+              'packages/ui/src/**/*',
+              'packages/extension-points/src/**/*',
+            ],
+            exclude: ['node_modules', '**/__tests__/**', '**/*.test.*', '**/*.spec.*', 'e2e/**'],
+            extension: ['.js', '.ts', '.tsx', '.jsx'],
+            requireEnv: false,
+            forceBuildInstrument: true,
+          }),
+        ]
+      : []),
+  ],
   clearScreen: false,
   server: {
     port: 5173,

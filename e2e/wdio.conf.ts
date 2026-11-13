@@ -16,6 +16,9 @@
  * Scripts: `pnpm e2e:parallel`, `pnpm e2e:parallel:smoke`, `pnpm e2e:parallel:core`.
  * DB-heavy suites may conflict on shared test databases — prefer core/smoke for parallel runs.
  */
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   beginJourneySuite,
   beginJourneyTest,
@@ -23,6 +26,26 @@ import {
   isScreenshotTraceEnabled,
   saveJourneyScreenshot,
 } from './lib/screenshotTrace.js';
+
+const __wdioDir = path.dirname(fileURLToPath(import.meta.url));
+const E2E_COVERAGE_ENABLED = process.env.E2E_COVERAGE === '1';
+const NYC_OUTPUT_DIR = path.resolve(__wdioDir, '..', '.nyc_output');
+
+async function collectE2ECoverage(label: string): Promise<void> {
+  if (!E2E_COVERAGE_ENABLED) return;
+  try {
+    const coverage = await browser.execute(() => (globalThis as any).__coverage__ ?? null);
+    if (!coverage || typeof coverage !== 'object' || Object.keys(coverage as object).length === 0) {
+      return;
+    }
+    fs.mkdirSync(NYC_OUTPUT_DIR, { recursive: true });
+    const safe = label.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 180);
+    const file = path.join(NYC_OUTPUT_DIR, `e2e-${Date.now()}-${process.pid}-${safe}.json`);
+    fs.writeFileSync(file, JSON.stringify(coverage));
+  } catch (err) {
+    console.warn('[e2e-coverage] collect failed:', err);
+  }
+}
 import SharedFixtureResetService from './services/shared-fixture-reset.js';
 import {
   cleanupAppDataViaIpc,
@@ -324,6 +347,7 @@ export const config: WebdriverIO.Config = {
       './specs/table-batch-ops.ts',
       './specs/workflow.ts',
       './specs/er-diagram.ts',
+      './specs/value-presentation.ts',
       './specs/data-transfer-window.ts',
       './specs/data-transfer-type-mapping.ts',
       './specs/journeys/data-transfer-type-mapping-journey.ts',
@@ -562,7 +586,11 @@ export const config: WebdriverIO.Config = {
   beforeTest: async function (test) {
     beginJourneyTest(test.file, test.title);
   },
-  afterTest: async function (_test, _context, { passed }) {
+  afterTest: async function (test, _context, { passed }) {
+    if (E2E_COVERAGE_ENABLED) {
+      const label = `${test?.parent ?? 'suite'}__${test?.title ?? 'test'}__${passed ? 'pass' : 'fail'}`;
+      await collectE2ECoverage(label);
+    }
     if (!isScreenshotTraceEnabled()) return;
     if (passed) return;
     try {
@@ -572,6 +600,7 @@ export const config: WebdriverIO.Config = {
     }
   },
   after: async function () {
+    await collectE2ECoverage('session_end');
     try {
       await cleanupAppDataViaIpc(browser);
     } catch (err) {
