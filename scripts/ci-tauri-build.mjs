@@ -15,7 +15,7 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
  *   node scripts/ci-tauri-build.mjs --target=...
  */
 
-import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs';
+import { readFileSync, existsSync, writeFileSync, mkdirSync, cpSync, rmSync } from 'fs';
 import { spawnSync } from 'child_process';
 import { createRequire } from 'module';
 import { tmpdir } from 'os';
@@ -40,6 +40,83 @@ export const PRO_CONFIG = {};
  * lookup cannot drift from the directory the build really writes to.
  */
 export const BUILD_PROFILE = 'release';
+
+/**
+ * Source trees behind the `bundle.resources` map in tauri.conf.json, resolved
+ * against `root` (repo root).
+ *
+ * The bundler only copies these into the bundles it produces — NSIS installer,
+ * macOS .app, deb/AppImage. It never lays them out next to the raw binary in
+ * `target/<triple>/<profile>/`, and the Windows portable archive step stages
+ * exactly that layout (DataZen.exe + prompts/ + builtin-ep/ + *.dll).
+ */
+export function bundleResourceSources(root = ROOT) {
+  return [
+    {
+      // tauri.conf.json: "../datazen/resources/prompts" -> "prompts".
+      // Committed source tree; the portable archive cannot ship without it.
+      name: 'prompts',
+      source: join(root, 'crates', 'datazen', 'resources', 'prompts'),
+      required: true,
+    },
+    {
+      // tauri.conf.json: "resources/builtin-ep" -> "builtin-ep". Staged only
+      // when the Pro edition resolved an extension; community builds have no
+      // tree here and the bundler embeds nothing for it.
+      name: 'builtin-ep',
+      source: join(root, 'crates', 'datazen-desktop', 'resources', 'builtin-ep'),
+      required: false,
+    },
+  ];
+}
+
+/**
+ * Copy the `bundle.resources` trees into the Cargo out dir, next to the raw
+ * binary — byte-for-byte the layout the NSIS installer creates under $INSTDIR
+ * (and what `resolve_prompts_dir`/the builtin-ep loader expect next to a
+ * portable DataZen.exe).
+ *
+ * This must run inside this process, right after `tauri build` succeeds:
+ * `with-driver-inject` invokes `resolve-pro --restore` as soon as this script
+ * exits, and that removes the staged builtin-ep tree from the checkout, so the
+ * packaging step that follows cannot recover it from source.
+ *
+ * The destination is replaced (not merged) so a stale file from a previous
+ * build in a cached target dir cannot leak into a fresh portable archive.
+ * A missing non-required source is skipped silently; a missing `prompts`
+ * tree warns here — the packaging step remains the hard gate.
+ *
+ * @param {{
+ *   target?: string | null,
+ *   profile?: string,
+ *   root?: string,
+ *   log?: (message: string) => void,
+ * }} [opts]
+ */
+export function mirrorBundleResources({
+  target = null,
+  profile = BUILD_PROFILE,
+  root = ROOT,
+  log = console.log,
+} = {}) {
+  const outDir = target ? join(root, 'target', target, profile) : join(root, 'target', profile);
+  const results = [];
+  for (const resource of bundleResourceSources(root)) {
+    const destination = join(outDir, resource.name);
+    if (!existsSync(resource.source)) {
+      if (resource.required) {
+        log(`[ci-tauri-build] WARNING: bundle resource source missing: ${resource.source}`);
+      }
+      results.push({ ...resource, destination, mirrored: false });
+      continue;
+    }
+    rmSync(destination, { recursive: true, force: true });
+    cpSync(resource.source, destination, { recursive: true, force: true });
+    log(`[ci-tauri-build] mirrored bundle resource ${resource.name} -> ${destination}`);
+    results.push({ ...resource, destination, mirrored: true });
+  }
+  return { outDir, results };
+}
 
 /**
  * When `1`, the frontend build drops `tsc --noEmit`: the release matrix would
@@ -333,6 +410,14 @@ function main() {
     extraArgs,
   });
   const result = spawnTauri(args);
+  if (result.status === 0) {
+    // The bundler embeds bundle.resources into the bundles it produces only;
+    // mirror them next to the raw binary while every source tree is still on
+    // disk. This must happen before this process exits — the wrapping
+    // with-driver-inject then runs `resolve-pro --restore`, which deletes the
+    // staged builtin-ep tree the Windows portable packaging step needs.
+    mirrorBundleResources({ target });
+  }
   process.exit(result.status ?? 1);
 }
 

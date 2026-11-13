@@ -716,6 +716,11 @@ jobs:
           path: artifacts/
 
       # ── Windows portable: includes runtime resources (prompts + Pro builtin-ep) ──
+      # The candidates under `release\prompts` / `release\builtin-ep` are
+      # mirrored there by scripts/ci-tauri-build.mjs right after the build:
+      # the bundler embeds bundle.resources into the NSIS installer only, and
+      # `resolve-pro --restore` deletes the staged builtin-ep tree from the
+      # checkout before this step runs, so the mirror is the only source left.
       - name: Package Windows portable archive
         if: runner.os == 'Windows'
         shell: pwsh
