@@ -1,8 +1,20 @@
 ## Current Task
 - **任务**: N5 宿主执行 runtime 组装（第二阶段：原生宿主接线）。
 - **负责人**: Coder Agent
-- **状态**: N1–N4 已完成并推送。N5 按"超过一天就拆开"拆为 runtime 组装（新 N5）与提交接线（新 N6），后续顺延至 N14。开始 N5。
+- **状态**: 进行中——调查完成，实现未动工。组装配方与参照见下节，下一个会话从实现开写。
 - **计划**: [plan-native.md](plan-native.md)（第一阶段 [plan.md](plan.md) 已全部完成）
+
+## N5 组装配方（调查结论，fc160ec 时点）
+
+`RuntimeConnectionUseCases::new(profiles, policy, backend)` 内部自建全部管道（SessionRegistry over ObservedBackend、ExecutionGateway + BoundAuthorizer + 内存幂等、会话目录、令牌环、结果 sink）——宿主只需三个部件：
+
+1. **profiles: `Arc<dyn ProfileRepository>`**（`connection::domain::profile`，7 个方法：list/get/create/compare_and_set/disable/advance_credential_revision）——由文件连接存储投影；`ProfileRecord` 带版本语义，CAS 冲突回 `PortError::CasConflict`。
+2. **policy: `Arc<dyn PolicyService>`**（`execution::application::policy`：authorize/verify_delegation/authorize_target/isolation_key/subscribe_version_changes）——单租户宿主的允许策略 + 版本流。
+3. **backend: `Arc<dyn SessionBackend>`**（`execution::runtime::registry::backend`：open/open_for_command/execute/cancel/finalize_handles/close/observability_snapshot）——走驱动的 ResourceProvider 契约（sqlite 已有 `SqliteResourceProvider`，经 factory 的 `resource_provider()` 取），资源语义参照桌面 `platform/session_backend{,.rs,/*}`（1480 行，含池化/隔离/预算——单会话宿主可裁）与 server `execution/driver_exec.rs`（500 行，含流式/守卫）。
+
+提交路径（N6）额外需要：`ConnectionFacts`、`TableColumnSource`（schema 目录命令投影）、`ArtifactChunkReader`（runtime 固有 `read_artifact_chunk`，结果经 sink + `FileArtifactRepository` 落盘——桌面在 `platform/adapter.rs:480` 一带的装配是参照）。查询（N7）同理走 runtime 会话。
+
+关键事实：桌面测试注释确认"Test drivers are registered via register_test_driver, not inventory catalog"——静态 registry（N3 的 `with_factories` 形态）在宿主测试与真机行为一致，这个决定已被 N3 验证。
 
 ## 约束
 React 页面和组件保留。不删除、不改成空壳、不把现有入口摘掉。Rune 是并行的另一套界面。
