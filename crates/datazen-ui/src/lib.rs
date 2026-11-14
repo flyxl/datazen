@@ -403,6 +403,35 @@ impl AppState {
         }
     }
 
+    /// One structure read with the host first (N10): the live catalog's
+    /// answer when the host has one, the memory port's otherwise.
+    fn structure_ddl(&self, table: &str) -> Result<String, String> {
+        self.desktop
+            .table_ddl(table)
+            .or_else(|_| self.workspace.table_ddl(table))
+    }
+
+    fn structure_columns(&self, table: &str) -> Result<Vec<datazen_ui_api::ColumnSpec>, String> {
+        self.desktop
+            .table_columns(table)
+            .or_else(|_| self.workspace.table_columns(table))
+    }
+
+    fn structure_indexes(&self, table: &str) -> Result<Vec<datazen_ui_api::IndexSpec>, String> {
+        self.desktop
+            .table_indexes(table)
+            .or_else(|_| self.workspace.table_indexes(table))
+    }
+
+    fn structure_foreign_keys(
+        &self,
+        table: &str,
+    ) -> Result<Vec<datazen_ui_api::ForeignKeySpec>, String> {
+        self.desktop
+            .table_foreign_keys(table)
+            .or_else(|_| self.workspace.table_foreign_keys(table))
+    }
+
     /// Write one setting: the host's use case first (N8); its fixed
     /// not-implemented error means the demo process, and the memory port
     /// answers instead; any other failure is real and the caller shows it.
@@ -2512,7 +2541,7 @@ fn er_view(state: &AppState, database: &str, schema: &str, theme: tok::Theme) ->
         .radius(8.0)
         .fill(theme.control_off);
     for (index, table) in tables.iter().enumerate() {
-        let columns = state.workspace.table_columns(table).unwrap_or_default();
+        let columns = state.structure_columns(table).unwrap_or_default();
         let default = ((index % 3) as f32 * 230.0, (index / 3) as f32 * 180.0);
         let (x, y) = state.er_positions.get(table).copied().unwrap_or(default);
         canvas = canvas.child(er_box(table, &columns, x, y, theme));
@@ -2619,10 +2648,10 @@ fn table_workspace(state: &AppState, theme: tok::Theme) -> El {
     let _ = &title;
     let body = match state.table_view {
         TableView::Data => data_grid::panel(state, theme.text, theme.text_secondary, theme.control_off),
-        TableView::Ddl => ddl_view(&state.workspace, &title, theme),
+        TableView::Ddl => ddl_view(state, &title, theme),
         TableView::Columns => columns_view(state, &title, theme),
-        TableView::Indexes => indexes_view(&state.workspace, &title, theme),
-        TableView::ForeignKeys => foreign_keys_view(&state.workspace, &title, theme),
+        TableView::Indexes => indexes_view(state, &title, theme),
+        TableView::ForeignKeys => foreign_keys_view(state, &title, theme),
     };
     col()
         .key("table-workspace")
@@ -2660,7 +2689,7 @@ fn view_switcher(state: &AppState, theme: tok::Theme) -> El {
 /// The column list: name, type, nullability — one row per column, plus the
 /// drafts section. The official list is read-only; drafts are separate.
 fn columns_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
-    let columns = state.workspace.table_columns(title).unwrap_or_default();
+    let columns = state.structure_columns(title).unwrap_or_default();
     let header = |label: &str, width: f32| {
         row()
             .w(width)
@@ -2814,8 +2843,8 @@ fn column_drafts_section(state: &AppState, title: &str, theme: tok::Theme) -> El
 }
 
 /// The index list: name, columns in index order, uniqueness.
-fn indexes_view(workspace: &MemoryWorkspace, title: &str, theme: tok::Theme) -> El {
-    let indexes = workspace.table_indexes(title).unwrap_or_default();
+fn indexes_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
+    let indexes = state.structure_indexes(title).unwrap_or_default();
     let header = |label: &str, width: f32| {
         row()
             .w(width)
@@ -2861,8 +2890,8 @@ fn indexes_view(workspace: &MemoryWorkspace, title: &str, theme: tok::Theme) -> 
 }
 
 /// The foreign key list: this table's columns, the target table, its columns.
-fn foreign_keys_view(workspace: &MemoryWorkspace, title: &str, theme: tok::Theme) -> El {
-    let keys = workspace.table_foreign_keys(title).unwrap_or_default();
+fn foreign_keys_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
+    let keys = state.structure_foreign_keys(title).unwrap_or_default();
     let header = |label: &str, width: f32| {
         row()
             .w(width)
@@ -2914,8 +2943,8 @@ fn foreign_keys_view(workspace: &MemoryWorkspace, title: &str, theme: tok::Theme
 
 /// The DDL page: the port's string, verbatim, one line per row. An empty string
 /// is its own empty state.
-fn ddl_view(workspace: &MemoryWorkspace, title: &str, theme: tok::Theme) -> El {
-    let ddl = workspace.table_ddl(title).ok().filter(|ddl| !ddl.is_empty());
+fn ddl_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
+    let ddl = state.structure_ddl(title).ok().filter(|ddl| !ddl.is_empty());
     match ddl {
         Some(ddl) => {
             let mut page = col()

@@ -273,6 +273,27 @@ pub trait DesktopAdapter {
     fn write_ui_setting(&mut self, _setting: Setting) -> Result<(), String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
+
+    /// The table's DDL from the host's catalog (N10). The default answers
+    /// the fixed error; the UI falls back to the memory port.
+    fn table_ddl(&self, _table: &str) -> Result<String, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// The table's columns from the host's catalog (N10).
+    fn table_columns(&self, _table: &str) -> Result<Vec<ColumnSpec>, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// The table's indexes from the host's catalog (N10).
+    fn table_indexes(&self, _table: &str) -> Result<Vec<IndexSpec>, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// The table's foreign keys from the host's catalog (N10).
+    fn table_foreign_keys(&self, _table: &str) -> Result<Vec<ForeignKeySpec>, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
 }
 
 /// One unit of host work that can take real time — a live driver IO. The job

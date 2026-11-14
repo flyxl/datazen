@@ -116,6 +116,32 @@ pub struct LiveAdapter {
     /// The query history use case over the history files (N9): every executed
     /// statement lands in it, success or failure.
     history: datazen::history::HistoryService,
+    /// The live session's table schemas, keyed by table (N10): the structure
+    /// reads answer from here, warmed on first ask. A local sqlite schema
+    /// read is the same IO class as the settings file write the adapter
+    /// already performs synchronously; a remote driver will need the job
+    /// channel — honestly noted for the day one is wired.
+    schemas: Arc<Mutex<std::collections::HashMap<String, datazen_driver_api::TableSchema>>>,
+    /// A dedicated runtime for the adapter's synchronous driver calls (N10):
+    /// sqlx requires a Tokio context, and these reads (a local sqlite schema
+    /// read, a DDL render) are the bounded local-IO class the adapter already
+    /// performs synchronously. The worker's runtime stays the one real IO
+    /// runs on; this one only serves the cache misses.
+    sync_runtime: tokio::runtime::Runtime,
+    /// The static driver registry, for the sync session's driver resolution.
+    registry: Arc<DriverRegistry>,
+    /// The sync reads' own connection: the live session's pool is single and
+    /// belongs to the worker's runtime, so the sync runtime opens its own —
+    /// created lazily per connection id and reused while the id holds.
+    sync_handle: Mutex<Option<SyncSession>>,
+}
+
+/// The sync reads' own session over the live connection.
+struct SyncSession {
+    connection_id: String,
+    driver: Arc<dyn DatabaseDriver>,
+    handle: ConnectionHandle,
+    database: String,
 }
 
 impl LiveAdapter {
@@ -152,6 +178,7 @@ impl LiveAdapter {
             Arc::clone(&repository),
             data_dir,
         );
+        let adapter_registry = Arc::clone(&registry);
         // The use case is stateless over the repository: the adapter and the
         // worker each hold their own service over the one store.
         let service = ConnectionService::new(Arc::clone(&repository));
@@ -176,6 +203,12 @@ impl LiveAdapter {
             ),
         );
         let worker_history = history.clone();
+        let sync_runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("the adapter's sync runtime starts");
+        let schemas = Arc::new(Mutex::new(std::collections::HashMap::new()));
+        let worker_schemas = Arc::clone(&schemas);
         let worker_service = ConnectionService::new(repository);
         let session = Arc::new(Mutex::new(LiveSession::default()));
         let worker_session = Arc::clone(&session);
@@ -225,13 +258,19 @@ impl LiveAdapter {
                     let answer = match job {
                         HostJob::OpenConnection { generation, id } => {
                             let id_for_answer = id.clone();
-                            let catalog = runtime
-                                .block_on(open_connection(&worker_service, &registry, &worker_session, &id));
+                            let catalog = runtime.block_on(open_connection(
+                                &worker_service,
+                                &registry,
+                                &worker_session,
+                                &worker_schemas,
+                                &id,
+                            ));
                             HostAnswer::Connection { generation, id: id_for_answer, catalog }
                         }
                         HostJob::ReadTable { generation, table, page, page_size, sort, filter } => {
                             let page_result = runtime.block_on(read_table(
                                 &worker_session,
+                                &worker_schemas,
                                 &table,
                                 page,
                                 page_size,
@@ -305,12 +344,101 @@ impl LiveAdapter {
             settings,
             settings_document,
             history,
+            schemas,
+            sync_runtime,
+            registry: adapter_registry,
+            sync_handle: Mutex::new(None),
         }
     }
 
     /// The live session, for the hosts that follow (N4 reads, N5 commits).
     pub(crate) fn session(&self) -> &Arc<Mutex<LiveSession>> {
         &self.session
+    }
+
+    /// The sync reads' session over the live connection: the live session's
+    /// single-connection pool belongs to the worker's runtime, so the sync
+    /// runtime opens its own connection, lazily, reused while the connection
+    /// id holds.
+    fn sync_session(&self) -> Result<SyncSession, String> {
+        let (connection, database) = {
+            let session = self.session.lock().expect("the live session lock");
+            if !session.is_open() {
+                return Err("the live session is not open".into());
+            }
+            (
+                session.connection.clone().unwrap_or_default(),
+                session.database.clone().unwrap_or_default(),
+            )
+        };
+        if let Some(existing) = self.sync_handle.lock().expect("the sync lock").as_ref() {
+            if existing.connection_id == connection {
+                return Ok(SyncSession {
+                    connection_id: existing.connection_id.clone(),
+                    driver: Arc::clone(&existing.driver),
+                    handle: existing.handle.clone(),
+                    database: existing.database.clone(),
+                });
+            }
+        }
+        let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
+        let config = futures_executor::block_on(self.service.get(&scope, &connection))
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| format!("no connection '{connection}' in the store"))?;
+        let driver = self
+            .sync_runtime
+            .block_on(self.registry.get(&config.database_type))
+            .ok_or_else(|| format!("no driver for '{}'", config.database_type))?;
+        let handle = self
+            .sync_runtime
+            .block_on(driver.connect(&config))
+            .map_err(|error| error.to_string())?;
+        let session = SyncSession {
+            connection_id: connection,
+            driver,
+            handle,
+            database,
+        };
+        *self.sync_handle.lock().expect("the sync lock") = Some(SyncSession {
+            connection_id: session.connection_id.clone(),
+            driver: Arc::clone(&session.driver),
+            handle: session.handle.clone(),
+            database: session.database.clone(),
+        });
+        Ok(session)
+    }
+
+    /// The table's schema, from the cache, fetched on a miss (N10). A local
+    /// sqlite schema read is the same IO class as the settings file write;
+    /// the cache keeps repeats free.
+    fn cached_schema(
+        &self,
+        table: &str,
+    ) -> Result<datazen_driver_api::TableSchema, String> {
+        if let Some(schema) = self
+            .schemas
+            .lock()
+            .expect("the schema lock")
+            .get(table)
+            .cloned()
+        {
+            return Ok(schema);
+        }
+        let session = self.sync_session()?;
+        let schema = self
+            .sync_runtime
+            .block_on(session.driver.get_table_schema(&session.handle, table, &session.database, None))
+            .map_err(|error| error.to_string())?;
+        if schema.columns.is_empty() {
+            // A schema with no columns is a table the catalog does not have —
+            // the driver's honest answer for an unknown name.
+            return Err(format!("the catalog has no table '{table}'"));
+        }
+        self.schemas
+            .lock()
+            .expect("the schema lock")
+            .insert(table.to_owned(), schema.clone());
+        Ok(schema)
     }
 }
 
@@ -325,6 +453,7 @@ async fn open_connection(
     service: &ConnectionService,
     registry: &DriverRegistry,
     session: &Arc<Mutex<LiveSession>>,
+    schemas: &Arc<Mutex<std::collections::HashMap<String, datazen_driver_api::TableSchema>>>,
     id: &str,
 ) -> Result<Catalog, String> {
     let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
@@ -381,6 +510,8 @@ async fn open_connection(
         nodes.push(DatabaseNode { name: database.clone(), schemas: schema_nodes });
     }
 
+    // A new session invalidates the old one's cached schemas.
+    schemas.lock().expect("the schema lock").clear();
     // The session is the adapter's for the reads and commits that follow:
     // swap it in whole, replacing any earlier one.
     *session.lock().expect("the live session lock") = LiveSession {
@@ -460,19 +591,21 @@ fn host_request_context() -> RequestContext {
 #[allow(clippy::too_many_arguments)]
 async fn read_table(
     session: &Arc<Mutex<LiveSession>>,
+    schemas: &Arc<Mutex<std::collections::HashMap<String, datazen_driver_api::TableSchema>>>,
     table: &str,
     page: u32,
     page_size: u32,
     sort: Option<ColumnSort>,
     filter: Option<ColumnFilter>,
 ) -> Result<TablePage, String> {
-    let (driver, database, connection) = {
+    let (driver, handle, database, connection) = {
         let session = session.lock().expect("the live session lock");
         if !session.is_open() {
             return Err("the live session is not open".into());
         }
         (
             session.driver.clone().expect("checked"),
+            session.handle.clone().expect("checked"),
             session.database.clone(),
             session.connection.clone().unwrap_or_default(),
         )
@@ -512,7 +645,7 @@ async fn read_table(
             connection_id: binding.target.connection_id.to_string(),
             db_session_id: "datazen-native".into(),
             driver_type,
-            database,
+            database: database.clone(),
             schema: None,
             table: table.to_owned(),
         },
@@ -532,6 +665,18 @@ async fn read_table(
     let read = read_table_page(driver.as_ref(), request, binding.revision, context, &runner)
         .await
         .map_err(|error| error.to_string())?;
+    // N10: warm the structure cache — one schema read beside the page read,
+    // both local-file speed, so the structure pages answer from memory.
+    let schema_database = database.clone().unwrap_or_else(|| "main".into());
+    if let Ok(schema) = driver
+        .get_table_schema(&handle, table, &schema_database, None)
+        .await
+    {
+        schemas
+            .lock()
+            .expect("the schema lock")
+            .insert(table.to_owned(), schema);
+    }
     // The count the driver could not give is the absence of a fact: fall
     // back to the best lower bound (the page's own end), never to zero.
     let known = read.total_rows.unwrap_or(page as i64 * page_size as i64 + read.rows.len() as i64);
@@ -1007,6 +1152,69 @@ impl DesktopAdapter for LiveAdapter {
         *self.settings_document.lock().expect("the settings lock") = stored;
         Ok(())
     }
+
+    fn table_ddl(&self, table: &str) -> Result<String, String> {
+        let session = self.sync_session()?;
+        // The driver's own DDL command renders the object's definition.
+        let result = self
+            .sync_runtime
+            .block_on(session.driver.execute_command(
+                &session.handle,
+                "get_object_ddl",
+                serde_json::json!({
+                    "kind": "table",
+                    "name": table,
+                    "database": session.database,
+                }),
+            ))
+            .map_err(|error| error.to_string())?;
+        result
+            .data
+            .get("ddl")
+            .and_then(|ddl| ddl.as_str())
+            .map(str::to_owned)
+            .ok_or_else(|| "the driver returned no DDL".to_string())
+    }
+
+    fn table_columns(&self, table: &str) -> Result<Vec<datazen_ui_api::ColumnSpec>, String> {
+        let schema = self.cached_schema(table)?;
+        Ok(schema
+            .columns
+            .iter()
+            .map(|column| datazen_ui_api::ColumnSpec {
+                name: column.name.clone(),
+                sql_type: column.data_type.clone(),
+                nullable: column.nullable,
+            })
+            .collect())
+    }
+
+    fn table_indexes(&self, table: &str) -> Result<Vec<datazen_ui_api::IndexSpec>, String> {
+        let schema = self.cached_schema(table)?;
+        Ok(schema
+            .indexes
+            .iter()
+            .map(|index| datazen_ui_api::IndexSpec {
+                name: index.name.clone(),
+                columns: index.columns.clone(),
+                unique: index.is_unique,
+            })
+            .collect())
+    }
+
+    fn table_foreign_keys(&self, table: &str) -> Result<Vec<datazen_ui_api::ForeignKeySpec>, String> {
+        let schema = self.cached_schema(table)?;
+        Ok(schema
+            .foreign_keys
+            .iter()
+            .map(|key| datazen_ui_api::ForeignKeySpec {
+                name: key.name.clone(),
+                columns: key.columns.clone(),
+                target_table: key.referenced_table.clone(),
+                target_columns: key.referenced_columns.clone(),
+            })
+            .collect())
+    }
 }
 
 #[cfg(test)]
@@ -1062,6 +1270,14 @@ mod tests {
                     .await
                     .expect("the fixture row is inserted");
             }
+            driver
+                .execute(&handle, "CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), note TEXT)")
+                .await
+                .expect("the orders table with a foreign key is created");
+            driver
+                .execute(&handle, "CREATE UNIQUE INDEX idx_orders_note ON orders(note)")
+                .await
+                .expect("the unique index is created");
         });
     }
 
@@ -1120,7 +1336,10 @@ mod tests {
         assert_eq!(catalog.databases[0].schemas.len(), 1);
         let schema = &catalog.databases[0].schemas[0];
         assert_eq!(schema.name, "main");
-        assert_eq!(schema.tables, vec!["events".to_string(), "users".to_string()]);
+        assert_eq!(
+            schema.tables,
+            vec!["events".to_string(), "orders".to_string(), "users".to_string()]
+        );
 
         // The session stays for the reads and commits that follow (N4/N5).
         assert!(adapter.session().lock().unwrap().is_open(), "the live session is kept");
@@ -1151,7 +1370,7 @@ mod tests {
         // failure, and the session replaces the never-opened one.
         assert!(adapter.begin_job(AdapterJob::OpenConnection { generation: 2, id: "good".into() }));
         let catalog = poll_open(&mut adapter).expect("the good connection opens after the failure");
-        assert_eq!(catalog.databases[0].schemas[0].tables.len(), 2);
+        assert_eq!(catalog.databases[0].schemas[0].tables.len(), 3);
     }
 
     #[test]
@@ -1534,6 +1753,57 @@ mod tests {
         assert!(!bad.success, "the failed query is marked");
         assert!(bad.error_message.is_some(), "the failure carries its sentence");
         assert!(good.execution_time_ms > 0 || bad.execution_time_ms > 0, "the timing was measured");
+    }
+
+    #[test]
+    fn structure_reads_answer_the_real_catalog() {
+        let dir = temp_dir("structure");
+        let mut adapter = opened_adapter(&dir);
+
+        // Warm the cache through a read (the page the grid would load).
+        assert!(adapter.begin_job(AdapterJob::ReadTable {
+            generation: 2,
+            table: "orders".into(),
+            page: 0,
+            page_size: 25,
+            sort: None,
+            filter: None,
+        }));
+        poll_read(&mut adapter).expect("the read answers");
+
+        // The columns page: the driver's names, types, nullability.
+        let columns = adapter.table_columns("orders").expect("the columns answer");
+        assert_eq!(columns.len(), 3);
+        assert_eq!(columns[0].name, "id");
+        assert_eq!(columns[1].name, "user_id");
+        assert!(!columns[1].nullable, "user_id is NOT NULL");
+        assert!(columns[2].nullable, "note is nullable");
+
+        // The index list keeps the compound-free but real index, with its
+        // uniqueness.
+        let indexes = adapter.table_indexes("orders").expect("the indexes answer");
+        let unique = indexes
+            .iter()
+            .find(|index| index.name == "idx_orders_note")
+            .expect("the created index is listed");
+        assert!(unique.unique, "the index was created UNIQUE");
+        assert_eq!(unique.columns, vec!["note".to_string()]);
+
+        // The foreign key list keeps the reference whole.
+        let keys = adapter.table_foreign_keys("orders").expect("the keys answer");
+        let fk = keys.iter().find(|key| key.columns == vec!["user_id".to_string()])
+            .expect("the FK is listed");
+        assert_eq!(fk.target_table, "users");
+        assert_eq!(fk.target_columns, vec!["id".to_string()]);
+
+        // The DDL is the driver's own rendering of the definition.
+        let ddl = adapter.table_ddl("orders").expect("the DDL answers");
+        assert!(ddl.to_lowercase().contains("create table"), "the DDL names the object: {ddl}");
+        assert!(ddl.contains("orders"), "the DDL is about this table: {ddl}");
+
+        // A table the catalog does not know is a failure sentence.
+        let error = adapter.table_columns("nope").unwrap_err();
+        assert!(!error.is_empty(), "the failure carries a sentence: {error}");
     }
 }
 
