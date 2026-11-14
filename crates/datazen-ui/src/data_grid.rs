@@ -39,6 +39,8 @@ pub struct DataGrid {
     sort: Option<(u32, bool)>,
     /// Why the loaded page is read-only; None means writable.
     read_only: Option<String>,
+    /// The loaded page's table name, for panel titles.
+    table: Option<String>,
     pub(crate) editor: TextEdit,
     /// Horizontal scroll, in points. `on_scroll_offset` writes it; it cannot touch this struct.
     scroll_x: rune::Live<f32>,
@@ -68,6 +70,7 @@ impl DataGrid {
             total_rows: 0,
             sort: None,
             read_only: None,
+            table: None,
             editor: TextEdit::new(String::new()),
             scroll_x: rune::Live::new(0.0),
             origin_col: 0,
@@ -103,6 +106,11 @@ impl DataGrid {
     /// Why the loaded page is read-only.
     pub fn read_only_reason(&self) -> Option<&str> {
         self.read_only.as_deref()
+    }
+
+    /// The loaded page's table name, for panel titles.
+    pub fn table_label(&self) -> &str {
+        self.table.as_deref().unwrap_or("result")
     }
 
     pub fn origin_col(&self) -> u32 {
@@ -176,6 +184,7 @@ impl DataGrid {
                 .map(|index| (index as u32, sort.descending))
         });
         self.read_only = page.read_only.clone();
+        self.table = Some(page.table.clone());
         self.edits.clear();
         self.anchor = (0, 0);
         self.focus = (0, 0);
@@ -361,13 +370,16 @@ pub fn on_key(grid: &mut DataGrid, ev: &KeyEvent, tx: &mut Tx) -> bool {
 pub enum GridSlot {
     Table,
     Result,
+    /// The sync wizard's preview: the same look and keys as a result page; the
+    /// tools page and the workspace never mount at once.
+    SyncPreview,
 }
 
 impl GridSlot {
     fn key(self, base: &str) -> String {
         match self {
             Self::Table => base.to_owned(),
-            Self::Result => format!("result-{base}"),
+            Self::Result | Self::SyncPreview => format!("result-{base}"),
         }
     }
 }
@@ -376,6 +388,10 @@ pub(crate) fn grid_of<'a>(state: &'a crate::AppState, slot: GridSlot) -> &'a Dat
     match slot {
         GridSlot::Table => &state.grid,
         GridSlot::Result => state.result_grid.as_ref().expect("the result grid is mounted"),
+        GridSlot::SyncPreview => state
+            .sync_preview_grid
+            .as_ref()
+            .expect("the sync preview grid is mounted"),
     }
 }
 
@@ -448,19 +464,25 @@ pub fn panel(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well
 }
 
 /// The query result area: the same sheet as the table page, without the filter
-/// bar and the footer, and not editable.
-pub fn result_panel(grid: &DataGrid, ink: rune::Color, muted: rune::Color, well: rune::Color) -> El {
+/// bar and the footer, and not editable. The sync preview reuses it.
+pub fn result_panel(
+    grid: &DataGrid,
+    slot: GridSlot,
+    ink: rune::Color,
+    muted: rune::Color,
+    well: rune::Color,
+) -> El {
     col()
         .key("result-grid")
         .w_full()
         .gap(8.0)
         .child(
-            text(format!("Query result · {} rows × {} cols", grid.rows, grid.cols))
+            text(format!("{} · {} rows × {} cols", grid.table_label(), grid.rows, grid.cols))
                 .font(label_style())
                 .color(muted)
                 .key("result-grid-status"),
         )
-        .child(sheet(grid, GridSlot::Result, ink, well, 200.0))
+        .child(sheet(grid, slot, ink, well, 200.0))
 }
 
 /// The status line above the grid: page shape, column window, selection, dirty cells.

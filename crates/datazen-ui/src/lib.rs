@@ -1086,9 +1086,13 @@ fn sync_tool(state: &AppState, theme: tok::Theme) -> El {
                     ),
             );
             if let Some(grid) = &state.sync_preview_grid {
-                section = section.child(
-                    data_grid::result_panel(grid, theme.text, theme.text_secondary, theme.control_off),
-                );
+                section = section.child(data_grid::result_panel(
+                    grid,
+                    data_grid::GridSlot::SyncPreview,
+                    theme.text,
+                    theme.text_secondary,
+                    theme.control_off,
+                ));
             }
         }
         _ => section = section.child(
@@ -2256,7 +2260,13 @@ fn object_tree(state: &AppState, theme: tok::Theme) -> El {
 
 fn query_workspace(state: &AppState, theme: tok::Theme) -> El {
     let results = match &state.result_grid {
-        Some(grid) => data_grid::result_panel(grid, theme.text, theme.text_secondary, theme.control_off),
+        Some(grid) => data_grid::result_panel(
+            grid,
+            data_grid::GridSlot::Result,
+            theme.text,
+            theme.text_secondary,
+            theme.control_off,
+        ),
         None => col()
             .key("query-results")
             .w_full()
