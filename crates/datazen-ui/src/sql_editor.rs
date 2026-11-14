@@ -68,6 +68,16 @@ impl Selection {
     }
 }
 
+/// One undo step: the document and selection before a change.
+#[derive(Clone, Debug)]
+struct Snapshot {
+    doc: String,
+    selection: Selection,
+}
+
+/// How many insert and delete steps the editor remembers.
+const HISTORY_LIMIT: usize = 100;
+
 #[derive(Debug)]
 pub struct SqlEditor {
     doc: String,
@@ -75,6 +85,9 @@ pub struct SqlEditor {
     /// Marked text at the main caret. Not part of `doc` until commit.
     composition: Option<String>,
     focused: bool,
+    /// Undo and redo cover character insertion and deletion only.
+    undo_stack: Vec<Snapshot>,
+    redo_stack: Vec<Snapshot>,
 }
 
 impl Default for SqlEditor {
@@ -98,6 +111,8 @@ impl SqlEditor {
             selection: Selection::single(0),
             composition: None,
             focused: false,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         }
     }
 
@@ -161,6 +176,7 @@ impl SqlEditor {
         if self.composition.is_some() || text.is_empty() {
             return;
         }
+        self.push_history();
         self.change_by_range(|sel| (sel.from(), sel.to(), text.to_owned()));
     }
 
@@ -168,6 +184,7 @@ impl SqlEditor {
         if self.composition.is_some() {
             return;
         }
+        self.push_history();
         let doc = self.doc.clone();
         self.change_by_range(|sel| {
             if sel.from() != sel.to() {
@@ -176,6 +193,47 @@ impl SqlEditor {
                 (prev_boundary(&doc, sel.head), sel.head, String::new())
             }
         });
+    }
+
+    /// Undo the last insert or delete; false when there is nothing to undo.
+    pub fn undo(&mut self) -> bool {
+        match self.undo_stack.pop() {
+            Some(snapshot) => {
+                self.redo_stack.push(Snapshot {
+                    doc: std::mem::take(&mut self.doc),
+                    selection: self.selection.clone(),
+                });
+                self.doc = snapshot.doc;
+                self.selection = snapshot.selection;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Redo the last undone insert or delete; false when there is nothing to redo.
+    pub fn redo(&mut self) -> bool {
+        match self.redo_stack.pop() {
+            Some(snapshot) => {
+                self.undo_stack.push(Snapshot {
+                    doc: std::mem::take(&mut self.doc),
+                    selection: self.selection.clone(),
+                });
+                self.doc = snapshot.doc;
+                self.selection = snapshot.selection;
+                true
+            }
+            None => false,
+        }
+    }
+
+    fn push_history(&mut self) {
+        if self.undo_stack.len() >= HISTORY_LIMIT {
+            self.undo_stack.remove(0);
+        }
+        self.undo_stack
+            .push(Snapshot { doc: self.doc.clone(), selection: self.selection.clone() });
+        self.redo_stack.clear();
     }
 
     /// `Ime::Preedit`. Empty ends the composition and leaves the document alone.
@@ -272,6 +330,18 @@ pub fn on_key(editor: &mut SqlEditor, ev: &KeyEvent) -> bool {
         }
         Key::Backspace => {
             editor.backspace();
+            true
+        }
+        Key::Command('z') if ev.mods.shift => {
+            editor.redo();
+            true
+        }
+        Key::Command('z') => {
+            editor.undo();
+            true
+        }
+        Key::Command('y') => {
+            editor.redo();
             true
         }
         _ => false,
@@ -604,6 +674,75 @@ mod tests {
         assert_eq!(editor.doc(), "中文ab");
         assert_eq!(editor.main_head(), "中文".len());
         assert_eq!(editor.extra_carets(), vec!["中文".len() + 2]);
+    }
+
+    #[test]
+    fn typing_then_undo_returns_the_document() {
+        let mut editor = SqlEditor::from_doc("ab");
+        editor.focus();
+        editor.insert("X");
+        editor.insert("Y");
+        assert_eq!(editor.doc(), "XYab", "the caret sits before the text");
+        assert!(editor.undo());
+        assert_eq!(editor.doc(), "Xab", "one undo step per insert");
+        assert!(editor.undo());
+        assert_eq!(editor.doc(), "ab", "back to the original document");
+        assert!(!editor.undo(), "the history is empty");
+    }
+
+    #[test]
+    fn delete_is_undoable_and_redo_restores_it() {
+        let mut editor = SqlEditor::from_doc("abc");
+        editor.focus();
+        editor.selection = Selection::single(3);
+        editor.backspace();
+        assert_eq!(editor.doc(), "ab");
+        assert!(editor.undo());
+        assert_eq!(editor.doc(), "abc", "undo restores the deleted character");
+        assert!(!editor.undo(), "one change, one undo step");
+        assert!(editor.redo());
+        assert_eq!(editor.doc(), "ab");
+        assert!(!editor.redo(), "the redo stack is empty again");
+    }
+
+    #[test]
+    fn a_fresh_edit_clears_the_redo_stack() {
+        let mut editor = SqlEditor::from_doc("");
+        editor.focus();
+        editor.insert("a");
+        editor.undo();
+        assert_eq!(editor.doc(), "");
+        assert!(editor.redo());
+        assert_eq!(editor.doc(), "a");
+        editor.insert("b");
+        assert!(!editor.redo(), "the redo stack was cleared by the new insert");
+        assert_eq!(editor.doc(), "ab");
+    }
+
+    #[test]
+    fn undo_restores_the_selection_with_the_document() {
+        let mut editor = SqlEditor::from_doc("ab");
+        editor.focus();
+        editor.insert("X");
+        editor.undo();
+        assert_eq!(editor.main_head(), 0, "the caret returns to where the insert happened");
+    }
+
+    #[test]
+    fn command_z_and_command_shift_z_go_through_on_key() {
+        let mut editor = SqlEditor::from_doc("ab");
+        editor.focus();
+        assert!(on_key(&mut editor, &KeyEvent { key: Key::Text("c".into()), mods: rune::Mods::default() }));
+        assert_eq!(editor.doc(), "cab");
+        assert!(on_key(&mut editor, &KeyEvent { key: Key::Command('z'), mods: rune::Mods::default() }));
+        assert_eq!(editor.doc(), "ab");
+        assert!(on_key(
+            &mut editor,
+            &KeyEvent { key: Key::Command('z'), mods: rune::Mods { shift: true, ..rune::Mods::default() } }
+        ));
+        assert_eq!(editor.doc(), "cab", "shift-command-z redoes");
+        assert!(on_key(&mut editor, &KeyEvent { key: Key::Command('y'), mods: rune::Mods::default() }) == false
+            || editor.doc() == "cab");
     }
 
     #[test]

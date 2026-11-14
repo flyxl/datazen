@@ -1130,6 +1130,31 @@ mod tests {
     }
 
     #[test]
+    fn command_z_on_a_query_tab_undoes_and_redoes_typing() {
+        use rune::{Key, KeyEvent, Mods};
+        use super::app_key;
+
+        let mut runtime = runtime();
+        runtime.on_key = Some(app_key);
+        runtime.state.open_query_tab("Query").unwrap();
+        runtime.frame(0.0);
+        runtime.state.sql.focus();
+
+        let before = runtime.state.sql.doc().to_owned();
+        runtime.key(KeyEvent { key: Key::Text("Q".into()), mods: Mods::default() });
+        runtime.frame(0.0);
+        assert!(runtime.state.sql.doc().starts_with('Q'), "{}", runtime.state.sql.doc());
+
+        runtime.key(KeyEvent { key: Key::Command('z'), mods: Mods::default() });
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.sql.doc(), before, "undo returns the document");
+
+        runtime.key(KeyEvent { key: Key::Command('z'), mods: Mods { shift: true, ..Mods::default() } });
+        runtime.frame(0.0);
+        assert!(runtime.state.sql.doc().starts_with('Q'), "shift-command-z redoes");
+    }
+
+    #[test]
     fn tab_strip_selects_and_closes_table_tabs() {
         let mut runtime = runtime();
         let first = runtime.state.open_table_tab("customers").unwrap();
