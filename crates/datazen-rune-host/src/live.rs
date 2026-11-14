@@ -10,6 +10,9 @@
 
 use datazen::connection::application::ConnectionService;
 use datazen::connection::domain::{ConnectionRepository, ConnectionScope};
+use datazen::dashboard::application::create::create_widget_from_sql;
+use datazen::dashboard::domain::repository::DashboardRepositoryError;
+use datazen::dashboard::domain::repository as dashboard_rules;
 use datazen::execution::application::orchestration::RuntimeConnectionUseCases;
 use datazen::execution::application::ConnectionUseCases as _;
 use datazen::execution::runtime::driver_registry::DriverRegistry;
@@ -26,12 +29,15 @@ use datazen::table_editing::change_set::{
 };
 use datazen::table_editing::ports::ArtifactChunkReader;
 use datazen::table_editing::{commit_changes, preview_changes, ConnectionFacts, TableColumnSource};
+use datazen::workflow::application::registry::WorkflowRegistry;
+use datazen::workflow::domain::model::{WorkflowDefinition, WorkflowStep, WorkflowVisibility};
+use datazen::dashboard::domain::types::ViewMode;
 use datazen_driver_api::filters::{FilterCondition, FilterOperator, SortCondition};
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver, Value as Cell};
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnFilter, ColumnSort, ConnectionProfile,
-    DatabaseNode, DesktopAdapter, ProgressSnapshot, SchemaNode, TablePage,
-    DESKTOP_NOT_IMPLEMENTED,
+    DashboardWidget, DatabaseNode, DesktopAdapter, ProgressSnapshot, SchemaNode, TablePage,
+    Workflow, WorkflowStepResult, DESKTOP_NOT_IMPLEMENTED,
 };
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -139,6 +145,15 @@ pub struct LiveAdapter {
     /// belongs to the worker's runtime, so the sync runtime opens its own —
     /// created lazily per connection id and reused while the id holds.
     sync_handle: Mutex<Option<SyncSession>>,
+    /// The workflow registry use case over the workflow file (N13).
+    workflows: Arc<WorkflowRegistry>,
+    /// The dashboard rows' file store (N13); the widget use case runs over
+    /// it and the registry.
+    dashboard_store: Arc<crate::dashboards::FileDashboardStore>,
+    /// The profiles handle the runtime was assembled with (N13): the
+    /// workflow and widget query paths carry the same config revision the
+    /// runtime's sessions were opened with.
+    profiles: Arc<crate::backend::HostProfiles>,
 }
 
 /// The sync reads' own session over the live connection.
@@ -210,6 +225,18 @@ impl LiveAdapter {
             ),
         );
         let worker_history = history.clone();
+        // N13: the workflow registry over the workflow file, and the
+        // dashboard rows' file store — no builtin workflows ship with the
+        // native host; an empty registry is the honest start.
+        let workflow_store = Arc::new(
+            crate::dashboards::FileWorkflowStore::open(&data_dir.join("workflows.json"))
+                .expect("the workflow store opens"),
+        );
+        let workflows = Arc::new(WorkflowRegistry::new(workflow_store, Vec::new()));
+        let dashboard_store = Arc::new(
+            crate::dashboards::FileDashboardStore::open(&data_dir.join("dashboards.json"))
+                .expect("the dashboard store opens"),
+        );
         let sync_runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -357,6 +384,9 @@ impl LiveAdapter {
             sync_handle: Mutex::new(None),
             host_jobs: jobs,
             data_dir: adapter_data_dir,
+            workflows,
+            dashboard_store,
+            profiles,
         }
     }
 
@@ -1542,6 +1572,230 @@ impl DesktopAdapter for LiveAdapter {
     fn stop_host_job(&self, job: u64) -> Result<(), String> {
         self.host_jobs.stop(job)
     }
+
+    fn dashboard_widgets(&self) -> Result<Vec<DashboardWidget>, String> {
+        // N13: the dashboard rows through the domain rules; a fresh install
+        // has no dashboard row yet and answers no widgets.
+        let scope = crate::dashboards::host_scope();
+        match dashboard_rules::get_dashboard(
+            &scope,
+            self.dashboard_store.as_ref(),
+            crate::dashboards::DEFAULT_DASHBOARD_ID,
+        ) {
+            Ok(dashboard) => Ok(dashboard
+                .widgets
+                .iter()
+                .map(|widget| DashboardWidget {
+                    id: crate::dashboards::widget_ui_id(&widget.id),
+                    title: widget.title.clone(),
+                    // The UI's kind names the chart the widget renders.
+                    kind: match widget.view_mode {
+                        ViewMode::Chart => "bar",
+                        ViewMode::Table => "table",
+                    }
+                    .into(),
+                })
+                .collect()),
+            Err(DashboardRepositoryError::NotFound(_)) => Ok(Vec::new()),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+
+    fn save_dashboard_widget(&mut self, title: &str, query: &str) -> Result<u64, String> {
+        if title.trim().is_empty() {
+            return Err("a widget needs a title".into());
+        }
+        // The widget's hidden workflow carries its query's connection: the
+        // live session names it. Without an open session there is nothing
+        // honest to bind.
+        let connection = {
+            let session = self.session.lock().expect("the live session lock");
+            if !session.is_open() {
+                return Err(
+                    "connect a database first — a widget carries its query's connection".into(),
+                );
+            }
+            session.connection.clone().unwrap_or_default()
+        };
+        let host = crate::dashboards::HostWidgets::new(
+            Arc::clone(&self.workflows),
+            Arc::clone(&self.dashboard_store),
+        );
+        // The widget use case decides everything: the hidden workflow, the
+        // layout, the refresh policy; the two files land through it.
+        let result = futures_executor::block_on(create_widget_from_sql(
+            &crate::dashboards::host_scope(),
+            &host,
+            crate::dashboards::DEFAULT_DASHBOARD_ID,
+            &connection,
+            query,
+            Some(title.trim().to_owned()),
+            crate::dashboards::form_view_mode(),
+            None,
+        ))
+        .map_err(|error| error.to_string())?;
+        Ok(crate::dashboards::widget_ui_id(&result.widget.id))
+    }
+
+    fn widget_bars(&self, id: u64) -> Result<Vec<(String, u32)>, String> {
+        // N13: the widget's query runs live through the execution use case
+        // — the same path the editor's statements take — and the first two
+        // columns are the chart's label and value. A local sqlite query is
+        // the bounded local-IO class the adapter already serves
+        // synchronously (N10's precedent); a remote driver will need the
+        // job channel.
+        let scope = crate::dashboards::host_scope();
+        let widget = dashboard_rules::get_dashboard(
+            &scope,
+            self.dashboard_store.as_ref(),
+            crate::dashboards::DEFAULT_DASHBOARD_ID,
+        )
+        .map_err(|error| error.to_string())?
+        .widgets
+        .into_iter()
+        .find(|widget| crate::dashboards::widget_ui_id(&widget.id) == id)
+        .ok_or_else(|| format!("no widget {id}"))?;
+        let definition = futures_executor::block_on(self.workflows.get(&scope, &widget.workflow_id))
+            .ok_or("the widget's workflow is missing")?;
+        let sql = definition
+            .steps
+            .iter()
+            .find_map(|step| match step {
+                WorkflowStep::Query { sql, .. } => Some(sql.clone()),
+                _ => None,
+            })
+            .ok_or("the widget's workflow has no query step")?;
+        let page = self.sync_runtime.block_on(run_query(
+            &self.runtime,
+            &self.profiles,
+            &self.session,
+            &sql,
+        ))?;
+        if page.columns.len() < 2 {
+            return Err("the widget's query needs two columns: label and value".into());
+        }
+        Ok(page
+            .rows
+            .iter()
+            .filter_map(|row| {
+                let label = row.first()?.clone();
+                let value = row
+                    .get(1)
+                    .and_then(|text| text.trim().parse().ok())
+                    .unwrap_or(0);
+                Some((label, value))
+            })
+            .collect())
+    }
+
+    fn workflows(&self) -> Result<Vec<Workflow>, String> {
+        // N13: the registry use case's user-visible definitions — the
+        // dashboard's hidden workflows stay out of the user list.
+        let scope = crate::dashboards::host_scope();
+        let mut definitions =
+            futures_executor::block_on(self.workflows.list_definitions(&scope));
+        definitions.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(definitions
+            .into_iter()
+            .map(|definition| Workflow {
+                name: definition.name,
+                steps: definition.steps.iter().map(crate::dashboards::step_text).collect(),
+            })
+            .collect())
+    }
+
+    fn save_workflow(&mut self, name: &str, steps: &[String]) -> Result<(), String> {
+        // N13: the registry use case; the UI's steps are SQL statements,
+        // each one a query step of the definition.
+        let name = name.trim();
+        if name.is_empty() {
+            return Err("a workflow needs a name".into());
+        }
+        let scope = crate::dashboards::host_scope();
+        let existing = futures_executor::block_on(self.workflows.list_definitions(&scope));
+        let id = match existing.iter().find(|definition| definition.name == name) {
+            Some(definition) => definition.id.clone(),
+            None => crate::dashboards::workflow_id_for(
+                name,
+                &existing
+                    .iter()
+                    .map(|definition| definition.id.clone())
+                    .collect::<Vec<_>>(),
+            ),
+        };
+        let definition = WorkflowDefinition {
+            database: None,
+            id,
+            name: name.to_owned(),
+            description: "Saved in the native UI".into(),
+            version: None,
+            author: None,
+            variables: Vec::new(),
+            connection: None,
+            steps: steps
+                .iter()
+                .enumerate()
+                .map(|(index, sql)| WorkflowStep::Query {
+                    id: format!("s{}", index + 1),
+                    sql: sql.clone(),
+                    connection: None,
+                    database: None,
+                    timeout_secs: Some(60),
+                    on_error: None,
+                })
+                .collect(),
+            blocks: Vec::new(),
+            output: None,
+            timeout_secs: Some(60),
+            error_handling: None,
+            schedule: None,
+            visibility: WorkflowVisibility::User,
+        };
+        futures_executor::block_on(self.workflows.save(&scope, &definition))
+    }
+
+    fn run_workflow(&mut self, name: &str) -> Result<Vec<WorkflowStepResult>, String> {
+        // N13: every query step runs through the execution use case — the
+        // same path the editor's statements take. A step of another kind
+        // reports itself as not wired; a step's failure does not stop the
+        // steps that follow (the results list is the report).
+        let scope = crate::dashboards::host_scope();
+        let definition = futures_executor::block_on(self.workflows.list_definitions(&scope))
+            .into_iter()
+            .find(|definition| definition.name == name)
+            .ok_or_else(|| format!("no workflow {name}"))?;
+        let mut results = Vec::new();
+        for step in &definition.steps {
+            match step {
+                WorkflowStep::Query { sql, .. } => {
+                    let result = self.sync_runtime.block_on(run_query(
+                        &self.runtime,
+                        &self.profiles,
+                        &self.session,
+                        sql,
+                    ));
+                    results.push(match result {
+                        Ok(page) => WorkflowStepResult {
+                            step: sql.clone(),
+                            ok: true,
+                            summary: format!("ok: {} rows", page.total_rows),
+                        },
+                        Err(error) => WorkflowStepResult {
+                            step: sql.clone(),
+                            ok: false,
+                            summary: error,
+                        },
+                    });
+                }
+                other => results.push(WorkflowStepResult {
+                    step: crate::dashboards::step_text(other),
+                    ok: false,
+                    summary: "this step kind is not wired in the native host yet".into(),
+                }),
+            }
+        }
+        Ok(results)
+    }
 }
 
 #[cfg(test)]
@@ -2312,6 +2566,156 @@ mod tests {
                 assert_eq!(count, 60, "the target has the data");
             });
         }
+    }
+
+    #[test]
+    fn a_saved_workflow_round_trips_and_survives_a_restart() {
+        let dir = temp_dir("workflow-persist");
+        let mut adapter = LiveAdapter::with_data_dir(
+            Arc::new(FileConnectionRepository::open(&dir.join("connections.json")).unwrap()),
+            &dir,
+        );
+        // A fresh install lists no workflows.
+        assert!(adapter.workflows().unwrap().is_empty());
+        adapter
+            .save_workflow("nightly etl", &["SELECT 1".into(), "SELECT 2".into()])
+            .unwrap();
+        let listed = adapter.workflows().unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].name, "nightly etl");
+        assert_eq!(
+            listed[0].steps,
+            vec!["SELECT 1".to_owned(), "SELECT 2".to_owned()],
+            "the UI's steps are the definition's query steps"
+        );
+
+        // A restart — a fresh adapter over the same data directory — still
+        // lists it (the completion standard of N13).
+        let mut adapter = LiveAdapter::with_data_dir(
+            Arc::new(FileConnectionRepository::open(&dir.join("connections.json")).unwrap()),
+            &dir,
+        );
+        let listed = adapter.workflows().unwrap();
+        assert_eq!(listed.len(), 1, "the workflow survived the restart");
+        assert_eq!(
+            listed[0].steps,
+            vec!["SELECT 1".to_owned(), "SELECT 2".to_owned()]
+        );
+
+        // An edit replaces the stored steps; the list stays one workflow.
+        adapter.save_workflow("nightly etl", &["SELECT 3".into()]).unwrap();
+        let listed = adapter.workflows().unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(
+            listed[0].steps,
+            vec!["SELECT 3".to_owned()],
+            "the edit replaced the steps"
+        );
+
+        // The port's contract: an empty name is refused.
+        assert!(adapter.save_workflow("   ", &[]).is_err());
+    }
+
+    #[test]
+    fn a_widget_survives_a_restart_and_its_bars_read_the_live_database() {
+        let dir = temp_dir("widget-persist");
+        let database = dir.join("live.db");
+        create_sqlite_file(&database);
+        let store_path = dir.join("connections.json");
+        save_connection(
+            &store_path,
+            sqlite_config("live", Some(database.to_string_lossy().into_owned())),
+        );
+
+        let mut adapter = LiveAdapter::with_data_dir(
+            Arc::new(FileConnectionRepository::open(&store_path).unwrap()),
+            &dir,
+        );
+        adapter.begin_job(AdapterJob::OpenConnection { generation: 1, id: "live".into() });
+        poll_open(&mut adapter).expect("the session opens");
+
+        // A fresh install answers no widgets; the port's title contract
+        // holds on the host path too.
+        assert!(adapter.dashboard_widgets().unwrap().is_empty());
+        assert!(adapter.save_dashboard_widget("  ", "SELECT 1").is_err());
+
+        let id = adapter
+            .save_dashboard_widget("First four", "SELECT name, id FROM users ORDER BY id LIMIT 4")
+            .unwrap();
+        let widgets = adapter.dashboard_widgets().unwrap();
+        assert_eq!(widgets.len(), 1);
+        assert_eq!(widgets[0].id, id, "the saved widget lists under the returned id");
+        assert_eq!(widgets[0].title, "First four");
+        assert_eq!(widgets[0].kind, "bar");
+
+        // The bars are the live query's rows: the first column is the
+        // label, the second the value.
+        let bars = adapter.widget_bars(id).unwrap();
+        assert_eq!(
+            bars,
+            vec![
+                ("user-00".to_owned(), 0),
+                ("user-01".to_owned(), 1),
+                ("user-02".to_owned(), 2),
+                ("user-03".to_owned(), 3),
+            ],
+            "the chart reads the live database"
+        );
+
+        // A restart keeps the widget and its chart answers again.
+        let mut adapter = LiveAdapter::with_data_dir(
+            Arc::new(FileConnectionRepository::open(&store_path).unwrap()),
+            &dir,
+        );
+        adapter.begin_job(AdapterJob::OpenConnection { generation: 1, id: "live".into() });
+        poll_open(&mut adapter).expect("the session opens again");
+        let widgets = adapter.dashboard_widgets().unwrap();
+        assert_eq!(widgets.len(), 1, "the widget survived the restart");
+        assert_eq!(widgets[0].title, "First four");
+        let bars = adapter.widget_bars(widgets[0].id).unwrap();
+        assert_eq!(bars.len(), 4, "the chart answers after the restart");
+        assert_eq!(bars.first().map(|(label, _)| label.clone()), Some("user-00".into()));
+    }
+
+    #[test]
+    fn a_workflow_runs_its_steps_through_the_live_session() {
+        let dir = temp_dir("workflow-run");
+        let database = dir.join("live.db");
+        create_sqlite_file(&database);
+        let store_path = dir.join("connections.json");
+        save_connection(
+            &store_path,
+            sqlite_config("live", Some(database.to_string_lossy().into_owned())),
+        );
+        let mut adapter = LiveAdapter::with_data_dir(
+            Arc::new(FileConnectionRepository::open(&store_path).unwrap()),
+            &dir,
+        );
+        adapter.begin_job(AdapterJob::OpenConnection { generation: 1, id: "live".into() });
+        poll_open(&mut adapter).expect("the session opens");
+
+        adapter
+            .save_workflow(
+                "counts",
+                &[
+                    "SELECT count(*) FROM users".into(),
+                    "SELECT no_such_column FROM users".into(),
+                ],
+            )
+            .unwrap();
+        let results = adapter.run_workflow("counts").unwrap();
+        assert_eq!(results.len(), 2, "every step reports");
+        assert!(results[0].ok, "the count ran: {}", results[0].summary);
+        assert!(
+            results[0].summary.contains("1 rows"),
+            "count answers one row: {}",
+            results[0].summary
+        );
+        assert!(!results[1].ok, "the broken statement failed");
+        assert!(!results[1].summary.is_empty(), "the failure carries a sentence");
+
+        // The port's contract: an unknown workflow is an error.
+        assert!(adapter.run_workflow("no-such").is_err());
     }
 }
 

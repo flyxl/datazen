@@ -7,7 +7,7 @@ mod data_grid;
 mod sql_editor;
 
 use data_grid::DataGrid;
-use datazen_ui_api::{AdapterDelivery, AdapterJob, ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile, DESKTOP_NOT_IMPLEMENTED, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, UnimplementedAdapter, WorkflowStepResult, WorkspaceApi};
+use datazen_ui_api::{AdapterDelivery, AdapterJob, ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile, DashboardWidget, DESKTOP_NOT_IMPLEMENTED, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, UnimplementedAdapter, Workflow, WorkflowStepResult, WorkspaceApi};
 // The desktop host's use-case adapter; the wasm host brings its own later.
 #[cfg(not(target_arch = "wasm32"))]
 use datazen_ui_api::UseCaseAdapter;
@@ -403,6 +403,32 @@ impl AppState {
         }
     }
 
+    /// The workflows in force (N13): the host's once its registry persists
+    /// them, the memory port's while it does not. The host's read answers
+    /// from its loaded files — the same memory-speed class as the settings
+    /// read.
+    fn host_workflows(&self) -> Vec<Workflow> {
+        self.desktop
+            .workflows()
+            .unwrap_or_else(|_| self.workspace.workflows())
+    }
+
+    /// The dashboard's widgets in force (N13): the host's dashboard once it
+    /// persists one, the memory port's while it does not.
+    fn host_widgets(&self) -> Vec<DashboardWidget> {
+        self.desktop
+            .dashboard_widgets()
+            .unwrap_or_else(|_| self.workspace.dashboard_widgets())
+    }
+
+    /// One widget's chart data (N13): the host's when its dashboard answers,
+    /// the memory port's otherwise.
+    fn host_widget_bars(&self, id: u64) -> Vec<(String, u32)> {
+        self.desktop
+            .widget_bars(id)
+            .unwrap_or_else(|_| self.workspace.widget_bars(id).unwrap_or_default())
+    }
+
     /// One structure read with the host first (N10): the live catalog's
     /// answer when the host has one, the memory port's otherwise.
     fn structure_ddl(&self, table: &str) -> Result<String, String> {
@@ -787,7 +813,7 @@ impl AppState {
     }
 
     fn edit_workflow(&mut self, name: &str) {
-        if let Some(flow) = self.workspace.workflows().into_iter().find(|flow| flow.name == name) {
+        if let Some(flow) = self.host_workflows().into_iter().find(|flow| flow.name == name) {
             self.workflow_yaml = SqlEditor::from_doc(workflow_yaml(&flow.name, &flow.steps));
             self.workflow_editing = Some((flow.name, flow.steps));
         }
@@ -804,9 +830,19 @@ impl AppState {
         }
     }
 
+    /// Save the edited workflow: the host's registry use case first (N13);
+    /// its fixed not-implemented error means the demo process, and the
+    /// memory port answers instead.
     fn save_workflow_form(&mut self) {
         let Some((name, steps)) = self.workflow_editing.clone() else { return };
-        if self.workspace.save_workflow(&name, &steps).is_ok() {
+        let saved = match self.desktop.save_workflow(&name, &steps) {
+            Ok(()) => Ok(()),
+            Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
+                self.workspace.save_workflow(&name, &steps)
+            }
+            Err(error) => Err(error),
+        };
+        if saved.is_ok() {
             self.workflow_editing = None;
         }
     }
@@ -817,19 +853,38 @@ impl AppState {
     }
 
     /// W7: run the edited workflow; the results list below is read-only.
+    /// The host runs it first (N13); its fixed not-implemented error means
+    /// the demo process, and the memory port answers instead.
     fn run_edited_workflow(&mut self) {
         let Some((name, _)) = self.workflow_editing.clone() else { return };
-        match self.workspace.run_workflow(&name) {
+        let ran = match self.desktop.run_workflow(&name) {
+            Ok(results) => Ok(results),
+            Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
+                self.workspace.run_workflow(&name)
+            }
+            Err(error) => Err(error),
+        };
+        match ran {
             Ok(results) => self.workflow_results = results,
             Err(_) => self.workflow_results.clear(),
         }
     }
 
-    /// Save the widget form through the port. An empty title is refused.
+    /// Save the widget form. An empty title is refused. The host's
+    /// dashboard use case runs first (N13); its fixed not-implemented error
+    /// means the demo process, and the memory port answers instead; any
+    /// other failure is real and the form shows it.
     fn save_widget_form(&mut self) {
         let title = self.widget_title.text.trim().to_owned();
         let query = self.widget_query.text.trim().to_owned();
-        match self.workspace.save_dashboard_widget(&title, &query) {
+        let saved = match self.desktop.save_dashboard_widget(&title, &query) {
+            Ok(id) => Ok(id),
+            Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
+                self.workspace.save_dashboard_widget(&title, &query)
+            }
+            Err(error) => Err(error),
+        };
+        match saved {
             Ok(_) => {
                 self.widget_error = None;
                 self.widget_title = TextEdit::new(String::new());
@@ -1559,7 +1614,7 @@ fn wapps_page(theme: tok::Theme) -> El {
 
 /// The workflows page: the list, sorted by name, and the step editor.
 fn workflows_page(state: &AppState, theme: tok::Theme) -> El {
-    let workflows = state.workspace.workflows();
+    let workflows = state.host_workflows();
     let mut page = col()
         .key("workflows-page")
         .w_full()
@@ -1722,7 +1777,7 @@ fn workflows_page(state: &AppState, theme: tok::Theme) -> El {
 
 /// The dashboards page: the widget list. An empty list has its own state.
 fn dashboards_page(state: &AppState, theme: tok::Theme) -> El {
-    let widgets = state.workspace.dashboard_widgets();
+    let widgets = state.host_widgets();
     let mut page = col()
         .key("dashboards-page")
         .w_full()
@@ -1823,7 +1878,7 @@ fn dashboards_page(state: &AppState, theme: tok::Theme) -> El {
 /// A bar chart drawn with color blocks — the port's integers, no chart library.
 /// The zero bar keeps a visible sliver and its label.
 fn bar_chart(state: &AppState, id: u64, theme: tok::Theme) -> El {
-    let bars = state.workspace.widget_bars(id).unwrap_or_default();
+    let bars = state.host_widget_bars(id);
     let max = bars.iter().map(|(_, value)| *value).max().unwrap_or(1).max(1);
     let mut chart = row()
         .key(format!("widget-chart-{id}"))
@@ -6388,6 +6443,206 @@ mod tests {
         assert!(runtime.find("widget-1").is_some(), "the widget joins the dashboard");
         assert!(runtime.find("widget-chart-1").is_some(), "its chart renders");
         assert!(runtime.find("widget-form-error").is_none());
+    }
+
+    /// N13: an adapter whose registry and dashboard answer, recording what
+    /// the forms save. Its lists win over the memory port's demo lists.
+    #[derive(Default)]
+    struct AdapterServingWorkflows {
+        saved_widget: std::rc::Rc<std::cell::RefCell<Option<(String, String)>>>,
+        saved_workflow: std::rc::Rc<std::cell::RefCell<Option<(String, Vec<String>)>>>,
+        ran: std::rc::Rc<std::cell::RefCell<Option<String>>>,
+    }
+
+    impl datazen_ui_api::DesktopAdapter for AdapterServingWorkflows {
+        fn list_connections(
+            &mut self,
+        ) -> Result<Vec<datazen_ui_api::ConnectionProfile>, String> {
+            Err(datazen_ui_api::DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn read_table_page(
+            &mut self,
+            _table: &str,
+            _page: u32,
+            _page_size: u32,
+            _sort: Option<&datazen_ui_api::ColumnSort>,
+            _filter: Option<&datazen_ui_api::ColumnFilter>,
+        ) -> Result<datazen_ui_api::TablePage, String> {
+            Err(datazen_ui_api::DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn commit_cells(
+            &mut self,
+            _table: &str,
+            _edits: &[(u32, String, String)],
+        ) -> Result<u32, String> {
+            Err(datazen_ui_api::DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn dashboard_widgets(&self) -> Result<Vec<datazen_ui_api::DashboardWidget>, String> {
+            Ok(vec![datazen_ui_api::DashboardWidget {
+                id: 7,
+                title: "Host Widget".into(),
+                kind: "bar".into(),
+            }])
+        }
+
+        fn save_dashboard_widget(&mut self, title: &str, query: &str) -> Result<u64, String> {
+            if title.trim().is_empty() {
+                return Err("a widget needs a title".into());
+            }
+            *self.saved_widget.borrow_mut() = Some((title.to_owned(), query.to_owned()));
+            Ok(7)
+        }
+
+        fn widget_bars(&self, id: u64) -> Result<Vec<(String, u32)>, String> {
+            if id != 7 {
+                return Err(format!("no widget {id}"));
+            }
+            Ok(vec![(String::from("one"), 2), (String::from("two"), 5)])
+        }
+
+        fn workflows(&self) -> Result<Vec<datazen_ui_api::Workflow>, String> {
+            Ok(vec![datazen_ui_api::Workflow {
+                name: "host-etl".into(),
+                steps: vec!["SELECT count(*) FROM users".into()],
+            }])
+        }
+
+        fn save_workflow(&mut self, name: &str, steps: &[String]) -> Result<(), String> {
+            *self.saved_workflow.borrow_mut() = Some((name.to_owned(), steps.to_vec()));
+            Ok(())
+        }
+
+        fn run_workflow(
+            &mut self,
+            name: &str,
+        ) -> Result<Vec<datazen_ui_api::WorkflowStepResult>, String> {
+            *self.ran.borrow_mut() = Some(name.to_owned());
+            Ok(vec![datazen_ui_api::WorkflowStepResult {
+                step: "SELECT count(*) FROM users".into(),
+                ok: true,
+                summary: "ok: 1 rows".into(),
+            }])
+        }
+    }
+
+    #[test]
+    fn a_host_registry_and_dashboard_replace_the_demo_lists() {
+        let mut runtime = runtime();
+        runtime.state.desktop = Box::new(AdapterServingWorkflows::default());
+        runtime.frame(0.0);
+
+        // The workflows page lists the host's workflow, not the port's demo.
+        let (x, y) = runtime.find("nav-workflows").expect("workflows navigation");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(
+            runtime.find("workflow-host-etl").is_some(),
+            "the host's workflow is listed"
+        );
+        assert!(
+            runtime.find("workflow-audit").is_none(),
+            "the memory port's demo list stepped back"
+        );
+
+        // The editor opens the host's steps.
+        let (x, y) = runtime.find("workflow-host-etl").expect("the host's row");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.find("workflow-form").is_some(), "the editor opened");
+        assert_eq!(
+            runtime.state.workflow_editing.as_ref().unwrap().1,
+            vec!["SELECT count(*) FROM users".to_owned()],
+            "the steps are the host's"
+        );
+
+        // The dashboards page shows the host's widget with its own bars.
+        let (x, y) = runtime.find("nav-dashboards").expect("dashboards navigation");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.find("widget-7").is_some(), "the host's widget is on the page");
+        assert!(runtime.find("widget-bar-7-one").is_some(), "its chart reads the host's bars");
+        assert!(runtime.find("dashboard-empty").is_none(), "the empty state stepped back");
+    }
+
+    #[test]
+    fn the_widget_and_workflow_forms_save_through_the_host() {
+        let mut adapter = AdapterServingWorkflows::default();
+        let saved_widget = std::rc::Rc::clone(&adapter.saved_widget);
+        let saved_workflow = std::rc::Rc::clone(&adapter.saved_workflow);
+        let ran = std::rc::Rc::clone(&adapter.ran);
+        let mut runtime = runtime();
+        runtime.state.desktop = Box::new(adapter);
+        runtime.frame(0.0);
+
+        // The widget form's save lands in the host's dashboard use case and
+        // the form clears.
+        let (x, y) = runtime.find("nav-dashboards").expect("dashboards navigation");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        runtime.state.widget_title = rune::TextEdit::new("Weekly");
+        runtime.state.widget_query = rune::TextEdit::new("select label, n from facts");
+        let (x, y) = runtime.find("widget-save").expect("the save button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(
+            *saved_widget.borrow(),
+            Some(("Weekly".to_owned(), "select label, n from facts".to_owned())),
+            "the host's dashboard received the widget"
+        );
+        assert!(
+            runtime.state.widget_title.text.is_empty(),
+            "the form cleared after the host's save"
+        );
+
+        // The workflow editor's save and run land in the host's registry.
+        let (x, y) = runtime.find("nav-workflows").expect("workflows navigation");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        let (x, y) = runtime.find("workflow-host-etl").expect("the host's row");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        let (x, y) = runtime.find("workflow-save").expect("the workflow save button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(
+            *saved_workflow.borrow(),
+            Some((
+                "host-etl".to_owned(),
+                vec!["SELECT count(*) FROM users".to_owned()]
+            )),
+            "the host's registry received the workflow"
+        );
+        assert!(runtime.state.workflow_editing.is_none(), "the editor closed after the save");
+
+        let (x, y) = runtime.find("workflow-host-etl").expect("the row is still there");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        let (x, y) = runtime.find("workflow-run").expect("the run button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(*ran.borrow(), Some("host-etl".to_owned()), "the host ran the workflow");
+        assert_eq!(
+            runtime.state.workflow_results,
+            vec![datazen_ui_api::WorkflowStepResult {
+                step: "SELECT count(*) FROM users".to_owned(),
+                ok: true,
+                summary: "ok: 1 rows".to_owned(),
+            }],
+            "the results are the host's"
+        );
     }
 
     #[test]

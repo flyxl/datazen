@@ -6,12 +6,14 @@
 //! store; the data paths follow on the same seam.
 
 pub mod backend;
+pub mod dashboards;
 pub mod history;
 pub mod jobs;
 pub mod live;
 pub mod settings;
 pub mod store;
 
+pub use dashboards::{FileDashboardStore, FileWorkflowStore};
 pub use history::{FileMigrationRuns, FileQueryHistory};
 pub use jobs::HostJobs;
 pub use live::LiveAdapter;

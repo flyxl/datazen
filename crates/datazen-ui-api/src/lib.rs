@@ -316,6 +316,50 @@ pub trait DesktopAdapter {
     fn stop_host_job(&self, _job: u64) -> Result<(), String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
+
+    /// The dashboard's widgets from the host's dashboard use case (N13).
+    /// The default answers the fixed error; the UI falls back to the memory
+    /// port.
+    fn dashboard_widgets(&self) -> Result<Vec<DashboardWidget>, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// Save a widget through the host's dashboard use case (N13): a title
+    /// and its query text. An empty title is refused at the port. The
+    /// default answers the fixed error; the UI falls back to the memory
+    /// port.
+    fn save_dashboard_widget(&mut self, _title: &str, _query: &str) -> Result<u64, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// One widget's chart data from the host (N13): labeled integers from
+    /// the widget's query. The default answers the fixed error; the UI
+    /// falls back to the memory port.
+    fn widget_bars(&self, _id: u64) -> Result<Vec<(String, u32)>, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// The host's saved workflows through the registry use case (N13),
+    /// sorted by name. The default answers the fixed error; the UI falls
+    /// back to the memory port.
+    fn workflows(&self) -> Result<Vec<Workflow>, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// Save a workflow through the host's registry use case (N13); an edit
+    /// of a stored name replaces its steps. An empty name is refused at the
+    /// port. The default answers the fixed error; the UI falls back to the
+    /// memory port.
+    fn save_workflow(&mut self, _name: &str, _steps: &[String]) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// Run a workflow through the host (N13); every step reports name,
+    /// success and one summary line. The default answers the fixed error;
+    /// the UI falls back to the memory port.
+    fn run_workflow(&mut self, _name: &str) -> Result<Vec<WorkflowStepResult>, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
 }
 
 /// One unit of host work that can take real time — a live driver IO. The job
@@ -2459,6 +2503,40 @@ mod tests {
             adapter.commit_cells("customers", &edits).unwrap_err(),
             DESKTOP_NOT_IMPLEMENTED,
             "commit_cells is not wired yet"
+        );
+        // N13: the workflow and dashboard surface starts declined like every
+        // other host method; the memory port stays the fallback.
+        assert_eq!(
+            adapter.dashboard_widgets().unwrap_err(),
+            DESKTOP_NOT_IMPLEMENTED,
+            "dashboard_widgets is not wired yet"
+        );
+        assert_eq!(
+            adapter.save_dashboard_widget("Users", "SELECT 1").unwrap_err(),
+            DESKTOP_NOT_IMPLEMENTED,
+            "save_dashboard_widget is not wired yet"
+        );
+        assert_eq!(
+            adapter.widget_bars(1).unwrap_err(),
+            DESKTOP_NOT_IMPLEMENTED,
+            "widget_bars is not wired yet"
+        );
+        assert_eq!(
+            adapter.workflows().unwrap_err(),
+            DESKTOP_NOT_IMPLEMENTED,
+            "workflows is not wired yet"
+        );
+        assert_eq!(
+            adapter
+                .save_workflow("nightly", &["SELECT 1".to_owned()])
+                .unwrap_err(),
+            DESKTOP_NOT_IMPLEMENTED,
+            "save_workflow is not wired yet"
+        );
+        assert_eq!(
+            adapter.run_workflow("nightly").unwrap_err(),
+            DESKTOP_NOT_IMPLEMENTED,
+            "run_workflow is not wired yet"
         );
     }
 
