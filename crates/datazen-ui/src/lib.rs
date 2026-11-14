@@ -407,6 +407,34 @@ impl AppState {
         self.sync_target = next_connection(&self.workspace, &self.sync_target);
     }
 
+    fn toggle_sync_table(&mut self, table: &str) {
+        if !self.sync_tables.insert(table.to_owned()) {
+            self.sync_tables.remove(table);
+        }
+    }
+
+    fn sync_select_all(&mut self) {
+        self.sync_tables = self
+            .workspace
+            .connection_tables(&self.sync_source)
+            .into_iter()
+            .collect();
+    }
+
+    fn sync_clear_tables(&mut self) {
+        self.sync_tables.clear();
+    }
+
+    /// Step 2 done: at least one table must be picked.
+    fn sync_next_tables(&mut self) {
+        if self.sync_tables.is_empty() {
+            self.sync_error = Some("pick at least one table".into());
+            return;
+        }
+        self.sync_error = None;
+        self.sync_step = 2;
+    }
+
     /// Step 1 done: the port validates the two endpoints.
     fn sync_next_endpoints(&mut self) {
         let source = self.sync_source.clone();
@@ -890,6 +918,79 @@ fn sync_tool(state: &AppState, theme: tok::Theme) -> El {
                             .on_press(|state: &mut AppState| state.sync_next_endpoints()),
                     ),
             ),
+        1 => {
+            section = section.child(
+                row()
+                    .key("sync-step-1-done")
+                    .w_full()
+                    .h(24.0)
+                    .center_y()
+                    .child(
+                        text(format!("{} → {}", state.sync_source, state.sync_target))
+                            .font(type_::LABEL)
+                            .color(theme.text_secondary),
+                    ),
+            );
+            let mut tables = col().key("sync-step-2").w_full().gap(4.0);
+            for table in state.workspace.connection_tables(&state.sync_source) {
+                let selected = state.sync_tables.contains(&table);
+                tables = tables.child(
+                    row()
+                        .key(format!("sync-table-{table}"))
+                        .w(220.0)
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(if selected { tok::accent(0, true) } else { theme.control_off })
+                        .child(text(table.clone()).font(type_::LABEL).color(theme.text))
+                        .on_press(move |state: &mut AppState| state.toggle_sync_table(&table)),
+                );
+            }
+            section = section
+                .child(tables)
+                .child(
+                    row()
+                        .key("sync-table-controls")
+                        .w_full()
+                        .h(28.0)
+                        .gap(8.0)
+                        .center_y()
+                        .child(
+                            row()
+                                .key("sync-select-all")
+                                .h(24.0)
+                                .px(8.0)
+                                .center_y()
+                                .radius(6.0)
+                                .fill(theme.control_off)
+                                .child(text("Select all").font(type_::LABEL).color(theme.text))
+                                .on_press(|state: &mut AppState| state.sync_select_all()),
+                        )
+                        .child(
+                            row()
+                                .key("sync-clear")
+                                .h(24.0)
+                                .px(8.0)
+                                .center_y()
+                                .radius(6.0)
+                                .fill(theme.control_off)
+                                .child(text("Clear").font(type_::LABEL).color(theme.text))
+                                .on_press(|state: &mut AppState| state.sync_clear_tables()),
+                        )
+                        .child(
+                            row()
+                                .key("sync-tables-next")
+                                .h(24.0)
+                                .px(8.0)
+                                .center_y()
+                                .radius(6.0)
+                                .fill(theme.control_off)
+                                .child(text("Next").font(type_::LABEL).color(theme.text))
+                                .on_press(|state: &mut AppState| state.sync_next_tables()),
+                        ),
+                );
+        }
         _ => section = section.child(
             row()
                 .key("sync-step-1-done")
@@ -3894,6 +3995,52 @@ mod tests {
         runtime.frame(0.0);
         assert_eq!(runtime.state.sync_step, 1);
         assert!(runtime.find("sync-error").is_none());
+    }
+
+    #[test]
+    fn the_sync_table_step_selects_all_and_clears() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-tools").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+
+        runtime.state.sync_next_endpoints();
+        runtime.settle_all();
+        runtime.frame(0.0);
+        assert!(runtime.find("sync-step-2").is_some());
+        assert!(runtime.state.sync_tables.is_empty());
+
+        let (x, y) = runtime.find("sync-select-all").expect("select all");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.sync_tables.len(), 3, "the local source sees three tables");
+
+        let (x, y) = runtime.find("sync-clear").expect("clear");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.state.sync_tables.is_empty(), "clear empties the selection");
+
+        // A single chip toggles one table; Next needs at least one.
+        let (x, y) = runtime.find("sync-table-customers").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.state.sync_tables.contains("customers"));
+        let (x, y) = runtime.find("sync-tables-next").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.sync_step, 2);
+
+        runtime.state.sync_clear_tables();
+        runtime.state.sync_step = 1;
+        runtime.state.sync_next_tables();
+        assert_eq!(runtime.state.sync_step, 1, "no selection, no next step");
+        assert!(runtime.state.sync_error.is_some());
     }
 
     #[test]

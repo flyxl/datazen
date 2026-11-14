@@ -209,6 +209,8 @@ pub trait WorkspaceApi {
     /// D1: the two endpoints of a sync. Unknown endpoints, or the same endpoint
     /// twice, are refused.
     fn sync_endpoints(&mut self, source: &str, target: &str) -> Result<(), String>;
+    /// The tables a connection can see, without opening a session.
+    fn connection_tables(&self, connection: &str) -> Vec<String>;
     /// Stop a running job. A stopped job reports "stopped" from then on.
     fn stop_job(&mut self, job: u64) -> Result<(), String>;
     /// Apply a DDL script to the table. The port records what it applied; a
@@ -667,6 +669,14 @@ impl WorkspaceApi for MemoryWorkspace {
             return Err("both ends are the same connection".into());
         }
         Ok(())
+    }
+
+    fn connection_tables(&self, connection: &str) -> Vec<String> {
+        self.tables
+            .iter()
+            .filter(|(_, stored)| !(connection == "replica" && stored.schema == "analytics"))
+            .map(|(name, _)| name.clone())
+            .collect()
     }
 
     fn start_backup(&mut self) -> Result<u64, String> {
