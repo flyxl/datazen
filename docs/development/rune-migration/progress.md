@@ -1,8 +1,7 @@
 ## Current Task
-- **任务**: N14 release 构建与文档（第二阶段：原生宿主接线的收尾）。
+- **任务**: 无——第二阶段（原生宿主接线）N1–N14 全部完成。
 - **负责人**: Coder Agent
-- **状态**: N1–N13 已完成并推送，开始 N14。
-- **计划**: [plan-native.md](plan-native.md)（第一阶段 [plan.md](plan.md) 已全部完成）
+- **状态**: 两阶段计划（[plan.md](plan.md)、[plan-native.md](plan-native.md)）均已完成并推送；后续扩展点见 plan-native.md 范围外清单与 [native-host.md](native-host.md)。
 
 ## N5 组装配方（调查结论，fc160ec 时点）
 

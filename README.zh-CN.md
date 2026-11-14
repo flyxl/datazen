@@ -290,6 +290,8 @@ pnpm tauri:build:community --drivers=postgres,mongodb
 
 源码构建编译的是 DataZen 的开源版编辑器；官方发布的安装包自带上文所述的完整编辑器体验。完整开发流程见 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [CI 与测试矩阵](docs/development/ci-test-matrix.md)，驱动选择细节见 [optional-drivers.md](docs/development/optional-drivers.md)。
 
+另有独立的纯原生界面二进制——`cargo build --release -p datazen-rune-host` 产出 `datazen-native`：共享 Rune 界面直连真用例与真驱动，不依赖 Tauri。它是进行中的并行界面（本期 sqlite 全功能），用法、配置目录、驱动矩阵与剩余差距见 [native-host.md](docs/development/rune-migration/native-host.md)。
+
 ## 文档
 
 - [官网](https://flyxl.github.io/datazen/zh/) · [使用手册 (ZH)](https://flyxl.github.io/datazen/zh/manual.html) · [User Manual (EN)](https://flyxl.github.io/datazen/manual.html)

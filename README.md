@@ -290,6 +290,8 @@ pnpm tauri:build:community --drivers=postgres,mongodb
 
 A source build compiles DataZen's open-source editor; the published installers ship with the complete editor experience described above. See [CONTRIBUTING.md](CONTRIBUTING.md) and the [CI & test matrix](docs/development/ci-test-matrix.md) for the full development workflow, and [optional-drivers.md](docs/development/optional-drivers.md) for driver selection details.
 
+A separate native UI binary is also available — `cargo build --release -p datazen-rune-host` produces `datazen-native`, the shared Rune interface over real use cases and drivers without Tauri. It is the in-progress parallel interface (sqlite wired end to end today); see [native-host.md](docs/development/rune-migration/native-host.md) for usage, the configuration directory, the driver matrix and the remaining gaps.
+
 ## Documentation
 
 - [Project website](https://flyxl.github.io/datazen/) · [User Manual (EN)](https://flyxl.github.io/datazen/manual.html) · [使用手册 (ZH)](https://flyxl.github.io/datazen/zh/manual.html)
