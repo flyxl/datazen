@@ -31,6 +31,8 @@ serde_json = { workspace = true }
 # a current-thread tokio runtime for the drivers' async use cases.
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tokio = { version = "1", features = ["rt"] }
+# Session and resource ids the runtime's backend mints.
+uuid = { workspace = true }
 # The list use case is async; the adapter's poll over the loaded file store
 # is memory-speed (its futures are always ready).
 futures-executor = "0.3"

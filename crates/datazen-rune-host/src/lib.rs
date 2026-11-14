@@ -5,6 +5,7 @@
 //! its repositories read and write real files. N2 wires the connection
 //! store; the data paths follow on the same seam.
 
+pub mod backend;
 pub mod live;
 pub mod store;
 

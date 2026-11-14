@@ -10,6 +10,7 @@
 
 use datazen::connection::application::ConnectionService;
 use datazen::connection::domain::{ConnectionRepository, ConnectionScope};
+use datazen::execution::application::orchestration::RuntimeConnectionUseCases;
 use datazen::execution::runtime::driver_registry::DriverRegistry;
 use datazen::execution::target::ExecutionTarget;
 use datazen::shared::context::RequestContext;
@@ -25,6 +26,7 @@ use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnFilter, ColumnSort, ConnectionProfile,
     DatabaseNode, DesktopAdapter, SchemaNode, TablePage, DESKTOP_NOT_IMPLEMENTED,
 };
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -34,7 +36,7 @@ use std::thread;
 /// test-binary link can drop an inventory registration the lazy form
 /// would scan for. N3 links sqlite; other drivers join this list on the
 /// same one-line seam.
-fn host_registry() -> DriverRegistry {
+pub(crate) fn host_registry() -> DriverRegistry {
     DriverRegistry::with_factories([datazen_driver_sqlite::factory()])
         .expect("the sqlite factory admits at construction")
 }
@@ -86,16 +88,45 @@ pub struct LiveAdapter {
     service: ConnectionService,
     /// The shared live session.
     session: Arc<Mutex<LiveSession>>,
+    /// The host's execution runtime (N5): the use cases the commit, query
+    /// and sync paths run through. Exposed for the job flows that follow.
+    runtime: Arc<RuntimeConnectionUseCases>,
 }
 
 impl LiveAdapter {
+    /// The host's execution runtime (N5): open sessions, execute, read
+    /// results back through the use cases over the three host parts.
+    pub fn runtime(&self) -> &Arc<RuntimeConnectionUseCases> {
+        &self.runtime
+    }
+
     /// The live host's adapter: connections from the file store, sessions
     /// through the drivers the host's registry assembles — the sqlite
     /// factory, linked in by this crate, admitted at construction.
     pub fn new(repository: Arc<dyn ConnectionRepository>) -> Self {
+        let data_dir = crate::default_connections_path()
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| Path::new(".").to_path_buf());
+        Self::with_data_dir(repository, &data_dir)
+    }
+
+    /// The same adapter with an explicit data directory: the runtime's
+    /// result artifacts land under `data_dir/result-artifacts`.
+    pub fn with_data_dir(
+        repository: Arc<dyn ConnectionRepository>,
+        data_dir: &Path,
+    ) -> Self {
         let (job_tx, job_rx) = std::sync::mpsc::channel::<HostJob>();
         let (answer_tx, answer_rx) = std::sync::mpsc::channel::<HostAnswer>();
-        let registry = host_registry();
+        let registry = Arc::new(host_registry());
+        // N5: the execution runtime over the three host parts, sharing the
+        // one repository with the adapter's connection use case.
+        let (runtime, _backend) = crate::backend::assemble_runtime(
+            Arc::clone(&registry),
+            Arc::clone(&repository),
+            data_dir,
+        );
         // The use case is stateless over the repository: the adapter and the
         // worker each hold their own service over the one store.
         let service = ConnectionService::new(Arc::clone(&repository));
@@ -164,6 +195,7 @@ impl LiveAdapter {
             answers: Mutex::new(answer_rx),
             service,
             session,
+            runtime,
         }
     }
 
@@ -764,5 +796,23 @@ mod tests {
         }));
         let error = poll_read(&mut adapter).expect_err("no session, no read");
         assert!(error.contains("session"), "the sentence names the state: {error}");
+    }
+}
+
+/// Test-only helpers shared with the backend module's tests.
+#[cfg(test)]
+pub(crate) mod test_support {
+    /// The sqlite driver, resolved through the host's static registry.
+    pub(crate) fn sqlite_driver() -> std::sync::Arc<dyn datazen_driver_api::DatabaseDriver> {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("the helper runtime starts");
+        runtime.block_on(async {
+            super::host_registry()
+                .get(&"sqlite".into())
+                .await
+                .expect("the sqlite driver is linked into the host")
+        })
     }
 }
