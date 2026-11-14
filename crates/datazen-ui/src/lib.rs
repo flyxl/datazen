@@ -9,7 +9,7 @@ mod sql_editor;
 use data_grid::DataGrid;
 use datazen_ui_api::{ColumnFilter, ColumnSort, MemoryWorkspace, QueryApi, TabKind, Tabs, TablePage, WorkspaceApi};
 use rune::tok::{self, type_};
-use rune::{App, AppSpec, Cx, El, Ime, KeyEvent, TextEdit, Tx, col, row, text};
+use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, TextEdit, Tx, col, row, text};
 use sql_editor::SqlEditor;
 
 /// Rows asked from the workspace for one table page.
@@ -264,6 +264,19 @@ impl AppState {
         self.next_query_generation();
     }
 
+    /// Run the statement at the cursor. A failed execution changes nothing; a
+    /// successful one lands in the result grid only if still current.
+    fn run_query(&mut self) {
+        let generation = self.next_query_generation();
+        let Some(sql) = self.sql.statement_at_cursor() else {
+            return;
+        };
+        match self.workspace.execute(&sql) {
+            Ok(page) => self.deliver_query_result(generation, page),
+            Err(_) => {}
+        }
+    }
+
     /// Any tab event lands in the workspace: the selected tab decides what the
     /// workspace shows, so the tab strip and its content stay on one page.
     fn sync_grid_to_selected_tab(&mut self) {
@@ -470,6 +483,41 @@ fn query_workspace(state: &AppState, theme: tok::Theme) -> El {
         .w_full()
         .gap(8.0)
         .child(sql_editor::panel(&state.sql, theme.text, theme.text_secondary))
+        .child(
+            row()
+                .key("query-toolbar")
+                .w_full()
+                .h(28.0)
+                .gap(8.0)
+                .center_y()
+                .child(
+                    row()
+                        .key("sql-run")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Run").font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.run_query()),
+                )
+                .child(
+                    row()
+                        .key("sql-cancel")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Cancel").font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.cancel_query()),
+                )
+                .child(
+                    text("Command+Enter runs the statement at the cursor")
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
+        )
         .child(results)
 }
 
@@ -638,6 +686,10 @@ fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
         return false;
     }
     if query_selected(state) {
+        if matches!(ev.key, Key::Enter) && ev.mods.cmd {
+            state.run_query();
+            return true;
+        }
         return sql_editor::on_key(&mut state.sql, ev);
     }
     if state.grid.has_page() {
@@ -669,7 +721,7 @@ pub fn start() {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppState, Section, TABLE_PAGE_SIZE, query_selected, view};
+    use super::{AppState, Section, TABLE_PAGE_SIZE, query_selected, sql_editor, view};
     use rune::{Env, Runtime};
 
     fn runtime() -> Runtime<AppState> {
@@ -1236,6 +1288,122 @@ mod tests {
         runtime.settle_all();
         runtime.frame(0.0);
         assert_eq!(runtime.state.result_grid.as_ref().unwrap().cell(0, 0), "1");
+    }
+
+    #[test]
+    fn the_run_button_fills_the_lower_half_with_the_result_grid() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_query_tab("Query").unwrap();
+        runtime.state.sql = sql_editor::SqlEditor::from_doc("select 1");
+        runtime.frame(0.0);
+        assert!(runtime.find("query-results").is_some(), "no result yet");
+
+        let (x, y) = runtime.find("sql-run").expect("run button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+
+        assert!(runtime.find("result-grid").is_some(), "the result lands in the lower half");
+        assert!(runtime.find("result-cell-0-0").is_some(), "the returned cell is visible");
+        assert!(runtime.find("query-results").is_none(), "the placeholder leaves");
+        assert_eq!(runtime.state.result_grid.as_ref().unwrap().cell(0, 0), "1");
+    }
+
+    #[test]
+    fn command_enter_runs_the_statement_at_the_cursor() {
+        use datazen_ui_api::WorkspaceApi;
+        use rune::{Key, KeyEvent, Mods};
+        use super::app_key;
+
+        let mut runtime = runtime();
+        runtime.on_key = Some(app_key);
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_query_tab("Query").unwrap();
+        runtime.state.sql =
+            sql_editor::SqlEditor::from_doc("SELECT * FROM CUSTOMERS; select 1");
+        runtime.state.sql.focus();
+        runtime.frame(0.0);
+
+        // The caret sits at 0: the first statement runs.
+        runtime.key(KeyEvent { key: Key::Enter, mods: Mods { cmd: true, ..Mods::default() } });
+        runtime.frame(0.0);
+        let grid = runtime.state.result_grid.as_ref().expect("first statement ran");
+        assert_eq!(grid.rows, 25, "SELECT * FROM CUSTOMERS returns the customers page");
+        assert_eq!(grid.cell(0, 1), "customer-0");
+
+        // Move the caret into the second statement: only that one runs.
+        let doc = runtime.state.sql.doc().to_owned();
+        let second = doc.find("select 1").unwrap();
+        runtime.state.sql.set_main_caret(second + 2);
+        runtime.key(KeyEvent { key: Key::Enter, mods: Mods { cmd: true, ..Mods::default() } });
+        runtime.frame(0.0);
+        let grid = runtime.state.result_grid.as_ref().expect("second statement ran");
+        assert_eq!(grid.rows, 1);
+        assert_eq!(grid.cell(0, 0), "1");
+    }
+
+    #[test]
+    fn a_failed_run_keeps_the_previous_result() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_query_tab("Query").unwrap();
+        runtime.state.sql = sql_editor::SqlEditor::from_doc("select 1");
+        runtime.frame(0.0);
+
+        let (x, y) = runtime.find("sql-run").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.state.result_grid.is_some());
+
+        runtime.state.sql = sql_editor::SqlEditor::from_doc("drop table customers");
+        let (x, y) = runtime.find("sql-run").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(
+            runtime.state.result_grid.as_ref().unwrap().cell(0, 0),
+            "1",
+            "a failed execution leaves the interface as it was"
+        );
+    }
+
+    #[test]
+    fn the_cancel_button_drops_a_result_that_arrives_after_it() {
+        use datazen_ui_api::{QueryApi, WorkspaceApi};
+
+        let mut runtime = runtime();
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_query_tab("Query").unwrap();
+        runtime.state.sql = sql_editor::SqlEditor::from_doc("select 1");
+        runtime.frame(0.0);
+
+        let (x, y) = runtime.find("sql-run").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.result_grid.as_ref().unwrap().cell(0, 0), "1");
+
+        let generation = runtime.state.query_generation;
+        let (x, y) = runtime.find("sql-cancel").expect("cancel button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+
+        let late = runtime.state.workspace.execute("SELECT * FROM CUSTOMERS").unwrap();
+        runtime.state.deliver_query_result(generation, late);
+        runtime.settle_all();
+        runtime.frame(0.0);
+        assert_eq!(
+            runtime.state.result_grid.as_ref().unwrap().cell(0, 0),
+            "1",
+            "the cancelled delivery is dropped, the previous result stays"
+        );
     }
 
     #[test]

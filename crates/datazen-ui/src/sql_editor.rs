@@ -160,6 +160,12 @@ impl SqlEditor {
             .collect()
     }
 
+    /// Put one caret at `byte`, replacing every range (a single selection).
+    pub fn set_main_caret(&mut self, byte: usize) {
+        let at = boundary(&self.doc, byte);
+        self.selection = Selection::single(at);
+    }
+
     /// CodeMirror `addCursor`: a new caret, and it becomes the main range.
     pub fn add_cursor(&mut self, byte: usize) {
         let at = boundary(&self.doc, byte);
