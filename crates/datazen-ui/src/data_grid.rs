@@ -438,12 +438,20 @@ fn sheet(grid: &DataGrid, slot: GridSlot, ink: rune::Color, well: rune::Color, h
                 )
                 .virtual_rows_version(1u32),
         );
+    // C2: the grid reads its shape and the current cell to the a11y tree. The
+    // value carries the page's rows × columns; the descendant the focused
+    // cell points at, when that cell is mounted.
+    let (focus_row, focus_col) = grid.focus();
     let scroll = col()
         .key(slot.key("data-grid-scroll"))
         .w_full()
         .h(height)
         .fill(well)
         .radius(8.0)
+        .role("grid")
+        .label(grid.table_label())
+        .a11y_value(format!("{} rows × {} columns", grid.rows, grid.cols))
+        .active_descendant(slot.key(&format!("cell-{focus_row}-{focus_col}")))
         .scroll_xy()
         .on_scroll_offset(move |at: ScrollPos| {
             scroll_x.set(at.offset[0]);
@@ -640,7 +648,12 @@ fn data_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color) -
 
 fn paint_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color) -> El {
     let cols = grid.built_columns();
-    let mut line = row().h(ROW_H);
+    // The key matches the virtual list's row key, so the row reads its place
+    // in the set from the list's index.
+    let mut line = row()
+        .key(slot.key(&format!("grid-row-{row_index}")))
+        .role("row")
+        .h(ROW_H);
     let mut cursor = 0u32;
     for col_index in cols {
         if col_index > cursor {
@@ -667,6 +680,7 @@ fn header_cell(grid: &DataGrid, slot: GridSlot, col_index: u32, ink: rune::Color
     };
     let mut cell = row()
         .key(slot.key(&format!("head-{col_index}")))
+        .role("columnheader")
         .w(COL_W)
         .h(ROW_H)
         .px(8.0)
@@ -698,6 +712,7 @@ fn cell(grid: &DataGrid, slot: GridSlot, row_index: u32, col_index: u32, ink: ru
     };
     let mut box_el = row()
         .key(slot.key(&format!("cell-{row_index}-{col_index}")))
+        .role("gridcell")
         .w(COL_W)
         .h(ROW_H)
         .px(8.0)

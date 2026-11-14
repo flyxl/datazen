@@ -23,6 +23,9 @@ wasm-bindgen = { workspace = true }
 # H8's tofu test reads glyph ids out of a shaped layout; the same version and
 # features rune itself uses, so the graph stays one parley.
 parley = { version = "0.12", default-features = false, features = ["std", "complex-scripts"] }
+# C2's a11y test reads the tree `Runtime::accessibility_json` builds; the same
+# version the workspace pins, so the graph stays one serde_json.
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

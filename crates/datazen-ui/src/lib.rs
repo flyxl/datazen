@@ -3833,6 +3833,62 @@ mod tests {
     }
 
     #[test]
+    fn the_grid_reads_its_shape_and_current_cell_to_the_accessibility_tree() {
+        use super::app_key;
+        use datazen_ui_api::WorkspaceApi;
+        use rune::{Key, KeyEvent, Mods};
+        use serde_json::Value;
+
+        fn find<'a>(v: &'a Value, key: &str) -> Option<&'a Value> {
+            if v["key"] == key {
+                return Some(v);
+            }
+            v["children"].as_array()?.iter().find_map(|child| find(child, key))
+        }
+
+        let mut runtime = runtime();
+        runtime.on_key = Some(app_key);
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.frame(0.0);
+
+        // The grid reads its page's shape and where the focus is.
+        let tree = runtime.accessibility_json();
+        let grid = find(&tree, "data-grid-scroll").expect("the grid is in the tree");
+        assert_eq!(grid["role"], "grid");
+        assert_eq!(grid["name"], "customers");
+        assert_eq!(grid["value"], "25 rows × 8 columns");
+        assert_eq!(grid["activeDescendant"], "cell-0-0");
+        let cell = find(&tree, "cell-0-0").expect("the focused cell is mounted");
+        assert_eq!(cell["role"], "grid-cell");
+        assert_eq!(cell["name"], "0");
+
+        // Moving the focus moves what the tree reads.
+        let key = |runtime: &mut rune::Runtime<AppState>, key: Key| {
+            runtime.key(KeyEvent { key, mods: Mods::default() });
+            runtime.frame(0.0);
+        };
+        key(&mut runtime, Key::Down);
+        key(&mut runtime, Key::Down);
+        key(&mut runtime, Key::Right);
+        assert_eq!(runtime.state.grid.focus(), (2, 1));
+        let tree = runtime.accessibility_json();
+        let grid = find(&tree, "data-grid-scroll").unwrap();
+        assert_eq!(grid["activeDescendant"], "cell-2-1", "the tree follows the focus");
+        assert_eq!(find(&tree, "cell-2-1").unwrap()["name"], "customer-2");
+
+        // The next page reads its own shape: 40 rows over a page size of 25 leaves 15.
+        // `update` marks the state dirty; a bare mutation would leave the committed
+        // view, and so the a11y tree, reading the old page.
+        runtime.update(|state, _| state.next_table_page());
+        runtime.frame(0.0);
+        let tree = runtime.accessibility_json();
+        let grid = find(&tree, "data-grid-scroll").unwrap();
+        assert_eq!(grid["value"], "15 rows × 8 columns");
+        assert_eq!(grid["name"], "customers");
+    }
+
+    #[test]
     fn a_chinese_grid_cell_is_not_a_box_under_the_apps_fonts() {
         // The grid runs under the app's font pool; a Chinese cell value
         // renders with the glyphs the pool shaped above, not fallback boxes.

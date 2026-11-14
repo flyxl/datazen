@@ -2617,6 +2617,7 @@ dependencies = [
  "datazen-ui-api",
  "parley",
  "rune",
+ "serde_json",
  "wasm-bindgen",
 ]
 
