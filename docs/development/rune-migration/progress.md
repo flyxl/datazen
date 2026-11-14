@@ -1,7 +1,7 @@
 ## Current Task
-- **任务**: 无——第二阶段（原生宿主接线）N1–N14 全部完成。
+- **任务**: T1（系统剪贴板）——第三阶段（宿主能力与分发）开工，计划见 [plan-native-3.md](plan-native-3.md)。
 - **负责人**: Coder Agent
-- **状态**: 两阶段计划（[plan.md](plan.md)、[plan-native.md](plan-native.md)）均已完成并推送；后续扩展点见 plan-native.md 范围外清单与 [native-host.md](native-host.md)。
+- **状态**: 前两阶段（[plan.md](plan.md)、[plan-native.md](plan-native.md)）全部完成并推送；第三阶段 T1–T11 进行中。
 
 ## N5 组装配方（调查结论，fc160ec 时点）
 

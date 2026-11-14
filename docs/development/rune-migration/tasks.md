@@ -4,7 +4,7 @@
 
 React 页面和组件不删不改。一个任务一个提交，不并行。
 
-第一阶段（S/B/Q/O/P/D/W/H/C）已全部完成。第二阶段（N 系列，原生宿主接线）的任务与门禁见 [plan-native.md](plan-native.md)。
+第一阶段（S/B/Q/O/P/D/W/H/C）已全部完成。第二阶段（N 系列，原生宿主接线）的任务与门禁见 [plan-native.md](plan-native.md)。第三阶段（T 系列，宿主能力与分发）的任务与门禁见 [plan-native-3.md](plan-native-3.md)。
 
 两个阶段共用的门禁：
 
@@ -107,3 +107,14 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | N12 | 已完成 | 54ca210 | testing/N12-sync-compare.md |
 | N13 | 已完成 | a4644d1 | testing/N13-workflow-dashboard.md |
 | N14 | 已完成 | cda8ca3 | testing/N14-release-docs.md |
+| T1 | 未开始 | | |
+| T2 | 未开始 | | |
+| T3 | 未开始 | | |
+| T4 | 未开始 | | |
+| T5 | 未开始 | | |
+| T6 | 未开始 | | |
+| T7 | 未开始 | | |
+| T8 | 未开始 | | |
+| T9 | 未开始 | | |
+| T10 | 未开始 | | |
+| T11 | 未开始 | | |
