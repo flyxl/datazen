@@ -64,8 +64,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | D2 | 已完成 | 59aff4a | testing/D2-sync-tables.md |
 | D3 | 已完成 | 7625a19 | testing/D3-sync-options.md |
 | D4 | 已完成 | d8d0992, 03aeaa8 | testing/D4-sync-preview.md |
-| D5 | 进行中 | | |
-| D6 | 未开始 | | |
+| D5 | 已完成 | 见提交 | testing/D5-sync-run.md |
+| D6 | 进行中 | | |
 | D7 | 未开始 | | |
 | D8 | 未开始 | | |
 | D9 | 未开始 | | |
