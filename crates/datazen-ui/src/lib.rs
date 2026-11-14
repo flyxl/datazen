@@ -178,6 +178,8 @@ struct AppState {
     widget_title: TextEdit,
     widget_query: TextEdit,
     widget_error: Option<String>,
+    /// The workflow being edited: its name and the step list being reordered.
+    workflow_editing: Option<(String, Vec<String>)>,
 }
 
 impl Default for AppState {
@@ -252,6 +254,7 @@ impl Default for AppState {
             widget_title: TextEdit::new(String::new()),
             widget_query: TextEdit::new(String::new()),
             widget_error: None,
+            workflow_editing: None,
         }
     }
 }
@@ -586,6 +589,34 @@ impl AppState {
         if let Some(job) = self.transfer_job {
             self.transfer_snapshot = self.workspace.job_progress(job);
         }
+    }
+
+    fn edit_workflow(&mut self, name: &str) {
+        if let Some(flow) = self.workspace.workflows().into_iter().find(|flow| flow.name == name) {
+            self.workflow_editing = Some((flow.name, flow.steps));
+        }
+    }
+
+    /// Move a step up or down. The first step cannot move up, the last cannot
+    /// move down; everything else swaps with its neighbour.
+    fn move_workflow_step(&mut self, index: usize, up: bool) {
+        let Some((_, steps)) = &mut self.workflow_editing else { return };
+        let target = if up { index.checked_sub(1) } else { Some(index + 1) };
+        match target {
+            Some(target) if target < steps.len() => steps.swap(index, target),
+            _ => {}
+        }
+    }
+
+    fn save_workflow_form(&mut self) {
+        let Some((name, steps)) = self.workflow_editing.clone() else { return };
+        if self.workspace.save_workflow(&name, &steps).is_ok() {
+            self.workflow_editing = None;
+        }
+    }
+
+    fn close_workflow_editor(&mut self) {
+        self.workflow_editing = None;
     }
 
     /// Save the widget form through the port. An empty title is refused.
@@ -1101,7 +1132,7 @@ fn page_body(state: &AppState, theme: tok::Theme) -> El {
     }
 }
 
-/// The workflows page: the list, sorted by name.
+/// The workflows page: the list, sorted by name, and the step editor.
 fn workflows_page(state: &AppState, theme: tok::Theme) -> El {
     let workflows = state.workspace.workflows();
     let mut page = col()
@@ -1110,6 +1141,7 @@ fn workflows_page(state: &AppState, theme: tok::Theme) -> El {
         .gap(6.0)
         .child(text("Workflows".to_owned()).font(type_::TITLE).color(theme.text));
     for workflow in &workflows {
+        let name = workflow.name.clone();
         page = page.child(
             row()
                 .key(format!("workflow-{}", workflow.name))
@@ -1123,8 +1155,83 @@ fn workflows_page(state: &AppState, theme: tok::Theme) -> El {
                     text(format!("{} · {} steps", workflow.name, workflow.steps.len()))
                         .font(type_::LABEL)
                         .color(theme.text),
-                ),
+                )
+                .on_press(move |state: &mut AppState| state.edit_workflow(&name)),
         );
+    }
+    if let Some((name, steps)) = &state.workflow_editing {
+        let mut editor = col()
+            .key("workflow-form")
+            .w_full()
+            .gap(4.0)
+            .px(8.0)
+            .py(6.0)
+            .radius(8.0)
+            .fill(theme.control_off)
+            .child(
+                row()
+                    .key("workflow-form-head")
+                    .w_full()
+                    .h(24.0)
+                    .center_y()
+                    .child(text(name.clone()).font(type_::LABEL).color(theme.text))
+                    .child(
+                        row()
+                            .key("workflow-save")
+                            .h(20.0)
+                            .px(6.0)
+                            .center_y()
+                            .radius(4.0)
+                            .fill(theme.control_off)
+                            .child(text("Save").font(type_::LABEL).color(theme.text))
+                            .on_press(|state: &mut AppState| state.save_workflow_form()),
+                    )
+                    .child(
+                        row()
+                            .key("workflow-cancel")
+                            .h(20.0)
+                            .px(6.0)
+                            .center_y()
+                            .radius(4.0)
+                            .fill(theme.control_off)
+                            .child(text("Close".to_owned()).font(type_::LABEL).color(theme.text_secondary))
+                            .on_press(|state: &mut AppState| state.close_workflow_editor()),
+                    ),
+            );
+        for (index, step) in steps.iter().enumerate() {
+            editor = editor.child(
+                row()
+                    .key(format!("step-row-{index}"))
+                    .w_full()
+                    .h(24.0)
+                    .gap(6.0)
+                    .center_y()
+                    .child(text(step.clone()).font(type_::LABEL).color(theme.text_secondary))
+                    .child(
+                        row()
+                            .key(format!("step-up-{index}"))
+                            .h(18.0)
+                            .px(6.0)
+                            .center_y()
+                            .radius(4.0)
+                            .fill(theme.control_off)
+                            .child(text("up".to_owned()).font(type_::LABEL).color(theme.text))
+                            .on_press(move |state: &mut AppState| state.move_workflow_step(index, true)),
+                    )
+                    .child(
+                        row()
+                            .key(format!("step-down-{index}"))
+                            .h(18.0)
+                            .px(6.0)
+                            .center_y()
+                            .radius(4.0)
+                            .fill(theme.control_off)
+                            .child(text("down".to_owned()).font(type_::LABEL).color(theme.text))
+                            .on_press(move |state: &mut AppState| state.move_workflow_step(index, false)),
+                    ),
+            );
+        }
+        page = page.child(editor);
     }
     page
 }
@@ -5396,6 +5503,77 @@ mod tests {
             audit[1] < nightly[1] && nightly[1] < weekly[1],
             "the list reads alphabetically: audit {audit:?} nightly {nightly:?} weekly {weekly:?}"
         );
+    }
+
+    #[test]
+    fn the_first_workflow_step_cannot_move_up() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-workflows").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+
+        let (x, y) = runtime.find("workflow-audit").expect("a workflow row");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.find("workflow-form").is_some());
+        assert!(runtime.find("step-row-0").is_some());
+        assert!(runtime.find("step-row-1").is_some());
+
+        // The first step cannot move up.
+        let (x, y) = runtime.find("step-up-0").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(
+            runtime.state.workflow_editing.as_ref().unwrap().1,
+            vec!["compare structures".to_owned(), "apply plan".to_owned()],
+            "the first step stayed put"
+        );
+
+        // Down moves it below the second; up brings it back.
+        let (x, y) = runtime.find("step-down-0").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(
+            runtime.state.workflow_editing.as_ref().unwrap().1,
+            vec!["apply plan".to_owned(), "compare structures".to_owned()]
+        );
+        let (x, y) = runtime.find("step-up-1").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(
+            runtime.state.workflow_editing.as_ref().unwrap().1,
+            vec!["compare structures".to_owned(), "apply plan".to_owned()]
+        );
+
+        // The last step cannot move down either.
+        let (x, y) = runtime.find("step-down-1").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.workflow_editing.as_ref().unwrap().1.len(), 2);
+
+        // Save persists the order through the port.
+        runtime.state.move_workflow_step(0, false);
+        let (x, y) = runtime.find("workflow-save").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        let audit = runtime
+            .state
+            .workspace
+            .workflows()
+            .into_iter()
+            .find(|flow| flow.name == "audit")
+            .unwrap();
+        assert_eq!(audit.steps, vec!["apply plan".to_owned(), "compare structures".to_owned()]);
     }
 
     #[test]

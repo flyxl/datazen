@@ -260,6 +260,8 @@ pub trait WorkspaceApi {
     fn widget_bars(&self, id: u64) -> Result<Vec<(String, u32)>, String>;
     /// W4: the workflows, sorted by name.
     fn workflows(&self) -> Vec<Workflow>;
+    /// W5: save a workflow by name (an edit replaces the stored steps).
+    fn save_workflow(&mut self, name: &str, steps: &[String]) -> Result<(), String>;
     /// Stop a running job. A stopped job reports "stopped" from then on.
     fn stop_job(&mut self, job: u64) -> Result<(), String>;
     /// Apply a DDL script to the table. The port records what it applied; a
@@ -836,6 +838,21 @@ impl WorkspaceApi for MemoryWorkspace {
         let mut workflows = self.workflows.clone();
         workflows.sort_by(|a, b| a.name.cmp(&b.name));
         workflows
+    }
+
+    fn save_workflow(&mut self, name: &str, steps: &[String]) -> Result<(), String> {
+        if name.trim().is_empty() {
+            return Err("a workflow needs a name".into());
+        }
+        let name = name.trim();
+        match self.workflows.iter_mut().find(|flow| flow.name == name) {
+            Some(existing) => existing.steps = steps.to_vec(),
+            None => self.workflows.push(Workflow {
+                name: name.to_owned(),
+                steps: steps.to_vec(),
+            }),
+        }
+        Ok(())
     }
 
     fn widget_bars(&self, id: u64) -> Result<Vec<(String, u32)>, String> {
@@ -1794,6 +1811,24 @@ mod tests {
         let names: Vec<&str> = workflows.iter().map(|flow| flow.name.as_str()).collect();
         assert_eq!(names, vec!["audit", "nightly-backup", "weekly-report"], "reads sort by name");
         assert_eq!(workflows[0].steps, vec!["compare structures", "apply plan"]);
+    }
+
+    #[test]
+    fn saving_a_workflow_replaces_its_steps() {
+        let mut workspace = MemoryWorkspace::new();
+        assert!(workspace.save_workflow("", &[]).is_err(), "a name is required");
+        workspace
+            .save_workflow("audit", &["reordered".to_owned(), "compare structures".to_owned()])
+            .unwrap();
+        let audit = workspace
+            .workflows()
+            .into_iter()
+            .find(|flow| flow.name == "audit")
+            .unwrap();
+        assert_eq!(audit.steps, vec!["reordered", "compare structures"]);
+        let count = workspace.workflows().len();
+        workspace.save_workflow("fresh", &["one".to_owned()]).unwrap();
+        assert_eq!(workspace.workflows().len(), count + 1, "a new name appends");
     }
 
     #[test]
