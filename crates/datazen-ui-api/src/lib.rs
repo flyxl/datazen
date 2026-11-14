@@ -53,6 +53,12 @@ pub struct TablePage {
     pub read_only: Option<String>,
 }
 
+/// Runs SQL against the workspace. The memory implementation answers a few
+/// fixed statements; unknown SQL is an error that changes no state.
+pub trait QueryApi {
+    fn execute(&mut self, sql: &str) -> Result<TablePage, String>;
+}
+
 pub trait WorkspaceApi {
     fn connections(&self) -> &[ConnectionProfile];
     fn session(&self) -> Option<&Session>;
@@ -155,6 +161,53 @@ impl MemoryWorkspace {
             ],
             open: None,
             result_open: false,
+        }
+    }
+}
+
+impl MemoryWorkspace {
+    /// A read-only result page. No flags touched: callers decide what shows.
+    fn result_page(columns: Vec<String>, rows: Vec<Vec<String>>) -> TablePage {
+        let total = rows.len() as u32;
+        TablePage {
+            table: "result".into(),
+            columns,
+            rows,
+            page: 0,
+            page_size: total.max(1),
+            total_rows: total,
+            sort: None,
+            filter: None,
+            read_only: Some("query result".into()),
+        }
+    }
+}
+
+impl QueryApi for MemoryWorkspace {
+    fn execute(&mut self, sql: &str) -> Result<TablePage, String> {
+        if self.session.is_none() {
+            return Err("not connected".into());
+        }
+        let normalized = sql
+            .trim()
+            .trim_end_matches(';')
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_ascii_uppercase();
+        match normalized.as_str() {
+            "SELECT 1" => Ok(Self::result_page(
+                vec!["1".to_owned()],
+                vec![vec!["1".to_owned()]],
+            )),
+            "SELECT * FROM CUSTOMERS" => {
+                let Some((_, stored)) = self.tables.iter().find(|(name, _)| name == "customers") else {
+                    return Err("unknown table customers".into());
+                };
+                let rows = stored.rows.iter().take(25).cloned().collect();
+                Ok(Self::result_page(stored.columns.clone(), rows))
+            }
+            _ => Err(format!("cannot execute: {sql}")),
         }
     }
 }
@@ -266,18 +319,7 @@ impl WorkspaceApi for MemoryWorkspace {
 
     fn open_result(&mut self, columns: Vec<String>, rows: Vec<Vec<String>>) -> TablePage {
         self.result_open = true;
-        let total = rows.len() as u32;
-        TablePage {
-            table: "result".into(),
-            columns,
-            rows,
-            page: 0,
-            page_size: total.max(1),
-            total_rows: total,
-            sort: None,
-            filter: None,
-            read_only: Some("query result".into()),
-        }
+        Self::result_page(columns, rows)
     }
 
     fn stage_cell(&mut self, row: u32, column: &str, value: String) -> Result<(), String> {
@@ -497,6 +539,47 @@ mod tests {
             "x",
             "reopening a table releases the result lock"
         );
+    }
+
+    #[test]
+    fn execute_answers_fixed_sql_with_a_page() {
+        let mut workspace = MemoryWorkspace::new();
+        workspace.connect("local").unwrap();
+        let page = workspace.execute("select 1").unwrap();
+        assert_eq!(page.table, "result");
+        assert_eq!(page.columns, vec!["1".to_owned()]);
+        assert_eq!(page.rows, vec![vec!["1".to_owned()]]);
+        assert_eq!(page.read_only.as_deref(), Some("query result"));
+
+        let page = workspace.execute("SELECT  *  FROM customers;").unwrap();
+        assert_eq!(page.columns[1], "name");
+        assert_eq!(page.rows.len(), 25, "one page, not the whole table");
+        assert_eq!(page.total_rows, 25, "the query result is exactly that page");
+        assert_eq!(page.rows[0][1], "customer-0");
+    }
+
+    #[test]
+    fn unknown_sql_is_an_error_and_changes_nothing() {
+        let mut workspace = MemoryWorkspace::new();
+        workspace.connect("local").unwrap();
+        workspace.open_table("customers", 0, 25, None, None).unwrap();
+        workspace.stage_cell(0, "name", "staged".into()).unwrap();
+        let before = workspace.open_table("customers", 0, 25, None, None).unwrap();
+
+        assert!(workspace.execute("drop table customers").is_err());
+        assert!(workspace.execute("").is_err());
+
+        let after = workspace.open_table("customers", 0, 25, None, None).unwrap();
+        assert_eq!(after.rows, before.rows, "the table and its staged values are untouched");
+        workspace.stage_cell(1, "name", "more".into()).unwrap();
+        let page = workspace.open_table("customers", 0, 25, None, None).unwrap();
+        assert_eq!(page.rows[1][1], "more", "staging still works after failed executes");
+    }
+
+    #[test]
+    fn execute_without_a_session_is_an_error() {
+        let mut workspace = MemoryWorkspace::new();
+        assert!(workspace.execute("select 1").is_err());
     }
 
     #[test]
