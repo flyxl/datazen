@@ -87,5 +87,5 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | H8 | 已完成 | bfc5f4b5 | testing/H8-chinese-font.md |
 | C1 | 已完成 | 163db778 | testing/C1-navigation-keys.md |
 | C2 | 已完成 | 5178765 | testing/C2-grid-a11y.md |
-| C3 | 进行中 | | |
-| C4 | 未开始 | | |
+| C3 | 已完成 | e38fe31 | testing/C3-mount-counts.md |
+| C4 | 进行中 | | |
