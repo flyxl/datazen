@@ -49,6 +49,8 @@ pub struct TablePage {
     pub sort: Option<ColumnSort>,
     /// The filter this page was opened with, echoed back for display.
     pub filter: Option<ColumnFilter>,
+    /// Why the page cannot be edited; None means writable.
+    pub read_only: Option<String>,
 }
 
 pub trait WorkspaceApi {
@@ -78,6 +80,8 @@ struct StoredTable {
     /// Staged cell edits keyed by (stored row, column index); open_table overlays
     /// them, commit_staged applies them, rollback_staged drops them.
     staged: HashMap<(u32, usize), String>,
+    /// Why the table cannot be edited; None means writable.
+    read_only: Option<String>,
 }
 
 /// The table the workspace last opened, with the page window it asked for.
@@ -132,6 +136,7 @@ impl MemoryWorkspace {
                         columns: columns.into_iter().map(str::to_owned).collect(),
                         rows,
                         staged: HashMap::new(),
+                        read_only: None,
                     },
                 ),
                 (
@@ -140,6 +145,7 @@ impl MemoryWorkspace {
                         columns: vec!["id".into(), "name".into()],
                         rows: vec![vec!["1".into(), "order-0".into()]],
                         staged: HashMap::new(),
+                        read_only: Some("no primary key".into()),
                     },
                 ),
             ],
@@ -247,6 +253,7 @@ impl WorkspaceApi for MemoryWorkspace {
             total_rows: total,
             sort: sort.cloned(),
             filter: filter.cloned(),
+            read_only: stored.1.read_only.clone(),
         })
     }
 
@@ -264,6 +271,9 @@ impl WorkspaceApi for MemoryWorkspace {
             .iter()
             .position(|name| name == column)
             .ok_or_else(|| format!("unknown column {column}"))?;
+        if let Some(reason) = &stored.1.read_only {
+            return Err(format!("{} is read-only: {reason}", open.name));
+        }
         if stored_row as usize >= stored.1.rows.len() {
             return Err(format!("row {row} is outside the page"));
         }
@@ -272,6 +282,13 @@ impl WorkspaceApi for MemoryWorkspace {
     }
 
     fn commit_staged(&mut self) -> Result<u32, String> {
+        if let Some(open) = &self.open {
+            if let Some((_, stored)) = self.tables.iter().find(|(name, _)| name == &open.name) {
+                if let Some(reason) = &stored.read_only {
+                    return Err(format!("{} is read-only: {reason}", open.name));
+                }
+            }
+        }
         let mut applied = 0u32;
         for (_, stored) in self.tables.iter_mut() {
             for ((row, col), value) in stored.staged.drain() {
@@ -428,6 +445,20 @@ mod tests {
         let sort = ColumnSort { column: "name".into(), descending: false };
         let page = workspace.open_table("customers", 0, 25, Some(&sort), None).unwrap();
         assert_eq!(page.rows[0][1], "aaa-first", "the staged name sorts with its row");
+    }
+
+    #[test]
+    fn a_read_only_table_rejects_staging_and_commit() {
+        let mut workspace = MemoryWorkspace::new();
+        workspace.connect("local").unwrap();
+        let page = workspace.open_table("orders", 0, 25, None, None).unwrap();
+        assert_eq!(page.read_only.as_deref(), Some("no primary key"));
+        assert!(workspace.stage_cell(0, "name", "x".into()).is_err(), "staging on a read-only page is rejected");
+        assert!(workspace.commit_staged().is_err(), "committing while a read-only page is open is rejected");
+
+        workspace.open_table("customers", 0, 25, None, None).unwrap();
+        workspace.stage_cell(0, "name", "ok".into()).unwrap();
+        assert_eq!(workspace.commit_staged().unwrap(), 1, "a writable table is unaffected");
     }
 
     #[test]

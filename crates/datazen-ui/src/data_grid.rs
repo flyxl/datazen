@@ -37,6 +37,8 @@ pub struct DataGrid {
     total_rows: u32,
     /// The sort the loaded page was opened with, as a column index.
     sort: Option<(u32, bool)>,
+    /// Why the loaded page is read-only; None means writable.
+    read_only: Option<String>,
     pub(crate) editor: TextEdit,
     /// Horizontal scroll, in points. `on_scroll_offset` writes it; it cannot touch this struct.
     scroll_x: rune::Live<f32>,
@@ -65,6 +67,7 @@ impl DataGrid {
             page_size: 0,
             total_rows: 0,
             sort: None,
+            read_only: None,
             editor: TextEdit::new(String::new()),
             scroll_x: rune::Live::new(0.0),
             origin_col: 0,
@@ -95,6 +98,11 @@ impl DataGrid {
     /// The sort column the loaded page carries, as (column index, descending).
     pub fn sort(&self) -> Option<(u32, bool)> {
         self.sort
+    }
+
+    /// Why the loaded page is read-only.
+    pub fn read_only_reason(&self) -> Option<&str> {
+        self.read_only.as_deref()
     }
 
     pub fn origin_col(&self) -> u32 {
@@ -167,6 +175,7 @@ impl DataGrid {
                 .position(|name| name == &sort.column)
                 .map(|index| (index as u32, sort.descending))
         });
+        self.read_only = page.read_only.clone();
         self.edits.clear();
         self.anchor = (0, 0);
         self.focus = (0, 0);
@@ -368,12 +377,26 @@ pub fn panel(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well
                 )
                 .virtual_rows_version(1u32),
         );
-    col()
+    let mut panel = col()
         .key("data-grid")
         .w_full()
         .h(484.0)
         .gap(8.0)
-        .child(text(status).font(label_style()).color(muted).key("data-grid-status"))
+        .child(text(status).font(label_style()).color(muted).key("data-grid-status"));
+    if let Some(reason) = grid.read_only_reason() {
+        panel = panel.child(
+            row()
+                .key("grid-readonly")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(well)
+                .child(text(format!("Read-only: {reason}")).font(label_style()).color(muted)),
+        );
+    }
+    panel
         .child(filter_bar(state, ink, muted, well))
         .child(
             col()
@@ -706,6 +729,7 @@ mod tests {
             total_rows: 50,
             sort: None,
             filter: None,
+            read_only: None,
         };
         let mut grid = DataGrid::new();
         grid.load_page(&page(rows[..25].to_vec(), 0));

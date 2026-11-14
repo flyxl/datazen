@@ -93,7 +93,7 @@ impl AppState {
         self.filter_editor = TextEdit::new(String::new());
         if let Ok(page) = self.workspace.open_table("customers", 0, TABLE_PAGE_SIZE, None, None) {
             self.grid.load_page(&page);
-            self.grid.set_editable(true);
+            self.grid.set_editable(page.read_only.is_none());
             self.active = Section::Workspace;
         }
     }
@@ -140,7 +140,7 @@ impl AppState {
             Ok(page) => {
                 self.table_page = page.page;
                 self.grid.load_page(&page);
-                self.grid.set_editable(true);
+                self.grid.set_editable(page.read_only.is_none());
                 self.active = Section::Workspace;
                 true
             }
@@ -756,6 +756,7 @@ mod tests {
             total_rows: 6000,
             sort: None,
             filter: None,
+            read_only: None,
         });
         runtime.state.active = Section::Workspace;
         runtime.frame(0.0);
@@ -1039,6 +1040,33 @@ mod tests {
             "renamed",
             "committed values survive reopening the table"
         );
+    }
+
+    #[test]
+    fn a_read_only_table_blocks_editing_and_shows_its_reason() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("orders").unwrap();
+        runtime.frame(0.0);
+
+        assert_eq!(runtime.state.grid.cell(0, 1), "order-0");
+        assert!(!runtime.state.grid.is_editable(), "a read-only page is not editable");
+        runtime.state.grid.begin_edit();
+        assert!(!runtime.state.grid.is_editing(), "a read-only page cannot enter the editor");
+        assert!(runtime.find("grid-readonly").is_some(), "the reason banner is on the page");
+        assert!(
+            runtime.state.workspace.stage_cell(0, "name", "x".into()).is_err(),
+            "staging through the port is rejected too"
+        );
+
+        // Back on a writable table the editor opens again.
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.settle_all();
+        runtime.frame(0.0);
+        assert!(runtime.state.grid.is_editable());
+        assert!(runtime.find("grid-readonly").is_none(), "the banner leaves with the read-only page");
     }
 
     #[test]
