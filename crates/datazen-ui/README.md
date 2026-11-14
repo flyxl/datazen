@@ -49,3 +49,10 @@ The Web build wrapper calls Rune's own wasm packager so its helper assets and em
 ## Next slice
 
 Add typed DataZen UI ports and connect Connections → connect → Schema → read-only table data to existing application use cases. Do not duplicate Driver, Runtime, credentials, permission policy or the HTTP MethodMap in this crate.
+
+## The desktop process (H1)
+
+`cargo run -p datazen-ui --bin datazen-rune` opens the shared Rune UI
+with the in-memory workspace — no Tauri, no HTTP. The window needs a
+display plus `libxkbcommon` (X11 also wants `libxkbcommon-x11`); the
+connection list is the first page and is covered by the runtime tests.
