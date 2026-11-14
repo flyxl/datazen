@@ -7,9 +7,9 @@ mod data_grid;
 mod sql_editor;
 
 use data_grid::DataGrid;
-use datazen_ui_api::{ColumnSort, MemoryWorkspace, TabKind, Tabs, WorkspaceApi};
+use datazen_ui_api::{ColumnFilter, ColumnSort, MemoryWorkspace, TabKind, Tabs, WorkspaceApi};
 use rune::tok::{self, type_};
-use rune::{App, AppSpec, Cx, El, Ime, KeyEvent, Tx, col, row, text};
+use rune::{App, AppSpec, Cx, El, Ime, KeyEvent, TextEdit, Tx, col, row, text};
 use sql_editor::SqlEditor;
 
 /// Rows asked from the workspace for one table page.
@@ -53,6 +53,11 @@ struct AppState {
     table_page: u32,
     /// The sort the table page is opened with.
     sort: Option<ColumnSort>,
+    /// The filter the table page is opened with.
+    filter: Option<ColumnFilter>,
+    /// The column the filter bar targets, as an index into the loaded page.
+    filter_column: u32,
+    filter_editor: TextEdit,
 }
 
 impl Default for AppState {
@@ -65,6 +70,9 @@ impl Default for AppState {
             tabs: Tabs::new(),
             table_page: 0,
             sort: None,
+            filter: None,
+            filter_column: 0,
+            filter_editor: TextEdit::new(String::new()),
         }
     }
 }
@@ -80,7 +88,10 @@ impl AppState {
         }
         self.table_page = 0;
         self.sort = None;
-        if let Ok(page) = self.workspace.open_table("customers", 0, TABLE_PAGE_SIZE, None) {
+        self.filter = None;
+        self.filter_column = 0;
+        self.filter_editor = TextEdit::new(String::new());
+        if let Ok(page) = self.workspace.open_table("customers", 0, TABLE_PAGE_SIZE, None, None) {
             self.grid.load_page(&page);
             self.grid.set_editable(true);
             self.active = Section::Workspace;
@@ -93,6 +104,9 @@ impl AppState {
         self.grid.set_editable(false);
         self.table_page = 0;
         self.sort = None;
+        self.filter = None;
+        self.filter_column = 0;
+        self.filter_editor = TextEdit::new(String::new());
     }
 
     fn open_table_tab(&mut self, title: &str) -> Option<u32> {
@@ -116,7 +130,13 @@ impl AppState {
     }
 
     fn show_table(&mut self, title: &str) -> bool {
-        match self.workspace.open_table(title, self.table_page, TABLE_PAGE_SIZE, self.sort.as_ref()) {
+        match self.workspace.open_table(
+            title,
+            self.table_page,
+            TABLE_PAGE_SIZE,
+            self.sort.as_ref(),
+            self.filter.as_ref(),
+        ) {
             Ok(page) => {
                 self.table_page = page.page;
                 self.grid.load_page(&page);
@@ -170,11 +190,36 @@ impl AppState {
         self.reload_table_page();
     }
 
+    /// The filter bar's Enter: read the editor, target the chosen column, return to page 1.
+    fn apply_filter(&mut self) {
+        let column = self.grid.column_name(self.filter_column).map(str::to_owned);
+        let text = self.filter_editor.text.trim().to_owned();
+        self.filter = match (column, text.is_empty()) {
+            (Some(column), false) => Some(ColumnFilter { column, contains: text }),
+            _ => None,
+        };
+        self.table_page = 0;
+        self.reload_table_page();
+    }
+
+    fn cycle_filter_column(&mut self) {
+        if self.grid.cols == 0 {
+            return;
+        }
+        self.filter_column = (self.filter_column + 1) % self.grid.cols;
+        if self.filter.is_some() {
+            self.apply_filter();
+        }
+    }
+
     /// Any tab event lands in the workspace: the selected tab decides what the
     /// workspace shows, so the tab strip and its content stay on one page.
     fn sync_grid_to_selected_tab(&mut self) {
         self.active = Section::Workspace;
         self.table_page = 0;
+        self.filter = None;
+        self.filter_column = 0;
+        self.filter_editor = TextEdit::new(String::new());
         let selected = self.tabs.selected().map(|tab| (tab.kind, tab.title.clone()));
         match selected {
             Some((TabKind::Table, title)) => {
@@ -254,7 +299,7 @@ fn workspace_body(state: &AppState, theme: tok::Theme) -> El {
         return query_workspace(state, theme);
     }
     if state.grid.has_page() {
-        return data_grid::panel(&state.grid, theme.text, theme.text_secondary, theme.control_off);
+        return data_grid::panel(state, theme.text, theme.text_secondary, theme.control_off);
     }
     workspace_empty(theme)
 }
@@ -697,6 +742,7 @@ mod tests {
             page_size: 6000,
             total_rows: 6000,
             sort: None,
+            filter: None,
         });
         runtime.state.active = Section::Workspace;
         runtime.frame(0.0);
@@ -781,7 +827,7 @@ mod tests {
         runtime.state.grid.editor.insert("-edited");
         runtime.state.commit_grid_edit();
         assert_eq!(
-            runtime.state.workspace.open_table("customers", 0, TABLE_PAGE_SIZE, None).unwrap().rows[0][1],
+            runtime.state.workspace.open_table("customers", 0, TABLE_PAGE_SIZE, None, None).unwrap().rows[0][1],
             "customer-0-edited"
         );
     }
@@ -883,6 +929,56 @@ mod tests {
         runtime.frame(0.0);
         assert_eq!(runtime.state.grid.sort(), None);
         assert_eq!(runtime.state.grid.cell(2, 1), "customer-2", "storage order returns");
+    }
+
+    #[test]
+    fn the_filter_bar_narrows_the_page_and_resets_to_the_first_page() {
+        use datazen_ui_api::WorkspaceApi;
+        use rune::{Key, KeyEvent, Mods};
+
+        let mut runtime = runtime();
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.frame(0.0);
+
+        assert!(runtime.find("grid-filter").is_some());
+        assert!(runtime.find("filter-column").is_some());
+        assert!(runtime.find("filter-input").is_some());
+
+        // Page to the second page first: applying a filter returns to the first page.
+        runtime.state.next_table_page();
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.grid.page(), 1);
+
+        // The column chip cycles from id (column 0) to name (column 1).
+        let (x, y) = runtime.find("filter-column").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.filter_column, 1);
+
+        let (x, y) = runtime.find("filter-input").expect("filter input");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        runtime.key(KeyEvent { key: Key::Text("customer-3".into()), mods: Mods::default() });
+        runtime.frame(0.0);
+        runtime.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+        runtime.frame(0.0);
+
+        assert_eq!(runtime.state.grid.page(), 0, "filtering returns to the first page");
+        assert_eq!(runtime.state.grid.total_rows(), 11, "customer-3 and customer-30..39");
+        assert_eq!(runtime.state.grid.rows, 11);
+        assert!(runtime.state.grid.cell(0, 1).contains("customer-3"));
+        assert!(runtime.state.grid.cell(10, 1).contains("customer-3"));
+        assert_eq!(runtime.state.filter_editor.focused, false, "submit blurs the filter input");
+
+        // An empty editor clears the filter and brings the whole table back.
+        runtime.state.filter_editor = rune::TextEdit::new(String::new());
+        runtime.state.apply_filter();
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.grid.total_rows(), 40);
+        assert_eq!(runtime.state.grid.rows, 25);
     }
 
     #[test]

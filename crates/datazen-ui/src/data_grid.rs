@@ -327,7 +327,8 @@ pub fn on_key(grid: &mut DataGrid, ev: &KeyEvent, tx: &mut Tx) -> bool {
     true
 }
 
-pub fn panel(grid: &DataGrid, ink: rune::Color, muted: rune::Color, well: rune::Color) -> El {
+pub fn panel(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well: rune::Color) -> El {
+    let grid = &state.grid;
     let (r0, r1, c0, c1) = grid.rect();
     let status = format!(
         "{}×{} · window at column {} · selection r{r0}c{c0}..r{r1}c{c1} · {} edit{}",
@@ -359,9 +360,10 @@ pub fn panel(grid: &DataGrid, ink: rune::Color, muted: rune::Color, well: rune::
     col()
         .key("data-grid")
         .w_full()
-        .h(448.0)
+        .h(484.0)
         .gap(8.0)
         .child(text(status).font(label_style()).color(muted).key("data-grid-status"))
+        .child(filter_bar(state, ink, muted, well))
         .child(
             col()
                 .key("data-grid-scroll")
@@ -377,6 +379,48 @@ pub fn panel(grid: &DataGrid, ink: rune::Color, muted: rune::Color, well: rune::
                 .child(sheet),
         )
         .child(footer(grid, ink, muted))
+}
+
+/// One text filter on one column: a column chip that cycles, a text field, the row count.
+fn filter_bar(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well: rune::Color) -> El {
+    let column = state
+        .grid
+        .column_name(state.filter_column)
+        .map(str::to_owned)
+        .unwrap_or_else(|| "-".into());
+    row()
+        .key("grid-filter")
+        .w_full()
+        .h(28.0)
+        .gap(8.0)
+        .center_y()
+        .child(
+            row()
+                .key("filter-column")
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(well)
+                .child(text(format!("in: {column}")).font(label_style()).color(ink))
+                .on_press(|state: &mut crate::AppState| state.cycle_filter_column()),
+        )
+        .child(
+            text_input(&state.filter_editor, label_style())
+                .key("filter-input")
+                .w(220.0)
+                .h(24.0)
+                .on_edit(|state: &mut crate::AppState| &mut state.filter_editor)
+                .on_submit(|state: &mut crate::AppState, tx| {
+                    state.apply_filter();
+                    tx.blur();
+                }),
+        )
+        .child(
+            text(format!("{} rows", state.grid.total_rows()))
+                .font(label_style())
+                .color(muted),
+        )
 }
 
 /// Prev / next paging over the table behind the loaded page.
@@ -586,6 +630,7 @@ mod tests {
             page_size: 25,
             total_rows: 50,
             sort: None,
+            filter: None,
         };
         let mut grid = DataGrid::new();
         grid.load_page(&page(rows[..25].to_vec(), 0));
