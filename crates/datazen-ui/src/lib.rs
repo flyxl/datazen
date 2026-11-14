@@ -63,6 +63,8 @@ struct AppState {
     /// The query generation: bumped by every run and every cancel. A result page
     /// from a generation that is not the current one is dropped.
     query_generation: u32,
+    /// Catalog nodes the tree keeps collapsed, by path: "db" or "db/schema".
+    collapsed: std::collections::BTreeSet<String>,
 }
 
 impl Default for AppState {
@@ -80,6 +82,7 @@ impl Default for AppState {
             filter_editor: TextEdit::new(String::new()),
             result_grid: None,
             query_generation: 0,
+            collapsed: std::collections::BTreeSet::new(),
         }
     }
 }
@@ -89,10 +92,25 @@ impl AppState {
         self.active = section;
     }
 
+    /// Collapse or expand a catalog node. The tree starts expanded; collapsed
+    /// paths are UI state and survive catalog refreshes.
+    fn toggle_expand(&mut self, path: &str) {
+        if !self.collapsed.insert(path.to_owned()) {
+            self.collapsed.remove(path);
+        }
+    }
+
+    /// Re-take the catalog from the port. Collapsed nodes stay collapsed: they
+    /// live here, not in the port.
+    fn refresh_catalog(&mut self) {
+        let _ = self.workspace.catalog();
+    }
+
     fn open_connection(&mut self, id: &str) {
         if self.workspace.connect(id).is_err() {
             return;
         }
+        self.collapsed.clear();
         self.table_page = 0;
         self.sort = None;
         self.filter = None;
@@ -115,6 +133,7 @@ impl AppState {
         self.filter_column = 0;
         self.filter_editor = TextEdit::new(String::new());
         self.result_grid = None;
+        self.collapsed.clear();
     }
 
     fn open_table_tab(&mut self, title: &str) -> Option<u32> {
@@ -440,27 +459,71 @@ fn tab_strip(state: &AppState, theme: tok::Theme) -> El {
     strip
 }
 
+/// The session object tree: databases, schemas and tables from the port's
+/// catalog, with the tree's collapsed nodes kept in UI state.
 fn object_tree(state: &AppState, theme: tok::Theme) -> El {
-    let tables = state.workspace.session().map(|session| session.tables.clone()).unwrap_or_default();
-    let rows = tables.len() as f32;
-    let height = if rows == 0.0 { 0.0 } else { rows * 28.0 + (rows - 1.0) * 4.0 };
-    let mut tree = col().key("object-tree").w_full().h(height).gap(4.0);
-    for name in tables {
-        let title = name.clone();
-        tree = tree.child(
+    let catalog = state.workspace.catalog();
+    let mut rows: Vec<El> = Vec::new();
+    for database in &catalog.databases {
+        let db_path = database.name.clone();
+        rows.push(
             row()
-                .key(format!("tree-table-{name}"))
+                .key(format!("tree-db-{}", database.name))
                 .w_full()
                 .h(28.0)
                 .px(8.0)
                 .center_y()
                 .radius(6.0)
                 .fill(theme.control_off)
-                .child(text(name).font(type_::LABEL).color(theme.text))
-                .on_press(move |state: &mut AppState| {
-                    state.open_table_tab(&title);
-                }),
+                .child(text(format!("{} · database", database.name)).font(type_::LABEL).color(theme.text))
+                .on_press(move |state: &mut AppState| state.toggle_expand(&db_path)),
         );
+        if state.collapsed.contains(&database.name) {
+            continue;
+        }
+        for schema in &database.schemas {
+            let schema_path = format!("{}/{}", database.name, schema.name);
+            let schema_key = format!("tree-schema-{}-{}", database.name, schema.name);
+            let collapsed = state.collapsed.contains(&schema_path);
+            rows.push(
+                row()
+                    .key(schema_key)
+                    .w_full()
+                    .h(28.0)
+                    .px(20.0)
+                    .center_y()
+                    .radius(6.0)
+                    .fill(theme.control_off)
+                    .child(text(format!("{} · schema", schema.name)).font(type_::LABEL).color(theme.text_secondary))
+                    .on_press(move |state: &mut AppState| state.toggle_expand(&schema_path)),
+            );
+            if collapsed {
+                continue;
+            }
+            for name in &schema.tables {
+                let title = name.clone();
+                rows.push(
+                    row()
+                        .key(format!("tree-table-{name}"))
+                        .w_full()
+                        .h(28.0)
+                        .px(32.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text(name.clone()).font(type_::LABEL).color(theme.text))
+                        .on_press(move |state: &mut AppState| {
+                            state.open_table_tab(&title);
+                        }),
+                );
+            }
+        }
+    }
+    let count = rows.len() as f32;
+    let height = if count == 0.0 { 0.0 } else { count * 28.0 + (count - 1.0) * 4.0 };
+    let mut tree = col().key("object-tree").w_full().h(height).gap(4.0);
+    for row in rows {
+        tree = tree.child(row);
     }
     tree
 }
@@ -536,6 +599,22 @@ fn open_query_button(theme: tok::Theme) -> El {
         })
 }
 
+fn refresh_button(state: &AppState, theme: tok::Theme) -> El {
+    if state.workspace.session().is_none() {
+        return row().key("tree-refresh-absent").h(0.0);
+    }
+    row()
+        .key("tree-refresh")
+        .w_full()
+        .h(28.0)
+        .px(8.0)
+        .center_y()
+        .radius(6.0)
+        .fill(theme.control_off)
+        .child(text("Refresh catalog").font(type_::LABEL).color(theme.text))
+        .on_press(|state: &mut AppState| state.refresh_catalog())
+}
+
 fn disconnect_button(state: &AppState, theme: tok::Theme) -> El {
     if state.workspace.session().is_none() {
         return row().key("disconnect-absent").h(0.0);
@@ -602,6 +681,7 @@ fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
         )
         .child(navigation)
         .child(object_tree(state, theme))
+        .child(refresh_button(state, theme))
         .child(open_query_button(theme))
         .child(disconnect_button(state, theme))
         .child(
@@ -1432,6 +1512,69 @@ mod tests {
         runtime.frame(0.0);
         assert_eq!(runtime.state.sql.doc(), "SELECT");
         assert!(runtime.find("sql-completion").is_none(), "the list leaves after the insert");
+    }
+
+    #[test]
+    fn the_tree_collapses_and_a_refresh_keeps_it_collapsed() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("connection-local").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+
+        assert!(runtime.find("tree-db-local").is_some());
+        assert!(runtime.find("tree-schema-local-public").is_some());
+        assert!(runtime.find("tree-schema-local-analytics").is_some());
+        assert!(runtime.find("tree-table-customers").is_some());
+        assert!(runtime.find("tree-table-catalog").is_some());
+
+        let (x, y) = runtime.find("tree-schema-local-public").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("tree-table-customers").is_none(), "public is collapsed");
+        assert!(runtime.find("tree-table-orders").is_none());
+        assert!(runtime.find("tree-table-catalog").is_some(), "analytics stays open");
+
+        let (x, y) = runtime.find("tree-refresh").expect("refresh button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(
+            runtime.find("tree-table-customers").is_none(),
+            "still collapsed after the catalog refresh"
+        );
+
+        let (x, y) = runtime.find("tree-schema-local-public").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("tree-table-customers").is_some(), "expand brings them back");
+    }
+
+    #[test]
+    fn collapsing_the_database_hides_the_whole_tree() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("connection-local").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+
+        let (x, y) = runtime.find("tree-db-local").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("tree-schema-local-public").is_none());
+        assert!(runtime.find("tree-table-customers").is_none());
+        assert!(runtime.find("tree-db-local").is_some(), "the database row stays");
+
+        let (x, y) = runtime.find("tree-db-local").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("tree-table-customers").is_some());
     }
 
     #[test]
