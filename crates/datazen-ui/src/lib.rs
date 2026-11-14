@@ -7,7 +7,7 @@ mod data_grid;
 mod sql_editor;
 
 use data_grid::DataGrid;
-use datazen_ui_api::{ColumnDraft, ColumnFilter, ColumnSort, CompareObject, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, WorkspaceApi};
+use datazen_ui_api::{ColumnDraft, ColumnFilter, ColumnSort, CompareObject, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, WorkflowStepResult, WorkspaceApi};
 use rune::tok::{self, type_};
 use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, TextEdit, Tx, col, oklch, row, text, text_input};
 use sql_editor::SqlEditor;
@@ -182,6 +182,8 @@ struct AppState {
     workflow_editing: Option<(String, Vec<String>)>,
     /// The workflow's YAML, edited through the SQL editor's document model.
     workflow_yaml: SqlEditor,
+    /// The last workflow run's results.
+    workflow_results: Vec<WorkflowStepResult>,
 }
 
 impl Default for AppState {
@@ -258,6 +260,7 @@ impl Default for AppState {
             widget_error: None,
             workflow_editing: None,
             workflow_yaml: SqlEditor::new(),
+            workflow_results: Vec::new(),
         }
     }
 }
@@ -621,6 +624,16 @@ impl AppState {
 
     fn close_workflow_editor(&mut self) {
         self.workflow_editing = None;
+        self.workflow_results.clear();
+    }
+
+    /// W7: run the edited workflow; the results list below is read-only.
+    fn run_edited_workflow(&mut self) {
+        let Some((name, _)) = self.workflow_editing.clone() else { return };
+        match self.workspace.run_workflow(&name) {
+            Ok(results) => self.workflow_results = results,
+            Err(_) => self.workflow_results.clear(),
+        }
     }
 
     /// Save the widget form through the port. An empty title is refused.
@@ -1201,6 +1214,17 @@ fn workflows_page(state: &AppState, theme: tok::Theme) -> El {
                     )
                     .child(
                         row()
+                            .key("workflow-run")
+                            .h(20.0)
+                            .px(6.0)
+                            .center_y()
+                            .radius(4.0)
+                            .fill(theme.control_off)
+                            .child(text("Run").font(type_::LABEL).color(theme.text))
+                            .on_press(|state: &mut AppState| state.run_edited_workflow()),
+                    )
+                    .child(
+                        row()
                             .key("workflow-cancel")
                             .h(20.0)
                             .px(6.0)
@@ -1250,6 +1274,49 @@ fn workflows_page(state: &AppState, theme: tok::Theme) -> El {
             theme.text,
             theme.text_secondary,
         ));
+        if !state.workflow_results.is_empty() {
+            let mut results = col()
+                .key("run-results")
+                .w_full()
+                .gap(4.0)
+                .px(8.0)
+                .py(6.0)
+                .radius(8.0)
+                .fill(theme.control_off);
+            for (index, result) in state.workflow_results.iter().enumerate() {
+                results = results.child(
+                    row()
+                        .key(format!("run-result-{index}"))
+                        .w_full()
+                        .h(24.0)
+                        .gap(8.0)
+                        .center_y()
+                        .child(
+                            row()
+                                .key(format!("run-{}-{index}", if result.ok { "ok" } else { "fail" }))
+                                .w(10.0)
+                                .h(10.0)
+                                .radius(5.0)
+                                .fill(if result.ok {
+                                    oklch(0.75, 0.12, 145.0)
+                                } else {
+                                    oklch(0.7, 0.14, 25.0)
+                                }),
+                        )
+                        .child(
+                            text(format!(
+                                "{} · {} — {}",
+                                result.step,
+                                if result.ok { "ok" } else { "failed" },
+                                result.summary
+                            ))
+                            .font(type_::LABEL)
+                            .color(theme.text),
+                        ),
+                );
+            }
+            page = page.child(results);
+        }
     }
     page
 }
@@ -5638,6 +5705,35 @@ mod tests {
             doc,
             "Command+Z still undoes on the YAML document"
         );
+    }
+
+    #[test]
+    fn workflow_run_results_separate_failures_from_successes() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-workflows").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        let (x, y) = runtime.find("workflow-audit").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+
+        let (x, y) = runtime.find("workflow-run").expect("run button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+
+        assert!(runtime.find("run-results").is_some());
+        assert!(runtime.find("run-result-0").is_some());
+        assert!(runtime.find("run-ok-0").is_some(), "the first step succeeded");
+        assert!(runtime.find("run-result-1").is_some());
+        assert!(runtime.find("run-fail-1").is_some(), "the applying step failed");
+        assert!(runtime.find("run-ok-1").is_none(), "a step is one or the other");
+        let results = &runtime.state.workflow_results;
+        assert_eq!(results[0].summary, "ok: 12 rows");
+        assert_eq!(results[1].summary, "the replica refused the plan");
     }
 
     #[test]

@@ -146,6 +146,14 @@ struct MemoryJob {
     fail_line: Option<String>,
 }
 
+/// One step's run result: the step name, success, a one-line summary.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkflowStepResult {
+    pub step: String,
+    pub ok: bool,
+    pub summary: String,
+}
+
 /// One workflow: a name and its steps, in order.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Workflow {
@@ -262,6 +270,9 @@ pub trait WorkspaceApi {
     fn workflows(&self) -> Vec<Workflow>;
     /// W5: save a workflow by name (an edit replaces the stored steps).
     fn save_workflow(&mut self, name: &str, steps: &[String]) -> Result<(), String>;
+    /// W7: run a workflow; every step reports name, success and one summary
+    /// line. The memory port fails steps that apply anything.
+    fn run_workflow(&mut self, name: &str) -> Result<Vec<WorkflowStepResult>, String>;
     /// Stop a running job. A stopped job reports "stopped" from then on.
     fn stop_job(&mut self, job: u64) -> Result<(), String>;
     /// Apply a DDL script to the table. The port records what it applied; a
@@ -838,6 +849,33 @@ impl WorkspaceApi for MemoryWorkspace {
         let mut workflows = self.workflows.clone();
         workflows.sort_by(|a, b| a.name.cmp(&b.name));
         workflows
+    }
+
+    fn run_workflow(&mut self, name: &str) -> Result<Vec<WorkflowStepResult>, String> {
+        let flow = self
+            .workflows
+            .iter()
+            .find(|flow| flow.name == name)
+            .ok_or_else(|| format!("no workflow {name}"))?;
+        Ok(flow
+            .steps
+            .iter()
+            .map(|step| {
+                if step.contains("apply") {
+                    WorkflowStepResult {
+                        step: step.clone(),
+                        ok: false,
+                        summary: "the replica refused the plan".into(),
+                    }
+                } else {
+                    WorkflowStepResult {
+                        step: step.clone(),
+                        ok: true,
+                        summary: "ok: 12 rows".into(),
+                    }
+                }
+            })
+            .collect())
     }
 
     fn save_workflow(&mut self, name: &str, steps: &[String]) -> Result<(), String> {
@@ -1829,6 +1867,22 @@ mod tests {
         let count = workspace.workflows().len();
         workspace.save_workflow("fresh", &["one".to_owned()]).unwrap();
         assert_eq!(workspace.workflows().len(), count + 1, "a new name appends");
+    }
+
+    #[test]
+    fn workflow_runs_separate_failing_and_successful_steps() {
+        let mut workspace = MemoryWorkspace::new();
+        let results = workspace.run_workflow("audit").unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].step, "compare structures");
+        assert!(results[0].ok);
+        assert_eq!(results[0].summary, "ok: 12 rows");
+        assert_eq!(results[1].step, "apply plan");
+        assert!(!results[1].ok, "the applying step fails");
+        assert_eq!(results[1].summary, "the replica refused the plan");
+        assert!(workspace.run_workflow("missing").is_err());
+        let backup = workspace.run_workflow("nightly-backup").unwrap();
+        assert!(backup.iter().all(|step| step.ok), "nothing to apply, all steps pass");
     }
 
     #[test]
