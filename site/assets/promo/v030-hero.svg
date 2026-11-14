@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" font-family="'SF Pro Display','Segoe UI',system-ui,'PingFang SC','Helvetica Neue',Arial,sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b0e14"/>
+      <stop offset="0.55" stop-color="#0e1524"/>
+      <stop offset="1" stop-color="#0b1220"/>
+    </linearGradient>
+    <linearGradient id="titleGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e6eaf2"/>
+      <stop offset="1" stop-color="#9fd9ef"/>
+    </linearGradient>
+    <linearGradient id="cyanIndigo" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </linearGradient>
+    <linearGradient id="cylCyan" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#164e63"/>
+      <stop offset="0.5" stop-color="#0e7490"/>
+      <stop offset="1" stop-color="#155e75"/>
+    </linearGradient>
+    <linearGradient id="cylIndigo" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#312e81"/>
+      <stop offset="0.5" stop-color="#4f46e5"/>
+      <stop offset="1" stop-color="#3730a3"/>
+    </linearGradient>
+    <radialGradient id="glowCyan" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowIndigo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#6366f1" stop-opacity="0.3"/>
+      <stop offset="1" stop-color="#6366f1" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="44" height="44" patternUnits="userSpaceOnUse">
+      <path d="M 44 0 L 0 0 0 44" fill="none" stroke="#22d3ee" stroke-opacity="0.05" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <rect width="1600" height="900" fill="url(#grid)"/>
+  <circle cx="1180" cy="280" r="380" fill="url(#glowCyan)"/>
+  <circle cx="330" cy="740" r="400" fill="url(#glowIndigo)"/>
+
+  <!-- top-left chip -->
+  <rect x="96" y="150" width="236" height="42" rx="21" fill="#22d3ee0d" stroke="#22d3ee55"/>
+  <text x="214" y="177" text-anchor="middle" font-size="19" letter-spacing="2" fill="#7dd3e8">OPEN SOURCE · GPL-3.0</text>
+
+  <!-- title block -->
+  <text x="90" y="342" font-size="132" font-weight="800" fill="url(#titleGrad)" letter-spacing="1">DataZen</text>
+  <text x="96" y="412" font-size="36" font-weight="600" fill="#22d3ee" letter-spacing="0.5">AI-Powered Database Workspace</text>
+  <text x="96" y="462" font-size="26" fill="#8a93a6">开源 · 本地优先 · 让 AI 真正看懂你的数据库，而不是猜表名</text>
+
+  <!-- version pill -->
+  <rect x="96" y="502" width="118" height="40" rx="20" fill="#6366f11f" stroke="#6366f166"/>
+  <text x="155" y="528" text-anchor="middle" font-size="21" font-weight="600" fill="#a5b4fc">v0.3.0</text>
+
+  <!-- badge pills -->
+  <g font-size="20" fill="#c8d2e0">
+    <rect x="96" y="580" width="196" height="42" rx="21" fill="#141b2a" stroke="#22d3ee3d"/>
+    <text x="194" y="607" text-anchor="middle">17 个数据库驱动</text>
+    <rect x="308" y="580" width="176" height="42" rx="21" fill="#141b2a" stroke="#22d3ee3d"/>
+    <text x="396" y="607" text-anchor="middle">10 种界面语言</text>
+    <rect x="500" y="580" width="212" height="42" rx="21" fill="#141b2a" stroke="#22d3ee3d"/>
+    <text x="606" y="607" text-anchor="middle">MCP Server &amp; Client</text>
+  </g>
+  <g font-size="20" fill="#c8d2e0">
+    <rect x="96" y="638" width="178" height="42" rx="21" fill="#141b2a" stroke="#22d3ee3d"/>
+    <text x="185" y="665" text-anchor="middle">无账号 · 无云端</text>
+    <rect x="290" y="638" width="272" height="42" rx="21" fill="#141b2a" stroke="#22d3ee3d"/>
+    <text x="426" y="665" text-anchor="middle">macOS · Windows · Linux</text>
+  </g>
+
+  <!-- right illustration: cylinders + grid card + spark node -->
+  <!-- filaments -->
+  <path d="M 1074 420 C 1150 396 1170 350 1196 316" fill="none" stroke="url(#cyanIndigo)" stroke-width="2.5" stroke-dasharray="2 9" stroke-linecap="round" opacity="0.65"/>
+  <path d="M 1080 560 C 1160 560 1190 490 1214 448" fill="none" stroke="url(#cyanIndigo)" stroke-width="2.5" stroke-dasharray="2 9" stroke-linecap="round" opacity="0.55"/>
+  <path d="M 1066 500 C 1120 528 1160 574 1188 610" fill="none" stroke="url(#cyanIndigo)" stroke-width="2.5" stroke-dasharray="2 9" stroke-linecap="round" opacity="0.45"/>
+  <circle cx="1196" cy="316" r="5" fill="#22d3ee"/>
+  <circle cx="1214" cy="448" r="5" fill="#6366f1"/>
+  <circle cx="1188" cy="610" r="5" fill="#22d3ee"/>
+
+  <!-- big cylinder (cyan) -->
+  <g>
+    <rect x="1120" y="270" width="150" height="120" fill="url(#cylCyan)"/>
+    <ellipse cx="1195" cy="390" rx="75" ry="24" fill="url(#cylCyan)"/>
+    <ellipse cx="1195" cy="270" rx="75" ry="24" fill="#22d3ee" opacity="0.85"/>
+    <ellipse cx="1195" cy="270" rx="75" ry="24" fill="none" stroke="#a5f3fc" stroke-opacity="0.6" stroke-width="2"/>
+    <ellipse cx="1195" cy="304" rx="75" ry="24" fill="none" stroke="#a5f3fc" stroke-opacity="0.22" stroke-width="1.5"/>
+    <ellipse cx="1195" cy="336" rx="75" ry="24" fill="none" stroke="#a5f3fc" stroke-opacity="0.22" stroke-width="1.5"/>
+  </g>
+  <!-- middle cylinder (indigo) -->
+  <g>
+    <rect x="1250" y="408" width="118" height="92" fill="url(#cylIndigo)"/>
+    <ellipse cx="1309" cy="500" rx="59" ry="19" fill="url(#cylIndigo)"/>
+    <ellipse cx="1309" cy="408" rx="59" ry="19" fill="#6366f1" opacity="0.9"/>
+    <ellipse cx="1309" cy="408" rx="59" ry="19" fill="none" stroke="#c7d2fe" stroke-opacity="0.6" stroke-width="2"/>
+    <ellipse cx="1309" cy="440" rx="59" ry="19" fill="none" stroke="#c7d2fe" stroke-opacity="0.22" stroke-width="1.5"/>
+  </g>
+  <!-- small cylinder (cyan) -->
+  <g>
+    <rect x="1150" y="586" width="86" height="66" fill="url(#cylCyan)"/>
+    <ellipse cx="1193" cy="652" rx="43" ry="14" fill="url(#cylCyan)"/>
+    <ellipse cx="1193" cy="586" rx="43" ry="14" fill="#22d3ee" opacity="0.85"/>
+    <ellipse cx="1193" cy="586" rx="43" ry="14" fill="none" stroke="#a5f3fc" stroke-opacity="0.6" stroke-width="2"/>
+  </g>
+
+  <!-- floating result grid card -->
+  <g>
+    <rect x="760" y="472" width="300" height="200" rx="16" fill="#101a2b" stroke="#22d3ee44"/>
+    <rect x="760" y="472" width="300" height="40" rx="16" fill="#152238"/>
+    <circle cx="786" cy="492" r="5" fill="#e05252" opacity="0.8"/>
+    <circle cx="806" cy="492" r="5" fill="#e39a27" opacity="0.8"/>
+    <circle cx="826" cy="492" r="5" fill="#18b77a" opacity="0.8"/>
+    <rect x="860" y="484" width="130" height="16" rx="8" fill="#22d3ee33"/>
+    <g>
+      <rect x="778" y="528" width="96" height="14" rx="7" fill="#22d3ee" opacity="0.75"/>
+      <rect x="890" y="528" width="150" height="14" rx="7" fill="#2a3650"/>
+      <rect x="778" y="560" width="70" height="14" rx="7" fill="#2a3650"/>
+      <rect x="864" y="560" width="176" height="14" rx="7" fill="#6366f1" opacity="0.55"/>
+      <rect x="778" y="592" width="120" height="14" rx="7" fill="#2a3650"/>
+      <rect x="914" y="592" width="126" height="14" rx="7" fill="#2a3650"/>
+      <rect x="778" y="624" width="150" height="14" rx="7" fill="#18b77a" opacity="0.5"/>
+      <rect x="944" y="624" width="96" height="14" rx="7" fill="#2a3650"/>
+    </g>
+  </g>
+
+  <!-- AI spark node -->
+  <g>
+    <circle cx="1010" cy="360" r="34" fill="#0e1524" stroke="#22d3ee88" stroke-width="2"/>
+    <circle cx="1010" cy="360" r="52" fill="none" stroke="#22d3ee" stroke-opacity="0.18" stroke-width="10"/>
+    <path d="M 1010 336 L 1018 352 L 1034 360 L 1018 368 L 1010 384 L 1002 368 L 986 360 L 1002 352 Z" fill="#22d3ee"/>
+  </g>
+
+  <!-- footer -->
+  <text x="96" y="790" font-size="22" fill="#5b6779">github.com/flyxl/datazen  ·  flyxl.github.io/datazen</text>
+  <text x="96" y="824" font-size="20" fill="#3f4a5c">SQLite 示例库开箱即用，3 分钟上手</text>
+</svg>

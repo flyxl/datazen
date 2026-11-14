@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" font-family="'SF Pro Display','Segoe UI',system-ui,'PingFang SC','Helvetica Neue',Arial,sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b0e14"/>
+      <stop offset="0.55" stop-color="#0e1524"/>
+      <stop offset="1" stop-color="#0b1220"/>
+    </linearGradient>
+    <linearGradient id="cyanIndigo" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </linearGradient>
+    <linearGradient id="coreStroke" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </linearGradient>
+    <radialGradient id="glowCyan" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.2"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="44" height="44" patternUnits="userSpaceOnUse">
+      <path d="M 44 0 L 0 0 0 44" fill="none" stroke="#22d3ee" stroke-opacity="0.045" stroke-width="1"/>
+    </pattern>
+    <marker id="arrowCyan" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#22d3ee"/>
+    </marker>
+    <marker id="arrowIndigo" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6366f1"/>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <rect width="1600" height="900" fill="url(#grid)"/>
+  <circle cx="800" cy="430" r="420" fill="url(#glowCyan)"/>
+
+  <!-- heading -->
+  <text x="800" y="96" text-anchor="middle" font-size="42" font-weight="700" fill="#e6eaf2">把数据库接进 AI Agent 生态</text>
+  <text x="800" y="138" text-anchor="middle" font-size="24" fill="#8a93a6">MCP Server · MCP Client · datazen CLI · Agent Skill —— 一套连接配置，四处复用</text>
+
+  <!-- left panel: agents -->
+  <g>
+    <rect x="90" y="200" width="390" height="440" rx="18" fill="#101a2b" stroke="#6366f155"/>
+    <text x="120" y="248" font-size="24" font-weight="600" fill="#a5b4fc">AI Agent 侧</text>
+    <g font-size="23" fill="#dbe3f0">
+      <circle cx="130" cy="296" r="6" fill="#6366f1"/>
+      <text x="152" y="303">Claude Code</text>
+      <circle cx="130" cy="344" r="6" fill="#6366f1"/>
+      <text x="152" y="351">Cursor</text>
+      <circle cx="130" cy="392" r="6" fill="#6366f1"/>
+      <text x="152" y="399">Codex CLI</text>
+      <circle cx="130" cy="440" r="6" fill="#6366f1"/>
+      <text x="152" y="447">任意 MCP 宿主</text>
+      <circle cx="130" cy="488" r="6" fill="#6366f1"/>
+      <text x="152" y="495">CI / 无头管线（--mcp-stdio）</text>
+    </g>
+    <rect x="120" y="540" width="330" height="70" rx="12" fill="#0d1322" stroke="#6366f144"/>
+    <text x="140" y="570" font-size="20" fill="#a5b4fc">外部 MCP Server</text>
+    <text x="140" y="596" font-size="18" fill="#5b6779">经 MCP Client 折入 AI 对话</text>
+  </g>
+
+  <!-- center panel: DataZen core -->
+  <g>
+    <rect x="608" y="168" width="384" height="504" rx="24" fill="#0f1826" stroke="url(#coreStroke)" stroke-width="2.5"/>
+    <!-- logo spark -->
+    <circle cx="800" cy="252" r="36" fill="#0e1524" stroke="#22d3ee" stroke-width="2"/>
+    <path d="M 800 226 L 809 243 L 826 252 L 809 261 L 800 278 L 791 261 L 774 252 L 791 243 Z" fill="#22d3ee"/>
+    <text x="800" y="330" text-anchor="middle" font-size="46" font-weight="800" fill="#e6eaf2">DataZen</text>
+    <text x="800" y="366" text-anchor="middle" font-size="21" fill="#8a93a6">统一连接 · 统一安全边界</text>
+    <g font-size="21" font-weight="600" fill="#7dd3e8">
+      <rect x="628" y="398" width="344" height="46" rx="12" fill="#141b2a" stroke="#22d3ee44"/>
+      <text x="800" y="428" text-anchor="middle">桌面 GUI</text>
+      <rect x="628" y="458" width="344" height="46" rx="12" fill="#141b2a" stroke="#22d3ee44"/>
+      <text x="800" y="488" text-anchor="middle">datazen CLI</text>
+      <rect x="628" y="518" width="344" height="46" rx="12" fill="#141b2a" stroke="#22d3ee44"/>
+      <text x="800" y="548" text-anchor="middle">MCP Server（GUI / --mcp-stdio）</text>
+    </g>
+    <text x="800" y="606" text-anchor="middle" font-size="19" fill="#5b6779">SQL 安全门 · 只读连接 · AES-256-GCM</text>
+    <text x="800" y="636" text-anchor="middle" font-size="19" fill="#5b6779">MCP 工具作用域与调用审计</text>
+  </g>
+
+  <!-- right panel: databases -->
+  <g>
+    <rect x="1120" y="200" width="390" height="440" rx="18" fill="#101a2b" stroke="#22d3ee55"/>
+    <text x="1150" y="248" font-size="24" font-weight="600" fill="#7dd3e8">数据库</text>
+    <g font-size="22" fill="#dbe3f0">
+      <text x="1160" y="300">PostgreSQL · MySQL / MariaDB</text>
+      <text x="1160" y="340">SQLite · Redis</text>
+      <text x="1160" y="380">MongoDB · SQL Server</text>
+      <text x="1160" y="420">ClickHouse · DuckDB</text>
+      <text x="1160" y="460">Elasticsearch · InfluxDB</text>
+      <text x="1160" y="500">Kiwi · Superset（Hive）…</text>
+    </g>
+    <rect x="1150" y="540" width="330" height="70" rx="12" fill="#0d1322" stroke="#22d3ee44"/>
+    <text x="1170" y="570" font-size="20" fill="#7dd3e8">17 个驱动 + 协议兼容复乘</text>
+    <text x="1170" y="596" font-size="16" fill="#5b6779">QuestDB / Doris / OceanBase 走同族协议</text>
+  </g>
+
+  <!-- arrows between left and center -->
+  <path d="M 486 330 C 540 330 550 330 600 330" fill="none" stroke="#22d3ee" stroke-width="2.5" marker-end="url(#arrowCyan)"/>
+  <text x="543" y="310" text-anchor="middle" font-size="19" fill="#7dd3e8">MCP Tools · Resources</text>
+  <path d="M 600 470 C 550 470 540 470 486 470" fill="none" stroke="#6366f1" stroke-width="2.5" marker-end="url(#arrowIndigo)"/>
+  <text x="543" y="450" text-anchor="middle" font-size="19" fill="#a5b4fc">查询结果 · Schema 上下文</text>
+  <path d="M 486 580 C 540 580 550 580 600 580" fill="none" stroke="#22d3ee" stroke-width="2.5" stroke-dasharray="7 7" marker-end="url(#arrowCyan)"/>
+  <text x="530" y="560" text-anchor="middle" font-size="19" fill="#7dd3e8">Agent Skill · CLI</text>
+
+  <!-- arrows between center and right -->
+  <path d="M 996 400 C 1050 400 1060 400 1112 400" fill="none" stroke="#22d3ee" stroke-width="2.5" marker-end="url(#arrowCyan)"/>
+  <text x="1054" y="380" text-anchor="middle" font-size="19" fill="#7dd3e8">Driver Command API</text>
+  <path d="M 1112 540 C 1060 540 1050 540 996 540" fill="none" stroke="#6366f1" stroke-width="2.5" marker-end="url(#arrowIndigo)"/>
+  <text x="1054" y="520" text-anchor="middle" font-size="19" fill="#a5b4fc">结果 · 元数据</text>
+
+  <!-- bottom safety note -->
+  <rect x="330" y="760" width="940" height="58" rx="29" fill="#141b2a" stroke="#e39a2755"/>
+  <circle cx="376" cy="789" r="10" fill="#e39a27"/>
+  <text x="404" y="796" font-size="22" fill="#c8d2e0">默认只读：写 DML 需 --allow-writes，DDL 还需 --allow-dangerous-sql，生产连接强制拒绝写操作</text>
+</svg>

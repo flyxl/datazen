@@ -8,6 +8,10 @@
 
 每篇文章可以独立阅读，按顺序阅读则可以逐步建立完整的 DataZen 架构地图。
 
+## 推广文章
+
+- [DataZen v0.3.0：开源免费的 AI 数据库工作台，让 AI 真正看懂你的数据库](17-datazen-promo.zh-CN.md)（面向社区的推广/发布介绍，含完整截图）
+
 ## 配套架构图
 
 - [DataZen 系统架构全景](diagrams/datazen-system-architecture.html)
