@@ -32,8 +32,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | B6 | 已完成 | 640d3dc | testing/B6-commit-rollback.md |
 | B7 | 已完成 | bcfc0a8 | testing/B7-read-only.md |
 | B8 | 已完成 | f4b5d2e | testing/B8-result-grid.md |
-| Q1 | 进行中 | | |
-| Q2 | 未开始 | | |
+| Q1 | 已完成 | 9f73f2f | testing/Q1-undo-redo.md |
+| Q2 | 进行中 | | |
 | Q3 | 未开始 | | |
 | Q4 | 未开始 | | |
 | Q5 | 未开始 | | |
