@@ -11,15 +11,21 @@
 use datazen::connection::application::ConnectionService;
 use datazen::connection::domain::{ConnectionRepository, ConnectionScope};
 use datazen::execution::application::orchestration::RuntimeConnectionUseCases;
+use datazen::execution::application::ConnectionUseCases as _;
 use datazen::execution::runtime::driver_registry::DriverRegistry;
 use datazen::execution::target::ExecutionTarget;
+use datazen::schema::CachedColumns;
 use datazen::shared::context::RequestContext;
 use datazen::shared::error::{ApiError, ApiErrorCode};
 use datazen::shared::id::{ConnectionId, Counter};
 use datazen::table_browsing::api::{
     read_table_page, TargetBinding, TargetCommandRunner, TableReadRequest,
 };
-use datazen::table_editing::change_set::RowChangeTableContext;
+use datazen::table_editing::change_set::{
+    CommitPendingChangesRequest, PendingRowChange, RowChangeTableContext,
+};
+use datazen::table_editing::ports::ArtifactChunkReader;
+use datazen::table_editing::{commit_changes, preview_changes, ConnectionFacts, TableColumnSource};
 use datazen_driver_api::filters::{FilterCondition, FilterOperator, SortCondition};
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver, Value as Cell};
 use datazen_ui_api::{
@@ -52,16 +58,21 @@ enum HostJob {
         sort: Option<ColumnSort>,
         filter: Option<ColumnFilter>,
     },
+    CommitCells {
+        generation: u32,
+        batch: datazen_ui_api::CellEditBatch,
+    },
 }
 
 /// A finished job on the answer channel.
 enum HostAnswer {
     Connection { generation: u32, id: String, catalog: Result<Catalog, String> },
     TablePage { generation: u32, page: Result<TablePage, String> },
+    CommitCount { generation: u32, count: Result<u32, String> },
 }
 
 /// The open live session, shared between the adapter and the worker. N4's
-/// reads and N5's commits run over the same session.
+/// reads and N6's commits run over the same session.
 #[derive(Default)]
 struct LiveSession {
     driver: Option<Arc<dyn DatabaseDriver>>,
@@ -69,6 +80,8 @@ struct LiveSession {
     database: Option<String>,
     /// The connection id the session was opened for (N4's read context).
     connection: Option<String>,
+    /// The connection's read-only flag, as opened (N6's commit facts).
+    read_only: bool,
 }
 
 impl LiveSession {
@@ -122,7 +135,7 @@ impl LiveAdapter {
         let registry = Arc::new(host_registry());
         // N5: the execution runtime over the three host parts, sharing the
         // one repository with the adapter's connection use case.
-        let (runtime, _backend) = crate::backend::assemble_runtime(
+        let (runtime, _backend, profiles) = crate::backend::assemble_runtime(
             Arc::clone(&registry),
             Arc::clone(&repository),
             data_dir,
@@ -133,6 +146,9 @@ impl LiveAdapter {
         let worker_service = ConnectionService::new(repository);
         let session = Arc::new(Mutex::new(LiveSession::default()));
         let worker_session = Arc::clone(&session);
+        let worker_runtime = Arc::clone(&runtime);
+        let worker_profiles = Arc::clone(&profiles);
+        let worker_registry = Arc::clone(&registry);
         thread::Builder::new()
             .name("datazen-live-jobs".into())
             .spawn(move || {
@@ -155,6 +171,10 @@ impl LiveAdapter {
                                 HostJob::ReadTable { generation, .. } => HostAnswer::TablePage {
                                     generation,
                                     page: Err(format!("the job runtime did not start: {error}")),
+                                },
+                                HostJob::CommitCells { generation, .. } => HostAnswer::CommitCount {
+                                    generation,
+                                    count: Err(format!("the job runtime did not start: {error}")),
                                 },
                             };
                             if answer_tx.send(answer).is_err() {
@@ -182,6 +202,16 @@ impl LiveAdapter {
                                 filter,
                             ));
                             HostAnswer::TablePage { generation, page: page_result }
+                        }
+                        HostJob::CommitCells { generation, batch } => {
+                            let count = runtime.block_on(commit_edits(
+                                &worker_runtime,
+                                &worker_registry,
+                                &worker_profiles,
+                                &worker_session,
+                                batch,
+                            ));
+                            HostAnswer::CommitCount { generation, count }
                         }
                     };
                     if answer_tx.send(answer).is_err() {
@@ -279,6 +309,7 @@ async fn open_connection(
         handle: Some(handle),
         database: databases.first().cloned(),
         connection: Some(id.to_owned()),
+        read_only: config.read_only,
     };
     Ok(Catalog { databases: nodes })
 }
@@ -425,6 +456,14 @@ async fn read_table(
     // The count the driver could not give is the absence of a fact: fall
     // back to the best lower bound (the page's own end), never to zero.
     let known = read.total_rows.unwrap_or(page as i64 * page_size as i64 + read.rows.len() as i64);
+    // The driver's primary-key answer (N6): the commit batch addresses rows
+    // by these names.
+    let primary_key: Vec<String> = read
+        .columns
+        .iter()
+        .filter(|column| column.is_primary_key)
+        .map(|column| column.name.clone())
+        .collect();
     Ok(TablePage {
         table: table.to_owned(),
         columns: read.columns.into_iter().map(|column| column.name).collect(),
@@ -438,6 +477,7 @@ async fn read_table(
         total_rows: known.max(0) as u32,
         sort,
         filter,
+        primary_key,
         read_only: None,
     })
 }
@@ -455,6 +495,165 @@ fn cell_to_text(cell: Option<Cell>) -> String {
         Some(Cell::Timestamp(value)) => value,
         Some(Cell::Json(value)) => value.to_string(),
     }
+}
+
+/// The host's column source for the commit use case: the live session's
+/// driver answers `get_columns` — the same catalog the read path used, so
+/// the plan is built against the schema the page was read through.
+struct SessionColumns {
+    session: Arc<Mutex<LiveSession>>,
+}
+
+#[async_trait::async_trait]
+impl TableColumnSource for SessionColumns {
+    async fn table_columns(&self, table: &RowChangeTableContext) -> Result<CachedColumns, datazen::table_editing::TableEditingError> {
+        let (driver, handle) = {
+            let session = self.session.lock().expect("the live session lock");
+            if !session.is_open() {
+                return Err(datazen::table_editing::TableEditingError::Validation(
+                    "the live session is not open".into(),
+                ));
+            }
+            (
+                session.driver.clone().expect("checked"),
+                session.handle.clone().expect("checked"),
+            )
+        };
+        let database = table
+            .database
+            .clone()
+            .ok_or_else(|| datazen::table_editing::TableEditingError::Validation(
+                "table database required".into(),
+            ))?;
+        let (columns, primary_keys) = driver
+            .get_columns(&handle, &table.table, &database, table.schema.as_deref())
+            .await
+            .map_err(|error| datazen::table_editing::TableEditingError::Validation(error.to_string()))?;
+        Ok(CachedColumns {
+            table_name: table.table.clone(),
+            columns,
+            primary_keys,
+            cached_at: std::time::Instant::now(),
+        })
+    }
+}
+
+/// The commit path's artifact reader: the runtime's own `read_artifact_chunk`,
+/// projected onto the port the commit use case takes.
+struct RuntimeChunks {
+    runtime: Arc<RuntimeConnectionUseCases>,
+}
+
+#[async_trait::async_trait]
+impl ArtifactChunkReader for RuntimeChunks {
+    async fn read_chunk(
+        &self,
+        ctx: &RequestContext,
+        artifact: &datazen::shared::id::ArtifactId,
+        index: Counter,
+    ) -> Result<datazen::execution::ResultChunk, ApiError> {
+        self.runtime.read_artifact_chunk(ctx, artifact.clone(), index).await
+    }
+}
+
+/// Apply one commit batch through the existing edit use cases (N6):
+/// `preview_changes` builds the plan against the live schema — the identity
+/// checks and the fingerprint are the use case's, not a host re-implementation
+/// — and `commit_changes` executes it over the runtime in owned-session mode.
+/// A failure keeps the grid's dirty marks (the UI's side of the contract); the
+/// count that comes back is the rows that landed.
+async fn commit_edits(
+    runtime: &Arc<RuntimeConnectionUseCases>,
+    registry: &Arc<DriverRegistry>,
+    profiles: &Arc<crate::backend::HostProfiles>,
+    session: &Arc<Mutex<LiveSession>>,
+    batch: datazen_ui_api::CellEditBatch,
+) -> Result<u32, String> {
+    let (driver, connection, database, read_only) = {
+        let session = session.lock().expect("the live session lock");
+        if !session.is_open() {
+            return Err("the live session is not open".into());
+        }
+        (
+            session.driver.clone().expect("checked"),
+            session.connection.clone().unwrap_or_default(),
+            session.database.clone(),
+            session.read_only,
+        )
+    };
+    let _ = registry; // the live session's driver is the one the page was read through
+    let driver_type = driver.driver_type();
+    let context = RowChangeTableContext {
+        connection_id: connection.clone(),
+        db_session_id: "datazen-native".into(),
+        driver_type,
+        database,
+        schema: None,
+        table: batch.table.clone(),
+    };
+    let facts = ConnectionFacts {
+        database_type: driver.driver_type(),
+        read_only,
+        database: context.database.clone(),
+        schema: None,
+        config_revision: profiles.revision_of(&connection),
+    };
+    let columns = SessionColumns { session: Arc::clone(session) };
+    let changes: Vec<PendingRowChange> = batch
+        .rows
+        .iter()
+        .map(|row| PendingRowChange {
+            row_identity: row
+                .identity
+                .iter()
+                .map(|(column, value)| (column.clone(), Some(Cell::String(value.clone()))))
+                .collect(),
+            original_values: row
+                .changes
+                .iter()
+                .map(|(column, original, _)| (column.clone(), Some(Cell::String(original.clone()))))
+                .collect(),
+            current_values: row
+                .changes
+                .iter()
+                .map(|(column, _, value)| (column.clone(), Some(Cell::String(value.clone()))))
+                .collect(),
+            changed_columns: row.changes.iter().map(|(column, _, _)| column.clone()).collect(),
+            delete_marked: false,
+            insert_marked: false,
+            expression_values: Default::default(),
+        })
+        .collect();
+    let plan = preview_changes(
+        driver.as_ref(),
+        context.clone(),
+        &changes,
+        &columns,
+        facts.config_revision,
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+    let request = CommitPendingChangesRequest {
+        db_session_id: "datazen-native".into(),
+        fingerprint: plan.fingerprint.clone(),
+        plan,
+    };
+    let artifacts = Arc::new(RuntimeChunks { runtime: Arc::clone(runtime) });
+    let use_cases = Arc::clone(runtime) as Arc<dyn datazen::execution::application::ConnectionUseCases>;
+    let ctx = host_request_context();
+    let response = commit_changes(
+        driver.as_ref(),
+        request,
+        &facts,
+        &columns,
+        None,
+        use_cases,
+        artifacts,
+        ctx,
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+    Ok(response.affected_rows as u32)
 }
 
 impl DesktopAdapter for LiveAdapter {
@@ -497,8 +696,11 @@ impl DesktopAdapter for LiveAdapter {
             AdapterJob::ReadTable { generation, table, page, page_size, sort, filter } => {
                 HostJob::ReadTable { generation, table, page, page_size, sort, filter }
             }
-            // N5-N6 wire the commits and queries; until then decline
-            // so the synchronous paths answer.
+            AdapterJob::CommitCells { generation, batch } => {
+                HostJob::CommitCells { generation, batch }
+            }
+            // N7 wires the queries; until then decline so the synchronous
+            // paths answer.
             _ => return false,
         };
         self.jobs.lock().expect("the job channel").send(job).is_ok()
@@ -514,6 +716,9 @@ impl DesktopAdapter for LiveAdapter {
                 }
                 HostAnswer::TablePage { generation, page } => {
                     deliveries.push(AdapterDelivery::TablePage { generation, page });
+                }
+                HostAnswer::CommitCount { generation, count } => {
+                    deliveries.push(AdapterDelivery::CommitCount { generation, count });
                 }
             }
         }
@@ -796,6 +1001,114 @@ mod tests {
         }));
         let error = poll_read(&mut adapter).expect_err("no session, no read");
         assert!(error.contains("session"), "the sentence names the state: {error}");
+    }
+
+
+    /// Poll the adapter until its commit job answers.
+    fn poll_commit(adapter: &mut LiveAdapter) -> Result<u32, String> {
+        for _ in 0..300 {
+            for delivery in adapter.poll_jobs() {
+                if let AdapterDelivery::CommitCount { count, .. } = delivery {
+                    return count;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("the commit job never answered");
+    }
+
+    #[test]
+    fn commit_jobs_write_through_the_use_case_and_read_back() {
+        let dir = temp_dir("commit");
+        let mut adapter = opened_adapter(&dir);
+
+        // The page the grid would have loaded: the driver's primary key rides
+        // along (N6).
+        assert!(adapter.begin_job(AdapterJob::ReadTable {
+            generation: 2,
+            table: "users".into(),
+            page: 0,
+            page_size: 25,
+            sort: None,
+            filter: None,
+        }));
+        let page = poll_read(&mut adapter).expect("the read answers");
+        assert_eq!(page.primary_key, vec!["id".to_string()], "the driver's PK rides the page");
+
+        // One edited row, as the grid's commit batch would build it: the PK
+        // value the page showed, the original the page loaded, the new value.
+        let batch = datazen_ui_api::CellEditBatch {
+            table: "users".into(),
+            page: 0,
+            page_size: 25,
+            sort: None,
+            filter: None,
+            rows: vec![datazen_ui_api::RowEdit {
+                index: 0,
+                identity: vec![("id".into(), page.rows[0][0].clone())],
+                changes: vec![("name".into(), page.rows[0][1].clone(), "renamed".into())],
+            }],
+        };
+        assert!(adapter.begin_job(AdapterJob::CommitCells { generation: 3, batch }));
+        let landed = poll_commit(&mut adapter).expect("the commit lands");
+        assert_eq!(landed, 1, "one row landed");
+
+        // The next read shows the stored value: a real UPDATE went through.
+        assert!(adapter.begin_job(AdapterJob::ReadTable {
+            generation: 4,
+            table: "users".into(),
+            page: 0,
+            page_size: 25,
+            sort: None,
+            filter: None,
+        }));
+        let page = poll_read(&mut adapter).expect("the read-back answers");
+        assert_eq!(page.rows[0][1], "renamed", "the committed value reads back");
+        assert_eq!(page.rows[1][1], "user-01", "the other rows are untouched");
+
+        // A change to a column the table does not have is a failure sentence,
+        // not a silent no-op.
+        let bad = datazen_ui_api::CellEditBatch {
+            table: "users".into(),
+            page: 0,
+            page_size: 25,
+            sort: None,
+            filter: None,
+            rows: vec![datazen_ui_api::RowEdit {
+                index: 1,
+                identity: vec![("id".into(), "1".into())],
+                changes: vec![("no_such_column".into(), String::new(), "x".into())],
+            }],
+        };
+        assert!(adapter.begin_job(AdapterJob::CommitCells { generation: 5, batch: bad }));
+        let error = poll_commit(&mut adapter).expect_err("an unknown column fails");
+        assert!(!error.is_empty(), "the failure carries a sentence: {error}");
+    }
+
+    #[test]
+    fn a_commit_without_identity_is_refused() {
+        let dir = temp_dir("commit-no-identity");
+        let mut adapter = opened_adapter(&dir);
+        // The PK column missing from the identity: the use case's own gate
+        // refuses it (grid.cell.noRowIdentity), not a host re-implementation.
+        let batch = datazen_ui_api::CellEditBatch {
+            table: "users".into(),
+            page: 0,
+            page_size: 25,
+            sort: None,
+            filter: None,
+            rows: vec![datazen_ui_api::RowEdit {
+                index: 0,
+                identity: Vec::new(),
+                changes: vec![("name".into(), "user-00".into(), "x".into())],
+            }],
+        };
+        assert!(adapter.begin_job(AdapterJob::CommitCells { generation: 2, batch }));
+        let error = poll_commit(&mut adapter).expect_err("a keyless change cannot commit");
+        assert!(
+            error.contains("noRowIdentity") || error.contains("primary key"),
+            "the refusal names the missing identity: {error}"
+        );
     }
 }
 

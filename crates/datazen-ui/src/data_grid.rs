@@ -37,6 +37,9 @@ pub struct DataGrid {
     total_rows: u32,
     /// The sort the loaded page was opened with, as a column index.
     sort: Option<(u32, bool)>,
+    /// The loaded page's primary-key column names (N6): the commit batch
+    /// addresses rows by them.
+    pk: Vec<String>,
     /// Why the loaded page is read-only; None means writable.
     read_only: Option<String>,
     /// The loaded page's table name, for panel titles.
@@ -69,6 +72,7 @@ impl DataGrid {
             page_size: 0,
             total_rows: 0,
             sort: None,
+            pk: Vec::new(),
             read_only: None,
             table: None,
             editor: TextEdit::new(String::new()),
@@ -165,6 +169,20 @@ impl DataGrid {
         self.columns.get(col as usize).map(String::as_str)
     }
 
+    /// The column's index on the loaded page, by name.
+    fn column_index(&self, name: &str) -> Option<u32> {
+        self.columns.iter().position(|column| column == name).map(|index| index as u32)
+    }
+
+    /// The loaded page's sort, in the port's vocabulary (N6's batch echo).
+    fn sort_name(&self) -> Option<datazen_ui_api::ColumnSort> {
+        let (index, descending) = self.sort?;
+        Some(datazen_ui_api::ColumnSort {
+            column: self.column_name(index)?.to_owned(),
+            descending,
+        })
+    }
+
     pub fn load_page(&mut self, page: &datazen_ui_api::TablePage) {
         if self.editing {
             self.editing = false;
@@ -177,6 +195,7 @@ impl DataGrid {
         self.page = page.page;
         self.page_size = page.page_size;
         self.total_rows = page.total_rows;
+        self.pk = page.primary_key.clone();
         self.sort = page.sort.as_ref().and_then(|sort| {
             page.columns
                 .iter()
@@ -257,6 +276,56 @@ impl DataGrid {
             .collect();
         edits.sort_by_key(|(row, _, _)| *row);
         edits
+    }
+
+    /// The staged edits as one commit batch (N6): each edited row addressed
+    /// by the primary-key values the page showed, each change carrying the
+    /// original the page loaded — the model the commit use case validates
+    /// against, so a row that changed underneath fails as a stale original
+    /// instead of being silently overwritten.
+    pub fn commit_batch(&self) -> Option<datazen_ui_api::CellEditBatch> {
+        let table = self.table_label().to_owned();
+        if table.is_empty() {
+            return None;
+        }
+        let staged = self.staged_edits();
+        if staged.is_empty() {
+            return None;
+        }
+        let mut rows: Vec<datazen_ui_api::RowEdit> = Vec::new();
+        for (row, column, value) in staged {
+            let original = self.original(row, self.column_index(&column)?);
+            let entry = match rows.iter_mut().find(|edit| edit.index == row) {
+                Some(entry) => entry,
+                None => {
+                    // The row's identity: each PK column's value as the page
+                    // showed it. A missing PK column name means the page
+                    // never carried a usable key — the host will refuse the
+                    // commit, which is the honest answer.
+                    let identity = self
+                        .pk
+                        .iter()
+                        .map(|name| {
+                            let index = self.column_index(name).unwrap_or(u32::MAX);
+                            let value =
+                                if index == u32::MAX { String::new() } else { self.original(row, index) };
+                            (name.clone(), value)
+                        })
+                        .collect();
+                    rows.push(datazen_ui_api::RowEdit { index: row, identity, changes: Vec::new() });
+                    rows.last_mut().expect("just pushed")
+                }
+            };
+            entry.changes.push((column, original, value));
+        }
+        Some(datazen_ui_api::CellEditBatch {
+            table,
+            page: self.page,
+            page_size: self.page_size,
+            sort: self.sort_name(),
+            filter: None,
+            rows,
+        })
     }
 
     pub fn copy_tsv(&self) -> String {
@@ -865,6 +934,7 @@ mod tests {
             total_rows: 50,
             sort: None,
             filter: None,
+            primary_key: Vec::new(),
             read_only: None,
         };
         let mut grid = DataGrid::new();

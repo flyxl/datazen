@@ -490,6 +490,27 @@ impl SessionBackend for HostSessionBackend {
     ) -> Result<ResourceExecution, rc::ProviderError> {
         let resource = self.resource(&request.resource_id)?;
         let config = self.config(&resource.connection_id).await?;
+        let mut input = request.command.input.clone();
+        // The write path's bound parameters (N6): the plan's statements carry
+        // placeholders and a positional parameter list, and the provider's
+        // execute/query arms take finished SQL — the same translation the
+        // desktop backend performs for "params". Without it the placeholders
+        // bind as NULLs and the write matches nothing.
+        if matches!(request.command.command.as_str(), "execute" | "query")
+            && input.get("boundParameters").is_some()
+        {
+            let sql = input
+                .get("sql")
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| rc::ProviderError::HostRejected("SQL input unavailable".into()))?;
+            let parameters = input["boundParameters"].clone();
+            let bound = datazen::execution::domain::sql_guard::apply_params(sql, &parameters)
+                .map_err(rc::ProviderError::HostRejected)?;
+            if let Some(object) = input.as_object_mut() {
+                object.insert("sql".into(), serde_json::Value::String(bound));
+                object.remove("boundParameters");
+            }
+        }
         if config.read_only {
             // The sql guard reads the facts the host holds; a read-only
             // connection refuses writes before the driver sees them.
@@ -506,7 +527,7 @@ impl SessionBackend for HostSessionBackend {
         let sink_adapter = SinkAdapter { sink: sink.clone(), id: request.execution_id.clone() };
         let cancel_handle = uuid::Uuid::new_v4().to_string();
         request.cancel_handle_sink.publish(&cancel_handle);
-        let call = dr::CommandCall::new(request.command.command.clone(), request.command.input);
+        let call = dr::CommandCall::new(request.command.command.clone(), input);
         let result = match call.command.as_str() {
             "platform.beginTransaction" => resource
                 .provider
@@ -777,11 +798,16 @@ impl dr::ResultSink for SinkAdapter {
 /// data directory (a failure to open leaves the sink its own temp fallback).
 /// The adapter, the backend and the profiles each hold their own service
 /// over the one repository — the use case is stateless over the repository.
+/// The profiles handle comes back for the commit path's connection facts.
 pub fn assemble_runtime(
     registry: Arc<DriverRegistry>,
     repository: Arc<dyn datazen::connection::domain::ConnectionRepository>,
     data_dir: &std::path::Path,
-) -> (Arc<RuntimeConnectionUseCases>, Arc<HostSessionBackend>) {
+) -> (
+    Arc<RuntimeConnectionUseCases>,
+    Arc<HostSessionBackend>,
+    Arc<HostProfiles>,
+) {
     let backend = Arc::new(HostSessionBackend::new(
         Arc::clone(&registry),
         ConnectionService::new(Arc::clone(&repository)),
@@ -790,7 +816,7 @@ pub fn assemble_runtime(
         &repository,
     ))));
     let runtime = Arc::new(RuntimeConnectionUseCases::new(
-        profiles,
+        profiles.clone() as Arc<dyn ProfileRepository>,
         Arc::new(HostPolicy),
         Arc::clone(&backend) as Arc<dyn SessionBackend>,
     ));
@@ -800,7 +826,22 @@ pub fn assemble_runtime(
     ) {
         let _ = runtime.result_sink().with_artifact_store(Arc::new(artifacts));
     }
-    (runtime, backend)
+    (runtime, backend, profiles)
+}
+
+impl HostProfiles {
+    /// The connection's current config revision — the same value the
+    /// runtime's sessions were opened with, so the commit's facts gate
+    /// agrees with the session it executes in.
+    pub fn revision_of(&self, connection_id: &str) -> u64 {
+        self.revisions
+            .lock()
+            .expect("the revision lock")
+            .config
+            .get(connection_id)
+            .copied()
+            .unwrap_or(1)
+    }
 }
 
 #[cfg(test)]
@@ -887,7 +928,7 @@ mod tests {
         ))
         .unwrap();
 
-        let (runtime, _backend) = assemble_runtime(
+        let (runtime, _backend, _profiles) = assemble_runtime(
             Arc::new(crate::live::host_registry()),
             repository,
             &dir,
@@ -1014,7 +1055,7 @@ mod tests {
         ))
         .unwrap();
 
-        let (runtime, _backend) =
+        let (runtime, _backend, _profiles) =
             assemble_runtime(Arc::new(crate::live::host_registry()), repository, &dir);
         let ctx = context();
         let rt = tokio::runtime::Builder::new_current_thread()

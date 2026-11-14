@@ -120,6 +120,10 @@ pub struct TablePage {
     pub sort: Option<ColumnSort>,
     /// The filter this page was opened with, echoed back for display.
     pub filter: Option<ColumnFilter>,
+    /// The table's primary-key column names, in key order (N6). The memory
+    /// port's pages carry none; the live host's reads carry the driver's
+    /// answer, and the grid's commit batch addresses rows by them.
+    pub primary_key: Vec<String>,
     /// Why the page cannot be edited; None means writable.
     pub read_only: Option<String>,
 }
@@ -280,11 +284,10 @@ pub enum AdapterJob {
         filter: Option<ColumnFilter>,
     },
     /// Apply one batch of cell edits, the job twin of `commit_cells`. The
-    /// row numbers are page-local, as in the synchronous method.
+    /// rows are the page's, addressed by the table's primary key.
     CommitCells {
         generation: u32,
-        table: String,
-        edits: Vec<(u32, String, String)>,
+        batch: CellEditBatch,
     },
     /// Run one SQL statement, the job twin of the workspace's `execute`.
     RunQuery {
@@ -307,6 +310,36 @@ pub enum AdapterDelivery {
     CommitCount { generation: u32, count: Result<u32, String> },
     /// A query job's result page (or its failure sentence).
     QueryPage { generation: u32, page: Result<TablePage, String> },
+}
+
+/// The grid's staged edits as one commit batch (N6): the rows the page
+/// showed, addressed by the table's primary key, with the original values
+/// the page loaded — the same model the React grid commits through, so a
+/// row that changed underneath is a stale original, not a silent overwrite.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CellEditBatch {
+    pub table: String,
+    /// The page the rows are numbered on, echoed so the host can name the
+    /// read the batch belongs to.
+    pub page: u32,
+    pub page_size: u32,
+    pub sort: Option<ColumnSort>,
+    pub filter: Option<ColumnFilter>,
+    pub rows: Vec<RowEdit>,
+}
+
+/// One edited row of the loaded page.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RowEdit {
+    /// The row's index on the loaded page.
+    pub index: u32,
+    /// The row's primary-key values, PK column name → the value the page
+    /// showed. Empty only when the table has no primary key — a commit the
+    /// host will refuse.
+    pub identity: Vec<(String, String)>,
+    /// The changed columns: (column, the original value the page showed, the
+    /// staged value).
+    pub changes: Vec<(String, String, String)>,
 }
 
 /// The stand-in adapter while no desktop use case is wired: every method
@@ -869,6 +902,7 @@ impl MemoryWorkspace {
             total_rows: total,
             sort: None,
             filter: None,
+            primary_key: Vec::new(),
             read_only: Some("query result".into()),
         }
     }
@@ -1582,6 +1616,7 @@ impl WorkspaceApi for MemoryWorkspace {
             total_rows: total,
             sort: sort.cloned(),
             filter: filter.cloned(),
+            primary_key: Vec::new(),
             read_only: stored.1.read_only.clone(),
         })
     }

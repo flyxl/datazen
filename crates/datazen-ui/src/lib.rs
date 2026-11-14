@@ -1153,16 +1153,15 @@ impl AppState {
 
     /// Commit every staged edit to the stored rows, then reload the page.
     fn commit_staged_edits(&mut self) {
-        // N1: a live host takes the batch as a job. The dirty marks stay
+        // N1/N6: a live host takes the batch as a job. The dirty marks stay
         // until the delivery lands — the job twin of H5's rule that a real
         // failure keeps them.
-        let generation = self.read_generation;
-        let table = self.grid.table_label().to_owned();
-        let edits = self.grid.staged_edits();
-        let job = AdapterJob::CommitCells { generation, table, edits };
-        if self.desktop.begin_job(job) {
-            self.commit_loading = Some(generation);
-            return;
+        if let Some(batch) = self.grid.commit_batch() {
+            let generation = self.read_generation;
+            if self.desktop.begin_job(AdapterJob::CommitCells { generation, batch }) {
+                self.commit_loading = Some(generation);
+                return;
+            }
         }
         // H5: the desktop adapter's commit use case first — the grid's staged
         // edits travel as one batch. The fixed not-implemented error means
@@ -4245,6 +4244,7 @@ mod tests {
             total_rows: 20_000,
             sort: None,
             filter: None,
+            primary_key: Vec::new(),
             read_only: None,
         };
         runtime.update(|state, _| state.grid.load_page(&page));
@@ -4505,6 +4505,7 @@ mod tests {
             total_rows: 6000,
             sort: None,
             filter: None,
+            primary_key: Vec::new(),
             read_only: None,
         });
         runtime.state.active = Section::Workspace;
@@ -6730,6 +6731,7 @@ mod tests {
                 total_rows: 1,
                 sort: None,
                 filter: None,
+                primary_key: Vec::new(),
                 read_only: None,
             })
         }
@@ -6826,6 +6828,7 @@ mod tests {
                 total_rows: 2,
                 sort: None,
                 filter: None,
+                primary_key: Vec::new(),
                 read_only: None,
             })
         }
@@ -7056,6 +7059,7 @@ mod tests {
                                 total_rows: 1,
                                 sort: None,
                                 filter: None,
+                                primary_key: Vec::new(),
                                 read_only: None,
                             }),
                         }
@@ -7079,6 +7083,7 @@ mod tests {
                             total_rows: 1,
                             sort: None,
                             filter: None,
+                            primary_key: Vec::new(),
                             read_only: None,
                         }),
                     },
@@ -7354,5 +7359,87 @@ mod tests {
             runtime.find("tree-table-users").is_none(),
             "no live tree without a session"
         );
+    }
+    #[test]
+    fn the_commit_batch_addresses_rows_by_the_primary_key_with_originals() {
+        use super::data_grid::DataGrid;
+        use datazen_ui_api::CellEditBatch;
+
+        // A page the live host would serve: a real primary key rides along
+        // (N6). The grid builds the commit batch from what it loaded.
+        let mut grid = DataGrid::new();
+        grid.load_page(&TablePage {
+            table: "users".into(),
+            columns: vec!["id".into(), "name".into()],
+            rows: vec![vec!["7".into(), "alice".into()], vec!["8".into(), "bob".into()]],
+            page: 0,
+            page_size: 25,
+            total_rows: 2,
+            sort: None,
+            filter: None,
+            primary_key: vec!["id".into()],
+            read_only: None,
+        });
+
+        // Nothing staged: no batch.
+        assert!(grid.commit_batch().is_none(), "no edits, no batch");
+
+        // Edit the first row's name and the second row's name.
+        // The editor opens with the cell's value; insert appends (the same
+        // semantics the B5 tests established).
+        grid.select(0, 1);
+        grid.begin_edit();
+        grid.editor.insert("-carol");
+        grid.commit_edit();
+        grid.select(1, 1);
+        grid.begin_edit();
+        grid.editor.insert("-dave");
+        grid.commit_edit();
+        assert_eq!(grid.dirty_cells(), 2);
+
+        let batch: CellEditBatch = grid.commit_batch().expect("the batch builds");
+        assert_eq!(batch.table, "users");
+        assert_eq!(batch.rows.len(), 2, "one entry per edited row");
+        assert_eq!(batch.rows[0].index, 0);
+        assert_eq!(
+            batch.rows[0].identity,
+            vec![("id".to_string(), "7".to_string())],
+            "the row is addressed by the PK value the page showed"
+        );
+        assert_eq!(
+            batch.rows[0].changes,
+            vec![("name".to_string(), "alice".to_string(), "alice-carol".to_string())],
+            "the change carries the original the page loaded and the staged value"
+        );
+        assert_eq!(
+            batch.rows[1].identity,
+            vec![("id".to_string(), "8".to_string())],
+            "the second row by its own PK"
+        );
+        assert_eq!(batch.rows[1].changes[0].2, "bob-dave");
+
+        // A page without a primary key builds identity-less rows: the host's
+        // commit use case refuses them, which is the honest answer (and the
+        // memory port's pages, which carry none, never take this path — the
+        // declined commit falls back to the port's staged edits).
+        let mut keyless = DataGrid::new();
+        keyless.load_page(&TablePage {
+            table: "log".into(),
+            columns: vec!["at".into(), "what".into()],
+            rows: vec![vec!["t0".into(), "boot".into()]],
+            page: 0,
+            page_size: 25,
+            total_rows: 1,
+            sort: None,
+            filter: None,
+            primary_key: Vec::new(),
+            read_only: None,
+        });
+        keyless.select(0, 1);
+        keyless.begin_edit();
+        keyless.editor.insert("halt");
+        keyless.commit_edit();
+        let batch = keyless.commit_batch().expect("the batch still builds");
+        assert!(batch.rows[0].identity.is_empty(), "no PK on the page, no identity");
     }
 }
