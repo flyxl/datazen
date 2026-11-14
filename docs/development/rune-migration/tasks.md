@@ -101,8 +101,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | N6 | 已完成 | 104a277 | testing/N6-real-commits.md |
 | N7 | 已完成 | 0b24e12 | testing/N7-real-queries.md |
 | N8 | 已完成 | f0babc4 | testing/N8-settings-persistence.md |
-| N9 | 进行中 | | |
-| N10 | 未开始 | | |
+| N9 | 已完成 | f567955 | testing/N9-query-history.md |
+| N10 | 进行中 | | |
 | N11 | 未开始 | | |
 | N12 | 未开始 | | |
 | N13 | 未开始 | | |
