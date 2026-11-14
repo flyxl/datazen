@@ -24,8 +24,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | S4 | 已完成 | e5f29ca | testing/S4-query-tab.md |
 | S5 | 已完成 | 0f21ead | testing/S5-disconnect.md |
 | S6 | 已完成 | 3b78739 | testing/S6-sidebar.md |
-| B1 | 进行中 | | |
-| B2 | 未开始 | | |
+| B1 | 已完成 | 093b77a | testing/B1-table-paging.md |
+| B2 | 进行中 | | |
 | B3 | 未开始 | | |
 | B4 | 未开始 | | |
 | B5 | 未开始 | | |
