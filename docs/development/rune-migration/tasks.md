@@ -79,8 +79,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | W7 | 已完成 | bde466a56 | testing/W7-run-results.md |
 | H1 | 已完成 | 46c44ddbe | testing/H1-desktop-process.md |
 | H2 | 已完成 | 69b82c82 | testing/H2-adapter-types.md |
-| H3 | 进行中 | | |
-| H4 | 未开始 | | |
+| H3 | 已完成 | 3a441166 | testing/H3-list-connections.md |
+| H4 | 进行中 | | |
 | H5 | 未开始 | | |
 | H6 | 未开始 | | |
 | H7 | 未开始 | | |
