@@ -15,7 +15,20 @@ use rune::tok::{self, type_};
 use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, TextEdit, Tx, col, oklch, row, text, text_input};
 use sql_editor::SqlEditor;
 
-/// Rows asked from the workspace for one table page.
+/// The app's font pool (H8): rune's own Inter faces keep the UI's Latin look
+/// and the web's sans fallback, IBM Plex Mono keeps the editor's mono slot,
+/// and Noto Sans SC covers Chinese in the interface and the grid — the sans
+/// slot lists it after Inter, so Han text falls back to it glyph by glyph.
+/// Replaces rune's built-in set (AppSpec.fonts semantics) so every platform,
+/// the web included, draws the same text.
+const APP_FONTS: &[&[u8]] = &[
+    include_bytes!("../assets/Inter-Regular.ttf"),
+    include_bytes!("../assets/Inter-Medium.ttf"),
+    include_bytes!("../assets/Inter-SemiBold.ttf"),
+    include_bytes!("../assets/NotoSansSC-Regular.ttf"),
+    include_bytes!("../assets/IBMPlexMono-Regular.ttf"),
+];
+const APP_FONT_FAMILIES: (&str, &str) = ("Inter, Noto Sans SC", "IBM Plex Mono");
 pub const TABLE_PAGE_SIZE: u32 = 25;
 
 /// What the workspace shows for the selected table tab.
@@ -3662,6 +3675,8 @@ pub fn run() {
     App::new(AppSpec {
         on_key: Some(app_key),
         poll: Some(app_poll),
+        fonts: APP_FONTS,
+        families: APP_FONT_FAMILIES,
         ..AppSpec::new("DataZen", (1440.0, 900.0), init_state, view)
     })
     .on_ime(app_ime)
@@ -3728,7 +3743,7 @@ pub fn start() {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppState, Section, TABLE_PAGE_SIZE, query_selected, sql_editor, view};
+    use super::{AppState, APP_FONT_FAMILIES, APP_FONTS, Section, TABLE_PAGE_SIZE, query_selected, sql_editor, type_, view};
     use rune::{Env, Runtime};
 
     fn runtime() -> Runtime<AppState> {
@@ -3737,6 +3752,66 @@ mod tests {
             scale: 1.0,
         };
         Runtime::new(AppState::default(), view, (1440.0, 900.0), env)
+    }
+
+    /// Glyph ids of `text` shaped by `system`, in layout order.
+    fn glyph_ids(system: &mut rune::text::TextSystem, text: &str) -> Vec<u32> {
+        use parley::PositionedLayoutItem;
+
+        let layout = system.layout_rich(text, &[], type_::LABEL, 2.0, None);
+        let mut ids = Vec::new();
+        for line in layout.lines() {
+            for item in line.items() {
+                if let PositionedLayoutItem::GlyphRun(run) = item {
+                    ids.extend(run.glyphs().map(|glyph| glyph.id));
+                }
+            }
+        }
+        ids
+    }
+
+    #[test]
+    fn the_apps_font_pool_shapes_chinese_without_tofu() {
+        // The pool run() installs (H8): Inter for the UI's Latin, Noto Sans SC
+        // for Chinese in the interface and the grid, IBM Plex Mono for the
+        // editor. A shaped Han character is a real glyph, not .notdef.
+        let mut system = rune::text::TextSystem::new(APP_FONTS, APP_FONT_FAMILIES);
+        let han = glyph_ids(&mut system, "中文数据");
+        assert_eq!(han.len(), 4, "one glyph per Han character");
+        assert!(han.iter().all(|id| *id != 0), "tofu: {han:?}");
+
+        // The UI's Latin look is unchanged: Inter still serves Latin.
+        let latin = glyph_ids(&mut system, "DataZen");
+        assert!(latin.iter().all(|id| *id != 0), "tofu: {latin:?}");
+    }
+
+    #[test]
+    fn a_chinese_grid_cell_is_not_a_box_under_the_apps_fonts() {
+        // The grid runs under the app's font pool; a Chinese cell value
+        // renders with the glyphs the pool shaped above, not fallback boxes.
+        let env = Env {
+            system_dark: true,
+            scale: 1.0,
+        };
+        let text = rune::text::TextSystem::new(APP_FONTS, APP_FONT_FAMILIES);
+        let mut runtime =
+            Runtime::with_text(AppState::default(), view, (1440.0, 900.0), env, text);
+        use datazen_ui_api::WorkspaceApi;
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.frame(0.0);
+
+        runtime.state.grid.select(0, 1);
+        runtime.state.grid.begin_edit();
+        runtime.state.grid.editor = rune::TextEdit::new(String::new());
+        runtime.state.grid.editor.insert("中文");
+        runtime.state.commit_grid_edit();
+        runtime.frame(0.0);
+
+        assert_eq!(runtime.state.grid.cell(0, 1), "中文");
+        let mut probe = rune::text::TextSystem::new(APP_FONTS, APP_FONT_FAMILIES);
+        let ids = glyph_ids(&mut probe, "中文");
+        assert!(ids.iter().all(|id| *id != 0), "tofu: {ids:?}");
     }
 
     #[test]

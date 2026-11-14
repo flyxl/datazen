@@ -2615,6 +2615,7 @@ name = "datazen-ui"
 version = "0.1.0"
 dependencies = [
  "datazen-ui-api",
+ "parley",
  "rune",
  "wasm-bindgen",
 ]
