@@ -5,8 +5,10 @@
 //! its repositories read and write real files. N2 wires the connection
 //! store; the data paths follow on the same seam.
 
+pub mod live;
 pub mod store;
 
+pub use live::LiveAdapter;
 pub use store::FileConnectionRepository;
 
 use std::path::PathBuf;

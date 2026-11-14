@@ -2571,11 +2571,13 @@ dependencies = [
  "chrono",
  "datazen",
  "datazen-driver-api",
+ "datazen-driver-sqlite",
  "datazen-ui",
  "datazen-ui-api",
  "futures-executor",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

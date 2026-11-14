@@ -138,6 +138,14 @@ struct AppState {
     commit_loading: Option<u32>,
     /// A query job the host accepted and has not answered yet (N1).
     query_loading: Option<u32>,
+    /// An open job the host accepted and has not answered yet (N3): the
+    /// connections page says so until the catalog or the failure lands.
+    connect_loading: Option<u32>,
+    /// The live host's catalog once its open job answered one (N3); None
+    /// means the memory port's catalog is the truth (the demo path).
+    desktop_catalog: Option<datazen_ui_api::Catalog>,
+    /// The live session's connection id (N3): the refresh path re-opens it.
+    desktop_connection: Option<String>,
     /// Catalog nodes the tree keeps collapsed, by path: "db" or "db/schema".
     collapsed: std::collections::BTreeSet<String>,
     /// Which side of the selected table tab the workspace shows.
@@ -247,6 +255,9 @@ impl Default for AppState {
             table_loading: None,
             commit_loading: None,
             query_loading: None,
+            connect_loading: None,
+            desktop_catalog: None,
+            desktop_connection: None,
             collapsed: std::collections::BTreeSet::new(),
             table_view: TableView::Data,
             er_schema: None,
@@ -344,9 +355,37 @@ impl AppState {
         }
     }
 
-    /// Re-take the catalog from the port. Collapsed nodes stay collapsed: they
-    /// live here, not in the port.
+    /// The catalog the tree, the ER view and the open-ER path read: the live
+    /// host's once its open job answered one (N3), the memory port's
+    /// otherwise. The demo path is unchanged.
+    fn catalog(&self) -> datazen_ui_api::Catalog {
+        self.desktop_catalog
+            .clone()
+            .unwrap_or_else(|| self.workspace.catalog())
+    }
+
+    /// A session is open when either world says so: the memory port's, or the
+    /// live host's catalog (N3). The tree's buttons and the disconnect gate
+    /// on this, not on the port alone.
+    fn session_open(&self) -> bool {
+        self.workspace.session().is_some() || self.desktop_catalog.is_some()
+    }
+
+    /// Re-take the catalog. Collapsed nodes stay collapsed: they live here,
+    /// not in the port. A live session re-opens its connection through the
+    /// same job path that opened it (N3); the memory port's catalog is the
+    /// port's own truth and needs no ask.
     fn refresh_catalog(&mut self) {
+        if let Some(id) = self.desktop_connection.clone() {
+            let generation = self.next_read_generation();
+            if self
+                .desktop
+                .begin_job(AdapterJob::OpenConnection { generation, id })
+            {
+                self.connect_loading = Some(generation);
+            }
+            return;
+        }
         let _ = self.workspace.catalog();
     }
 
@@ -850,7 +889,7 @@ impl AppState {
     /// Open the ER diagram for the current schema: the selected table's schema,
     /// else the first.
     fn open_er(&mut self) {
-        let catalog = self.workspace.catalog();
+        let catalog = self.catalog();
         let Some(database) = catalog.databases.first() else {
             return;
         };
@@ -931,6 +970,18 @@ impl AppState {
     }
 
     fn open_connection(&mut self, id: &str) {
+        // N3: a live host opens the connection as a job — real driver IO off
+        // the frame loop. Until the catalog (or the failure sentence) lands
+        // the page stays put and says the connect is in flight; the memory
+        // port's instant path answers when the host declines.
+        let generation = self.next_read_generation();
+        if self
+            .desktop
+            .begin_job(AdapterJob::OpenConnection { generation, id: id.to_owned() })
+        {
+            self.connect_loading = Some(generation);
+            return;
+        }
         if self.workspace.connect(id).is_err() {
             return;
         }
@@ -960,11 +1011,15 @@ impl AppState {
         self.er_positions.clear();
         self.er_drag = None;
         // N1: a read the disconnect invalidates must not land later, and no
-        // loading marker outlives the session it belonged to.
+        // loading marker outlives the session it belonged to. N3: the live
+        // catalog belongs to the session too.
         self.next_read_generation();
         self.table_loading = None;
         self.commit_loading = None;
         self.query_loading = None;
+        self.connect_loading = None;
+        self.desktop_catalog = None;
+        self.desktop_connection = None;
     }
 
     fn open_table_tab(&mut self, title: &str) -> Option<u32> {
@@ -1201,6 +1256,43 @@ impl AppState {
     /// when the delivery's generation is still the current one.
     fn deliver_host_job(&mut self, delivery: AdapterDelivery) {
         match delivery {
+            AdapterDelivery::ConnectionOpened { generation, id, catalog } => {
+                if self.connect_loading == Some(generation) {
+                    self.connect_loading = None;
+                }
+                if generation != self.read_generation {
+                    return;
+                }
+                match catalog {
+                    Ok(catalog) => {
+                        // The session opened: the live catalog is the truth, the
+                        // workspace starts fresh and the first table opens
+                        // through the same read path as every other one.
+                        self.collapsed.clear();
+                        self.table_page = 0;
+                        self.sort = None;
+                        self.filter = None;
+                        self.filter_column = 0;
+                        self.filter_editor = TextEdit::new(String::new());
+                        self.desktop_catalog = Some(catalog.clone());
+                        self.desktop_connection = Some(id);
+                        self.active = Section::Workspace;
+                        let first = catalog
+                            .databases
+                            .first()
+                            .and_then(|database| database.schemas.first())
+                            .and_then(|schema| schema.tables.first().cloned());
+                        if let Some(table) = first {
+                            self.show_table(&table);
+                        }
+                    }
+                    Err(sentence) => {
+                        // The page never left the connections list; the
+                        // sentence lands in the adapter's notice row.
+                        self.desktop_error = Some(sentence);
+                    }
+                }
+            }
             AdapterDelivery::TablePage { generation, page } => {
                 if self.table_loading == Some(generation) {
                     self.table_loading = None;
@@ -2385,7 +2477,7 @@ fn workspace_body(state: &AppState, theme: tok::Theme) -> El {
 /// columns) draw collapsed, showing the column count. Boxes drag; their
 /// positions live in UI state.
 fn er_view(state: &AppState, database: &str, schema: &str, theme: tok::Theme) -> El {
-    let catalog = state.workspace.catalog();
+    let catalog = state.catalog();
     let tables: Vec<String> = catalog
         .databases
         .iter()
@@ -3433,7 +3525,7 @@ fn tab_strip(state: &AppState, theme: tok::Theme) -> El {
 /// The session object tree: databases, schemas and tables from the port's
 /// catalog, with the tree's collapsed nodes kept in UI state.
 fn object_tree(state: &AppState, theme: tok::Theme) -> El {
-    let catalog = state.workspace.catalog();
+    let catalog = state.catalog();
     let mut rows: Vec<El> = Vec::new();
     for database in &catalog.databases {
         let db_path = database.name.clone();
@@ -3589,7 +3681,7 @@ fn open_query_button(theme: tok::Theme) -> El {
 }
 
 fn er_button(state: &AppState, theme: tok::Theme) -> El {
-    if state.workspace.session().is_none() {
+    if !state.session_open() {
         return row().key("er-button-absent").h(0.0);
     }
     row()
@@ -3605,7 +3697,7 @@ fn er_button(state: &AppState, theme: tok::Theme) -> El {
 }
 
 fn refresh_button(state: &AppState, theme: tok::Theme) -> El {
-    if state.workspace.session().is_none() {
+    if !state.session_open() {
         return row().key("tree-refresh-absent").h(0.0);
     }
     row()
@@ -3621,7 +3713,7 @@ fn refresh_button(state: &AppState, theme: tok::Theme) -> El {
 }
 
 fn disconnect_button(state: &AppState, theme: tok::Theme) -> El {
-    if state.workspace.session().is_none() {
+    if !state.session_open() {
         return row().key("disconnect-absent").h(0.0);
     }
     row()
@@ -3652,6 +3744,25 @@ fn connection_list(state: &AppState, theme: tok::Theme) -> El {
                 .child(
                     text(message.clone())
                         .key("desktop-adapter-message")
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
+        );
+    }
+    // N3: a live host's open job in flight. The page keeps its list; the
+    // marker says the connect is running.
+    if state.connect_loading.is_some() {
+        list = list.child(
+            row()
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(
+                    text("Connecting…")
+                        .key("connect-loading")
                         .font(type_::LABEL)
                         .color(theme.text_secondary),
                 ),
@@ -6850,23 +6961,28 @@ mod tests {
     /// carry the requesting generation, so one read's answer is tellable
     /// from another's.
     use datazen_ui_api::{
-        AdapterDelivery, AdapterJob, ColumnFilter, ColumnSort, ConnectionProfile,
-        DESKTOP_NOT_IMPLEMENTED, DesktopAdapter, TablePage,
+        AdapterDelivery, AdapterJob, Catalog, ColumnFilter, ColumnSort, ConnectionProfile,
+        DatabaseNode, DESKTOP_NOT_IMPLEMENTED, DesktopAdapter, SchemaNode, TablePage,
     };
 
     struct JobAdapter {
         accepted: Vec<AdapterJob>,
         polls: u32,
         fail_commit: bool,
+        fail_open: bool,
     }
 
     impl JobAdapter {
         fn new() -> Self {
-            Self { accepted: Vec::new(), polls: 0, fail_commit: false }
+            Self { accepted: Vec::new(), polls: 0, fail_commit: false, fail_open: false }
         }
 
         fn failing_commit() -> Self {
             Self { fail_commit: true, ..Self::new() }
+        }
+
+        fn failing_open() -> Self {
+            Self { fail_open: true, ..Self::new() }
         }
     }
 
@@ -6903,9 +7019,31 @@ mod tests {
             }
             self.polls = 0;
             let fail_commit = self.fail_commit;
+            let fail_open = self.fail_open;
             std::mem::take(&mut self.accepted)
                 .into_iter()
                 .map(|job| match job {
+                    AdapterJob::OpenConnection { generation, id } => {
+                        AdapterDelivery::ConnectionOpened {
+                            generation,
+                            id: id.clone(),
+                            catalog: if fail_open {
+                                Err(format!("cannot open '{id}'"))
+                            } else {
+                                // A live catalog with its own tables: nothing
+                                // here exists in the memory port's demo world.
+                                Ok(Catalog {
+                                    databases: vec![DatabaseNode {
+                                        name: "main".into(),
+                                        schemas: vec![SchemaNode {
+                                            name: "main".into(),
+                                            tables: vec!["events".into(), "users".into()],
+                                        }],
+                                    }],
+                                })
+                            },
+                        }
+                    }
                     AdapterJob::ReadTable { generation, table, page, page_size, .. } => {
                         AdapterDelivery::TablePage {
                             generation,
@@ -7122,5 +7260,99 @@ mod tests {
             "no reload happened, the staged value is untouched"
         );
         assert!(runtime.state.table_loading.is_none(), "a failed commit does not reload");
+    }
+
+    #[test]
+    fn an_accepted_open_job_fills_the_tree_with_the_live_catalog() {
+        use super::app_poll;
+
+        let mut runtime = runtime();
+        runtime.poll = Some(app_poll);
+        runtime.frame(0.0);
+
+        // The live host takes the connect as a job: the connections page
+        // keeps its list and says the connect is in flight.
+        runtime.state.desktop = Box::new(JobAdapter::new());
+        let (x, y) = runtime.find("connection-local").expect("connection row");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.state.connect_loading.is_some(), "the open job is in flight");
+        assert_eq!(
+            runtime.state.active,
+            Section::Connections,
+            "the page waits for the catalog"
+        );
+        assert!(runtime.find("connect-loading").is_some(), "the page says the connect runs");
+
+        // The catalog lands: the workspace opens with the live tree, and the
+        // first table's read is itself a job on this host.
+        runtime.frame(0.0);
+        assert!(runtime.state.connect_loading.is_none(), "the marker leaves with the delivery");
+        assert_eq!(runtime.state.active, Section::Workspace);
+        assert_eq!(runtime.state.desktop_connection.as_deref(), Some("local"));
+        assert!(runtime.state.table_loading.is_some(), "the first table's read is a job too");
+        runtime.settle_all();
+        runtime.frame(0.0);
+        runtime.frame(0.0);
+        assert!(runtime.find("tree-db-main").is_some(), "the live catalog's database");
+        assert!(runtime.find("tree-table-users").is_some(), "the live catalog's table");
+        assert!(runtime.find("tree-table-events").is_some());
+        assert!(
+            runtime.find("tree-table-customers").is_none(),
+            "the memory port's demo tables are not the live tree"
+        );
+
+        // The disconnect button shows for a live session (the memory port's
+        // session never opened), and disconnecting takes the catalog with it.
+        let (x, y) = runtime.find("disconnect").expect("the disconnect button shows");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.state.desktop_catalog.is_none(), "the live catalog left with the session");
+        assert!(runtime.state.desktop_connection.is_none());
+        runtime.settle_all();
+        runtime.frame(0.0);
+        assert!(runtime.find("tree-table-users").is_none(), "the tree is empty again");
+    }
+
+    #[test]
+    fn a_failed_open_keeps_the_connections_page_and_shows_the_sentence() {
+        use super::app_poll;
+
+        let mut runtime = runtime();
+        runtime.poll = Some(app_poll);
+        runtime.frame(0.0);
+
+        runtime.state.desktop = Box::new(JobAdapter::failing_open());
+        let (x, y) = runtime.find("connection-local").expect("connection row");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.state.connect_loading.is_some(), "the open job is in flight");
+        runtime.frame(0.0);
+
+        assert!(runtime.state.connect_loading.is_none(), "the marker leaves with the failure");
+        assert_eq!(
+            runtime.state.active,
+            Section::Connections,
+            "a failed open never leaves the connections page"
+        );
+        assert_eq!(
+            runtime.state.desktop_error.as_deref(),
+            Some("cannot open 'local'"),
+            "the sentence lands in the adapter's notice"
+        );
+        let message = runtime
+            .elements()
+            .into_iter()
+            .find(|el| el.key.as_deref() == Some("desktop-adapter-message"))
+            .and_then(|el| el.text)
+            .expect("the failure sentence is displayed");
+        assert_eq!(message, "cannot open 'local'");
+        assert!(
+            runtime.find("tree-table-users").is_none(),
+            "no live tree without a session"
+        );
     }
 }

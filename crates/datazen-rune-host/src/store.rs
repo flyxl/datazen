@@ -211,6 +211,45 @@ impl ConnectionRepository for FileConnectionRepository {
 }
 
 #[cfg(test)]
+pub(crate) mod test_support {
+    //! Fixtures shared by the host crate's test modules.
+
+    use datazen_driver_api::{ConnectionConfig, SslMode};
+
+    /// A sqlite config pointing at `database` (the file path). Every field
+    /// spelled out — the struct has no `Default` — the way the adapter's
+    /// `config_from_profile` fills them.
+    pub(crate) fn sqlite_config(id: &str, database: Option<String>) -> ConnectionConfig {
+        ConnectionConfig {
+            id: id.into(),
+            name: id.into(),
+            database_type: "sqlite".into(),
+            host: None,
+            port: None,
+            database,
+            schema: None,
+            username: None,
+            password: None,
+            ssl_mode: SslMode::default(),
+            connection_timeout: 30,
+            max_pool_size: 10,
+            ssh_tunnel: None,
+            tunnel_kind: None,
+            tunnel_id: None,
+            http_proxy_tunnel: None,
+            websocket_tunnel: None,
+            color_tag: None,
+            group: None,
+            last_connected_at: None,
+            server_version: None,
+            options: None,
+            read_only: false,
+            pinned: false,
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use datazen::connection::application::ConnectionService;

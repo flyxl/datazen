@@ -20,11 +20,20 @@ datazen-ui-api = { path = "../datazen-ui-api" }
 # the use-case adapter compiles with.
 datazen = { workspace = true, features = ["connection", "execution"] }
 datazen-driver-api = { workspace = true }
+# N3: linked so its inventory factory registers with datazen's driver
+# registry; the live adapter resolves "sqlite" through the registry, never
+# a registration of its own.
+datazen-driver-sqlite = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-# `touch_last_connected_at` writes an RFC 3339 timestamp.
+# `touch_last_connected_at` writes an RFC 3339 timestamp; the job worker owns
+# a current-thread tokio runtime for the drivers' async use cases.
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+tokio = { version = "1", features = ["rt"] }
+# The list use case is async; the adapter's poll over the loaded file store
+# is memory-speed (its futures are always ready).
+futures-executor = "0.3"
 
 [dev-dependencies]
 # The use cases are async; the tests poll them to completion over the file

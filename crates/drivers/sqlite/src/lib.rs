@@ -37,6 +37,15 @@ pub use type_normalizer::SqliteTypeNormalizer;
 
 struct SqliteFactory;
 
+/// The host's entry into this driver: the same factory `register_driver!`
+/// submits, for hosts that assemble their registry statically
+/// (`DriverRegistry::with_factories`) instead of scanning inventory at
+/// link time. Static assembly is the form a host binary wants: its driver
+/// list is explicit, and no test-binary link can drop the registration.
+pub fn factory() -> &'static dyn datazen_driver_api::DatabaseDriverFactory {
+    &SqliteFactory
+}
+
 /// The one driver every caller shares, and the one [`SQLITE_PROVIDER`] is bound to.
 static SQLITE_DRIVER: OnceLock<Arc<dyn DatabaseDriver>> = OnceLock::new();
 /// The one provider, bound to [`SQLITE_DRIVER`].

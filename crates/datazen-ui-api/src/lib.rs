@@ -263,6 +263,13 @@ pub trait DesktopAdapter {
 /// deliveries whose generation the state has moved past (plan invariant 3).
 #[derive(Clone, Debug, PartialEq)]
 pub enum AdapterJob {
+    /// Open a connection in the host and read its catalog (N3): the live
+    /// driver's databases, schemas and tables. The memory port's instant
+    /// connect stays the declined path.
+    OpenConnection {
+        generation: u32,
+        id: String,
+    },
     /// Read one page of a table, the job twin of `read_table_page`.
     ReadTable {
         generation: u32,
@@ -290,6 +297,10 @@ pub enum AdapterJob {
 /// matches it against the live one before writing any state.
 #[derive(Clone, Debug, PartialEq)]
 pub enum AdapterDelivery {
+    /// An open job's catalog (or its failure sentence). The connection id
+    /// rides along so the UI can name the live session — the refresh path
+    /// re-opens it.
+    ConnectionOpened { generation: u32, id: String, catalog: Result<Catalog, String> },
     /// A read job's page (or its failure sentence).
     TablePage { generation: u32, page: Result<TablePage, String> },
     /// A commit job's landed edit count (or its failure sentence).
