@@ -82,6 +82,9 @@ pub trait WorkspaceApi {
     fn connections(&self) -> &[ConnectionProfile];
     fn session(&self) -> Option<&Session>;
     fn catalog(&self) -> Catalog;
+    /// The table's DDL as one string the page shows verbatim. An empty string
+    /// means the port cannot produce DDL; an unknown table is an error.
+    fn table_ddl(&self, table: &str) -> Result<String, String>;
     fn connect(&mut self, id: &str) -> Result<(), String>;
     fn disconnect(&mut self);
     fn open_table(
@@ -283,6 +286,21 @@ impl WorkspaceApi for MemoryWorkspace {
 
     fn session(&self) -> Option<&Session> {
         self.session.as_ref()
+    }
+
+    fn table_ddl(&self, table: &str) -> Result<String, String> {
+        let stored = self
+            .tables
+            .iter()
+            .find(|(name, _)| name == table)
+            .ok_or_else(|| format!("unknown table {table}"))?;
+        if stored.1.schema == "analytics" {
+            // The memory port cannot introspect the external analytics schema.
+            return Ok(String::new());
+        }
+        let lines: Vec<String> =
+            stored.1.columns.iter().map(|column| format!("  {column} text")).collect();
+        Ok(format!("CREATE TABLE {table} (\n{}\n);", lines.join(",\n")))
     }
 
     fn connect(&mut self, id: &str) -> Result<(), String> {
@@ -661,6 +679,23 @@ mod tests {
         assert_eq!(schemas[1].name, "analytics");
         assert_eq!(schemas[1].tables, vec!["catalog"]);
         assert_eq!(workspace.catalog(), catalog, "the order is stable across calls");
+    }
+
+    #[test]
+    fn table_ddl_returns_the_create_statement_or_empty() {
+        let mut workspace = MemoryWorkspace::new();
+        workspace.connect("local").unwrap();
+        let ddl = workspace.table_ddl("customers").unwrap();
+        assert!(ddl.starts_with("CREATE TABLE customers ("));
+        assert!(ddl.contains("  id text"));
+        assert!(ddl.contains("  name text"));
+        assert!(ddl.ends_with(");"));
+        assert_eq!(
+            workspace.table_ddl("catalog").unwrap(),
+            "",
+            "external schema tables have no DDL to show"
+        );
+        assert!(workspace.table_ddl("missing").is_err());
     }
 
     #[test]

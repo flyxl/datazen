@@ -15,6 +15,14 @@ use sql_editor::SqlEditor;
 /// Rows asked from the workspace for one table page.
 pub const TABLE_PAGE_SIZE: u32 = 25;
 
+/// What the workspace shows for the selected table tab.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum TableView {
+    #[default]
+    Data,
+    Ddl,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Section {
     #[default]
@@ -65,6 +73,8 @@ struct AppState {
     query_generation: u32,
     /// Catalog nodes the tree keeps collapsed, by path: "db" or "db/schema".
     collapsed: std::collections::BTreeSet<String>,
+    /// Which side of the selected table tab the workspace shows.
+    table_view: TableView,
 }
 
 impl Default for AppState {
@@ -83,6 +93,7 @@ impl Default for AppState {
             result_grid: None,
             query_generation: 0,
             collapsed: std::collections::BTreeSet::new(),
+            table_view: TableView::Data,
         }
     }
 }
@@ -104,6 +115,10 @@ impl AppState {
     /// live here, not in the port.
     fn refresh_catalog(&mut self) {
         let _ = self.workspace.catalog();
+    }
+
+    fn set_table_view(&mut self, view: TableView) {
+        self.table_view = view;
     }
 
     fn open_connection(&mut self, id: &str) {
@@ -383,9 +398,81 @@ fn workspace_body(state: &AppState, theme: tok::Theme) -> El {
         return query_workspace(state, theme);
     }
     if state.grid.has_page() {
-        return data_grid::panel(state, theme.text, theme.text_secondary, theme.control_off);
+        return table_workspace(state, theme);
     }
     workspace_empty(theme)
+}
+
+/// A table tab shows the view switcher above either the data grid or the DDL.
+fn table_workspace(state: &AppState, theme: tok::Theme) -> El {
+    let title = state.tabs.selected().map(|tab| tab.title.clone()).unwrap_or_default();
+    let body = match state.table_view {
+        TableView::Data => data_grid::panel(state, theme.text, theme.text_secondary, theme.control_off),
+        TableView::Ddl => ddl_view(&state.workspace, &title, theme),
+    };
+    col()
+        .key("table-workspace")
+        .w_full()
+        .gap(8.0)
+        .child(view_switcher(state, theme))
+        .child(body)
+}
+
+fn view_switcher(state: &AppState, theme: tok::Theme) -> El {
+    let entry = |key: &str, label: &str, view: TableView, active: bool| {
+        row()
+            .key(key)
+            .h(24.0)
+            .px(10.0)
+            .center_y()
+            .radius(6.0)
+            .fill(if active { tok::accent(0, true) } else { theme.control_off })
+            .child(text(label).font(type_::LABEL).color(theme.text))
+            .on_press(move |state: &mut AppState| state.set_table_view(view))
+    };
+    row()
+        .key("table-view-switcher")
+        .w_full()
+        .h(28.0)
+        .gap(6.0)
+        .center_y()
+        .child(entry("view-data", "Data", TableView::Data, state.table_view == TableView::Data))
+        .child(entry("view-ddl", "DDL", TableView::Ddl, state.table_view == TableView::Ddl))
+}
+
+/// The DDL page: the port's string, verbatim, one line per row. An empty string
+/// is its own empty state.
+fn ddl_view(workspace: &MemoryWorkspace, title: &str, theme: tok::Theme) -> El {
+    let ddl = workspace.table_ddl(title).ok().filter(|ddl| !ddl.is_empty());
+    match ddl {
+        Some(ddl) => {
+            let mut page = col()
+                .key("table-ddl")
+                .w_full()
+                .px(12.0)
+                .py(8.0)
+                .radius(8.0)
+                .fill(theme.control_off);
+            for line in ddl.lines() {
+                page = page.child(text(line.to_owned()).font(sql_editor::editor_font()).color(theme.text));
+            }
+            page
+        }
+        None => col()
+            .key("table-ddl-empty")
+            .w_full()
+            .h(160.0)
+            .px(12.0)
+            .py(8.0)
+            .radius(8.0)
+            .fill(theme.control_off)
+            .child(text("No DDL available for this table").font(type_::TITLE).color(theme.text))
+            .child(
+                text("The port returned an empty DDL string")
+                    .font(type_::LABEL)
+                    .color(theme.text_secondary),
+            ),
+    }
 }
 
 fn workspace_empty(theme: tok::Theme) -> El {
@@ -1575,6 +1662,40 @@ mod tests {
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
         assert!(runtime.find("tree-table-customers").is_some());
+    }
+
+    #[test]
+    fn the_ddl_view_shows_the_port_string_and_an_empty_state() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.frame(0.0);
+        assert!(runtime.find("view-data").is_some());
+        assert!(runtime.find("view-ddl").is_some());
+        assert!(runtime.find("data-grid").is_some(), "data is the default view");
+
+        let (x, y) = runtime.find("view-ddl").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("table-ddl").is_some(), "the DDL string has its own page");
+        assert!(runtime.find("data-grid").is_none(), "the grid leaves");
+
+        let (x, y) = runtime.find("view-data").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("data-grid").is_some());
+
+        // The analytics table has no DDL: its own empty state.
+        runtime.state.set_table_view(super::TableView::Ddl);
+        runtime.state.open_table_tab("catalog").unwrap();
+        runtime.settle_all();
+        runtime.frame(0.0);
+        assert!(runtime.find("table-ddl-empty").is_some(), "an empty DDL string is an empty state");
+        assert!(runtime.find("table-ddl").is_none());
     }
 
     #[test]
