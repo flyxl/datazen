@@ -59,8 +59,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | P6 | 已完成 | 230de1e | testing/P6-export-dialog.md |
 | P7 | 已完成 | 9b248ef | testing/P7-progress.md |
 | P8 | 已完成 | 77d86e6 | testing/P8-import-wizard.md |
-| P9 | 进行中 | | |
-| D1 | 未开始 | | |
+| P9 | 已完成 | 3ecc608 | testing/P9-backup.md |
+| D1 | 进行中 | | |
 | D2 | 未开始 | | |
 | D3 | 未开始 | | |
 | D4 | 未开始 | | |
