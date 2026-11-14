@@ -393,10 +393,32 @@ impl AppState {
         self.table_view = view;
     }
 
-    /// The table page size from the settings port (fallback: the built-in 25).
+    /// The settings in force: the host's once it persists them (N8), the
+    /// memory port's while it does not. The adapter's read is memory-speed —
+    /// the host caches its document.
+    fn ui_settings(&self) -> Vec<Setting> {
+        match self.desktop.read_ui_settings() {
+            Ok(settings) => settings,
+            Err(_) => self.workspace.read_settings(),
+        }
+    }
+
+    /// Write one setting: the host's use case first (N8); its fixed
+    /// not-implemented error means the demo process, and the memory port
+    /// answers instead; any other failure is real and the caller shows it.
+    fn write_ui_setting(&mut self, setting: Setting) -> Result<(), String> {
+        match self.desktop.write_ui_setting(setting.clone()) {
+            Ok(()) => Ok(()),
+            Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
+                self.workspace.write_setting(setting)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    /// The table page size from the settings in force (fallback: the built-in 25).
     fn table_page_size(&self) -> u32 {
-        self.workspace
-            .read_settings()
+        self.ui_settings()
             .iter()
             .find_map(|setting| match setting {
                 Setting::TablePageSize { rows } => Some(*rows),
@@ -410,7 +432,7 @@ impl AppState {
     fn set_table_page_size(&mut self) {
         let rows = self.page_size_input.text.trim().parse::<u32>();
         match rows {
-            Ok(rows) => match self.workspace.write_setting(Setting::TablePageSize { rows }) {
+            Ok(rows) => match self.write_ui_setting(Setting::TablePageSize { rows }) {
                 Ok(()) => self.settings_error = None,
                 Err(error) => self.settings_error = Some(error),
             },
@@ -421,7 +443,7 @@ impl AppState {
     fn set_query_max_rows(&mut self) {
         let rows = self.max_rows_input.text.trim().parse::<u32>();
         match rows {
-            Ok(rows) => match self.workspace.write_setting(Setting::QueryMaxRows { rows }) {
+            Ok(rows) => match self.write_ui_setting(Setting::QueryMaxRows { rows }) {
                 Ok(()) => self.settings_error = None,
                 Err(error) => self.settings_error = Some(error),
             },
@@ -872,18 +894,17 @@ impl AppState {
         }
     }
 
-    /// Flip the theme. The only write goes to the settings port.
+    /// Flip the theme. The only write goes to the settings in force.
     fn toggle_theme(&mut self) {
         let dark = self
-            .workspace
-            .read_settings()
+            .ui_settings()
             .iter()
             .find_map(|setting| match setting {
                 Setting::Theme { dark } => Some(*dark),
                 _ => None,
             })
             .unwrap_or(true);
-        let _ = self.workspace.write_setting(Setting::Theme { dark: !dark });
+        let _ = self.write_ui_setting(Setting::Theme { dark: !dark });
     }
 
     /// Open the ER diagram for the current schema: the selected table's schema,
@@ -2946,27 +2967,22 @@ fn workspace_empty(theme: tok::Theme) -> El {
 }
 
 fn settings_page(state: &AppState, theme: tok::Theme) -> El {
-    let dark = state
-        .workspace
-        .read_settings()
+    let settings = state.ui_settings();
+    let dark = settings
         .iter()
         .find_map(|setting| match setting {
             Setting::Theme { dark } => Some(*dark),
             _ => None,
         })
         .unwrap_or(true);
-    let page_size = state
-        .workspace
-        .read_settings()
+    let page_size = settings
         .iter()
         .find_map(|setting| match setting {
             Setting::TablePageSize { rows } => Some(*rows),
             _ => None,
         })
         .unwrap_or(TABLE_PAGE_SIZE);
-    let max_rows = state
-        .workspace
-        .read_settings()
+    let max_rows = settings
         .iter()
         .find_map(|setting| match setting {
             Setting::QueryMaxRows { rows } => Some(*rows),
@@ -3846,8 +3862,7 @@ fn connection_list(state: &AppState, theme: tok::Theme) -> El {
 
 fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
     let dark = state
-        .workspace
-        .read_settings()
+        .ui_settings()
         .iter()
         .find_map(|setting| match setting {
             Setting::Theme { dark } => Some(*dark),
@@ -7441,5 +7456,76 @@ mod tests {
         keyless.commit_edit();
         let batch = keyless.commit_batch().expect("the batch still builds");
         assert!(batch.rows[0].identity.is_empty(), "no PK on the page, no identity");
+    }
+
+    #[test]
+    fn a_host_that_persists_settings_answers_the_reads_and_writes() {
+        use datazen_ui_api::{Setting, SettingsApi};
+
+        // The host's settings answer once it persists them (N8): the page
+        // size the grid pages with comes from the host, and a write goes to
+        // the host — the memory port never sees it.
+        struct SettingsHost {
+            settings: Vec<Setting>,
+            writes: Vec<Setting>,
+        }
+        impl DesktopAdapter for SettingsHost {
+            fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String> {
+                Ok(Vec::new())
+            }
+            fn read_table_page(
+                &mut self,
+                _: &str,
+                _: u32,
+                _: u32,
+                _: Option<&ColumnSort>,
+                _: Option<&ColumnFilter>,
+            ) -> Result<TablePage, String> {
+                Err(DESKTOP_NOT_IMPLEMENTED.into())
+            }
+            fn commit_cells(&mut self, _: &str, _: &[(u32, String, String)]) -> Result<u32, String> {
+                Err(DESKTOP_NOT_IMPLEMENTED.into())
+            }
+            fn read_ui_settings(&self) -> Result<Vec<Setting>, String> {
+                Ok(self.settings.clone())
+            }
+            fn write_ui_setting(&mut self, setting: Setting) -> Result<(), String> {
+                self.writes.push(setting.clone());
+                let kind = |setting: &Setting| match setting {
+                    Setting::Theme { .. } => 0,
+                    Setting::TablePageSize { .. } => 1,
+                    Setting::QueryMaxRows { .. } => 2,
+                };
+                self.settings.retain(|existing| kind(existing) != kind(&setting));
+                self.settings.push(setting);
+                Ok(())
+            }
+        }
+
+        let mut runtime = runtime();
+        runtime.state.desktop = Box::new(SettingsHost {
+            settings: vec![Setting::TablePageSize { rows: 10 }],
+            writes: Vec::new(),
+        });
+
+        // The grid pages with the host's page size, not the memory port's 25.
+        assert_eq!(runtime.state.table_page_size(), 10);
+
+        // A write reaches the host and becomes the value in force.
+        runtime.state.write_ui_setting(Setting::TablePageSize { rows: 40 }).unwrap();
+        assert_eq!(runtime.state.table_page_size(), 40);
+
+        // The memory port behind the fallback is untouched: its own page
+        // size is still the demo's 25.
+        assert_eq!(
+            SettingsApi::read_settings(&runtime.state.workspace)
+                .iter()
+                .find_map(|setting| match setting {
+                    Setting::TablePageSize { rows } => Some(*rows),
+                    _ => None,
+                }),
+            Some(25),
+            "the memory port is the fallback, not a mirror"
+        );
     }
 }

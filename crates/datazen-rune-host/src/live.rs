@@ -109,6 +109,10 @@ pub struct LiveAdapter {
     /// The host's execution runtime (N5): the use cases the commit, query
     /// and sync paths run through. Exposed for the job flows that follow.
     runtime: Arc<RuntimeConnectionUseCases>,
+    /// The settings use case over the settings file (N8), with the document
+    /// cached in memory — reads are memory-speed, writes go through.
+    settings: datazen::settings::application::SettingsService,
+    settings_document: Arc<Mutex<serde_json::Value>>,
 }
 
 impl LiveAdapter {
@@ -148,6 +152,15 @@ impl LiveAdapter {
         // The use case is stateless over the repository: the adapter and the
         // worker each hold their own service over the one store.
         let service = ConnectionService::new(Arc::clone(&repository));
+        // N8: the settings use case over the settings file, with the
+        // document cached for memory-speed reads.
+        let settings_repository =
+            Arc::new(crate::settings::FileSettingsRepository::open(&data_dir.join("settings.json")));
+        let settings = datazen::settings::application::SettingsService::new(settings_repository);
+        let settings_document = Arc::new(Mutex::new(
+            futures_executor::block_on(settings.read_app_settings())
+                .unwrap_or_else(|_| serde_json::json!({})),
+        ));
         let worker_service = ConnectionService::new(repository);
         let session = Arc::new(Mutex::new(LiveSession::default()));
         let worker_session = Arc::clone(&session);
@@ -244,6 +257,8 @@ impl LiveAdapter {
             service,
             session,
             runtime,
+            settings,
+            settings_document,
         }
     }
 
@@ -875,6 +890,77 @@ impl DesktopAdapter for LiveAdapter {
         }
         deliveries
     }
+
+    fn read_ui_settings(&self) -> Result<Vec<datazen_ui_api::Setting>, String> {
+        // The cached document answers; the "ui" object holds the three the
+        // UI knows. Absent keys are simply absent settings.
+        let document = self.settings_document.lock().expect("the settings lock");
+        let ui = document
+            .get("ui")
+            .and_then(|ui| ui.as_object())
+            .ok_or_else(|| "no ui settings yet".to_string())?;
+        let mut settings = Vec::new();
+        if let Some(dark) = ui.get("themeDark").and_then(|value| value.as_bool()) {
+            settings.push(datazen_ui_api::Setting::Theme { dark });
+        }
+        if let Some(rows) = ui.get("tablePageSize").and_then(|value| value.as_u64()) {
+            settings.push(datazen_ui_api::Setting::TablePageSize { rows: rows as u32 });
+        }
+        if let Some(rows) = ui.get("queryMaxRows").and_then(|value| value.as_u64()) {
+            settings.push(datazen_ui_api::Setting::QueryMaxRows { rows: rows as u32 });
+        }
+        if settings.is_empty() {
+            // An empty answer would replace the memory port's list with
+            // "nothing set"; the honest fresh install reports nothing and
+            // lets the UI fall back only on error. An empty ui object is a
+            // real answer: nothing configured.
+            return Ok(Vec::new());
+        }
+        Ok(settings)
+    }
+
+    fn write_ui_setting(&mut self, setting: datazen_ui_api::Setting) -> Result<(), String> {
+        // The same validation the memory port runs: the rules are the
+        // product's, not the store's.
+        match &setting {
+            datazen_ui_api::Setting::Theme { .. } => {}
+            datazen_ui_api::Setting::TablePageSize { rows } => {
+                if *rows == 0 || *rows > 500 {
+                    return Err(format!("table page size must be 1..=500, got {rows}"));
+                }
+            }
+            datazen_ui_api::Setting::QueryMaxRows { rows } => {
+                if *rows == 0 || *rows > 10_000 {
+                    return Err(format!("query max rows must be 1..=10000, got {rows}"));
+                }
+            }
+        }
+        let (key, value) = match &setting {
+            datazen_ui_api::Setting::Theme { dark } => ("themeDark", serde_json::json!(dark)),
+            datazen_ui_api::Setting::TablePageSize { rows } => {
+                ("tablePageSize", serde_json::json!(rows))
+            }
+            datazen_ui_api::Setting::QueryMaxRows { rows } => {
+                ("queryMaxRows", serde_json::json!(rows))
+            }
+        };
+        let mut document = self.settings_document.lock().expect("the settings lock").clone();
+        let ui = document
+            .as_object_mut()
+            .ok_or_else(|| "the settings document is not an object".to_string())?
+            .entry("ui")
+            .or_insert_with(|| serde_json::json!({}));
+        if let Some(object) = ui.as_object_mut() {
+            object.insert(key.into(), value);
+        }
+        // Through the use case: the repository writes atomically, the
+        // service round-trips the stored snapshot. The file write is small
+        // local IO — the same class as the connection store's reads.
+        let stored = futures_executor::block_on(self.settings.save_app_settings(document.clone()))
+            .map_err(|error| error.to_string())?;
+        *self.settings_document.lock().expect("the settings lock") = stored;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -1334,8 +1420,43 @@ mod tests {
         let error = poll_query(&mut adapter).expect_err("no session, no query");
         assert!(error.contains("session"), "the sentence names the state: {error}");
     }
-}
 
+    #[test]
+    fn ui_settings_persist_through_the_file_and_survive_a_reopen() {
+        let dir = temp_dir("settings");
+        let store_path = dir.join("connections.json");
+        let repository = Arc::new(FileConnectionRepository::open(&store_path).unwrap());
+
+        // A fresh adapter: no ui settings yet (the memory port's defaults
+        // answer the UI), a write lands in the file, a read answers it.
+        let mut adapter = LiveAdapter::with_data_dir(repository.clone(), &dir);
+        assert!(adapter.read_ui_settings().is_err(), "a fresh install has no ui settings");
+        adapter
+            .write_ui_setting(datazen_ui_api::Setting::TablePageSize { rows: 50 })
+            .unwrap();
+        adapter.write_ui_setting(datazen_ui_api::Setting::Theme { dark: false }).unwrap();
+        let settings = adapter.read_ui_settings().unwrap();
+        assert!(settings.contains(&datazen_ui_api::Setting::TablePageSize { rows: 50 }));
+        assert!(settings.contains(&datazen_ui_api::Setting::Theme { dark: false }));
+        assert!(dir.join("settings.json").exists(), "the settings file exists");
+
+        // A fresh adapter over the same data dir sees them: persistence.
+        let mut reopened = LiveAdapter::with_data_dir(repository, &dir);
+        let settings = reopened.read_ui_settings().unwrap();
+        assert!(settings.contains(&datazen_ui_api::Setting::TablePageSize { rows: 50 }));
+
+        // The validation rules are the product's, not the store's: an
+        // out-of-range page size is refused and nothing is written.
+        let before = dir.join("settings.json");
+        let before = std::fs::read_to_string(&before).unwrap();
+        let error = reopened
+            .write_ui_setting(datazen_ui_api::Setting::TablePageSize { rows: 999 })
+            .unwrap_err();
+        assert!(error.contains("1..=500"), "the refusal names the rule: {error}");
+        let after = std::fs::read_to_string(&dir.join("settings.json")).unwrap();
+        assert_eq!(before, after, "a refused write changes nothing on disk");
+    }
+}
 /// Test-only helpers shared with the backend module's tests.
 #[cfg(test)]
 pub(crate) mod test_support {

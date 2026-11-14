@@ -259,6 +259,20 @@ pub trait DesktopAdapter {
     fn poll_jobs(&mut self) -> Vec<AdapterDelivery> {
         Vec::new()
     }
+
+    /// The host's persisted UI settings (N8). The default answers the fixed
+    /// error, and the UI falls back to the memory port's settings — the
+    /// demo path.
+    fn read_ui_settings(&self) -> Result<Vec<Setting>, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// Validate and persist one UI setting through the host's settings use
+    /// case (N8). The default answers the fixed error; the UI falls back to
+    /// the memory port.
+    fn write_ui_setting(&mut self, _setting: Setting) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
 }
 
 /// One unit of host work that can take real time — a live driver IO. The job

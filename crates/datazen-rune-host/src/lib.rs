@@ -6,10 +6,12 @@
 //! store; the data paths follow on the same seam.
 
 pub mod backend;
+pub mod settings;
 pub mod live;
 pub mod store;
 
 pub use live::LiveAdapter;
+pub use settings::FileSettingsRepository;
 pub use store::FileConnectionRepository;
 
 use std::path::PathBuf;
