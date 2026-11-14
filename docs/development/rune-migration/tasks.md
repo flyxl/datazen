@@ -78,8 +78,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | W6 | 已完成 | 6a0a4c1c3 | testing/W6-workflow-yaml.md |
 | W7 | 已完成 | bde466a56 | testing/W7-run-results.md |
 | H1 | 已完成 | 46c44ddbe | testing/H1-desktop-process.md |
-| H2 | 进行中 | | |
-| H3 | 未开始 | | |
+| H2 | 已完成 | 69b82c82 | testing/H2-adapter-types.md |
+| H3 | 进行中 | | |
 | H4 | 未开始 | | |
 | H5 | 未开始 | | |
 | H6 | 未开始 | | |
