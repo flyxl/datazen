@@ -55,8 +55,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | P2 | 已完成 | 0221bf0 | testing/P2-theme.md |
 | P3 | 已完成 | 53e75b0 | testing/P3-page-size.md |
 | P4 | 已完成 | 35cbd1f | testing/P4-connection-form.md |
-| P5 | 进行中 | | |
-| P6 | 未开始 | | |
+| P5 | 已完成 | 6756b9f | testing/P5-snippets.md |
+| P6 | 进行中 | | |
 | P7 | 未开始 | | |
 | P8 | 未开始 | | |
 | P9 | 未开始 | | |
