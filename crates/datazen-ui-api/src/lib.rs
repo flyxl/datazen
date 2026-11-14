@@ -7,6 +7,8 @@ mod tabs;
 
 use std::collections::HashMap;
 
+use datazen_driver_api::{ConnectionConfig, SslMode};
+
 pub use tabs::{Tab, TabKind, Tabs};
 
 /// One foreign key: this table's columns (a compound key stays together), the
@@ -240,6 +242,213 @@ pub struct UnimplementedAdapter;
 impl DesktopAdapter for UnimplementedAdapter {
     fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    fn read_table_page(
+        &mut self,
+        _table: &str,
+        _page: u32,
+        _page_size: u32,
+        _sort: Option<&ColumnSort>,
+        _filter: Option<&ColumnFilter>,
+    ) -> Result<TablePage, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    fn commit_cells(
+        &mut self,
+        _table: &str,
+        _edits: &[(u32, String, String)],
+    ) -> Result<u32, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+}
+
+/// The one organization a desktop process recognizes (single-tenant).
+const DESKTOP_ORGANIZATION: &str = "desktop";
+
+/// The adapter's in-memory connection store, seeded at construction. The
+/// desktop host swaps in its real store later; the use case above it is
+/// unchanged. Out-of-scope access answers empty, the way the boundary
+/// defines it.
+struct MemoryConnectionRepository {
+    connections: Vec<ConnectionConfig>,
+}
+
+#[async_trait::async_trait]
+impl datazen::connection::domain::ConnectionRepository for MemoryConnectionRepository {
+    async fn list(
+        &self,
+        scope: &datazen::connection::domain::ConnectionScope,
+    ) -> Result<Vec<ConnectionConfig>, datazen::connection::domain::ConnectionRepositoryError>
+    {
+        if scope.organization_id() != DESKTOP_ORGANIZATION {
+            return Ok(Vec::new());
+        }
+        Ok(self.connections.clone())
+    }
+
+    async fn get(
+        &self,
+        scope: &datazen::connection::domain::ConnectionScope,
+        connection_id: &str,
+    ) -> Result<Option<ConnectionConfig>, datazen::connection::domain::ConnectionRepositoryError>
+    {
+        if scope.organization_id() != DESKTOP_ORGANIZATION {
+            return Ok(None);
+        }
+        Ok(self
+            .connections
+            .iter()
+            .find(|config| config.id == connection_id)
+            .cloned())
+    }
+
+    async fn save(
+        &self,
+        _scope: &datazen::connection::domain::ConnectionScope,
+        _config: ConnectionConfig,
+    ) -> Result<(), datazen::connection::domain::ConnectionRepositoryError> {
+        Err(datazen::connection::domain::ConnectionRepositoryError::BackendUnavailable(
+            "the adapter's demo store is read-only".into(),
+        ))
+    }
+
+    async fn delete(
+        &self,
+        _scope: &datazen::connection::domain::ConnectionScope,
+        _connection_id: &str,
+    ) -> Result<(), datazen::connection::domain::ConnectionRepositoryError> {
+        Err(datazen::connection::domain::ConnectionRepositoryError::BackendUnavailable(
+            "the adapter's demo store is read-only".into(),
+        ))
+    }
+
+    async fn reorder(
+        &self,
+        _scope: &datazen::connection::domain::ConnectionScope,
+        _ordered_ids: Vec<String>,
+    ) -> Result<(), datazen::connection::domain::ConnectionRepositoryError> {
+        Err(datazen::connection::domain::ConnectionRepositoryError::BackendUnavailable(
+            "the adapter's demo store is read-only".into(),
+        ))
+    }
+
+    async fn touch_last_connected_at(
+        &self,
+        _scope: &datazen::connection::domain::ConnectionScope,
+        _connection_id: &str,
+    ) -> Result<(), datazen::connection::domain::ConnectionRepositoryError> {
+        Ok(())
+    }
+
+    async fn groups(
+        &self,
+        _scope: &datazen::connection::domain::ConnectionScope,
+    ) -> Result<Vec<String>, datazen::connection::domain::ConnectionRepositoryError> {
+        Ok(Vec::new())
+    }
+
+    async fn save_groups(
+        &self,
+        _scope: &datazen::connection::domain::ConnectionScope,
+        _groups: Vec<String>,
+    ) -> Result<(), datazen::connection::domain::ConnectionRepositoryError> {
+        Err(datazen::connection::domain::ConnectionRepositoryError::BackendUnavailable(
+            "the adapter's demo store is read-only".into(),
+        ))
+    }
+}
+
+/// One connection as the form's IPC payload, from the UI vocabulary. The
+/// adapter's demo seed carries only what the list shows; the desktop host
+/// seeds real configs instead.
+fn config_from_profile(profile: &ConnectionProfile) -> ConnectionConfig {
+    ConnectionConfig {
+        id: profile.id.clone(),
+        name: profile.name.clone(),
+        database_type: profile.engine.clone(),
+        host: None,
+        port: None,
+        database: None,
+        schema: None,
+        username: None,
+        password: None,
+        ssl_mode: SslMode::default(),
+        connection_timeout: 30,
+        max_pool_size: 10,
+        ssh_tunnel: None,
+        tunnel_kind: None,
+        tunnel_id: None,
+        http_proxy_tunnel: None,
+        websocket_tunnel: None,
+        color_tag: None,
+        group: None,
+        last_connected_at: None,
+        server_version: None,
+        options: None,
+        read_only: false,
+        pinned: false,
+    }
+}
+
+/// H3: the adapter with `list_connections` wired to the existing use case —
+/// `ConnectionService::list_redacted` over a connection repository.
+/// `read_table_page` (H4) and `commit_cells` (H5) are not wired yet.
+pub struct UseCaseAdapter {
+    service: datazen::connection::application::ConnectionService,
+}
+
+impl UseCaseAdapter {
+    /// The real seam: the desktop host provides its connection store.
+    pub fn from_repository(
+        repository: std::sync::Arc<dyn datazen::connection::domain::ConnectionRepository>,
+    ) -> Self {
+        Self {
+            service: datazen::connection::application::ConnectionService::new(repository),
+        }
+    }
+
+    /// The in-memory store the shared UI's demo process starts from, seeded
+    /// with the memory port's demo connections.
+    pub fn with_demo_connections() -> Self {
+        Self::new(vec![
+            ConnectionProfile {
+                id: "local".into(),
+                name: "Local Postgres".into(),
+                engine: "postgres".into(),
+            },
+            ConnectionProfile {
+                id: "replica".into(),
+                name: "Read Replica".into(),
+                engine: "postgres".into(),
+            },
+        ])
+    }
+
+    /// An in-memory store seeded from the UI vocabulary (tests, demo seeds).
+    pub fn new(connections: Vec<ConnectionProfile>) -> Self {
+        let configs = connections.iter().map(config_from_profile).collect();
+        Self::from_repository(std::sync::Arc::new(MemoryConnectionRepository {
+            connections: configs,
+        }))
+    }
+}
+
+impl DesktopAdapter for UseCaseAdapter {
+    fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String> {
+        let scope = datazen::connection::domain::ConnectionScope::new(DESKTOP_ORGANIZATION);
+        let configs =
+            futures_executor::block_on(self.service.list_redacted(&scope))
+                .map_err(|error| error.to_string())?;
+        Ok(configs
+            .iter()
+            .map(|config| ConnectionProfile {
+                id: config.id.clone(),
+                name: config.name.clone(),
+                engine: config.database_type.clone(),
+            })
+            .collect())
     }
 
     fn read_table_page(
@@ -2050,6 +2259,55 @@ mod tests {
             adapter.commit_cells("customers", &edits).unwrap_err(),
             DESKTOP_NOT_IMPLEMENTED,
             "commit_cells is not wired yet"
+        );
+    }
+
+    #[test]
+    fn the_wired_adapter_lists_the_demo_connections_through_the_use_case() {
+        let mut adapter = UseCaseAdapter::with_demo_connections();
+        let listed = adapter.list_connections().expect("the use case answers");
+        assert_eq!(
+            listed,
+            vec![
+                ConnectionProfile {
+                    id: "local".into(),
+                    name: "Local Postgres".into(),
+                    engine: "postgres".into(),
+                },
+                ConnectionProfile {
+                    id: "replica".into(),
+                    name: "Read Replica".into(),
+                    engine: "postgres".into(),
+                },
+            ],
+            "the use case's redacted list maps onto the UI vocabulary"
+        );
+    }
+
+    #[test]
+    fn a_wired_adapter_over_an_empty_store_lists_no_connections() {
+        let mut adapter = UseCaseAdapter::new(Vec::new());
+        assert_eq!(
+            adapter.list_connections().expect("an empty store is not an error"),
+            Vec::new()
+        );
+    }
+
+    #[test]
+    fn the_wired_adapter_keeps_the_unwired_methods_at_the_fixed_error() {
+        let mut adapter = UseCaseAdapter::with_demo_connections();
+        assert_eq!(
+            adapter
+                .read_table_page("customers", 0, 25, None, None)
+                .unwrap_err(),
+            DESKTOP_NOT_IMPLEMENTED,
+            "H4 has not wired read_table_page yet"
+        );
+        let edits = vec![(0u32, String::from("name"), String::from("alice"))];
+        assert_eq!(
+            adapter.commit_cells("customers", &edits).unwrap_err(),
+            DESKTOP_NOT_IMPLEMENTED,
+            "H5 has not wired commit_cells yet"
         );
     }
 }

@@ -2622,6 +2622,12 @@ dependencies = [
 [[package]]
 name = "datazen-ui-api"
 version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "datazen",
+ "datazen-driver-api",
+ "futures-executor",
+]
 
 [[package]]
 name = "datazen_desktop"

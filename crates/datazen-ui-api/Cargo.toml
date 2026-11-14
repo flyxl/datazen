@@ -3,9 +3,19 @@ name = "datazen-ui-api"
 version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
-description = "UI ports for the DataZen Rune interface. No host, driver or HTTP types."
+description = "UI ports and the desktop adapter for the DataZen Rune interface"
 
 [dependencies]
+# H3: the desktop adapter calls the existing connection use case. The
+# `application` umbrella is the feature set the desktop host itself enables
+# (`connection` alone does not compile datazen's ungated modules).
+async-trait = { workspace = true }
+datazen = { workspace = true, features = ["application"] }
+# The adapter's repository boundary and the form payload's own types.
+datazen-driver-api = { workspace = true }
+# The use case is async; the UI event loop is sync. The adapter bridges with a
+# blocking poll over the in-memory repository (its futures are always ready).
+futures-executor = "0.3"
 
 [lints]
 workspace = true

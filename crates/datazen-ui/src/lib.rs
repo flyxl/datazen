@@ -7,7 +7,7 @@ mod data_grid;
 mod sql_editor;
 
 use data_grid::DataGrid;
-use datazen_ui_api::{ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, UnimplementedAdapter, WorkflowStepResult, WorkspaceApi};
+use datazen_ui_api::{ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, UnimplementedAdapter, UseCaseAdapter, WorkflowStepResult, WorkspaceApi};
 use rune::tok::{self, type_};
 use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, TextEdit, Tx, col, oklch, row, text, text_input};
 use sql_editor::SqlEditor;
@@ -84,9 +84,9 @@ struct AppState {
     sql: SqlEditor,
     grid: DataGrid,
     workspace: MemoryWorkspace,
-    /// The desktop host's seam. No use case is wired yet (H2), so its fixed
-    /// error shows on the connections page while the memory port answers.
-    desktop: UnimplementedAdapter,
+    /// The desktop host's seam. H3 wired list_connections to the connection
+    /// use case; the remaining methods answer the fixed error until H4/H5.
+    desktop: Box<dyn DesktopAdapter>,
     /// The adapter's connection list once it answers (H3); None while the
     /// page falls back to the memory port's list.
     desktop_connections: Option<Vec<ConnectionProfile>>,
@@ -201,7 +201,7 @@ impl Default for AppState {
             sql: SqlEditor::new(),
             grid: DataGrid::new(),
             workspace: MemoryWorkspace::new(),
-            desktop: UnimplementedAdapter,
+            desktop: Box::new(UnimplementedAdapter),
             desktop_connections: None,
             desktop_error: None,
             tabs: Tabs::new(),
@@ -3648,9 +3648,11 @@ pub fn run() {
 
 /// The desktop process starts on the connections page, so the adapter is
 /// consulted before the first frame: its answer (or its fixed error) is on
-/// the page from the start.
+/// the page from the start. H3: the process lists connections through the
+/// connection use case, over the adapter's in-memory store.
 fn init_state() -> AppState {
     let mut state = AppState::default();
+    state.desktop = Box::new(UseCaseAdapter::with_demo_connections());
     state.sync_desktop_connections();
     state
 }
@@ -5994,6 +5996,40 @@ mod tests {
             runtime.find("desktop-adapter-message").is_none(),
             "the message belongs to the connections page"
         );
+    }
+
+    #[test]
+    fn a_wired_adapter_replaces_the_demo_list_with_the_use_case_answer() {
+        use datazen_ui_api::{ConnectionProfile, UseCaseAdapter};
+
+        let mut runtime = runtime();
+        // H3: the desktop process lists connections through the adapter; the
+        // port's demo list is only the fallback.
+        runtime.state.desktop = Box::new(UseCaseAdapter::new(vec![ConnectionProfile {
+            id: "warehouse".into(),
+            name: "Warehouse".into(),
+            engine: "postgres".into(),
+        }]));
+        runtime.frame(0.0);
+
+        let (x, y) = runtime.find("nav-connections").expect("connections navigation");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+
+        assert!(
+            runtime.find("connection-warehouse").is_some(),
+            "the use case's connection is on the page"
+        );
+        assert!(
+            runtime.find("connection-local").is_none(),
+            "the adapter's list replaced the port's demo list"
+        );
+        assert!(
+            runtime.find("desktop-adapter-message").is_none(),
+            "no fallback message: the adapter answered"
+        );
+        assert!(runtime.state.desktop_connections.is_some());
     }
 
     #[test]
