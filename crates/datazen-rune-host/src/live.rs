@@ -62,6 +62,10 @@ enum HostJob {
         generation: u32,
         batch: datazen_ui_api::CellEditBatch,
     },
+    RunQuery {
+        generation: u32,
+        sql: String,
+    },
 }
 
 /// A finished job on the answer channel.
@@ -69,6 +73,7 @@ enum HostAnswer {
     Connection { generation: u32, id: String, catalog: Result<Catalog, String> },
     TablePage { generation: u32, page: Result<TablePage, String> },
     CommitCount { generation: u32, count: Result<u32, String> },
+    QueryPage { generation: u32, page: Result<TablePage, String> },
 }
 
 /// The open live session, shared between the adapter and the worker. N4's
@@ -176,6 +181,10 @@ impl LiveAdapter {
                                     generation,
                                     count: Err(format!("the job runtime did not start: {error}")),
                                 },
+                                HostJob::RunQuery { generation, .. } => HostAnswer::QueryPage {
+                                    generation,
+                                    page: Err(format!("the job runtime did not start: {error}")),
+                                },
                             };
                             if answer_tx.send(answer).is_err() {
                                 break;
@@ -212,6 +221,15 @@ impl LiveAdapter {
                                 batch,
                             ));
                             HostAnswer::CommitCount { generation, count }
+                        }
+                        HostJob::RunQuery { generation, sql } => {
+                            let page = runtime.block_on(run_query(
+                                &worker_runtime,
+                                &worker_profiles,
+                                &worker_session,
+                                &sql,
+                            ));
+                            HostAnswer::QueryPage { generation, page }
                         }
                     };
                     if answer_tx.send(answer).is_err() {
@@ -656,6 +674,138 @@ async fn commit_edits(
     Ok(response.affected_rows as u32)
 }
 
+/// Run one SQL statement through the runtime (N7): `execute_at_target` in
+/// owned-session mode — the runtime opens a session at the live connection's
+/// target, executes the statement, and the artifacts carry the driver's rows.
+/// The first statement's result becomes the grid's page; a failed execution is
+/// its error sentence. Cancellation is the UI's generation semantics (Q5/Q6):
+/// a stale delivery is dropped on arrival, and the runtime's idle policy reaps
+/// the session behind it.
+async fn run_query(
+    runtime: &Arc<RuntimeConnectionUseCases>,
+    profiles: &Arc<crate::backend::HostProfiles>,
+    session: &Arc<Mutex<LiveSession>>,
+    sql: &str,
+) -> Result<TablePage, String> {
+    let (connection, database) = {
+        let session = session.lock().expect("the live session lock");
+        if !session.is_open() {
+            return Err("the live session is not open".into());
+        }
+        (
+            session.connection.clone().unwrap_or_default(),
+            session.database.clone(),
+        )
+    };
+    let ctx = host_request_context();
+    let token = runtime
+        .issue_submission_token(
+            &ctx,
+            datazen::execution::IdempotentOperation::ExecuteAtTarget,
+            None,
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+    let receipt = runtime
+        .execute_at_target(
+            &ctx,
+            datazen::execution::application::requests::ExecuteAtTargetRequest {
+                target: ExecutionTarget::new(
+                    ConnectionId::new(connection.clone()),
+                    datazen::connection::domain::NamespaceTarget::new(
+                        database.clone(),
+                        None,
+                        None,
+                        Vec::new(),
+                    ),
+                ),
+                expected_config_revision: Counter::new(profiles.revision_of(&connection)),
+                call: datazen::execution::application::requests::CommandCall {
+                    command: "query".into(),
+                    input: serde_json::json!({ "sql": sql }),
+                },
+                idempotency_key: token.idempotency_key,
+            },
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+    let view = loop {
+        let view = runtime
+            .get_execution(&ctx, receipt.execution_id.clone())
+            .await
+            .map_err(|error| error.to_string())?;
+        if view.state.is_terminal() {
+            break view;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    };
+    if view.state != datazen::execution::ExecutionState::Succeeded {
+        return Err(match view.error_code {
+            Some(code) => format!("the statement failed: {code:?}"),
+            None => "the statement failed".to_string(),
+        });
+    }
+    // Collect the artifacts: the statement metadata names the columns, the
+    // row chunks carry the rows.
+    let mut columns: Vec<String> = Vec::new();
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    for artifact in &view.artifact_ids {
+        let first = runtime
+            .read_artifact_chunk(&ctx, artifact.clone(), Counter::ZERO)
+            .await
+            .map_err(|error| error.to_string())?;
+        for index in 0..first.published_chunk_count.get() {
+            let chunk = if index == 0 {
+                first.clone()
+            } else {
+                runtime
+                    .read_artifact_chunk(&ctx, artifact.clone(), Counter::new(index))
+                    .await
+                    .map_err(|error| error.to_string())?
+            };
+            let Some(output) = chunk.output else { continue };
+            if output.get("kind").and_then(|kind| kind.as_str()) == Some("statementMetadata") {
+                if let Some(names) = output.get("columns").and_then(|cols| cols.as_array()) {
+                    if columns.is_empty() {
+                        columns = names
+                            .iter()
+                            .filter_map(|column| column.get("name").and_then(|n| n.as_str()))
+                            .map(str::to_owned)
+                            .collect();
+                    }
+                }
+                continue;
+            }
+            // A row chunk: the provider's ResultChunk shape (the same type
+            // the sink published, `dr::ResultChunk`).
+            let Ok(chunk) = serde_json::from_value::<datazen_driver_api::resource::ResultChunk>(
+                output.clone(),
+            ) else {
+                continue;
+            };
+            if chunk.statement_index != 0 {
+                continue; // the grid shows the first statement's page
+            }
+            for row in chunk.rows {
+                rows.push(row.into_iter().map(cell_to_text).collect());
+            }
+        }
+    }
+    let total = rows.len() as u32;
+    Ok(TablePage {
+        table: "result".into(),
+        columns,
+        rows,
+        page: 0,
+        page_size: total.max(1),
+        total_rows: total,
+        sort: None,
+        filter: None,
+        primary_key: Vec::new(),
+        read_only: Some("query result".into()),
+    })
+}
+
 impl DesktopAdapter for LiveAdapter {
     fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String> {
         // The file store's list path touches only the loaded store; its
@@ -699,9 +849,7 @@ impl DesktopAdapter for LiveAdapter {
             AdapterJob::CommitCells { generation, batch } => {
                 HostJob::CommitCells { generation, batch }
             }
-            // N7 wires the queries; until then decline so the synchronous
-            // paths answer.
-            _ => return false,
+            AdapterJob::RunQuery { generation, sql } => HostJob::RunQuery { generation, sql },
         };
         self.jobs.lock().expect("the job channel").send(job).is_ok()
     }
@@ -719,6 +867,9 @@ impl DesktopAdapter for LiveAdapter {
                 }
                 HostAnswer::CommitCount { generation, count } => {
                     deliveries.push(AdapterDelivery::CommitCount { generation, count });
+                }
+                HostAnswer::QueryPage { generation, page } => {
+                    deliveries.push(AdapterDelivery::QueryPage { generation, page });
                 }
             }
         }
@@ -1109,6 +1260,79 @@ mod tests {
             error.contains("noRowIdentity") || error.contains("primary key"),
             "the refusal names the missing identity: {error}"
         );
+    }
+
+
+    /// Poll the adapter until its query job answers.
+    fn poll_query(adapter: &mut LiveAdapter) -> Result<TablePage, String> {
+        for _ in 0..300 {
+            for delivery in adapter.poll_jobs() {
+                if let AdapterDelivery::QueryPage { page, .. } = delivery {
+                    return page;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("the query job never answered");
+    }
+
+    #[test]
+    fn query_jobs_run_real_sql_and_answer_real_rows() {
+        let dir = temp_dir("query");
+        let mut adapter = opened_adapter(&dir);
+
+        // A real SELECT through the runtime: the columns and the rows are the
+        // driver's answer.
+        assert!(adapter.begin_job(AdapterJob::RunQuery {
+            generation: 2,
+            sql: "SELECT id, name FROM users WHERE id < 3 ORDER BY id".into(),
+        }));
+        let page = poll_query(&mut adapter).expect("the query answers");
+        assert_eq!(page.columns, vec!["id".to_string(), "name".to_string()]);
+        assert_eq!(page.rows.len(), 3, "three rows match the WHERE");
+        assert_eq!(page.rows[0], vec!["0".to_string(), "user-00".to_string()]);
+        assert_eq!(page.rows[2], vec!["2".to_string(), "user-02".to_string()]);
+        assert_eq!(page.total_rows, 3);
+        assert!(page.read_only.is_some(), "the result page is read-only");
+
+        // A write statement works through the same path: the rows affected
+        // come back as the driver's report (the page is empty, the write
+        // happened - the next query sees it).
+        assert!(adapter.begin_job(AdapterJob::RunQuery {
+            generation: 3,
+            sql: "UPDATE users SET name = 'touched' WHERE id = 1".into(),
+        }));
+        let page = poll_query(&mut adapter).expect("the write answers");
+        assert!(page.rows.is_empty(), "an UPDATE answers no rows");
+
+        assert!(adapter.begin_job(AdapterJob::RunQuery {
+            generation: 4,
+            sql: "SELECT name FROM users WHERE id = 1".into(),
+        }));
+        let page = poll_query(&mut adapter).expect("the read-back answers");
+        assert_eq!(page.rows[0][0], "touched", "the write really landed");
+
+        // A broken statement is a failure sentence, not an empty page.
+        assert!(adapter.begin_job(AdapterJob::RunQuery {
+            generation: 5,
+            sql: "SELECT no_such_column FROM users".into(),
+        }));
+        let error = poll_query(&mut adapter).expect_err("a broken statement fails");
+        assert!(!error.is_empty(), "the failure carries a sentence: {error}");
+    }
+
+    #[test]
+    fn a_query_without_a_session_answers_a_sentence() {
+        let dir = temp_dir("query-closed");
+        let store_path = dir.join("connections.json");
+        let mut adapter =
+            LiveAdapter::new(Arc::new(FileConnectionRepository::open(&store_path).unwrap()));
+        assert!(adapter.begin_job(AdapterJob::RunQuery {
+            generation: 1,
+            sql: "SELECT 1".into(),
+        }));
+        let error = poll_query(&mut adapter).expect_err("no session, no query");
+        assert!(error.contains("session"), "the sentence names the state: {error}");
     }
 }
 
