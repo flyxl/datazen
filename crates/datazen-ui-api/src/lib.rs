@@ -48,6 +48,28 @@ pub struct FavoriteSpec {
     pub sql: String,
 }
 
+/// One parsed connection from an import file (T7), as the preview list shows
+/// it. The full config stays in the host — the preview carries what the user
+/// reads before confirming.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImportedConnectionSpec {
+    pub name: String,
+    pub engine: String,
+    pub address: String,
+}
+
+/// A parsed import file (T7): the format it was detected as, the connections
+/// it carries, what it skipped, and the handle the host stashed the parsed
+/// configs under — the confirm asks by handle, so nothing is lost between
+/// the preview and the save.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImportPreview {
+    pub handle: u64,
+    pub format: String,
+    pub connections: Vec<ImportedConnectionSpec>,
+    pub skipped: Vec<String>,
+}
+
 /// One index of a table: its name, its columns in index order, uniqueness.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IndexSpec {
@@ -354,6 +376,25 @@ pub trait DesktopAdapter {
     /// Delete a favorite (T6): the bytes move to the store's trash, the
     /// panel stops listing the entry.
     fn delete_favorite(&mut self, _id: &str) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// Read and parse a connection import file (T7): the preview before
+    /// anything is saved. The path names the file; the host is the side with
+    /// filesystem rights. The password serves the encrypted formats
+    /// (TablePlus/DataZen exports); the plain ones ignore it.
+    fn parse_connections_import(
+        &mut self,
+        _path: &str,
+        _password: &str,
+    ) -> Result<ImportPreview, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// Save the parsed import's connections into the host's store (T7):
+    /// names already in the store are skipped, and the answer counts what
+    /// actually landed. The handle is the preview's.
+    fn confirm_import(&mut self, _handle: u64) -> Result<u32, String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 

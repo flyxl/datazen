@@ -184,6 +184,12 @@ struct AppState {
     /// statement comes from the current query editor — "save current SQL".
     favorite_title: TextEdit,
     favorite_error: Option<String>,
+    /// T7: the parsed connection import waiting on its confirm, and the
+    /// import path's outcome notice. The password serves the encrypted
+    /// export formats; the plain ones ignore it.
+    import_password: TextEdit,
+    import_preview: Option<datazen_ui_api::ImportPreview>,
+    import_notice: Option<String>,
     /// T4: the value search's form and state. The value and its mode ride
     /// the job; the hits list is the scan's answer.
     value_search_value: TextEdit,
@@ -304,6 +310,9 @@ impl Default for AppState {
             snippet_error: None,
             favorite_title: TextEdit::new(String::new()),
             favorite_error: None,
+            import_password: TextEdit::new(String::new()),
+            import_preview: None,
+            import_notice: None,
             value_search_value: TextEdit::new(String::new()),
             value_search_mode: 0,
             value_search_generation: 0,
@@ -696,6 +705,50 @@ impl AppState {
         if let Err(error) = deleted {
             self.favorite_error = Some(error);
         }
+    }
+
+    /// Parse a picked import file (T7): the preview before anything is
+    /// saved. The host is the side with filesystem rights.
+    fn begin_connections_import(&mut self, path: &str) {
+        let password = self.import_password.text.clone();
+        match self.desktop.parse_connections_import(path, &password) {
+            Ok(preview) if preview.connections.is_empty() => {
+                self.import_preview = None;
+                self.import_notice =
+                    Some("the import file carries no connections".into());
+            }
+            Ok(preview) => {
+                self.import_preview = Some(preview);
+                self.import_notice = None;
+            }
+            Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
+                self.import_preview = None;
+                self.import_notice = Some("connection import needs the live host".into());
+            }
+            Err(error) => {
+                self.import_preview = None;
+                self.import_notice = Some(error);
+            }
+        }
+    }
+
+    /// Save the previewed import (T7): names already in the store are
+    /// skipped; the notice counts what landed.
+    fn confirm_connections_import(&mut self) {
+        let Some(preview) = self.import_preview.take() else { return };
+        match self.desktop.confirm_import(preview.handle) {
+            Ok(landed) => {
+                self.import_notice = Some(format!("{landed} connections imported"));
+                self.sync_desktop_connections();
+            }
+            Err(error) => self.import_notice = Some(error),
+        }
+    }
+
+    /// Drop the preview (T7).
+    fn cancel_connections_import(&mut self) {
+        self.import_preview = None;
+        self.import_notice = None;
     }
 
     /// The outbound foreign key of the focused cell's column (T5), with the
@@ -4649,7 +4702,124 @@ fn connection_list(state: &AppState, theme: tok::Theme) -> El {
                 .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
         );
     }
-    list.child(form)
+    let mut import = col().key("connection-import").w_full().gap(8.0).child(
+        row()
+            .key("connection-import-form")
+            .w_full()
+            .h(28.0)
+            .gap(8.0)
+            .center_y()
+            .child(
+                text_input(&state.import_password, type_::LABEL)
+                    .key("import-password-input")
+                    .w(160.0)
+                    .h(24.0)
+                    .on_edit(|state: &mut AppState| &mut state.import_password),
+            )
+            .child(
+                row()
+                    .key("import-connections")
+                    .h(24.0)
+                    .px(8.0)
+                    .center_y()
+                    .radius(6.0)
+                    .fill(theme.control_off)
+                    .child(
+                        text("Import connections…".to_owned())
+                            .font(type_::LABEL)
+                            .color(theme.text),
+                    )
+                    .on_press_tx(|_state: &mut AppState, tx: &mut Tx| {
+                        // T7: an Open dialog picks the export file; the host
+                        // reads and parses it.
+                        let options = FileDialogOptions {
+                            title: "Choose a connection export".into(),
+                            ..Default::default()
+                        };
+                        tx.open_file(options, |state: &mut AppState, result, _| match result {
+                            Ok(Some(path)) => {
+                                state.begin_connections_import(&path.display().to_string());
+                            }
+                            Ok(None) => {}
+                            Err(error) => {
+                                state.import_preview = None;
+                                state.import_notice = Some(format!(
+                                    "the file picker is unavailable ({error}); the import needs a file"
+                                ));
+                            }
+                        });
+                    }),
+            ),
+    );
+    if let Some(preview) = &state.import_preview {
+        let mut panel = col()
+            .key("import-preview")
+            .w_full()
+            .gap(4.0)
+            .child(
+                text(format!(
+                    "{} · {} connections",
+                    preview.format,
+                    preview.connections.len()
+                ))
+                .key("import-preview-title")
+                .font(type_::LABEL)
+                .color(theme.text),
+            );
+        for (index, connection) in preview.connections.iter().enumerate() {
+            panel = panel.child(
+                row()
+                    .key(format!("imported-connection-{index}"))
+                    .w_full()
+                    .h(24.0)
+                    .px(8.0)
+                    .center_y()
+                    .radius(6.0)
+                    .fill(theme.control_off)
+                    .child(
+                        text(format!(
+                            "{} · {} · {}",
+                            connection.name, connection.engine, connection.address
+                        ))
+                        .font(type_::LABEL)
+                        .color(theme.text),
+                    ),
+            );
+        }
+        panel = panel.child(
+            row()
+                .key("import-confirm")
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(
+                    text(format!(
+                        "Import {} connections",
+                        preview.connections.len()
+                    ))
+                    .font(type_::LABEL)
+                    .color(theme.text),
+                )
+                .on_press(|state: &mut AppState| state.confirm_connections_import()),
+        );
+        import = import.child(panel);
+    }
+    if let Some(notice) = &state.import_notice {
+        import = import.child(
+            row()
+                .key("import-notice")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(notice.clone()).font(type_::LABEL).color(theme.text_secondary)),
+        );
+    }
+    list.child(form).child(import)
 }
 
 fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
@@ -7441,6 +7611,134 @@ mod tests {
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
         assert!(runtime.state.host_favorites().is_empty(), "the favorite is gone");
+    }
+
+    /// A host adapter that parses and confirms imports (T7).
+    struct ImportHostAdapter {
+        parsed_paths: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+        confirmed: std::rc::Rc<std::cell::RefCell<Vec<u64>>>,
+    }
+
+    impl ImportHostAdapter {
+        fn new() -> (Self, std::rc::Rc<std::cell::RefCell<Vec<String>>>, std::rc::Rc<std::cell::RefCell<Vec<u64>>>) {
+            let parsed_paths = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+            let confirmed = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+            (
+                Self {
+                    parsed_paths: std::rc::Rc::clone(&parsed_paths),
+                    confirmed: std::rc::Rc::clone(&confirmed),
+                },
+                parsed_paths,
+                confirmed,
+            )
+        }
+    }
+
+    impl datazen_ui_api::DesktopAdapter for ImportHostAdapter {
+        fn list_connections(&mut self) -> Result<Vec<datazen_ui_api::ConnectionProfile>, String> {
+            Ok(Vec::new())
+        }
+
+        fn read_table_page(
+            &mut self,
+            _: &str,
+            _: u32,
+            _: u32,
+            _: Option<&datazen_ui_api::ColumnSort>,
+            _: Option<&datazen_ui_api::ColumnFilter>,
+        ) -> Result<datazen_ui_api::TablePage, String> {
+            Err(datazen_ui_api::DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn commit_cells(
+            &mut self,
+            _: &str,
+            _: &[(u32, String, String)],
+        ) -> Result<u32, String> {
+            Err(datazen_ui_api::DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn parse_connections_import(
+            &mut self,
+            path: &str,
+            _password: &str,
+        ) -> Result<datazen_ui_api::ImportPreview, String> {
+            self.parsed_paths.borrow_mut().push(path.to_owned());
+            Ok(datazen_ui_api::ImportPreview {
+                handle: 42,
+                format: "TablePlus".into(),
+                connections: vec![
+                    datazen_ui_api::ImportedConnectionSpec {
+                        name: "warehouse".into(),
+                        engine: "postgres".into(),
+                        address: "db.internal:5432".into(),
+                    },
+                    datazen_ui_api::ImportedConnectionSpec {
+                        name: "local".into(),
+                        engine: "sqlite".into(),
+                        address: "/tmp/local.db".into(),
+                    },
+                ],
+                skipped: Vec::new(),
+            })
+        }
+
+        fn confirm_import(&mut self, handle: u64) -> Result<u32, String> {
+            self.confirmed.borrow_mut().push(handle);
+            Ok(2)
+        }
+    }
+
+    #[test]
+    fn the_connections_page_imports_a_previewed_file() {
+        let (adapter, parsed_paths, confirmed) = ImportHostAdapter::new();
+        let mut runtime = runtime();
+        runtime.state.desktop = Box::new(adapter);
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-connections").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.find("import-connections").is_some(), "the import button is on the page");
+
+        // The button opens an Open dialog; the picked path parses. The
+        // password field serves the encrypted formats.
+        runtime.state.import_password = rune::TextEdit::new("import-password");
+        runtime.settle_all();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("import-connections").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        let (kind, _) = runtime.file_dialog().expect("the import asked for a file");
+        assert_eq!(kind, rune::FileDialogKind::Open);
+        runtime.resolve_file_dialog(Some("/exports/connections.tableplusconnection".into())).unwrap();
+        runtime.frame(0.0);
+        runtime.frame(0.0);
+        assert!(runtime.find("import-preview").is_some(), "the preview is up");
+        assert!(runtime.find("imported-connection-0").is_some(), "the first connection is listed");
+        assert!(runtime.find("imported-connection-1").is_some(), "the second connection is listed");
+
+        // Confirm: the host confirms by the preview's handle, the notice
+        // counts what landed, the preview leaves.
+        runtime.frame(1.0);
+        let (x, y) = runtime.find("import-confirm").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("import-notice").is_some(), "the outcome is visible");
+        assert!(runtime.state.import_preview.is_none(), "the preview left");
+        assert_eq!(
+            parsed_paths.borrow().as_slice(),
+            ["/exports/connections.tableplusconnection"],
+            "the host parsed the picked path"
+        );
+        assert_eq!(confirmed.borrow().as_slice(), [42], "the confirm carries the preview's handle");
+        assert!(
+            runtime.state.import_notice.as_deref().unwrap().contains("2 connections imported"),
+            "the notice counts: {:?}",
+            runtime.state.import_notice
+        );
     }
 
     #[test]

@@ -39,7 +39,7 @@ use datazen_ui_api::{
     DashboardWidget, DatabaseNode, DesktopAdapter, ProgressSnapshot, SchemaNode, Snippet,
     TablePage, ValueSearchHit, Workflow, WorkflowStepResult, DESKTOP_NOT_IMPLEMENTED,
 };
-use datazen_ui_api::{FavoriteSpec, InboundRef};
+use datazen_ui_api::{FavoriteSpec, ImportPreview, ImportedConnectionSpec, InboundRef};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -156,6 +156,10 @@ pub struct LiveAdapter {
     /// The favorites' file store (T6): the favorites root under the data
     /// directory, the desktop's `.sql` file format.
     favorites: Arc<crate::favorites::FileFavorites>,
+    /// Parsed connection imports waiting on their confirm (T7): the handle
+    /// in the preview names the entry here.
+    import_stash: Mutex<std::collections::HashMap<u64, Vec<datazen_driver_api::ConnectionConfig>>>,
+    import_next_handle: std::sync::atomic::AtomicU64,
     /// The dashboard rows' file store (N13); the widget use case runs over
     /// it and the registry.
     dashboard_store: Arc<crate::dashboards::FileDashboardStore>,
@@ -257,6 +261,8 @@ impl LiveAdapter {
             crate::favorites::FileFavorites::open(&data_dir.join("favorites"))
                 .expect("the favorites store opens"),
         );
+        // T7: parsed imports waiting on their confirm.
+        let import_stash = Mutex::new(std::collections::HashMap::new());
         let sync_runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -423,6 +429,8 @@ impl LiveAdapter {
             workflows,
             snippets,
             favorites,
+            import_stash,
+            import_next_handle: std::sync::atomic::AtomicU64::new(1),
             dashboard_store,
             profiles,
         }
@@ -1917,6 +1925,84 @@ impl DesktopAdapter for LiveAdapter {
         self.favorites.delete(id)
     }
 
+    fn parse_connections_import(
+        &mut self,
+        path: &str,
+        password: &str,
+    ) -> Result<ImportPreview, String> {
+        // T7: the host is the side with filesystem rights; the file's bytes
+        // never cross the adapter boundary, the preview and its handle do.
+        // The password serves the encrypted formats; an empty one is the
+        // shared layer's None.
+        let bytes = std::fs::read(path)
+            .map_err(|error| format!("read {}: {error}", path))?;
+        let password = password.trim();
+        let parsed = datazen::connection_import::parse_import_file(
+            std::path::Path::new(path),
+            &bytes,
+            (!password.is_empty()).then_some(password),
+        )
+        .map_err(|error| error.to_string())?;
+        let format = datazen::connection_import::format_label(parsed.format).to_owned();
+        let connections: Vec<ImportedConnectionSpec> = parsed
+            .connections
+            .iter()
+            .map(|config| ImportedConnectionSpec {
+                name: config.name.clone(),
+                engine: config.database_type.to_string(),
+                address: config
+                    .host
+                    .clone()
+                    .map(|host| match config.port {
+                        Some(port) => format!("{host}:{port}"),
+                        None => host,
+                    })
+                    .or_else(|| config.database.clone())
+                    .unwrap_or_default(),
+            })
+            .collect();
+        let handle = self
+            .import_next_handle
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.import_stash
+            .lock()
+            .expect("the import stash lock")
+            .insert(handle, parsed.connections);
+        Ok(ImportPreview { handle, format, connections, skipped: parsed.skipped })
+    }
+
+    fn confirm_import(&mut self, handle: u64) -> Result<u32, String> {
+        // T7: names already in the store are skipped — an import twice never
+        // duplicates.
+        let configs = self
+            .import_stash
+            .lock()
+            .expect("the import stash lock")
+            .remove(&handle)
+            .ok_or_else(|| format!("no parsed import {handle}"))?;
+        let scope = datazen::connection::ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
+        // The dedup needs names only; the sync runtime serves the two
+        // memory-speed repository calls (the store's file is loaded).
+        let existing: std::collections::HashSet<String> = self
+            .sync_runtime
+            .block_on(self.service.list_plain(&scope))
+            .map_err(|error| error.to_string())?
+            .into_iter()
+            .map(|config| config.name)
+            .collect();
+        let mut landed = 0u32;
+        for config in configs {
+            if existing.contains(&config.name) {
+                continue;
+            }
+            self.sync_runtime
+                .block_on(self.service.save(&scope, config))
+                .map_err(|error| error.to_string())?;
+            landed += 1;
+        }
+        Ok(landed)
+    }
+
     fn workflows(&self) -> Result<Vec<Workflow>, String> {
         // N13: the registry use case's user-visible definitions — the
         // dashboard's hidden workflows stay out of the user list.
@@ -2717,6 +2803,97 @@ mod tests {
         assert_eq!(snapshot.status, "completed", "log: {:?}", snapshot.log);
         let picked_body = std::fs::read_to_string(&picked).expect("the picked file was written");
         assert!(!picked_body.is_empty(), "the dump lands at the picked path");
+    }
+
+    #[test]
+    fn connection_import_parses_previews_confirms_and_dedups() {
+        let dir = temp_dir("import");
+        // The store starts with one connection: "live".
+        let store_path = dir.join("connections.json");
+        save_connection(
+            &store_path,
+            sqlite_config("live", Some(dir.join("live.db").to_string_lossy().into_owned())),
+        );
+
+        // A real-format export file: the TablePlus builder is the same
+        // code path the desktop export uses.
+        let export_configs = vec![
+            sqlite_config("warehouse", Some("/data/warehouse.db".into())),
+            sqlite_config("live", Some(dir.join("live.db").to_string_lossy().into_owned())),
+        ];
+        let bytes = datazen::connection_import::build_tableplus_export(
+            &export_configs,
+            "import-password",
+        )
+        .expect("the export builds");
+        let export_path = dir.join("connections.tableplusconnection");
+        std::fs::write(&export_path, bytes).unwrap();
+
+        let mut adapter = LiveAdapter::with_data_dir(
+            Arc::new(FileConnectionRepository::open(&store_path).unwrap()),
+            &dir,
+        );
+
+        // Parse: the preview carries the format and the connections.
+        let preview = adapter
+            .parse_connections_import(export_path.to_str().unwrap(), "import-password")
+            .expect("the export parses");
+        assert_eq!(preview.format, "TablePlus");
+        assert_eq!(preview.connections.len(), 2, "both connections are in the preview");
+        assert!(
+            preview.connections.iter().any(|c| c.name == "warehouse" && c.engine == "sqlite"),
+            "the sqlite engine is named: {:?}",
+            preview.connections
+        );
+
+        // Nothing lands before the confirm.
+        assert!(adapter.confirm_import(9999).is_err(), "an unknown handle is refused");
+
+        // Confirm: "warehouse" lands, "live" already exists and is skipped.
+        let landed = adapter.confirm_import(preview.handle).expect("the confirm saves");
+        assert_eq!(landed, 1, "the duplicate name is skipped: {landed}");
+        let listed = adapter.list_connections().expect("the store lists");
+        assert_eq!(listed.len(), 2, "live + warehouse: {:?}", listed);
+        assert!(listed.iter().any(|profile| profile.id == "warehouse"));
+
+        // Importing the same file again lands nothing: every name is taken.
+        let preview = adapter
+            .parse_connections_import(export_path.to_str().unwrap(), "import-password")
+            .expect("the export parses again");
+        let landed = adapter.confirm_import(preview.handle).expect("the confirm saves");
+        assert_eq!(landed, 0, "a second import of the same file duplicates nothing");
+        let listed = adapter.list_connections().expect("the store lists");
+        assert_eq!(listed.len(), 2, "still two: {:?}", listed);
+    }
+
+    #[test]
+    fn a_bad_import_file_is_an_honest_error_and_nothing_lands() {
+        let dir = temp_dir("import-bad");
+        let store_path = dir.join("connections.json");
+        save_connection(&store_path, sqlite_config("live", None));
+        let mut adapter = LiveAdapter::with_data_dir(
+            Arc::new(FileConnectionRepository::open(&store_path).unwrap()),
+            &dir,
+        );
+
+        // Garbage: an honest parse error, nothing in the store.
+        let bad = dir.join("garbage.tableplusconnection");
+        std::fs::write(&bad, b"not an export at all").unwrap();
+        let error = adapter
+            .parse_connections_import(bad.to_str().unwrap(), "")
+            .expect_err("the garbage is refused");
+        assert!(!error.is_empty(), "the refusal carries a sentence: {error}");
+        assert_eq!(
+            adapter.list_connections().unwrap().len(),
+            1,
+            "nothing landed from the refused file"
+        );
+
+        // A missing file is the same honest shape.
+        let error = adapter
+            .parse_connections_import(dir.join("no-such.json").to_str().unwrap(), "")
+            .expect_err("the missing file is refused");
+        assert!(!error.is_empty(), "the refusal carries a sentence: {error}");
     }
 
     #[test]
