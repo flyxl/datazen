@@ -27,8 +27,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | B1 | 已完成 | 093b77a | testing/B1-table-paging.md |
 | B2 | 已完成 | ea0d008 | testing/B2-grid-footer.md |
 | B3 | 已完成 | 4c89e32 | testing/B3-column-sort.md |
-| B4 | 进行中 | | |
-| B5 | 未开始 | | |
+| B4 | 已完成 | 0be8cc5 | testing/B4-column-filter.md |
+| B5 | 进行中 | | |
 | B6 | 未开始 | | |
 | B7 | 未开始 | | |
 | B8 | 未开始 | | |
