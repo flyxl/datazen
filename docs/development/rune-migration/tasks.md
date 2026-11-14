@@ -77,8 +77,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | W5 | 已完成 | a122f55a8 | testing/W5-workflow-form.md |
 | W6 | 已完成 | 6a0a4c1c3 | testing/W6-workflow-yaml.md |
 | W7 | 已完成 | bde466a56 | testing/W7-run-results.md |
-| H1 | 进行中 | | |
-| H2 | 未开始 | | |
+| H1 | 已完成 | 46c44ddbe | testing/H1-desktop-process.md |
+| H2 | 进行中 | | |
 | H3 | 未开始 | | |
 | H4 | 未开始 | | |
 | H5 | 未开始 | | |
