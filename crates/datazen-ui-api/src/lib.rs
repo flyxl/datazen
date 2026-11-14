@@ -393,10 +393,22 @@ fn config_from_profile(profile: &ConnectionProfile) -> ConnectionConfig {
 }
 
 /// H3: the adapter with `list_connections` wired to the existing use case —
-/// `ConnectionService::list_redacted` over a connection repository.
-/// `read_table_page` (H4) and `commit_cells` (H5) are not wired yet.
+/// `ConnectionService::list_redacted` over a connection repository. H4 wires
+/// `read_table_page` to the existing in-memory read use case
+/// (`MemoryWorkspace::open_table`); `commit_cells` is not wired yet (H5).
 pub struct UseCaseAdapter {
     service: datazen::connection::application::ConnectionService,
+    /// The existing in-memory world the read use case runs over. The desktop
+    /// host swaps in the live-driver use case later; the seam stays.
+    workspace: MemoryWorkspace,
+}
+
+/// The existing in-memory world with its session open: the read use case
+/// needs one, and the demo process has no connect call of its own.
+fn demo_workspace() -> MemoryWorkspace {
+    let mut workspace = MemoryWorkspace::new();
+    workspace.connect("local").expect("the demo connection exists");
+    workspace
 }
 
 impl UseCaseAdapter {
@@ -406,6 +418,7 @@ impl UseCaseAdapter {
     ) -> Self {
         Self {
             service: datazen::connection::application::ConnectionService::new(repository),
+            workspace: demo_workspace(),
         }
     }
 
@@ -453,13 +466,16 @@ impl DesktopAdapter for UseCaseAdapter {
 
     fn read_table_page(
         &mut self,
-        _table: &str,
-        _page: u32,
-        _page_size: u32,
-        _sort: Option<&ColumnSort>,
-        _filter: Option<&ColumnFilter>,
+        table: &str,
+        page: u32,
+        page_size: u32,
+        sort: Option<&ColumnSort>,
+        filter: Option<&ColumnFilter>,
     ) -> Result<TablePage, String> {
-        Err(DESKTOP_NOT_IMPLEMENTED.into())
+        // H4: the existing read use case — the memory workspace's paged,
+        // sorted, filtered table read.
+        self.workspace
+            .open_table(table, page, page_size, sort, filter)
     }
 
     fn commit_cells(
@@ -2296,18 +2312,63 @@ mod tests {
     #[test]
     fn the_wired_adapter_keeps_the_unwired_methods_at_the_fixed_error() {
         let mut adapter = UseCaseAdapter::with_demo_connections();
-        assert_eq!(
-            adapter
-                .read_table_page("customers", 0, 25, None, None)
-                .unwrap_err(),
-            DESKTOP_NOT_IMPLEMENTED,
-            "H4 has not wired read_table_page yet"
-        );
         let edits = vec![(0u32, String::from("name"), String::from("alice"))];
         assert_eq!(
             adapter.commit_cells("customers", &edits).unwrap_err(),
             DESKTOP_NOT_IMPLEMENTED,
             "H5 has not wired commit_cells yet"
+        );
+    }
+
+    #[test]
+    fn the_wired_adapter_reads_pages_through_the_existing_use_case() {
+        let mut adapter = UseCaseAdapter::with_demo_connections();
+        let first = adapter
+            .read_table_page("customers", 0, 25, None, None)
+            .expect("the read use case answers");
+        assert_eq!(first.table, "customers");
+        assert_eq!(first.columns[0], "id");
+        assert_eq!(first.rows[0][0], "0");
+        assert_eq!(first.rows[0][1], "customer-0");
+        assert_eq!(first.total_rows, 40, "the whole table is behind the page");
+
+        let second = adapter
+            .read_table_page("customers", 1, 25, None, None)
+            .expect("the second page reads too");
+        assert_eq!(second.rows[0][0], "25", "page 2 starts at stored row 25");
+    }
+
+    #[test]
+    fn the_wired_adapter_honors_the_sort_and_filter_of_the_read() {
+        let mut adapter = UseCaseAdapter::with_demo_connections();
+        let sort = ColumnSort {
+            column: "name".into(),
+            descending: true,
+        };
+        let page = adapter
+            .read_table_page("customers", 0, 25, Some(&sort), None)
+            .expect("the sorted read answers");
+        assert_eq!(page.rows[0][1], "customer-9", "lexicographic order, descending: 9 beats 39");
+
+        let filter = ColumnFilter {
+            column: "name".into(),
+            contains: "customer-3".into(),
+        };
+        let page = adapter
+            .read_table_page("customers", 0, 25, None, Some(&filter))
+            .expect("the filtered read answers");
+        assert!(
+            page.rows.iter().all(|row| row[1].contains("customer-3")),
+            "the use case's filter reaches the rows"
+        );
+    }
+
+    #[test]
+    fn an_unknown_table_fails_the_wired_read() {
+        let mut adapter = UseCaseAdapter::with_demo_connections();
+        assert!(
+            adapter.read_table_page("ghost", 0, 25, None, None).is_err(),
+            "no use case knows this table"
         );
     }
 }

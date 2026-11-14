@@ -905,11 +905,9 @@ impl AppState {
         self.filter = None;
         self.filter_column = 0;
         self.filter_editor = TextEdit::new(String::new());
-        if let Ok(page) = self.workspace.open_table("customers", 0, self.table_page_size(), None, None) {
-            self.grid.load_page(&page);
-            self.grid.set_editable(page.read_only.is_none());
-            self.active = Section::Workspace;
-        }
+        // H4: the initial page goes through the same read path as every
+        // other one: the adapter's use case first, the port as the fallback.
+        self.show_table("customers");
     }
 
     fn disconnect(&mut self) {
@@ -949,13 +947,21 @@ impl AppState {
     }
 
     fn show_table(&mut self, title: &str) -> bool {
-        match self.workspace.open_table(
-            title,
-            self.table_page,
-            self.table_page_size(),
-            self.sort.as_ref(),
-            self.filter.as_ref(),
-        ) {
+        // H4: the desktop adapter's read use case first; the port's memory
+        // use case answers while the adapter is unwired. When both fail the
+        // grid keeps its previous page.
+        let page = self.table_page;
+        let size = self.table_page_size();
+        let sort = self.sort.clone();
+        let filter = self.filter.clone();
+        let read = self
+            .desktop
+            .read_table_page(title, page, size, sort.as_ref(), filter.as_ref())
+            .or_else(|_| {
+                self.workspace
+                    .open_table(title, page, size, sort.as_ref(), filter.as_ref())
+            });
+        match read {
             Ok(page) => {
                 self.table_page = page.page;
                 self.grid.load_page(&page);
@@ -6030,6 +6036,99 @@ mod tests {
             "no fallback message: the adapter answered"
         );
         assert!(runtime.state.desktop_connections.is_some());
+    }
+
+    /// An adapter whose read use case serves one distinctive row, to see it
+    /// win over the port's page in the wired path.
+    struct AdapterServingOneRow;
+
+    impl datazen_ui_api::DesktopAdapter for AdapterServingOneRow {
+        fn list_connections(
+            &mut self,
+        ) -> Result<Vec<datazen_ui_api::ConnectionProfile>, String> {
+            Err(datazen_ui_api::DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn read_table_page(
+            &mut self,
+            table: &str,
+            page: u32,
+            _page_size: u32,
+            _sort: Option<&datazen_ui_api::ColumnSort>,
+            _filter: Option<&datazen_ui_api::ColumnFilter>,
+        ) -> Result<datazen_ui_api::TablePage, String> {
+            Ok(datazen_ui_api::TablePage {
+                table: table.into(),
+                columns: vec![String::from("adapter")],
+                rows: vec![vec![String::from("from-adapter")]],
+                page,
+                page_size: 1,
+                total_rows: 1,
+                sort: None,
+                filter: None,
+                read_only: None,
+            })
+        }
+
+        fn commit_cells(
+            &mut self,
+            _table: &str,
+            _edits: &[(u32, String, String)],
+        ) -> Result<u32, String> {
+            Err(datazen_ui_api::DESKTOP_NOT_IMPLEMENTED.into())
+        }
+    }
+
+    #[test]
+    fn the_wired_adapter_serves_the_table_page_before_the_port() {
+        let mut runtime = runtime();
+        runtime.state.desktop = Box::new(AdapterServingOneRow);
+        runtime.frame(0.0);
+
+        let (x, y) = runtime.find("connection-local").expect("demo connection");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+
+        assert!(runtime.state.grid.has_page(), "a page loaded");
+        assert_eq!(
+            runtime.state.grid.total_rows(),
+            1,
+            "the adapter's one-row page won, not the port's forty"
+        );
+        assert_eq!(runtime.state.active, Section::Workspace);
+    }
+
+    #[test]
+    fn a_read_that_fails_everywhere_keeps_the_previous_grid_page() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+
+        let (x, y) = runtime.find("connection-local").expect("demo connection");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.state.grid.has_page());
+        let (page, total) = (runtime.state.grid.page(), runtime.state.grid.total_rows());
+        assert_eq!(total, 40, "the port answered the first read");
+
+        // A table no use case knows: the adapter fails (it is unwired in the
+        // tests), the port fails, and the grid keeps the page it had.
+        assert!(
+            !runtime.state.show_table("ghost"),
+            "no read use case knows this table"
+        );
+        runtime.frame(0.0);
+        assert!(
+            runtime.state.grid.has_page(),
+            "the failed read did not clear the grid"
+        );
+        assert_eq!(runtime.state.grid.page(), page, "the page number stays");
+        assert_eq!(
+            runtime.state.grid.total_rows(),
+            total,
+            "the previous page stays behind the failure"
+        );
     }
 
     #[test]
