@@ -57,8 +57,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | P4 | 已完成 | 35cbd1f | testing/P4-connection-form.md |
 | P5 | 已完成 | 6756b9f | testing/P5-snippets.md |
 | P6 | 已完成 | 230de1e | testing/P6-export-dialog.md |
-| P7 | 进行中 | | |
-| P8 | 未开始 | | |
+| P7 | 已完成 | 9b248ef | testing/P7-progress.md |
+| P8 | 进行中 | | |
 | P9 | 未开始 | | |
 | D1 | 未开始 | | |
 | D2 | 未开始 | | |
