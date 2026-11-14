@@ -81,6 +81,14 @@ impl DataGrid {
         self.total_rows
     }
 
+    /// Pages in the whole table at the current page size (at least 1).
+    pub fn pages(&self) -> u32 {
+        if self.page_size == 0 {
+            return 1;
+        }
+        self.total_rows.div_ceil(self.page_size)
+    }
+
     pub fn origin_col(&self) -> u32 {
         self.origin_col
     }
@@ -337,7 +345,7 @@ pub fn panel(grid: &DataGrid, ink: rune::Color, muted: rune::Color, well: rune::
     col()
         .key("data-grid")
         .w_full()
-        .h(420.0)
+        .h(448.0)
         .gap(8.0)
         .child(text(status).font(label_style()).color(muted).key("data-grid-status"))
         .child(
@@ -353,6 +361,48 @@ pub fn panel(grid: &DataGrid, ink: rune::Color, muted: rune::Color, well: rune::
                 })
                 .on_paste(|state: &mut crate::AppState, text, _| state.grid.paste_tsv(text))
                 .child(sheet),
+        )
+        .child(footer(grid, ink, muted))
+}
+
+/// Prev / next paging over the table behind the loaded page.
+fn footer(grid: &DataGrid, ink: rune::Color, muted: rune::Color) -> El {
+    row()
+        .key("grid-footer")
+        .w_full()
+        .h(28.0)
+        .gap(8.0)
+        .center_y()
+        .child(
+            row()
+                .key("page-prev")
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .child(text("‹ Prev").font(label_style()).color(ink))
+                .on_press(|state: &mut crate::AppState| state.prev_table_page()),
+        )
+        .child(
+            text(format!("Page {} / {}", grid.page() + 1, grid.pages()))
+                .key("grid-page-label")
+                .font(label_style())
+                .color(muted),
+        )
+        .child(
+            row()
+                .key("page-next")
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .child(text("Next ›").font(label_style()).color(ink))
+                .on_press(|state: &mut crate::AppState| state.next_table_page()),
+        )
+        .child(
+            text(format!("{} per page · {} rows", grid.page_size(), grid.total_rows()))
+                .font(label_style())
+                .color(muted),
         )
 }
 
@@ -501,6 +551,36 @@ mod tests {
         grid.focus = (3, 4);
         grid.anchor = (2, 3);
         assert_eq!(grid.copy_tsv(), "A\tB\nC\tD");
+    }
+
+    #[test]
+    fn loading_the_next_page_keeps_the_column_window_and_the_frozen_column() {
+        let columns: Vec<String> = (0..30).map(|i| format!("c{i}")).collect();
+        let rows: Vec<Vec<String>> =
+            (0..50).map(|r| columns.iter().map(|c| format!("{c}-{r}")).collect()).collect();
+        let page = |rows: Vec<Vec<String>>, page: u32| datazen_ui_api::TablePage {
+            table: "t".into(),
+            columns: columns.clone(),
+            rows,
+            page,
+            page_size: 25,
+            total_rows: 50,
+        };
+        let mut grid = DataGrid::new();
+        grid.load_page(&page(rows[..25].to_vec(), 0));
+        grid.scroll_x.set(COL_W * 20.0);
+        assert!(grid.sync_scroll());
+        assert_eq!(grid.origin_col(), 20);
+
+        grid.load_page(&page(rows[25..].to_vec(), 1));
+        assert_eq!(grid.page(), 1);
+        assert_eq!(grid.pages(), 2);
+        assert_eq!(grid.origin_col(), 0, "a fresh page starts at the first column");
+        grid.scroll_x.set(COL_W * 20.0);
+        assert!(grid.sync_scroll());
+        let cols = grid.built_columns();
+        assert!(cols.contains(&0), "the frozen column stays");
+        assert!(cols.contains(&20));
     }
 
     #[test]

@@ -49,6 +49,8 @@ struct AppState {
     grid: DataGrid,
     workspace: MemoryWorkspace,
     tabs: Tabs,
+    /// The page the workspace last opened for the selected table tab.
+    table_page: u32,
 }
 
 impl Default for AppState {
@@ -59,6 +61,7 @@ impl Default for AppState {
             grid: DataGrid::new(),
             workspace: MemoryWorkspace::new(),
             tabs: Tabs::new(),
+            table_page: 0,
         }
     }
 }
@@ -72,6 +75,7 @@ impl AppState {
         if self.workspace.connect(id).is_err() {
             return;
         }
+        self.table_page = 0;
         if let Ok(page) = self.workspace.open_table("customers", 0, TABLE_PAGE_SIZE) {
             self.grid.load_page(&page);
             self.grid.set_editable(true);
@@ -106,8 +110,9 @@ impl AppState {
     }
 
     fn show_table(&mut self, title: &str) -> bool {
-        match self.workspace.open_table(title, 0, TABLE_PAGE_SIZE) {
+        match self.workspace.open_table(title, self.table_page, TABLE_PAGE_SIZE) {
             Ok(page) => {
+                self.table_page = page.page;
                 self.grid.load_page(&page);
                 self.grid.set_editable(true);
                 self.active = Section::Workspace;
@@ -117,10 +122,36 @@ impl AppState {
         }
     }
 
+    /// Reopen the selected table tab at the current page, sort and filter.
+    fn reload_table_page(&mut self) {
+        if let Some(tab) = self.tabs.selected() {
+            if tab.kind == TabKind::Table {
+                self.show_table(&tab.title.clone());
+            }
+        }
+    }
+
+    fn next_table_page(&mut self) {
+        if !self.grid.has_page() || self.grid.page() + 1 >= self.grid.pages() {
+            return;
+        }
+        self.table_page += 1;
+        self.reload_table_page();
+    }
+
+    fn prev_table_page(&mut self) {
+        if !self.grid.has_page() || self.grid.page() == 0 {
+            return;
+        }
+        self.table_page = self.table_page.saturating_sub(1);
+        self.reload_table_page();
+    }
+
     /// Any tab event lands in the workspace: the selected tab decides what the
     /// workspace shows, so the tab strip and its content stay on one page.
     fn sync_grid_to_selected_tab(&mut self) {
         self.active = Section::Workspace;
+        self.table_page = 0;
         let selected = self.tabs.selected().map(|tab| (tab.kind, tab.title.clone()));
         match selected {
             Some((TabKind::Table, title)) => {
@@ -747,6 +778,48 @@ mod tests {
         assert_eq!(grid.rows, 25, "only the page is loaded, not the whole table");
         assert_eq!(grid.cell(24, 1), "customer-24");
         assert_eq!(grid.cell(0, 1), "customer-0");
+    }
+
+    #[test]
+    fn the_footer_pages_through_the_table_and_stops_at_the_edges() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.frame(0.0);
+
+        assert!(runtime.find("grid-footer").is_some());
+        assert!(runtime.find("page-prev").is_some());
+        assert!(runtime.find("page-next").is_some());
+
+        let (x, y) = runtime.find("page-prev").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.grid.page(), 0, "prev on the first page is a no-op");
+
+        let (x, y) = runtime.find("page-next").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.grid.page(), 1);
+        assert_eq!(runtime.state.grid.rows, 15);
+        assert_eq!(runtime.state.grid.cell(0, 1), "customer-25");
+
+        let (x, y) = runtime.find("page-next").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.grid.page(), 1, "next on the last page is a no-op");
+
+        let (x, y) = runtime.find("page-prev").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.grid.page(), 0);
+        assert_eq!(runtime.state.grid.cell(0, 1), "customer-0");
+        assert!(runtime.find("cell-0-1").is_some(), "the frozen column is still built");
     }
 
     #[test]
