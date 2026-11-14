@@ -7,7 +7,7 @@ mod data_grid;
 mod sql_editor;
 
 use data_grid::DataGrid;
-use datazen_ui_api::{ColumnDraft, ColumnFilter, ColumnSort, CompareObject, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, WorkflowStepResult, WorkspaceApi};
+use datazen_ui_api::{ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, UnimplementedAdapter, WorkflowStepResult, WorkspaceApi};
 use rune::tok::{self, type_};
 use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, TextEdit, Tx, col, oklch, row, text, text_input};
 use sql_editor::SqlEditor;
@@ -84,6 +84,14 @@ struct AppState {
     sql: SqlEditor,
     grid: DataGrid,
     workspace: MemoryWorkspace,
+    /// The desktop host's seam. No use case is wired yet (H2), so its fixed
+    /// error shows on the connections page while the memory port answers.
+    desktop: UnimplementedAdapter,
+    /// The adapter's connection list once it answers (H3); None while the
+    /// page falls back to the memory port's list.
+    desktop_connections: Option<Vec<ConnectionProfile>>,
+    /// The adapter's last error, displayed on the connections page.
+    desktop_error: Option<String>,
     tabs: Tabs,
     /// The page the workspace last opened for the selected table tab.
     table_page: u32,
@@ -193,6 +201,9 @@ impl Default for AppState {
             sql: SqlEditor::new(),
             grid: DataGrid::new(),
             workspace: MemoryWorkspace::new(),
+            desktop: UnimplementedAdapter,
+            desktop_connections: None,
+            desktop_error: None,
             tabs: Tabs::new(),
             table_page: 0,
             sort: None,
@@ -268,6 +279,26 @@ impl Default for AppState {
 impl AppState {
     fn select(&mut self, section: Section) {
         self.active = section;
+        if section == Section::Connections {
+            self.sync_desktop_connections();
+        }
+    }
+
+    /// Ask the desktop adapter for the connection list. A wired adapter's
+    /// list replaces the memory port's demo list; an unwired one answers with
+    /// the fixed error, which the connections page displays while the port's
+    /// list stays.
+    fn sync_desktop_connections(&mut self) {
+        match self.desktop.list_connections() {
+            Ok(connections) => {
+                self.desktop_connections = Some(connections);
+                self.desktop_error = None;
+            }
+            Err(message) => {
+                self.desktop_connections = None;
+                self.desktop_error = Some(message);
+            }
+        }
     }
 
     /// Collapse or expand a catalog node. The tree starts expanded; collapsed
@@ -3401,7 +3432,31 @@ fn disconnect_button(state: &AppState, theme: tok::Theme) -> El {
 
 fn connection_list(state: &AppState, theme: tok::Theme) -> El {
     let mut list = col().key("connection-list").w_full().gap(8.0);
-    for profile in state.workspace.connections() {
+    // The desktop adapter's answer: its list once it is wired (H3), or its
+    // fixed error over the memory port's demo list until then (H2).
+    if let Some(message) = &state.desktop_error {
+        list = list.child(
+            row()
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(
+                    text(message.clone())
+                        .key("desktop-adapter-message")
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
+        );
+    }
+    let port_connections = state.workspace.connections();
+    let connections = state
+        .desktop_connections
+        .as_deref()
+        .unwrap_or(port_connections);
+    for profile in connections {
         let id = profile.id.clone();
         let label = format!("{} · {}", profile.name, profile.engine);
         list = list.child(
@@ -3585,10 +3640,19 @@ pub fn run() {
     App::new(AppSpec {
         on_key: Some(app_key),
         poll: Some(app_poll),
-        ..AppSpec::new("DataZen", (1440.0, 900.0), AppState::default, view)
+        ..AppSpec::new("DataZen", (1440.0, 900.0), init_state, view)
     })
     .on_ime(app_ime)
     .run();
+}
+
+/// The desktop process starts on the connections page, so the adapter is
+/// consulted before the first frame: its answer (or its fixed error) is on
+/// the page from the start.
+fn init_state() -> AppState {
+    let mut state = AppState::default();
+    state.sync_desktop_connections();
+    state
 }
 
 fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
@@ -5881,6 +5945,55 @@ mod tests {
         assert!(runtime.find("query-results").is_none(), "the results area belongs to the workspace");
         assert!(runtime.find("tab-strip").is_none(), "tabs are a workspace control");
         assert_eq!(runtime.state.tabs.tabs().len(), 1, "the query tab itself is kept");
+    }
+
+    #[test]
+    fn the_unwired_desktop_adapter_shows_its_fixed_error_and_keeps_the_demo_list() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+
+        let (x, y) = runtime.find("nav-connections").expect("connections navigation");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+
+        // The adapter is not wired yet: its one fixed sentence is on the page.
+        let message = runtime
+            .elements()
+            .into_iter()
+            .find(|el| el.key.as_deref() == Some("desktop-adapter-message"))
+            .and_then(|el| el.text)
+            .expect("the adapter's message is displayed");
+        assert_eq!(message, datazen_ui_api::DESKTOP_NOT_IMPLEMENTED);
+
+        // The memory port's demo list stays behind it.
+        assert!(runtime.find("connection-local").is_some(), "the port's list is the fallback");
+        assert!(runtime.state.desktop_connections.is_none(), "no adapter list replaced the port's");
+        assert_eq!(
+            runtime.state.desktop_error.as_deref(),
+            Some(datazen_ui_api::DESKTOP_NOT_IMPLEMENTED)
+        );
+    }
+
+    #[test]
+    fn the_desktop_adapter_message_leaves_the_connections_page_with_the_section() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+
+        let (x, y) = runtime.find("nav-connections").expect("connections navigation");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("desktop-adapter-message").is_some());
+
+        let (x, y) = runtime.find("nav-settings").expect("settings navigation");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(
+            runtime.find("desktop-adapter-message").is_none(),
+            "the message belongs to the connections page"
+        );
     }
 
     #[test]

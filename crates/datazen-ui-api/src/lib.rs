@@ -207,6 +207,61 @@ pub trait QueryApi {
     fn execute(&mut self, sql: &str) -> Result<TablePage, String>;
 }
 
+/// The fixed error an unwired desktop adapter answers with. The UI displays
+/// this sentence verbatim next to the data it falls back to.
+pub const DESKTOP_NOT_IMPLEMENTED: &str = "not implemented in the desktop adapter yet";
+
+/// The desktop host's seam into the shared UI. The desktop process wires it
+/// one use case at a time — H3 fills in `list_connections`, H4
+/// `read_table_page`, H5 `commit_cells` — and until a method is wired it
+/// answers with the fixed error, which the UI displays while the memory port
+/// answers instead.
+pub trait DesktopAdapter {
+    /// The connection list from the desktop use case.
+    fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String>;
+    /// One page of a table from the desktop use case.
+    fn read_table_page(
+        &mut self,
+        table: &str,
+        page: u32,
+        page_size: u32,
+        sort: Option<&ColumnSort>,
+        filter: Option<&ColumnFilter>,
+    ) -> Result<TablePage, String>;
+    /// Apply one batch of cell edits through the desktop use case and report
+    /// how many landed. One edit is (row, column name, new value).
+    fn commit_cells(&mut self, table: &str, edits: &[(u32, String, String)]) -> Result<u32, String>;
+}
+
+/// The stand-in adapter while no desktop use case is wired: every method
+/// answers the same fixed error.
+pub struct UnimplementedAdapter;
+
+impl DesktopAdapter for UnimplementedAdapter {
+    fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    fn read_table_page(
+        &mut self,
+        _table: &str,
+        _page: u32,
+        _page_size: u32,
+        _sort: Option<&ColumnSort>,
+        _filter: Option<&ColumnFilter>,
+    ) -> Result<TablePage, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    fn commit_cells(
+        &mut self,
+        _table: &str,
+        _edits: &[(u32, String, String)],
+    ) -> Result<u32, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+}
+
 pub trait WorkspaceApi {
     fn connections(&self) -> &[ConnectionProfile];
     fn session(&self) -> Option<&Session>;
@@ -1973,5 +2028,28 @@ mod tests {
         let first = workspace.open_table("customers", 0, 25, None, None).unwrap();
         assert_eq!(first.rows[0][1], "customer-0");
         assert_eq!(first.rows[24][1], "customer-24");
+    }
+
+    #[test]
+    fn the_unwired_adapter_answers_every_method_with_the_fixed_error() {
+        let mut adapter = UnimplementedAdapter;
+        assert_eq!(
+            adapter.list_connections().unwrap_err(),
+            DESKTOP_NOT_IMPLEMENTED,
+            "list_connections is not wired yet"
+        );
+        assert_eq!(
+            adapter
+                .read_table_page("customers", 0, 25, None, None)
+                .unwrap_err(),
+            DESKTOP_NOT_IMPLEMENTED,
+            "read_table_page is not wired yet"
+        );
+        let edits = vec![(0u32, String::from("name"), String::from("alice"))];
+        assert_eq!(
+            adapter.commit_cells("customers", &edits).unwrap_err(),
+            DESKTOP_NOT_IMPLEMENTED,
+            "commit_cells is not wired yet"
+        );
     }
 }
