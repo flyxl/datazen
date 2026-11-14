@@ -71,8 +71,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | D9 | 已完成 | ca5ab44 | testing/D9-transfer-mapping.md |
 | D10 | 已完成 | 1f0eecc | testing/D10-transfer-confirm.md |
 | W1 | 已完成 | bb00522 | testing/W1-dashboard-list.md |
-| W2 | 进行中 | | |
-| W3 | 未开始 | | |
+| W2 | 已完成 | cd80202 | testing/W2-bar-chart.md |
+| W3 | 进行中 | | |
 | W4 | 未开始 | | |
 | W5 | 未开始 | | |
 | W6 | 未开始 | | |
