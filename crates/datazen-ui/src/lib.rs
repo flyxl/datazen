@@ -21,6 +21,7 @@ enum TableView {
     #[default]
     Data,
     Ddl,
+    Columns,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -409,6 +410,7 @@ fn table_workspace(state: &AppState, theme: tok::Theme) -> El {
     let body = match state.table_view {
         TableView::Data => data_grid::panel(state, theme.text, theme.text_secondary, theme.control_off),
         TableView::Ddl => ddl_view(&state.workspace, &title, theme),
+        TableView::Columns => columns_view(&state.workspace, &title, theme),
     };
     col()
         .key("table-workspace")
@@ -437,7 +439,56 @@ fn view_switcher(state: &AppState, theme: tok::Theme) -> El {
         .gap(6.0)
         .center_y()
         .child(entry("view-data", "Data", TableView::Data, state.table_view == TableView::Data))
+        .child(entry("view-columns", "Columns", TableView::Columns, state.table_view == TableView::Columns))
         .child(entry("view-ddl", "DDL", TableView::Ddl, state.table_view == TableView::Ddl))
+}
+
+/// The column list: name, type, nullability — one row per column. A list, not
+/// a structure editor.
+fn columns_view(workspace: &MemoryWorkspace, title: &str, theme: tok::Theme) -> El {
+    let columns = workspace.table_columns(title).unwrap_or_default();
+    let header = |label: &str, width: f32| {
+        row()
+            .w(width)
+            .h(24.0)
+            .px(8.0)
+            .center_y()
+            .child(text(label).font(type_::LABEL).color(theme.text_secondary))
+    };
+    let mut list = col()
+        .key("columns-list")
+        .w_full()
+        .radius(8.0)
+        .fill(theme.control_off)
+        .child(
+            row()
+                .key("columns-header")
+                .w_full()
+                .h(24.0)
+                .child(header("Column", 240.0))
+                .child(header("Type", 140.0))
+                .child(header("Nullable", 100.0)),
+        );
+    for (index, column) in columns.iter().enumerate() {
+        let cell = |value: &str, width: f32| {
+            row()
+                .w(width)
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .child(text(value.to_owned()).font(type_::LABEL).color(theme.text))
+        };
+        list = list.child(
+            row()
+                .key(format!("column-row-{index}"))
+                .w_full()
+                .h(24.0)
+                .child(cell(&column.name, 240.0))
+                .child(cell(&column.sql_type, 140.0))
+                .child(cell(if column.nullable { "yes" } else { "no" }, 100.0)),
+        );
+    }
+    list
 }
 
 /// The DDL page: the port's string, verbatim, one line per row. An empty string
@@ -1696,6 +1747,32 @@ mod tests {
         runtime.frame(0.0);
         assert!(runtime.find("table-ddl-empty").is_some(), "an empty DDL string is an empty state");
         assert!(runtime.find("table-ddl").is_none());
+    }
+
+    #[test]
+    fn the_columns_view_lists_one_row_per_column() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.frame(0.0);
+
+        let (x, y) = runtime.find("view-columns").expect("columns button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+
+        assert!(runtime.find("columns-list").is_some());
+        assert!(runtime.find("columns-header").is_some());
+        for index in 0..8 {
+            assert!(
+                runtime.find(&format!("column-row-{index}")).is_some(),
+                "one row per column, row {index}"
+            );
+        }
+        assert!(runtime.find("column-row-8").is_none(), "customers has 8 columns");
+        assert!(runtime.find("data-grid").is_none(), "the grid leaves for the list");
     }
 
     #[test]

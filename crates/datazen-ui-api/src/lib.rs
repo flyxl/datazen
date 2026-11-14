@@ -9,6 +9,14 @@ use std::collections::HashMap;
 
 pub use tabs::{Tab, TabKind, Tabs};
 
+/// One column of a table: name, type, nullability. For lists, not editors.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ColumnSpec {
+    pub name: String,
+    pub sql_type: String,
+    pub nullable: bool,
+}
+
 /// The three name layers the port reports: databases, their schemas, and the
 /// tables inside each schema. Orders are the port's and stay stable.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -85,6 +93,8 @@ pub trait WorkspaceApi {
     /// The table's DDL as one string the page shows verbatim. An empty string
     /// means the port cannot produce DDL; an unknown table is an error.
     fn table_ddl(&self, table: &str) -> Result<String, String>;
+    /// The table's columns: one entry per column, in the table's order.
+    fn table_columns(&self, table: &str) -> Result<Vec<ColumnSpec>, String>;
     fn connect(&mut self, id: &str) -> Result<(), String>;
     fn disconnect(&mut self);
     fn open_table(
@@ -298,9 +308,30 @@ impl WorkspaceApi for MemoryWorkspace {
             // The memory port cannot introspect the external analytics schema.
             return Ok(String::new());
         }
+        // (table_ddl continues below; the analytics branch is shared with columns)
         let lines: Vec<String> =
             stored.1.columns.iter().map(|column| format!("  {column} text")).collect();
         Ok(format!("CREATE TABLE {table} (\n{}\n);", lines.join(",\n")))
+    }
+
+    fn table_columns(&self, table: &str) -> Result<Vec<ColumnSpec>, String> {
+        let stored = self
+            .tables
+            .iter()
+            .find(|(name, _)| name == table)
+            .ok_or_else(|| format!("unknown table {table}"))?;
+        Ok(stored
+            .1
+            .columns
+            .iter()
+            .enumerate()
+            .map(|(index, name)| ColumnSpec {
+                name: name.clone(),
+                sql_type: "text".into(),
+                // The demo port keeps the first column a key, the rest nullable.
+                nullable: index != 0,
+            })
+            .collect())
     }
 
     fn connect(&mut self, id: &str) -> Result<(), String> {
@@ -696,6 +727,20 @@ mod tests {
             "external schema tables have no DDL to show"
         );
         assert!(workspace.table_ddl("missing").is_err());
+    }
+
+    #[test]
+    fn table_columns_lists_one_entry_per_column() {
+        let mut workspace = MemoryWorkspace::new();
+        workspace.connect("local").unwrap();
+        let columns = workspace.table_columns("customers").unwrap();
+        assert_eq!(columns.len(), 8, "one row per column");
+        assert_eq!(columns[0].name, "id");
+        assert_eq!(columns[0].sql_type, "text");
+        assert!(!columns[0].nullable, "the first column is the key");
+        assert_eq!(columns[1].name, "name");
+        assert!(columns[1].nullable);
+        assert!(workspace.table_columns("missing").is_err());
     }
 
     #[test]
