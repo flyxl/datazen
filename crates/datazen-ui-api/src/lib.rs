@@ -373,7 +373,15 @@ impl QueryApi for MemoryWorkspace {
                 let Some((_, stored)) = self.tables.iter().find(|(name, _)| name == "customers") else {
                     return Err("unknown table customers".into());
                 };
-                let rows = stored.rows.iter().take(25).cloned().collect();
+                let max_rows = self
+                    .settings
+                    .iter()
+                    .find_map(|setting| match setting {
+                        Setting::QueryMaxRows { rows } => Some(*rows),
+                        _ => None,
+                    })
+                    .unwrap_or(100) as usize;
+                let rows = stored.rows.iter().take(max_rows).cloned().collect();
                 Ok(Self::result_page(stored.columns.clone(), rows))
             }
             _ => Err(format!("cannot execute: {sql}")),
@@ -916,9 +924,12 @@ mod tests {
 
         let page = workspace.execute("SELECT  *  FROM customers;").unwrap();
         assert_eq!(page.columns[1], "name");
-        assert_eq!(page.rows.len(), 25, "one page, not the whole table");
-        assert_eq!(page.total_rows, 25, "the query result is exactly that page");
+        assert_eq!(page.rows.len(), 40, "under the 100-row cap the whole table returns");
         assert_eq!(page.rows[0][1], "customer-0");
+
+        workspace.write_setting(Setting::QueryMaxRows { rows: 10 }).unwrap();
+        let page = workspace.execute("select * from customers").unwrap();
+        assert_eq!(page.rows.len(), 10, "the query cap comes from the setting");
     }
 
     #[test]

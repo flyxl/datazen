@@ -88,6 +88,10 @@ struct AppState {
     column_drafts: std::collections::BTreeMap<String, Vec<ColumnDraft>>,
     draft_name: TextEdit,
     draft_type: TextEdit,
+    /// The settings page's inputs and its last rejected write.
+    page_size_input: TextEdit,
+    max_rows_input: TextEdit,
+    settings_error: Option<String>,
 }
 
 impl Default for AppState {
@@ -113,6 +117,9 @@ impl Default for AppState {
             column_drafts: std::collections::BTreeMap::new(),
             draft_name: TextEdit::new(String::new()),
             draft_type: TextEdit::new(String::new()),
+            page_size_input: TextEdit::new(String::new()),
+            max_rows_input: TextEdit::new(String::new()),
+            settings_error: None,
         }
     }
 }
@@ -138,6 +145,42 @@ impl AppState {
 
     fn set_table_view(&mut self, view: TableView) {
         self.table_view = view;
+    }
+
+    /// The table page size from the settings port (fallback: the built-in 25).
+    fn table_page_size(&self) -> u32 {
+        self.workspace
+            .read_settings()
+            .iter()
+            .find_map(|setting| match setting {
+                Setting::TablePageSize { rows } => Some(*rows),
+                _ => None,
+            })
+            .unwrap_or(TABLE_PAGE_SIZE)
+    }
+
+    /// Set the table page size from the settings input; an invalid value keeps
+    /// the old one and shows the port's error.
+    fn set_table_page_size(&mut self) {
+        let rows = self.page_size_input.text.trim().parse::<u32>();
+        match rows {
+            Ok(rows) => match self.workspace.write_setting(Setting::TablePageSize { rows }) {
+                Ok(()) => self.settings_error = None,
+                Err(error) => self.settings_error = Some(error),
+            },
+            Err(_) => self.settings_error = Some("table page size must be a number".into()),
+        }
+    }
+
+    fn set_query_max_rows(&mut self) {
+        let rows = self.max_rows_input.text.trim().parse::<u32>();
+        match rows {
+            Ok(rows) => match self.workspace.write_setting(Setting::QueryMaxRows { rows }) {
+                Ok(()) => self.settings_error = None,
+                Err(error) => self.settings_error = Some(error),
+            },
+            Err(_) => self.settings_error = Some("query max rows must be a number".into()),
+        }
     }
 
     /// Flip the theme. The only write goes to the settings port.
@@ -247,7 +290,7 @@ impl AppState {
         self.filter = None;
         self.filter_column = 0;
         self.filter_editor = TextEdit::new(String::new());
-        if let Ok(page) = self.workspace.open_table("customers", 0, TABLE_PAGE_SIZE, None, None) {
+        if let Ok(page) = self.workspace.open_table("customers", 0, self.table_page_size(), None, None) {
             self.grid.load_page(&page);
             self.grid.set_editable(page.read_only.is_none());
             self.active = Section::Workspace;
@@ -294,7 +337,7 @@ impl AppState {
         match self.workspace.open_table(
             title,
             self.table_page,
-            TABLE_PAGE_SIZE,
+            self.table_page_size(),
             self.sort.as_ref(),
             self.filter.as_ref(),
         ) {
@@ -1009,7 +1052,25 @@ fn settings_page(state: &AppState, theme: tok::Theme) -> El {
             _ => None,
         })
         .unwrap_or(true);
-    col()
+    let page_size = state
+        .workspace
+        .read_settings()
+        .iter()
+        .find_map(|setting| match setting {
+            Setting::TablePageSize { rows } => Some(*rows),
+            _ => None,
+        })
+        .unwrap_or(TABLE_PAGE_SIZE);
+    let max_rows = state
+        .workspace
+        .read_settings()
+        .iter()
+        .find_map(|setting| match setting {
+            Setting::QueryMaxRows { rows } => Some(*rows),
+            _ => None,
+        })
+        .unwrap_or(100);
+    let mut page = col()
         .key("settings-page")
         .w_full()
         .gap(12.0)
@@ -1041,6 +1102,75 @@ fn settings_page(state: &AppState, theme: tok::Theme) -> El {
                         .on_press(|state: &mut AppState| state.toggle_theme()),
                 ),
         )
+        .child(
+            row()
+                .key("settings-data")
+                .w_full()
+                .h(32.0)
+                .gap(8.0)
+                .center_y()
+                .child(text("Data".to_owned()).font(type_::TITLE).color(theme.text))
+                .child(
+                    text(format!("Rows per page: {page_size}"))
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                )
+                .child(
+                    text_input(&state.page_size_input, type_::LABEL)
+                        .key("settings-page-size-input")
+                        .w(90.0)
+                        .h(24.0)
+                        .on_edit(|state: &mut AppState| &mut state.page_size_input),
+                )
+                .child(
+                    row()
+                        .key("settings-page-size-set")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Set").font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.set_table_page_size()),
+                )
+                .child(
+                    text(format!("Query max rows: {max_rows}"))
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                )
+                .child(
+                    text_input(&state.max_rows_input, type_::LABEL)
+                        .key("settings-max-rows-input")
+                        .w(90.0)
+                        .h(24.0)
+                        .on_edit(|state: &mut AppState| &mut state.max_rows_input),
+                )
+                .child(
+                    row()
+                        .key("settings-max-rows-set")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Set").font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.set_query_max_rows()),
+                ),
+        );
+    if let Some(error) = &state.settings_error {
+        page = page.child(
+            row()
+                .key("settings-error")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+        );
+    }
+    page
 }
 
 fn tab_strip(state: &AppState, theme: tok::Theme) -> El {
@@ -2053,7 +2183,7 @@ mod tests {
         runtime.key(KeyEvent { key: Key::Enter, mods: Mods { cmd: true, ..Mods::default() } });
         runtime.frame(0.0);
         let grid = runtime.state.result_grid.as_ref().expect("first statement ran");
-        assert_eq!(grid.rows, 25, "SELECT * FROM CUSTOMERS returns the customers page");
+        assert_eq!(grid.rows, 40, "SELECT * FROM CUSTOMERS returns up to the query cap");
         assert_eq!(grid.cell(0, 1), "customer-0");
 
         // Move the caret into the second statement: only that one runs.
@@ -2596,6 +2726,56 @@ mod tests {
                 .read_settings()
                 .contains(&Setting::Theme { dark: true })
         );
+    }
+
+    #[test]
+    fn the_page_size_setting_drives_the_grid_paging() {
+        use datazen_ui_api::{Setting, SettingsApi, WorkspaceApi};
+
+        let mut runtime = runtime();
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.grid.page_size(), 25, "the default");
+
+        let (x, y) = runtime.find("nav-settings").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        runtime.state.page_size_input = rune::TextEdit::new("10");
+        let (x, y) = runtime.find("settings-page-size-set").expect("set button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(
+            runtime.state.workspace.read_settings().contains(&Setting::TablePageSize { rows: 10 }),
+            "the write went through the port"
+        );
+
+        // The next page now turns at the new size.
+        runtime.state.active = Section::Workspace;
+        runtime.state.next_table_page();
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.grid.page(), 1);
+        assert_eq!(runtime.state.grid.rows, 10, "the second page has 10 rows");
+        assert_eq!(runtime.state.grid.cell(0, 1), "customer-10");
+        assert_eq!(runtime.state.grid.cell(9, 1), "customer-19");
+
+        // An invalid value keeps the old setting and shows the error.
+        let (x, y) = runtime.find("nav-settings").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        runtime.state.page_size_input = rune::TextEdit::new("0");
+        let (x, y) = runtime.find("settings-page-size-set").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(
+            runtime.state.workspace.read_settings().contains(&Setting::TablePageSize { rows: 10 }),
+            "the rejected write changed nothing"
+        );
+        assert!(runtime.find("settings-error").is_some(), "the rejection is visible");
     }
 
     #[test]
