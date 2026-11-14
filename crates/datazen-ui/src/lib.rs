@@ -7,7 +7,7 @@ mod data_grid;
 mod sql_editor;
 
 use data_grid::DataGrid;
-use datazen_ui_api::{ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, UnimplementedAdapter, UseCaseAdapter, WorkflowStepResult, WorkspaceApi};
+use datazen_ui_api::{ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile, DESKTOP_NOT_IMPLEMENTED, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, UnimplementedAdapter, UseCaseAdapter, WorkflowStepResult, WorkspaceApi};
 use rune::tok::{self, type_};
 use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, TextEdit, Tx, col, oklch, row, text, text_input};
 use sql_editor::SqlEditor;
@@ -1039,8 +1039,21 @@ impl AppState {
 
     /// Commit every staged edit to the stored rows, then reload the page.
     fn commit_staged_edits(&mut self) {
-        if self.workspace.commit_staged().is_ok() {
-            self.reload_table_page();
+        // H5: the desktop adapter's commit use case first — the grid's staged
+        // edits travel as one batch. The fixed not-implemented error means
+        // the host has not wired the use case yet, and the port's own staged
+        // edits answer instead; any other failure is real and keeps the
+        // dirty marks (no reload, so the grid keeps its staged state).
+        let table = self.grid.table_label().to_owned();
+        let edits = self.grid.staged_edits();
+        match self.desktop.commit_cells(&table, &edits) {
+            Ok(_) => self.reload_table_page(),
+            Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
+                if self.workspace.commit_staged().is_ok() {
+                    self.reload_table_page();
+                }
+            }
+            Err(_) => {}
         }
     }
 
@@ -6128,6 +6141,123 @@ mod tests {
             runtime.state.grid.total_rows(),
             total,
             "the previous page stays behind the failure"
+        );
+    }
+
+    /// An adapter that serves a writable page but rejects every commit with a
+    /// real error, to see the dirty marks survive the failure.
+    struct AdapterFailingCommits;
+
+    impl datazen_ui_api::DesktopAdapter for AdapterFailingCommits {
+        fn list_connections(
+            &mut self,
+        ) -> Result<Vec<datazen_ui_api::ConnectionProfile>, String> {
+            Err(datazen_ui_api::DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn read_table_page(
+            &mut self,
+            table: &str,
+            page: u32,
+            _page_size: u32,
+            _sort: Option<&datazen_ui_api::ColumnSort>,
+            _filter: Option<&datazen_ui_api::ColumnFilter>,
+        ) -> Result<datazen_ui_api::TablePage, String> {
+            Ok(datazen_ui_api::TablePage {
+                table: table.into(),
+                columns: vec![String::from("id"), String::from("name")],
+                rows: vec![
+                    vec![String::from("0"), String::from("customer-0")],
+                    vec![String::from("1"), String::from("customer-1")],
+                ],
+                page,
+                page_size: 2,
+                total_rows: 2,
+                sort: None,
+                filter: None,
+                read_only: None,
+            })
+        }
+
+        fn commit_cells(
+            &mut self,
+            _table: &str,
+            _edits: &[(u32, String, String)],
+        ) -> Result<u32, String> {
+            Err("the desktop rejected the commit".into())
+        }
+    }
+
+    #[test]
+    fn a_failed_commit_keeps_the_dirty_marks() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.state.desktop = Box::new(AdapterFailingCommits);
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.frame(0.0);
+
+        // One edited cell: the adapter's page is writable, the edit stages.
+        runtime.state.grid.select(0, 1);
+        runtime.state.grid.begin_edit();
+        runtime.state.grid.editor = rune::TextEdit::new(String::new());
+        runtime.state.grid.editor.insert("renamed");
+        runtime.state.commit_grid_edit();
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.grid.cell(0, 1), "renamed");
+        assert_eq!(runtime.state.grid.dirty_cells(), 1);
+
+        // The commit fails with a real error: the dirty mark and the edit
+        // stay exactly as they were.
+        let (x, y) = runtime.find("commit-staged").expect("commit button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(
+            runtime.state.grid.dirty_cells(),
+            1,
+            "the failure keeps the dirty mark"
+        );
+        assert_eq!(
+            runtime.state.grid.cell(0, 1),
+            "renamed",
+            "the edit is still staged in the grid"
+        );
+    }
+
+    #[test]
+    fn a_wired_commit_lands_in_the_adapters_use_case_world() {
+        use datazen_ui_api::{UseCaseAdapter, WorkspaceApi};
+
+        let mut runtime = runtime();
+        runtime.state.desktop = Box::new(UseCaseAdapter::with_demo_connections());
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.grid.total_rows(), 40, "the adapter's world serves the page");
+
+        runtime.state.grid.select(0, 1);
+        runtime.state.grid.begin_edit();
+        runtime.state.grid.editor = rune::TextEdit::new(String::new());
+        runtime.state.grid.editor.insert("renamed");
+        runtime.state.commit_grid_edit();
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.grid.dirty_cells(), 1);
+
+        let (x, y) = runtime.find("commit-staged").expect("commit button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(
+            runtime.state.grid.dirty_cells(),
+            0,
+            "the reload after the commit clears the marks"
+        );
+        assert_eq!(
+            runtime.state.grid.cell(0, 1),
+            "renamed",
+            "the committed value reads back through the adapter's world"
         );
     }
 

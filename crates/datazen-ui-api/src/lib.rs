@@ -393,9 +393,9 @@ fn config_from_profile(profile: &ConnectionProfile) -> ConnectionConfig {
 }
 
 /// H3: the adapter with `list_connections` wired to the existing use case —
-/// `ConnectionService::list_redacted` over a connection repository. H4 wires
-/// `read_table_page` to the existing in-memory read use case
-/// (`MemoryWorkspace::open_table`); `commit_cells` is not wired yet (H5).
+/// `ConnectionService::list_redacted` over a connection repository. H4 wired
+/// `read_table_page` and H5 `commit_cells` to the existing in-memory use
+/// cases (`MemoryWorkspace::open_table`, staging plus `commit_staged`).
 pub struct UseCaseAdapter {
     service: datazen::connection::application::ConnectionService,
     /// The existing in-memory world the read use case runs over. The desktop
@@ -478,12 +478,16 @@ impl DesktopAdapter for UseCaseAdapter {
             .open_table(table, page, page_size, sort, filter)
     }
 
-    fn commit_cells(
-        &mut self,
-        _table: &str,
-        _edits: &[(u32, String, String)],
-    ) -> Result<u32, String> {
-        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    fn commit_cells(&mut self, table: &str, edits: &[(u32, String, String)]) -> Result<u32, String> {
+        // H5: the existing commit use case — the batch is staged on the open
+        // page the rows refer to (the UI numbers them like the page it last
+        // read, which is the page this workspace has open), then applied as
+        // one commit. A failure leaves the staged batch in place.
+        let _ = table;
+        for (row, column, value) in edits {
+            self.workspace.stage_cell(*row, column, value.clone())?;
+        }
+        self.workspace.commit_staged()
     }
 }
 
@@ -2310,13 +2314,49 @@ mod tests {
     }
 
     #[test]
-    fn the_wired_adapter_keeps_the_unwired_methods_at_the_fixed_error() {
+    fn the_wired_adapter_commits_a_batch_through_the_existing_use_case() {
         let mut adapter = UseCaseAdapter::with_demo_connections();
-        let edits = vec![(0u32, String::from("name"), String::from("alice"))];
+        adapter
+            .read_table_page("customers", 0, 25, None, None)
+            .expect("the read opens the page the rows refer to");
+        let edits = vec![
+            (0u32, String::from("name"), String::from("alice")),
+            (1u32, String::from("name"), String::from("bob")),
+        ];
         assert_eq!(
-            adapter.commit_cells("customers", &edits).unwrap_err(),
-            DESKTOP_NOT_IMPLEMENTED,
-            "H5 has not wired commit_cells yet"
+            adapter
+                .commit_cells("customers", &edits)
+                .expect("the batch lands"),
+            2,
+            "both edits applied"
+        );
+        let page = adapter
+            .read_table_page("customers", 0, 25, None, None)
+            .expect("the page reads back");
+        assert_eq!(page.rows[0][1], "alice");
+        assert_eq!(page.rows[1][1], "bob");
+    }
+
+    #[test]
+    fn a_failed_batch_keeps_the_edits_that_did_stage() {
+        let mut adapter = UseCaseAdapter::with_demo_connections();
+        adapter
+            .read_table_page("customers", 0, 25, None, None)
+            .expect("the read opens the page");
+        let edits = vec![
+            (0u32, String::from("name"), String::from("alice")),
+            (1u32, String::from("no-such-column"), String::from("x")),
+        ];
+        assert!(
+            adapter.commit_cells("customers", &edits).is_err(),
+            "the batch as a whole fails"
+        );
+        let page = adapter
+            .read_table_page("customers", 0, 25, None, None)
+            .expect("the page reads back");
+        assert_eq!(
+            page.rows[0][1], "alice",
+            "the edit that did stage survives the failure for the next attempt"
         );
     }
 

@@ -244,6 +244,21 @@ impl DataGrid {
             .count() as u32
     }
 
+    /// The staged edits as one batch for the commit use case: (row, column
+    /// name, value), rows numbered as the loaded page numbers them.
+    pub fn staged_edits(&self) -> Vec<(u32, String, String)> {
+        let mut edits: Vec<(u32, String, String)> = self
+            .edits
+            .iter()
+            .filter_map(|((row, col), value)| {
+                self.column_name(*col)
+                    .map(|column| (*row, column.to_owned(), value.clone()))
+            })
+            .collect();
+        edits.sort_by_key(|(row, _, _)| *row);
+        edits
+    }
+
     pub fn copy_tsv(&self) -> String {
         let (r0, r1, c0, c1) = self.rect();
         let mut lines = Vec::new();
