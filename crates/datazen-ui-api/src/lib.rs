@@ -146,6 +146,13 @@ struct MemoryJob {
     fail_line: Option<String>,
 }
 
+/// One workflow: a name and its steps, in order.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Workflow {
+    pub name: String,
+    pub steps: Vec<String>,
+}
+
 /// One dashboard widget: its id, its title, its kind.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DashboardWidget {
@@ -251,6 +258,8 @@ pub trait WorkspaceApi {
     fn save_dashboard_widget(&mut self, title: &str, query: &str) -> Result<u64, String>;
     /// W2: the widget's chart data: labeled integers from the port.
     fn widget_bars(&self, id: u64) -> Result<Vec<(String, u32)>, String>;
+    /// W4: the workflows, sorted by name.
+    fn workflows(&self) -> Vec<Workflow>;
     /// Stop a running job. A stopped job reports "stopped" from then on.
     fn stop_job(&mut self, job: u64) -> Result<(), String>;
     /// Apply a DDL script to the table. The port records what it applied; a
@@ -318,6 +327,8 @@ pub struct MemoryWorkspace {
     jobs: Vec<MemoryJob>,
     /// The dashboard's widgets.
     widgets: Vec<DashboardWidget>,
+    /// The workflows, stored unordered; reads sort by name.
+    workflows: Vec<Workflow>,
 }
 
 impl Default for MemoryWorkspace {
@@ -408,6 +419,20 @@ impl MemoryWorkspace {
             snippets: Vec::new(),
             jobs: Vec::new(),
             widgets: Vec::new(),
+            workflows: vec![
+                Workflow {
+                    name: "weekly-report".into(),
+                    steps: vec!["run query".into(), "export csv".into()],
+                },
+                Workflow {
+                    name: "audit".into(),
+                    steps: vec!["compare structures".into(), "apply plan".into()],
+                },
+                Workflow {
+                    name: "nightly-backup".into(),
+                    steps: vec!["backup".into(), "verify".into()],
+                },
+            ],
         }
     }
 }
@@ -805,6 +830,12 @@ impl WorkspaceApi for MemoryWorkspace {
         });
         let _ = query;
         Ok(id)
+    }
+
+    fn workflows(&self) -> Vec<Workflow> {
+        let mut workflows = self.workflows.clone();
+        workflows.sort_by(|a, b| a.name.cmp(&b.name));
+        workflows
     }
 
     fn widget_bars(&self, id: u64) -> Result<Vec<(String, u32)>, String> {
@@ -1754,6 +1785,15 @@ mod tests {
         let second = workspace.save_dashboard_widget("Monthly", "select 2").unwrap();
         assert_eq!(second, 2);
         assert_eq!(workspace.dashboard_widgets().len(), 2);
+    }
+
+    #[test]
+    fn workflows_read_sorted_by_name() {
+        let workspace = MemoryWorkspace::new();
+        let workflows = workspace.workflows();
+        let names: Vec<&str> = workflows.iter().map(|flow| flow.name.as_str()).collect();
+        assert_eq!(names, vec!["audit", "nightly-backup", "weekly-report"], "reads sort by name");
+        assert_eq!(workflows[0].steps, vec!["compare structures", "apply plan"]);
     }
 
     #[test]

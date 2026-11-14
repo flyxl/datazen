@@ -1097,8 +1097,36 @@ fn page_body(state: &AppState, theme: tok::Theme) -> El {
         Section::Settings => settings_page(state, theme),
         Section::Tools => tools_page(state, theme),
         Section::Dashboards => dashboards_page(state, theme),
-        Section::Workflows => col().key("workflows-page").w_full(),
+        Section::Workflows => workflows_page(state, theme),
     }
+}
+
+/// The workflows page: the list, sorted by name.
+fn workflows_page(state: &AppState, theme: tok::Theme) -> El {
+    let workflows = state.workspace.workflows();
+    let mut page = col()
+        .key("workflows-page")
+        .w_full()
+        .gap(6.0)
+        .child(text("Workflows".to_owned()).font(type_::TITLE).color(theme.text));
+    for workflow in &workflows {
+        page = page.child(
+            row()
+                .key(format!("workflow-{}", workflow.name))
+                .w_full()
+                .h(28.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(
+                    text(format!("{} · {} steps", workflow.name, workflow.steps.len()))
+                        .font(type_::LABEL)
+                        .color(theme.text),
+                ),
+        );
+    }
+    page
 }
 
 /// The dashboards page: the widget list. An empty list has its own state.
@@ -5349,6 +5377,25 @@ mod tests {
         assert!(runtime.find("widget-1").is_some(), "the widget joins the dashboard");
         assert!(runtime.find("widget-chart-1").is_some(), "its chart renders");
         assert!(runtime.find("widget-form-error").is_none());
+    }
+
+    #[test]
+    fn the_workflow_list_is_sorted_by_name() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-workflows").expect("workflows navigation");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+
+        assert!(runtime.find("workflows-page").is_some());
+        let audit = runtime.presented("workflow-audit").expect("audit is listed").0;
+        let nightly = runtime.presented("workflow-nightly-backup").expect("nightly-backup is listed").0;
+        let weekly = runtime.presented("workflow-weekly-report").expect("weekly-report is listed").0;
+        assert!(
+            audit[1] < nightly[1] && nightly[1] < weekly[1],
+            "the list reads alphabetically: audit {audit:?} nightly {nightly:?} weekly {weekly:?}"
+        );
     }
 
     #[test]
