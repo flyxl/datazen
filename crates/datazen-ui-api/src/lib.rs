@@ -295,14 +295,24 @@ pub trait DesktopAdapter {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 
-    /// Start an export of one table through the host (N11). The default
-    /// answers the fixed error; the UI falls back to the memory port.
-    fn start_export(&mut self, _table: &str, _format: &str, _range: &str) -> Result<u64, String> {
+    /// Start an export of one table through the host (N11). `path` (T2) is
+    /// the user's picked save location; `None` keeps the host's default
+    /// directory. The default answers the fixed error; the UI falls back to
+    /// the memory port.
+    fn start_export(
+        &mut self,
+        _table: &str,
+        _format: &str,
+        _range: &str,
+        _path: Option<&str>,
+    ) -> Result<u64, String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 
-    /// Start a backup of the live database through the host (N11).
-    fn start_backup(&mut self) -> Result<u64, String> {
+    /// Start a backup of the live database through the host (N11). `path`
+    /// (T2) is the user's picked save location; `None` keeps the host's
+    /// default directory.
+    fn start_backup(&mut self, _path: Option<&str>) -> Result<u64, String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 

@@ -19,6 +19,13 @@ rune = { workspace = true }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { workspace = true }
 
+# T2: native Open/Save dialogs — rfd on macOS and Windows, the XDG desktop
+# portal over zbus on Linux. The wasm target keeps the scripted-only surface
+# (H6's build stays feature-free); `tx.save_file` answers an honest error
+# there and the UI falls back to the host's default directory.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rune = { workspace = true, features = ["native-file-dialog"] }
+
 [dev-dependencies]
 # H8's tofu test reads glyph ids out of a shaped layout; the same version and
 # features rune itself uses, so the graph stays one parley.

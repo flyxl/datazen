@@ -107,9 +107,11 @@ impl HostJobs {
         }
     }
 
-    /// Start an export of one table to a file under the data directory.
-    /// The range is the dialog's free text; the honest native semantics are
-    /// "the whole table" — anything else is refused rather than guessed.
+    /// Start an export of one table. `dir` is the default directory; `picked`
+    /// (T2) is the user's chosen exact file, which wins over the default
+    /// naming. The range is the dialog's free text; the honest native
+    /// semantics are "the whole table" — anything else is refused rather
+    /// than guessed.
     pub fn spawn_export(
         &self,
         registry: Arc<DriverRegistry>,
@@ -118,6 +120,7 @@ impl HostJobs {
         format: String,
         range: String,
         dir: PathBuf,
+        picked: Option<PathBuf>,
     ) -> u64 {
         let job = self.begin(format!("export {table} as {format}"));
         let states = Arc::clone(&self.states);
@@ -163,10 +166,12 @@ impl HostJobs {
                                 ))
                             }
                         };
-                        let path = dir.join(format!(
-                            "export-{table}-{}.{extension}",
-                            chrono::Utc::now().format("%Y%m%d-%H%M%S")
-                        ));
+                        let path = picked.clone().unwrap_or_else(|| {
+                            dir.join(format!(
+                                "export-{table}-{}.{extension}",
+                                chrono::Utc::now().format("%Y%m%d-%H%M%S")
+                            ))
+                        });
                         if let Some(parent) = path.parent() {
                             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
                         }
@@ -194,6 +199,7 @@ impl HostJobs {
         registry: Arc<DriverRegistry>,
         config: ConnectionConfig,
         dir: PathBuf,
+        picked: Option<PathBuf>,
     ) -> u64 {
         let database = config.database.clone().unwrap_or_default();
         let job = self.begin(format!("backup {database}"));
@@ -234,11 +240,13 @@ impl HostJobs {
                                 .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
                                 .collect::<String>()
                         };
-                        let path = dir.join(format!(
-                            "backup-{}-{}.sql",
-                            safe,
-                            chrono::Utc::now().format("%Y%m%d-%H%M%S")
-                        ));
+                        let path = picked.clone().unwrap_or_else(|| {
+                            dir.join(format!(
+                                "backup-{}-{}.sql",
+                                safe,
+                                chrono::Utc::now().format("%Y%m%d-%H%M%S")
+                            ))
+                        });
                         if let Some(parent) = path.parent() {
                             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
                         }

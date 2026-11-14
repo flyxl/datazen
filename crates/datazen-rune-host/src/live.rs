@@ -1530,7 +1530,13 @@ impl DesktopAdapter for LiveAdapter {
             .collect())
     }
 
-    fn start_export(&mut self, table: &str, format: &str, range: &str) -> Result<u64, String> {
+    fn start_export(
+        &mut self,
+        table: &str,
+        format: &str,
+        range: &str,
+        path: Option<&str>,
+    ) -> Result<u64, String> {
         let connection = {
             let session = self.session.lock().expect("the live session lock");
             if !session.is_open() {
@@ -1546,10 +1552,11 @@ impl DesktopAdapter for LiveAdapter {
             format.to_owned(),
             range.to_owned(),
             self.data_dir.join("exports"),
+            path.map(std::path::PathBuf::from),
         ))
     }
 
-    fn start_backup(&mut self) -> Result<u64, String> {
+    fn start_backup(&mut self, path: Option<&str>) -> Result<u64, String> {
         let connection = {
             let session = self.session.lock().expect("the live session lock");
             if !session.is_open() {
@@ -1562,6 +1569,7 @@ impl DesktopAdapter for LiveAdapter {
             Arc::clone(&self.registry),
             config,
             self.data_dir.join("backups"),
+            path.map(std::path::PathBuf::from),
         ))
     }
 
@@ -2406,7 +2414,7 @@ mod tests {
         let mut adapter = opened_adapter(&dir);
 
         // CSV: the whole table, header and every row, quoted where needed.
-        let job = adapter.start_export("users", "csv", "").expect("the export starts");
+        let job = adapter.start_export("users", "csv", "", None).expect("the export starts");
         let snapshot = wait_job(&adapter, job);
         assert_eq!(snapshot.status, "completed", "log: {:?}", snapshot.log);
         let exports = std::fs::read_dir(dir.join("exports")).expect("the exports dir exists");
@@ -2422,14 +2430,24 @@ mod tests {
         assert_eq!(lines[60], "59,user-59", "the last row");
 
         // A range the host cannot serve is refused honestly.
-        let job = adapter.start_export("users", "csv", "rows 1-5").expect("the job starts");
+        let job = adapter.start_export("users", "csv", "rows 1-5", None).expect("the job starts");
         let snapshot = wait_job(&adapter, job);
         assert_eq!(snapshot.status, "failed", "an unsupported range fails: {:?}", snapshot.log);
 
         // A format the host has not wired is refused honestly.
-        let job = adapter.start_export("users", "sql", "").expect("the job starts");
+        let job = adapter.start_export("users", "sql", "", None).expect("the job starts");
         let snapshot = wait_job(&adapter, job);
         assert_eq!(snapshot.status, "failed", "sql export is not wired: {:?}", snapshot.log);
+
+        // T2: a picked save path wins over the default directory naming.
+        let picked = dir.join("picked-exports").join("users.csv");
+        let job = adapter
+            .start_export("users", "csv", "", Some(picked.to_str().unwrap()))
+            .expect("the export starts");
+        let snapshot = wait_job(&adapter, job);
+        assert_eq!(snapshot.status, "completed", "log: {:?}", snapshot.log);
+        let body = std::fs::read_to_string(&picked).expect("the picked file was written");
+        assert_eq!(body.lines().count(), 61, "the same whole-table export lands at the picked path");
     }
 
     #[test]
@@ -2437,7 +2455,7 @@ mod tests {
         let dir = temp_dir("backup");
         let mut adapter = opened_adapter(&dir);
 
-        let job = adapter.start_backup().expect("the backup starts");
+        let job = adapter.start_backup(None).expect("the backup starts");
         let snapshot = wait_job(&adapter, job);
         assert_eq!(snapshot.status, "completed", "log: {:?}", snapshot.log);
         let backups = std::fs::read_dir(dir.join("backups")).expect("the backups dir exists");
@@ -2453,6 +2471,16 @@ mod tests {
             body.len()
         );
         assert!(body.contains("users"), "the dump names the table");
+
+        // T2: a picked save path wins over the default directory naming.
+        let picked = dir.join("picked-backup.sql");
+        let job = adapter
+            .start_backup(Some(picked.to_str().unwrap()))
+            .expect("the backup starts");
+        let snapshot = wait_job(&adapter, job);
+        assert_eq!(snapshot.status, "completed", "log: {:?}", snapshot.log);
+        let picked_body = std::fs::read_to_string(&picked).expect("the picked file was written");
+        assert!(!picked_body.is_empty(), "the dump lands at the picked path");
     }
 
     #[test]

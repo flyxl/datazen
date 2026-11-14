@@ -12,7 +12,10 @@ use datazen_ui_api::{AdapterDelivery, AdapterJob, ColumnDraft, ColumnFilter, Col
 #[cfg(not(target_arch = "wasm32"))]
 use datazen_ui_api::UseCaseAdapter;
 use rune::tok::{self, type_};
-use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, TextEdit, Tx, col, oklch, row, text, text_input};
+use rune::{
+    App, AppSpec, Cx, El, FileDialogOptions, FileDialogResult, Ime, Key, KeyEvent, TextEdit, Tx,
+    col, oklch, row, text, text_input,
+};
 use sql_editor::SqlEditor;
 
 /// The app's font pool (H8): rune's own Inter faces keep the UI's Latin look
@@ -573,22 +576,67 @@ impl AppState {
 
     /// Ask for an export job id (N11): the host's export first, the memory
     /// port's when the host has none. A missing range gets no job.
-    fn start_export_form(&mut self) {
+    /// T2: the save path is picked first; the answer in `export_answered`
+    /// starts the job (or cancels, or falls back to the default directory
+    /// when no dialog could show).
+    fn begin_export_form(&mut self, tx: &mut Tx) {
         let table = self.grid.table_label().to_owned();
         let format = self.export_format().to_owned();
         let range = self.export_range.text.trim().to_owned();
-        let started = self.desktop.start_export(&table, &format, &range);
+        let options = FileDialogOptions {
+            title: format!("Export {table} as {format}"),
+            file_name: Some(format!("export-{table}.{format}")),
+            ..Default::default()
+        }
+        .filter(
+            if format == "csv" { "CSV files" } else { "JSON files" },
+            &[format.as_str()],
+        );
+        tx.save_file(options, move |state: &mut AppState, result, _| {
+            state.export_answered(table, format, range, result);
+        });
+    }
+
+    /// The save dialog's answer for an export (T2): the picked path starts
+    /// the job, a cancel writes nothing, and a dialog that could not show
+    /// keeps the host's default directory with an honest notice.
+    fn export_answered(
+        &mut self,
+        table: String,
+        format: String,
+        range: String,
+        result: FileDialogResult,
+    ) {
+        let (path, notice) = match result {
+            Ok(Some(path)) => (Some(path.display().to_string()), None),
+            Ok(None) => {
+                self.export_job = None;
+                self.export_error = Some("the export was cancelled; nothing was written".into());
+                return;
+            }
+            Err(error) => (
+                None,
+                Some(format!(
+                    "the path picker is unavailable ({error}); exporting to the default directory"
+                )),
+            ),
+        };
+        let started = self.desktop.start_export(&table, &format, &range, path.as_deref());
         let job = match started {
             Ok(job) => Some(job),
             Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
                 self.workspace.start_export(&format, &range).ok()
             }
-            Err(_) => None,
+            Err(error) => {
+                self.export_job = None;
+                self.export_error = Some(error);
+                return;
+            }
         };
         match job {
             Some(job) => {
                 self.export_job = Some(job);
-                self.export_error = None;
+                self.export_error = notice;
                 self.export_snapshot = self.job_progress(job);
             }
             None => {
@@ -639,19 +687,49 @@ impl AppState {
         self.import_error = None;
     }
 
-    fn start_backup_form(&mut self) {
-        let started = self.desktop.start_backup();
+    /// T2: the backup's save path is picked first; the answer in
+    /// `backup_answered` starts the job (or cancels, or falls back to the
+    /// default directory when no dialog could show).
+    fn begin_backup_form(&mut self, tx: &mut Tx) {
+        let options = FileDialogOptions {
+            title: "Backup the live database".into(),
+            file_name: Some("datazen-backup.sql".into()),
+            ..Default::default()
+        }
+        .filter("SQL dump", &["sql"]);
+        tx.save_file(options, |state: &mut AppState, result, _| {
+            state.backup_answered(result);
+        });
+    }
+
+    /// The save dialog's answer for a backup (T2).
+    fn backup_answered(&mut self, result: FileDialogResult) {
+        let (path, notice) = match result {
+            Ok(Some(path)) => (Some(path.display().to_string()), None),
+            Ok(None) => {
+                self.backup_error = Some("the backup was cancelled; nothing was written".into());
+                return;
+            }
+            Err(error) => (
+                None,
+                Some(format!(
+                    "the path picker is unavailable ({error}); backing up to the default directory"
+                )),
+            ),
+        };
+        let started = self.desktop.start_backup(path.as_deref());
         let job = match started {
             Ok(job) => Some(job),
-            Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
-                self.workspace.start_backup().ok()
+            Err(error) if error == DESKTOP_NOT_IMPLEMENTED => self.workspace.start_backup().ok(),
+            Err(error) => {
+                self.backup_error = Some(error);
+                return;
             }
-            Err(_) => None,
         };
         match job {
             Some(job) => {
                 self.backup_job = Some(job);
-                self.backup_error = None;
+                self.backup_error = notice;
                 self.backup_snapshot = self.job_progress(job);
             }
             None => self.backup_error = Some("the backup was not accepted".into()),
@@ -3333,7 +3411,7 @@ fn backup_section(state: &AppState, theme: tok::Theme) -> El {
                         .radius(6.0)
                         .fill(theme.control_off)
                         .child(text("Start backup").font(type_::LABEL).color(theme.text))
-                        .on_press(|state: &mut AppState| state.start_backup_form()),
+                        .on_press_tx(|state: &mut AppState, tx: &mut Tx| state.begin_backup_form(tx)),
                 )
                 .child(
                     row()
@@ -3404,6 +3482,36 @@ fn import_section(state: &AppState, theme: tok::Theme) -> El {
                         .w(240.0)
                         .h(24.0)
                         .on_edit(|state: &mut AppState| &mut state.import_source),
+                )
+                .child(
+                    row()
+                        .key("import-browse")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Browse…").font(type_::LABEL).color(theme.text))
+                        .on_press_tx(|state: &mut AppState, tx: &mut Tx| {
+                            // T2: an Open dialog fills the source input; a
+                            // dialog that cannot show says so honestly.
+                            let options = FileDialogOptions {
+                                title: "Choose an import source".into(),
+                                ..Default::default()
+                            };
+                            tx.open_file(options, |state: &mut AppState, result, _| match result {
+                                Ok(Some(path)) => {
+                                    state.import_source = TextEdit::new(path.display().to_string());
+                                    state.import_error = None;
+                                }
+                                Ok(None) => {}
+                                Err(error) => {
+                                    state.import_error = Some(format!(
+                                        "the file picker is unavailable ({error}); type the path instead"
+                                    ));
+                                }
+                            });
+                        }),
                 )
                 .child(
                     row()
@@ -3542,7 +3650,7 @@ fn export_section(state: &AppState, theme: tok::Theme) -> El {
                         .radius(6.0)
                         .fill(theme.control_off)
                         .child(text("Export").font(type_::LABEL).color(theme.text))
-                        .on_press(|state: &mut AppState| state.start_export_form()),
+                        .on_press_tx(|state: &mut AppState, tx: &mut Tx| state.begin_export_form(tx)),
                 ),
         );
     if let Some(error) = &state.export_error {
@@ -4238,6 +4346,16 @@ mod tests {
             scale: 1.0,
         };
         Runtime::new(AppState::default(), view, (1440.0, 900.0), env)
+    }
+
+    /// T2: an Export or Backup press opens a save dialog first. Answer it the
+    /// way a desktop would and run the answer's action.
+    fn answer_save_dialog(rt: &mut Runtime<AppState>, path: Option<&str>) {
+        rt.frame(0.0);
+        let (kind, _) = rt.file_dialog().expect("the press asked for a save dialog");
+        assert_eq!(kind, rune::FileDialogKind::Save);
+        rt.resolve_file_dialog(path.map(std::path::PathBuf::from)).expect("the dialog answers");
+        rt.frame(0.0);
     }
 
     /// Glyph ids of `text` shaped by `system`, in layout order.
@@ -5984,7 +6102,7 @@ mod tests {
         let (x, y) = runtime.find("export-start").expect("export button");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
-        runtime.frame(0.0);
+        answer_save_dialog(&mut runtime, Some("/picked/exports/albums.csv"));
         assert!(runtime.state.export_job.is_none(), "no range, no job");
         assert!(runtime.find("export-error").is_some(), "the refusal is visible");
         assert!(runtime.find("export-job").is_none());
@@ -5993,7 +6111,7 @@ mod tests {
         let (x, y) = runtime.find("export-start").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
-        runtime.frame(0.0);
+        answer_save_dialog(&mut runtime, Some("/picked/exports/customers.csv"));
         assert_eq!(runtime.state.export_job, Some(1), "the port handed out a job id");
         assert!(runtime.find("export-job").is_some());
         assert!(runtime.find("export-error").is_none());
@@ -6004,6 +6122,191 @@ mod tests {
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
         assert_eq!(runtime.state.export_format(), "json");
+    }
+
+    /// A host adapter that records export and backup requests (T2) and owns
+    /// their job snapshots.
+    struct PathAskingAdapter {
+        exports: std::rc::Rc<std::cell::RefCell<Vec<(String, String, String, Option<String>)>>>,
+        backups: std::rc::Rc<std::cell::RefCell<Vec<Option<String>>>>,
+    }
+
+    impl PathAskingAdapter {
+        fn new() -> (Self, std::rc::Rc<std::cell::RefCell<Vec<(String, String, String, Option<String>)>>>, std::rc::Rc<std::cell::RefCell<Vec<Option<String>>>>) {
+            let exports = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+            let backups = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+            (Self { exports: std::rc::Rc::clone(&exports), backups: std::rc::Rc::clone(&backups) }, exports, backups)
+        }
+    }
+
+    impl datazen_ui_api::DesktopAdapter for PathAskingAdapter {
+        fn list_connections(&mut self) -> Result<Vec<datazen_ui_api::ConnectionProfile>, String> {
+            Ok(Vec::new())
+        }
+
+        fn read_table_page(
+            &mut self,
+            _: &str,
+            _: u32,
+            _: u32,
+            _: Option<&datazen_ui_api::ColumnSort>,
+            _: Option<&datazen_ui_api::ColumnFilter>,
+        ) -> Result<datazen_ui_api::TablePage, String> {
+            Err(datazen_ui_api::DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn commit_cells(
+            &mut self,
+            _: &str,
+            _: &[(u32, String, String)],
+        ) -> Result<u32, String> {
+            Err(datazen_ui_api::DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn start_export(
+            &mut self,
+            table: &str,
+            format: &str,
+            range: &str,
+            path: Option<&str>,
+        ) -> Result<u64, String> {
+            self.exports.borrow_mut().push((
+                table.to_owned(),
+                format.to_owned(),
+                range.to_owned(),
+                path.map(str::to_owned),
+            ));
+            Ok(7)
+        }
+
+        fn start_backup(&mut self, path: Option<&str>) -> Result<u64, String> {
+            self.backups.borrow_mut().push(path.map(str::to_owned));
+            Ok(8)
+        }
+
+        fn host_job_progress(&self, job: u64) -> Option<datazen_ui_api::ProgressSnapshot> {
+            Some(datazen_ui_api::ProgressSnapshot {
+                job,
+                status: "running".into(),
+                percent: 40,
+                log: Vec::new(),
+            })
+        }
+    }
+
+    #[test]
+    fn an_export_uses_the_picked_save_path() {
+        let (adapter, exports, _backups) = PathAskingAdapter::new();
+        let mut runtime = runtime();
+        runtime.state.desktop = Box::new(adapter);
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-settings").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        runtime.state.export_range = rune::TextEdit::new("customers");
+
+        let (x, y) = runtime.find("export-start").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        answer_save_dialog(&mut runtime, Some("/picked/exports/customers.csv"));
+
+        assert_eq!(
+            exports.borrow().as_slice(),
+            [("result".to_owned(), "csv".to_owned(), "customers".to_owned(), Some("/picked/exports/customers.csv".to_owned()))].as_slice(),
+            "the picked path reaches the host with the request"
+        );
+        assert_eq!(runtime.state.export_job, Some(7));
+        assert!(runtime.state.export_error.is_none());
+    }
+
+    #[test]
+    fn a_cancelled_save_dialog_starts_no_export() {
+        let (adapter, exports, _backups) = PathAskingAdapter::new();
+        let mut runtime = runtime();
+        runtime.state.desktop = Box::new(adapter);
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-settings").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        runtime.state.export_range = rune::TextEdit::new("customers");
+
+        let (x, y) = runtime.find("export-start").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        answer_save_dialog(&mut runtime, None);
+
+        assert!(exports.borrow().is_empty(), "a cancel reaches no adapter");
+        assert_eq!(runtime.state.export_job, None);
+        assert!(
+            runtime.state.export_error.as_deref().unwrap().contains("cancelled"),
+            "the cancellation is honest: {:?}",
+            runtime.state.export_error
+        );
+    }
+
+    #[test]
+    fn a_save_dialog_that_cannot_show_falls_back_to_the_default_directory() {
+        let (adapter, exports, _backups) = PathAskingAdapter::new();
+        let mut runtime = runtime();
+        runtime.state.desktop = Box::new(adapter);
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-settings").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        runtime.state.export_range = rune::TextEdit::new("customers");
+
+        // The first press opens the dialog; a second press while it is open
+        // is refused, and the refusal's answer falls back to the default
+        // directory with an honest notice.
+        let (x, y) = runtime.find("export-start").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.file_dialog().is_some(), "the first press opened a dialog");
+        let (x, y) = runtime.find("export-start").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        runtime.frame(0.0);
+        assert_eq!(
+            exports.borrow().as_slice(),
+            [("result".to_owned(), "csv".to_owned(), "customers".to_owned(), None)].as_slice(),
+            "the refused dialog fell back to the default directory"
+        );
+        assert!(
+            runtime.state.export_error.as_deref().unwrap().contains("default directory"),
+            "the fallback says so: {:?}",
+            runtime.state.export_error
+        );
+
+        // The still-open first dialog answers later with its picked path.
+        runtime.resolve_file_dialog(Some("/picked/exports/late.csv".into())).unwrap();
+        runtime.frame(0.0);
+        assert_eq!(exports.borrow()[1].3.as_deref(), Some("/picked/exports/late.csv"));
+    }
+
+    #[test]
+    fn browsing_picks_the_import_source() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-settings").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.find("import-browse").is_some(), "the browse button is on step 1");
+
+        let (x, y) = runtime.find("import-browse").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        let (kind, _) = runtime.file_dialog().expect("the browse asked for an open dialog");
+        assert_eq!(kind, rune::FileDialogKind::Open);
+        runtime.resolve_file_dialog(Some("/imports/dump.csv".into())).unwrap();
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.import_source.text, "/imports/dump.csv", "the picked path fills the source input");
     }
 
     #[test]
@@ -6020,6 +6323,7 @@ mod tests {
         let (x, y) = runtime.find("export-start").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
+        answer_save_dialog(&mut runtime, Some("/picked/exports/none.csv"));
         runtime.frame(1.0);
         let snapshot = runtime.state.export_snapshot.clone().unwrap();
         assert_eq!(snapshot.status, "running");
@@ -6113,6 +6417,7 @@ mod tests {
         let (x, y) = runtime.find("backup-start").expect("start button");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
+        answer_save_dialog(&mut runtime, Some("/picked/backups/backup.sql"));
         runtime.frame(1.0);
         let snapshot = runtime.state.backup_snapshot.clone().unwrap();
         assert_eq!(snapshot.status, "running");
