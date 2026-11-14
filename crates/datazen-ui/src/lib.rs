@@ -22,6 +22,7 @@ enum TableView {
     Data,
     Ddl,
     Columns,
+    Indexes,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -411,6 +412,7 @@ fn table_workspace(state: &AppState, theme: tok::Theme) -> El {
         TableView::Data => data_grid::panel(state, theme.text, theme.text_secondary, theme.control_off),
         TableView::Ddl => ddl_view(&state.workspace, &title, theme),
         TableView::Columns => columns_view(&state.workspace, &title, theme),
+        TableView::Indexes => indexes_view(&state.workspace, &title, theme),
     };
     col()
         .key("table-workspace")
@@ -440,6 +442,7 @@ fn view_switcher(state: &AppState, theme: tok::Theme) -> El {
         .center_y()
         .child(entry("view-data", "Data", TableView::Data, state.table_view == TableView::Data))
         .child(entry("view-columns", "Columns", TableView::Columns, state.table_view == TableView::Columns))
+        .child(entry("view-indexes", "Indexes", TableView::Indexes, state.table_view == TableView::Indexes))
         .child(entry("view-ddl", "DDL", TableView::Ddl, state.table_view == TableView::Ddl))
 }
 
@@ -486,6 +489,53 @@ fn columns_view(workspace: &MemoryWorkspace, title: &str, theme: tok::Theme) -> 
                 .child(cell(&column.name, 240.0))
                 .child(cell(&column.sql_type, 140.0))
                 .child(cell(if column.nullable { "yes" } else { "no" }, 100.0)),
+        );
+    }
+    list
+}
+
+/// The index list: name, columns in index order, uniqueness.
+fn indexes_view(workspace: &MemoryWorkspace, title: &str, theme: tok::Theme) -> El {
+    let indexes = workspace.table_indexes(title).unwrap_or_default();
+    let header = |label: &str, width: f32| {
+        row()
+            .w(width)
+            .h(24.0)
+            .px(8.0)
+            .center_y()
+            .child(text(label).font(type_::LABEL).color(theme.text_secondary))
+    };
+    let mut list = col()
+        .key("indexes-list")
+        .w_full()
+        .radius(8.0)
+        .fill(theme.control_off)
+        .child(
+            row()
+                .key("indexes-header")
+                .w_full()
+                .h(24.0)
+                .child(header("Index", 260.0))
+                .child(header("Columns", 320.0))
+                .child(header("Unique", 100.0)),
+        );
+    for (index, spec) in indexes.iter().enumerate() {
+        let cell = |value: &str, width: f32| {
+            row()
+                .w(width)
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .child(text(value.to_owned()).font(type_::LABEL).color(theme.text))
+        };
+        list = list.child(
+            row()
+                .key(format!("index-row-{index}"))
+                .w_full()
+                .h(24.0)
+                .child(cell(&spec.name, 260.0))
+                .child(cell(&spec.columns.join(", "), 320.0))
+                .child(cell(if spec.unique { "yes" } else { "no" }, 100.0)),
         );
     }
     list
@@ -1773,6 +1823,29 @@ mod tests {
         }
         assert!(runtime.find("column-row-8").is_none(), "customers has 8 columns");
         assert!(runtime.find("data-grid").is_none(), "the grid leaves for the list");
+    }
+
+    #[test]
+    fn the_indexes_view_lists_the_indexes_with_ordered_columns() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.frame(0.0);
+
+        let (x, y) = runtime.find("view-indexes").expect("indexes button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+
+        assert!(runtime.find("indexes-list").is_some());
+        assert!(runtime.find("indexes-header").is_some());
+        assert!(runtime.find("index-row-0").is_some());
+        assert!(runtime.find("index-row-1").is_some());
+        assert!(runtime.find("index-row-2").is_none(), "customers has two indexes");
+        let indexes = runtime.state.workspace.table_indexes("customers").unwrap();
+        assert_eq!(indexes[1].columns, vec!["name", "city"], "the compound order is in the row");
     }
 
     #[test]

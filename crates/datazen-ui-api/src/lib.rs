@@ -9,6 +9,14 @@ use std::collections::HashMap;
 
 pub use tabs::{Tab, TabKind, Tabs};
 
+/// One index of a table: its name, its columns in index order, uniqueness.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IndexSpec {
+    pub name: String,
+    pub columns: Vec<String>,
+    pub unique: bool,
+}
+
 /// One column of a table: name, type, nullability. For lists, not editors.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ColumnSpec {
@@ -95,6 +103,8 @@ pub trait WorkspaceApi {
     fn table_ddl(&self, table: &str) -> Result<String, String>;
     /// The table's columns: one entry per column, in the table's order.
     fn table_columns(&self, table: &str) -> Result<Vec<ColumnSpec>, String>;
+    /// The table's indexes; a compound index keeps its column order.
+    fn table_indexes(&self, table: &str) -> Result<Vec<IndexSpec>, String>;
     fn connect(&mut self, id: &str) -> Result<(), String>;
     fn disconnect(&mut self);
     fn open_table(
@@ -312,6 +322,39 @@ impl WorkspaceApi for MemoryWorkspace {
         let lines: Vec<String> =
             stored.1.columns.iter().map(|column| format!("  {column} text")).collect();
         Ok(format!("CREATE TABLE {table} (\n{}\n);", lines.join(",\n")))
+    }
+
+    fn table_indexes(&self, table: &str) -> Result<Vec<IndexSpec>, String> {
+        let stored = self
+            .tables
+            .iter()
+            .find(|(name, _)| name == table)
+            .ok_or_else(|| format!("unknown table {table}"))?;
+        Ok(match table {
+            "customers" => vec![
+                IndexSpec {
+                    name: "customers_pkey".into(),
+                    columns: vec!["id".into()],
+                    unique: true,
+                },
+                IndexSpec {
+                    name: "customers_name_city_idx".into(),
+                    columns: vec!["name".into(), "city".into()],
+                    unique: false,
+                },
+            ],
+            "orders" => vec![IndexSpec {
+                name: "orders_name_idx".into(),
+                columns: vec!["name".into()],
+                unique: false,
+            }],
+            "catalog" => vec![IndexSpec {
+                name: "catalog_c0_c1_idx".into(),
+                columns: vec!["c0".into(), "c1".into()],
+                unique: false,
+            }],
+            _ => Vec::new(),
+        })
     }
 
     fn table_columns(&self, table: &str) -> Result<Vec<ColumnSpec>, String> {
@@ -741,6 +784,24 @@ mod tests {
         assert_eq!(columns[1].name, "name");
         assert!(columns[1].nullable);
         assert!(workspace.table_columns("missing").is_err());
+    }
+
+    #[test]
+    fn a_compound_index_keeps_its_column_order() {
+        let mut workspace = MemoryWorkspace::new();
+        workspace.connect("local").unwrap();
+        let indexes = workspace.table_indexes("customers").unwrap();
+        assert_eq!(indexes.len(), 2);
+        assert_eq!(indexes[0].name, "customers_pkey");
+        assert_eq!(indexes[0].columns, vec!["id"]);
+        assert!(indexes[0].unique);
+        assert_eq!(
+            indexes[1].columns,
+            vec!["name", "city"],
+            "the compound index keeps its column order"
+        );
+        assert!(!indexes[1].unique);
+        assert!(workspace.table_indexes("missing").is_err());
     }
 
     #[test]
