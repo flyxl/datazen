@@ -98,8 +98,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | N3 | 已完成 | cb72a28 | testing/N3-live-sqlite-session.md |
 | N4 | 已完成 | a1cdadd | testing/N4-real-reads.md |
 | N5 | 已完成 | 65f4b49 | testing/N5-runtime-assembly.md |
-| N6 | 进行中 | | |
-| N7 | 未开始 | | |
+| N6 | 已完成 | 104a277 | testing/N6-real-commits.md |
+| N7 | 进行中 | | |
 | N8 | 未开始 | | |
 | N9 | 未开始 | | |
 | N10 | 未开始 | | |
