@@ -88,4 +88,4 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | C1 | 已完成 | 163db778 | testing/C1-navigation-keys.md |
 | C2 | 已完成 | 5178765 | testing/C2-grid-a11y.md |
 | C3 | 已完成 | e38fe31 | testing/C3-mount-counts.md |
-| C4 | 进行中 | | |
+| C4 | 已完成 | 061ba45 | testing/C4-unmigrated-notice.md |

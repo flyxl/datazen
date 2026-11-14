@@ -1,7 +1,7 @@
 ## Current Task
-- **任务**: C4 未迁移区域提示
+- **任务**: 无。plan.md 的任务清单全部完成（R/S/B/Q/O/P/D/W/H/C 四个阶段加 POC）。
 - **负责人**: Coder Agent
-- **状态**: 未开始。C3 已完成，数字见下节「收尾测量（C3）」。
+- **状态**: 迁移计划内无待办；后续新增能力另开任务。
 - **计划**: [plan.md](plan.md)
 
 ## 约束
@@ -14,9 +14,10 @@ React 页面和组件保留。不删除、不改成空壳、不把现有入口�
 - [x] R3 UI 端口和内存表页
 - [x] S1–S6、B1–B8、Q、O、P、D、W、H、C1–C2 全部完成（提交与测试报告见 [tasks.md](tasks.md)）
 - [x] C3 收尾测量（数字见下节）
+- [x] C4 未迁移区域提示（WAPPS/Onboarding 告知 React 页面还在，见 [testing/C4-unmigrated-notice.md](testing/C4-unmigrated-notice.md)）
 
 ## Verification
-`cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1`：datazen-ui 112 passed、datazen-ui-api 54 passed；GR2 `cargo check` exit 0。
+`cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1`：datazen-ui 113 passed、datazen-ui-api 54 passed；GR2 `cargo check` exit 0。
 
 ## 收尾测量（C3）
 
