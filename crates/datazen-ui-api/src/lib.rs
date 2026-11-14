@@ -121,6 +121,23 @@ pub struct TablePage {
     pub read_only: Option<String>,
 }
 
+/// One typed settings entry. A write validates a single entry; a failure
+/// leaves every entry at its old value.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Setting {
+    Theme { dark: bool },
+    TablePageSize { rows: u32 },
+    QueryMaxRows { rows: u32 },
+}
+
+/// Reads and writes settings, one entry at a time.
+pub trait SettingsApi {
+    fn read_settings(&self) -> Vec<Setting>;
+    /// Validate and store one entry. An invalid value is rejected and changes
+    /// nothing, including the other entries.
+    fn write_setting(&mut self, setting: Setting) -> Result<(), String>;
+}
+
 /// Runs SQL against the workspace. The memory implementation answers a few
 /// fixed statements; unknown SQL is an error that changes no state.
 pub trait QueryApi {
@@ -197,6 +214,8 @@ pub struct MemoryWorkspace {
     result_open: bool,
     /// DDL scripts the port has applied, in order.
     applied_ddl: Vec<String>,
+    /// The settings store, one entry per kind.
+    settings: Vec<Setting>,
 }
 
 impl Default for MemoryWorkspace {
@@ -272,7 +291,46 @@ impl MemoryWorkspace {
             open: None,
             result_open: false,
             applied_ddl: Vec::new(),
+            settings: vec![
+                Setting::Theme { dark: true },
+                Setting::TablePageSize { rows: 25 },
+                Setting::QueryMaxRows { rows: 100 },
+            ],
         }
+    }
+}
+
+impl SettingsApi for MemoryWorkspace {
+    fn read_settings(&self) -> Vec<Setting> {
+        self.settings.clone()
+    }
+
+    fn write_setting(&mut self, setting: Setting) -> Result<(), String> {
+        match &setting {
+            Setting::Theme { .. } => {}
+            Setting::TablePageSize { rows } => {
+                if *rows == 0 || *rows > 500 {
+                    return Err(format!("table page size must be 1..=500, got {rows}"));
+                }
+            }
+            Setting::QueryMaxRows { rows } => {
+                if *rows == 0 || *rows > 10_000 {
+                    return Err(format!("query max rows must be 1..=10000, got {rows}"));
+                }
+            }
+        }
+        let kind = setting_kind(&setting);
+        self.settings.retain(|existing| setting_kind(existing) != kind);
+        self.settings.push(setting);
+        Ok(())
+    }
+}
+
+fn setting_kind(setting: &Setting) -> u8 {
+    match setting {
+        Setting::Theme { .. } => 0,
+        Setting::TablePageSize { .. } => 1,
+        Setting::QueryMaxRows { .. } => 2,
     }
 }
 
@@ -966,6 +1024,33 @@ mod tests {
         );
         assert_eq!(workspace.table_columns("customers").unwrap().len(), 8, "nothing half-applied");
         assert!(workspace.applied_ddl().is_empty(), "failures are not recorded");
+    }
+
+    #[test]
+    fn an_invalid_setting_is_rejected_and_the_old_values_stay() {
+        let mut workspace = MemoryWorkspace::new();
+        let before = workspace.read_settings();
+        assert_eq!(before.len(), 3);
+        assert!(before.contains(&Setting::TablePageSize { rows: 25 }));
+
+        assert!(workspace.write_setting(Setting::TablePageSize { rows: 0 }).is_err());
+        assert!(workspace.write_setting(Setting::TablePageSize { rows: 501 }).is_err());
+        assert!(workspace.write_setting(Setting::QueryMaxRows { rows: 0 }).is_err());
+        assert_eq!(
+            workspace.read_settings(),
+            before,
+            "failed writes leave every entry at its old value"
+        );
+
+        assert!(workspace.write_setting(Setting::TablePageSize { rows: 50 }).is_ok());
+        let after = workspace.read_settings();
+        assert!(after.contains(&Setting::TablePageSize { rows: 50 }));
+        assert!(after.contains(&Setting::Theme { dark: true }), "the other entries survive");
+        assert!(after.contains(&Setting::QueryMaxRows { rows: 100 }));
+        assert_eq!(after.len(), 3, "one entry per kind, replaced in place");
+
+        assert!(workspace.write_setting(Setting::Theme { dark: false }).is_ok());
+        assert!(workspace.read_settings().contains(&Setting::Theme { dark: false }));
     }
 
     #[test]
