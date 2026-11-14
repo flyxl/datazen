@@ -1,7 +1,7 @@
 ## Current Task
-- **任务**: N3 真实 sqlite 会话（第二阶段：原生宿主接线）。
+- **任务**: N4 真实读表页（第二阶段：原生宿主接线）。
 - **负责人**: Coder Agent
-- **状态**: N1、N2 已完成并推送，开始 N3。
+- **状态**: N1–N3 已完成并推送，开始 N4。
 - **计划**: [plan-native.md](plan-native.md)（第一阶段 [plan.md](plan.md) 已全部完成）
 
 ## 约束
