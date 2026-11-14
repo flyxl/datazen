@@ -51,16 +51,18 @@ enum Section {
     Tools,
     Dashboards,
     Workflows,
+    Wapps,
 }
 
 impl Section {
-    const ALL: [Self; 6] = [
+    const ALL: [Self; 7] = [
         Self::Connections,
         Self::Workspace,
         Self::Settings,
         Self::Tools,
         Self::Dashboards,
         Self::Workflows,
+        Self::Wapps,
     ];
 
     const fn key(self) -> &'static str {
@@ -71,6 +73,7 @@ impl Section {
             Self::Tools => "tools",
             Self::Dashboards => "dashboards",
             Self::Workflows => "workflows",
+            Self::Wapps => "wapps",
         }
     }
 
@@ -82,6 +85,7 @@ impl Section {
             Self::Tools => "Tools",
             Self::Dashboards => "Dashboards",
             Self::Workflows => "Workflows",
+            Self::Wapps => "WAPPS",
         }
     }
 }
@@ -1221,7 +1225,55 @@ fn page_body(state: &AppState, theme: tok::Theme) -> El {
         Section::Tools => tools_page(state, theme),
         Section::Dashboards => dashboards_page(state, theme),
         Section::Workflows => workflows_page(state, theme),
+        Section::Wapps => wapps_page(theme),
     }
+}
+
+/// The areas the migration has not reached. Each says so, and says where
+/// the product still serves it: the React interface, which stays.
+fn wapps_page(theme: tok::Theme) -> El {
+    let entry = |key: &'static str, title: &'static str, body: &'static str| {
+        col()
+            .key(key)
+            .w_full()
+            .gap(6.0)
+            .px(12.0)
+            .py(10.0)
+            .radius(8.0)
+            .fill(theme.control_off)
+            .child(text(title.to_owned()).font(type_::TITLE).color(theme.text))
+            .child(
+                text(body.to_owned())
+                    .font(type_::LABEL)
+                    .color(theme.text_secondary)
+                    .w_full(),
+            )
+    };
+    col()
+        .key("wapps-page")
+        .w_full()
+        .gap(8.0)
+        .child(
+            text("Not yet migrated".to_owned())
+                .font(type_::TITLE)
+                .color(theme.text),
+        )
+        .child(
+            text("These areas are not yet migrated to Rune. The React pages are still there — use the React interface for them.")
+                .font(type_::LABEL)
+                .color(theme.text_secondary)
+                .w_full(),
+        )
+        .child(entry(
+            "wapps-pending",
+            "WAPPS management",
+            "Not yet migrated. The React page is still there: install and manage WAPPS in the React interface. WAPP iframes do not go into Rune.",
+        ))
+        .child(entry(
+            "onboarding-pending",
+            "Onboarding wizard",
+            "Not yet migrated. The React wizard is still there: first-run onboarding runs in the React interface.",
+        ))
 }
 
 /// The workflows page: the list, sorted by name, and the step editor.
@@ -3984,6 +4036,58 @@ mod tests {
             assert_eq!(built, (0..12).collect::<Vec<u32>>(), "row {row} builds the 12-column window");
         }
         assert!(cells.contains(&(0, 0)), "the focus cell is mounted");
+    }
+
+    #[test]
+    fn the_unmigrated_areas_say_not_yet_migrated_and_keep_the_react_pages() {
+        use super::app_key;
+        use serde_json::Value;
+
+        fn find<'a>(v: &'a Value, key: &str) -> Option<&'a Value> {
+            if v["key"] == key {
+                return Some(v);
+            }
+            v["children"].as_array()?.iter().find_map(|child| find(child, key))
+        }
+        fn names(v: &Value, out: &mut Vec<String>) {
+            if let Some(name) = v["name"].as_str() {
+                out.push(name.to_owned());
+            }
+            if let Some(children) = v["children"].as_array() {
+                for child in children {
+                    names(child, out);
+                }
+            }
+        }
+
+        let mut runtime = runtime();
+        runtime.on_key = Some(app_key);
+        // The area is one of the sidebar's; pick it like the nav does.
+        runtime.state.select(Section::Wapps);
+        runtime.frame(0.0);
+
+        let tree = runtime.accessibility_json();
+        let nav = find(&tree, "nav-wapps").expect("the sidebar lists the area");
+        assert_eq!(nav["role"], "tab");
+        assert_eq!(nav["name"], "WAPPS");
+
+        let page = find(&tree, "wapps-page").expect("the page is in the tree");
+        assert!(find(&tree, "wapps-pending").is_some(), "the WAPPS entry is mounted");
+        assert!(find(&tree, "onboarding-pending").is_some(), "the onboarding entry is mounted");
+
+        // It says the status, and says where each area still lives.
+        let mut texts = Vec::new();
+        names(page, &mut texts);
+        let joined = texts.join(" | ");
+        assert!(joined.contains("Not yet migrated"), "the page says it: {joined}");
+        assert!(joined.contains("The React page is still there"), "WAPPS points at React: {joined}");
+        assert!(joined.contains("The React wizard is still there"), "onboarding points at React: {joined}");
+        assert!(joined.contains("do not go into Rune"), "WAPP iframes stay out: {joined}");
+
+        // And nowhere does the page claim a replacement or a removal.
+        let lowered = joined.to_lowercase();
+        assert!(!lowered.contains("replaced"), "no claim of replacement: {joined}");
+        assert!(!lowered.contains("removed"), "no claim of removal: {joined}");
     }
 
     #[test]
