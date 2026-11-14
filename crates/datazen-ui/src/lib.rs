@@ -410,6 +410,15 @@ impl AppState {
         }
     }
 
+    /// The snippets in force (T3): the host's once its file store persists
+    /// them, the memory port's while it does not. The host's read answers
+    /// from its loaded file — memory-speed, like the settings read.
+    fn host_snippets(&self) -> Vec<datazen_ui_api::Snippet> {
+        self.desktop
+            .snippets()
+            .unwrap_or_else(|_| self.workspace.snippets())
+    }
+
     /// The workflows in force (N13): the host's once its registry persists
     /// them, the memory port's while it does not. The host's read answers
     /// from its loaded files — the same memory-speed class as the settings
@@ -533,7 +542,16 @@ impl AppState {
     fn save_snippet_form(&mut self) {
         let name = self.snippet_name.text.trim().to_owned();
         let sql = self.snippet_sql.text.trim().to_owned();
-        match self.workspace.save_snippet(&name, &sql) {
+        // T3: the host's file store first; its fixed not-implemented error
+        // means the demo process, and the memory port answers instead.
+        let saved = match self.desktop.save_snippet(&name, &sql) {
+            Ok(()) => Ok(()),
+            Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
+                self.workspace.save_snippet(&name, &sql)
+            }
+            Err(error) => Err(error),
+        };
+        match saved {
             Ok(()) => {
                 self.snippet_error = None;
                 self.snippet_name = TextEdit::new(String::new());
@@ -546,7 +564,15 @@ impl AppState {
     fn update_snippet_form(&mut self) {
         let name = self.snippet_name.text.trim().to_owned();
         let sql = self.snippet_sql.text.trim().to_owned();
-        match self.workspace.update_snippet(&name, &sql) {
+        // T3: the host's file store first, the memory port's fallback.
+        let updated = match self.desktop.update_snippet(&name, &sql) {
+            Ok(()) => Ok(()),
+            Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
+                self.workspace.update_snippet(&name, &sql)
+            }
+            Err(error) => Err(error),
+        };
+        match updated {
             Ok(()) => {
                 self.snippet_error = None;
                 self.snippet_name = TextEdit::new(String::new());
@@ -557,7 +583,13 @@ impl AppState {
     }
 
     fn delete_snippet(&mut self, name: &str) {
-        if let Err(error) = self.workspace.delete_snippet(name) {
+        // T3: the host's file store first, the memory port's fallback.
+        let deleted = match self.desktop.delete_snippet(name) {
+            Ok(()) => Ok(()),
+            Err(error) if error == DESKTOP_NOT_IMPLEMENTED => self.workspace.delete_snippet(name),
+            Err(error) => Err(error),
+        };
+        if let Err(error) = deleted {
             self.snippet_error = Some(error);
         }
     }
@@ -3342,7 +3374,7 @@ fn settings_page(state: &AppState, theme: tok::Theme) -> El {
                         .on_press(|state: &mut AppState| state.update_snippet_form()),
                 ),
         );
-    for (index, snippet) in state.workspace.snippets().iter().enumerate() {
+    for (index, snippet) in state.host_snippets().iter().enumerate() {
         let name = snippet.name.clone();
         snippets = snippets.child(
             row()
@@ -6087,6 +6119,95 @@ mod tests {
         runtime.frame(0.0);
         assert!(runtime.find("snippet-row-0").is_none(), "the snippet is gone");
         assert!(runtime.state.workspace.snippets().is_empty());
+    }
+
+    /// A host adapter that owns snippet storage (T3): the panel reads it
+    /// host-first and the writes land in it, not the memory port.
+    struct SnippetHostAdapter {
+        snippets: Vec<datazen_ui_api::Snippet>,
+    }
+
+    impl datazen_ui_api::DesktopAdapter for SnippetHostAdapter {
+        fn list_connections(&mut self) -> Result<Vec<datazen_ui_api::ConnectionProfile>, String> {
+            Ok(Vec::new())
+        }
+
+        fn read_table_page(
+            &mut self,
+            _: &str,
+            _: u32,
+            _: u32,
+            _: Option<&datazen_ui_api::ColumnSort>,
+            _: Option<&datazen_ui_api::ColumnFilter>,
+        ) -> Result<datazen_ui_api::TablePage, String> {
+            Err(datazen_ui_api::DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn commit_cells(
+            &mut self,
+            _: &str,
+            _: &[(u32, String, String)],
+        ) -> Result<u32, String> {
+            Err(datazen_ui_api::DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn snippets(&self) -> Result<Vec<datazen_ui_api::Snippet>, String> {
+            Ok(self.snippets.clone())
+        }
+
+        fn save_snippet(&mut self, name: &str, sql: &str) -> Result<(), String> {
+            self.snippets.push(datazen_ui_api::Snippet { name: name.to_owned(), sql: sql.to_owned() });
+            Ok(())
+        }
+
+        fn update_snippet(&mut self, name: &str, sql: &str) -> Result<(), String> {
+            let snippet = self
+                .snippets
+                .iter_mut()
+                .find(|snippet| snippet.name == name)
+                .ok_or_else(|| format!("no snippet named {name}"))?;
+            snippet.sql = sql.to_owned();
+            Ok(())
+        }
+
+        fn delete_snippet(&mut self, name: &str) -> Result<(), String> {
+            self.snippets.retain(|snippet| snippet.name != name);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn the_snippets_panel_reads_and_writes_the_host_store_first() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.state.desktop = Box::new(SnippetHostAdapter {
+            snippets: vec![datazen_ui_api::Snippet {
+                name: "host snippet".into(),
+                sql: "SELECT 1".into(),
+            }],
+        });
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-settings").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.find("settings-snippets").is_some());
+
+        // The host's snippet is what the panel lists — the memory port stays
+        // untouched.
+        assert!(runtime.find("snippet-row-0").is_some(), "the host snippet is listed");
+        assert!(runtime.state.workspace.snippets().is_empty(), "the memory port stays empty");
+
+        // A save reaches the host, not the port.
+        runtime.state.snippet_name = rune::TextEdit::new("from the form");
+        runtime.state.snippet_sql = rune::TextEdit::new("SELECT 2");
+        let (x, y) = runtime.find("snippet-save").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("snippet-row-1").is_some(), "the new snippet is listed");
+        assert!(runtime.state.workspace.snippets().is_empty(), "the write went to the host");
     }
 
     #[test]

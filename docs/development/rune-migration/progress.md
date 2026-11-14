@@ -1,5 +1,5 @@
 ## Current Task
-- **任务**: T3（片段持久化）——T1/T2 已完成，正在给宿主接 snippets.json 文件仓储。
+- **任务**: T4（值搜索）——T1–T3 已完成，正在接值搜索面板与逐表搜索作业。
 - **负责人**: Coder Agent
 - **状态**: 前两阶段（[plan.md](plan.md)、[plan-native.md](plan-native.md)）全部完成并推送；第三阶段 T1–T11 进行中。
 

@@ -11,6 +11,7 @@ pub mod history;
 pub mod jobs;
 pub mod live;
 pub mod settings;
+pub mod snippets;
 pub mod store;
 
 pub use dashboards::{FileDashboardStore, FileWorkflowStore};

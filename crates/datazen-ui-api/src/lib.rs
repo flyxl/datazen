@@ -321,6 +321,28 @@ pub trait DesktopAdapter {
         None
     }
 
+    /// The saved SQL snippets (T3): the host's once its file store persists
+    /// them; the fixed error means the memory port answers instead.
+    fn snippets(&self) -> Result<Vec<Snippet>, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// Create a snippet through the host (T3); an existing name is refused.
+    fn save_snippet(&mut self, _name: &str, _sql: &str) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// Change a snippet's SQL through the host (T3); an unknown name is
+    /// refused.
+    fn update_snippet(&mut self, _name: &str, _sql: &str) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// Delete a snippet through the host (T3); an unknown name is refused.
+    fn delete_snippet(&mut self, _name: &str) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
     /// Ask a host job to stop (N11). A finished job answers Ok; the memory
     /// port's stop stays the fallback path's.
     fn stop_host_job(&self, _job: u64) -> Result<(), String> {

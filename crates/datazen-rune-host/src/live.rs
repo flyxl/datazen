@@ -36,8 +36,8 @@ use datazen_driver_api::filters::{FilterCondition, FilterOperator, SortCondition
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver, Value as Cell};
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnFilter, ColumnSort, ConnectionProfile,
-    DashboardWidget, DatabaseNode, DesktopAdapter, ProgressSnapshot, SchemaNode, TablePage,
-    Workflow, WorkflowStepResult, DESKTOP_NOT_IMPLEMENTED,
+    DashboardWidget, DatabaseNode, DesktopAdapter, ProgressSnapshot, SchemaNode, Snippet,
+    TablePage, Workflow, WorkflowStepResult, DESKTOP_NOT_IMPLEMENTED,
 };
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -147,6 +147,9 @@ pub struct LiveAdapter {
     sync_handle: Mutex<Option<SyncSession>>,
     /// The workflow registry use case over the workflow file (N13).
     workflows: Arc<WorkflowRegistry>,
+    /// The snippets' file store (T3): reads answer from the loaded file,
+    /// writes persist atomically.
+    snippets: Arc<crate::snippets::FileSnippets>,
     /// The dashboard rows' file store (N13); the widget use case runs over
     /// it and the registry.
     dashboard_store: Arc<crate::dashboards::FileDashboardStore>,
@@ -236,6 +239,11 @@ impl LiveAdapter {
         let dashboard_store = Arc::new(
             crate::dashboards::FileDashboardStore::open(&data_dir.join("dashboards.json"))
                 .expect("the dashboard store opens"),
+        );
+        // T3: the snippets' file store.
+        let snippets = Arc::new(
+            crate::snippets::FileSnippets::open(&data_dir.join("snippets.json"))
+                .expect("the snippets store opens"),
         );
         let sync_runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -385,6 +393,7 @@ impl LiveAdapter {
             host_jobs: jobs,
             data_dir: adapter_data_dir,
             workflows,
+            snippets,
             dashboard_store,
             profiles,
         }
@@ -1696,6 +1705,24 @@ impl DesktopAdapter for LiveAdapter {
             .collect())
     }
 
+    fn snippets(&self) -> Result<Vec<Snippet>, String> {
+        // T3: the snippets' file store — the same vocabulary the memory
+        // port serves in the demo process.
+        Ok(self.snippets.list())
+    }
+
+    fn save_snippet(&mut self, name: &str, sql: &str) -> Result<(), String> {
+        self.snippets.save(name, sql)
+    }
+
+    fn update_snippet(&mut self, name: &str, sql: &str) -> Result<(), String> {
+        self.snippets.update(name, sql)
+    }
+
+    fn delete_snippet(&mut self, name: &str) -> Result<(), String> {
+        self.snippets.delete(name)
+    }
+
     fn workflows(&self) -> Result<Vec<Workflow>, String> {
         // N13: the registry use case's user-visible definitions — the
         // dashboard's hidden workflows stay out of the user list.
@@ -2481,6 +2508,33 @@ mod tests {
         assert_eq!(snapshot.status, "completed", "log: {:?}", snapshot.log);
         let picked_body = std::fs::read_to_string(&picked).expect("the picked file was written");
         assert!(!picked_body.is_empty(), "the dump lands at the picked path");
+    }
+
+    #[test]
+    fn snippets_persist_through_the_adapter_and_the_file() {
+        let dir = temp_dir("snippets");
+        let mut adapter = opened_adapter(&dir);
+
+        // Create, refuse a duplicate, update, delete — through the adapter.
+        adapter.save_snippet("top customers", "SELECT * FROM users").unwrap();
+        assert!(adapter.save_snippet("top customers", "SELECT 1").is_err());
+        adapter.save_snippet("by name", "SELECT * FROM users ORDER BY name").unwrap();
+        adapter.update_snippet("by name", "SELECT 1").unwrap();
+        let listed = adapter.snippets().unwrap();
+        assert_eq!(listed.len(), 2);
+        assert_eq!(listed[1].sql, "SELECT 1", "the update landed");
+        adapter.delete_snippet("top customers").unwrap();
+        assert_eq!(adapter.snippets().unwrap().len(), 1);
+
+        // A fresh store over the same file reads the same snippets back:
+        // the file is the store (the live session keeps the sqlite file
+        // locked, so the reopen goes through the store, not the adapter).
+        let store = crate::snippets::FileSnippets::open(&dir.join("snippets.json")).unwrap();
+        let listed = store.list();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].name, "by name");
+        let on_disk = std::fs::read_to_string(dir.join("snippets.json")).unwrap();
+        assert!(on_disk.contains("by name"), "the file carries the snippet: {on_disk}");
     }
 
     #[test]

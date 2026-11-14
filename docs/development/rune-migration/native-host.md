@@ -22,6 +22,7 @@ cargo build --release -p datazen-rune-host
 | `connections.json` | 连接存储（原子写）；`DATAZEN_NATIVE_CONNECTIONS` 可整体覆盖路径 | N2 |
 | `settings.json` | UI 设置（主题、页大小、最大行数），`ui` 键下 | N8 |
 | `query-history.json` | 查询历史（保留最近 1000 条） | N9 |
+| `snippets.json` | SQL 片段存储（原子写） | T3 |
 | `migration-runs.json` | 同步/传输/对比的运行记录 | N12 |
 | `workflows.json` | 工作流定义（registry 用例的行存储） | N13 |
 | `dashboards.json` | 仪表盘与部件行 | N13 |
@@ -47,6 +48,7 @@ cargo build --release -p datazen-rune-host
 - **结构**：DDL/列/索引/外键从真 catalog 读
 - **工具**：导出 CSV、备份、两连接间单表同步、结构对比、传输（作业化进度）
 - **设置**：主题/页大小/最大行数持久化
+- **片段**：增改删经宿主文件存储持久化（T3），内存端口仅作演示回退
 - **工作流与仪表盘**：registry 用例持久化、部件经 `create_widget_from_sql`、步骤与部件查询经执行用例真跑（N13）
 
 剩余差距（本系列范围外，如实列出）：
