@@ -18,7 +18,7 @@ datazen-ui = { path = "../datazen-ui" }
 datazen-ui-api = { path = "../datazen-ui-api" }
 # The connection use case and its repository boundary; N4 adds the table
 # read use case (`table-browsing`) over the live session.
-datazen = { workspace = true, features = ["connection", "execution", "table-browsing", "table-editing", "schema", "settings", "history"] }
+datazen = { workspace = true, features = ["connection", "execution", "table-browsing", "table-editing", "schema", "settings", "history", "schema_diff"] }
 datazen-driver-api = { workspace = true }
 # N3: linked so its inventory factory registers with datazen's driver
 # registry; the live adapter resolves "sqlite" through the registry, never

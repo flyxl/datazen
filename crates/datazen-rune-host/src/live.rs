@@ -188,7 +188,7 @@ impl LiveAdapter {
         let adapter_data_dir = data_dir.to_path_buf();
         // The use case is stateless over the repository: the adapter and the
         // worker each hold their own service over the one store.
-        let service = ConnectionService::new(Arc::clone(&repository));
+        let service = ConnectionService::new(repository.clone());
         // N8: the settings use case over the settings file, with the
         // document cached for memory-speed reads.
         let settings_repository =
@@ -365,6 +365,228 @@ impl LiveAdapter {
         &self.session
     }
 
+    /// Copy one table's rows from one connection to another (N12): the
+    /// source read goes through the read use case, the target writes go
+    /// through the shared insert builder and the execution use case — no
+    /// host-side SQL of its own. The target table must already exist (the
+    /// same contract the desktop's sync asks the user to confirm).
+    pub async fn sync_table(
+        &self,
+        runtime: &Arc<RuntimeConnectionUseCases>,
+        source_connection: &str,
+        table: &str,
+        target_connection: &str,
+    ) -> Result<u64, String> {
+        let source_config = self.plain_config(source_connection)?;
+        let target_config = self.plain_config(target_connection)?;
+        let source_driver = self
+            .registry
+            .get(&source_config.database_type)
+            .await
+            .ok_or_else(|| format!("no driver for '{}'", source_config.database_type))?;
+        let target_driver = self
+            .registry
+            .get(&target_config.database_type)
+            .await
+            .ok_or_else(|| format!("no driver for '{}'", target_config.database_type))?;
+
+        // The source read: one session, the read use case over it.
+        let source_session = Arc::new(Mutex::new(LiveSession {
+            driver: Some(Arc::clone(&source_driver)),
+            handle: Some(
+                source_driver
+                    .connect(&source_config)
+                    .await
+                    .map_err(|error| error.to_string())?,
+            ),
+            database: source_config.database.clone(),
+            connection: Some(source_connection.to_owned()),
+            read_only: source_config.read_only,
+        }));
+        let runner = SessionRunner { session: Arc::clone(&source_session) };
+        let context = host_request_context();
+        let binding = TargetBinding {
+            target: ExecutionTarget::new(
+                ConnectionId::new(source_connection.to_owned()),
+                datazen::connection::domain::NamespaceTarget::new(
+                    source_config.database.clone(),
+                    None,
+                    None,
+                    Vec::new(),
+                ),
+            ),
+            revision: Counter::new(1),
+            manual_handle: None,
+        };
+        let mut landed = 0u64;
+        let mut page = 0u32;
+        loop {
+            let request = TableReadRequest {
+                manual_handle: None,
+                context: RowChangeTableContext {
+                    connection_id: source_connection.to_owned(),
+                    db_session_id: "datazen-native".into(),
+                    driver_type: source_driver.driver_type(),
+                    database: source_config.database.clone(),
+                    schema: None,
+                    table: table.to_owned(),
+                },
+                page,
+                page_size: 500,
+                filters: None,
+                sorts: None,
+                skip_count: None,
+                filter_logic: None,
+                raw_where: None,
+                count_strategy: None,
+                default_order_columns: None,
+                after_key: None,
+                require_keyset: None,
+                cursor_depth: None,
+            };
+            let read =
+                read_table_page(source_driver.as_ref(), request, Counter::new(1), context.clone(), &runner)
+                    .await
+                    .map_err(|error| error.to_string())?;
+            if read.rows.is_empty() {
+                break;
+            }
+            let column_names: Vec<String> =
+                read.columns.iter().map(|column| column.name.clone()).collect();
+            let target_binding = TargetBinding {
+                target: ExecutionTarget::new(
+                    ConnectionId::new(target_connection.to_owned()),
+                    datazen::connection::domain::NamespaceTarget::new(
+                        target_config.database.clone(),
+                        None,
+                        None,
+                        Vec::new(),
+                    ),
+                ),
+                revision: Counter::new(1),
+                manual_handle: None,
+            };
+            let dialect = datazen_driver_api::LegacySqlDialect::new(target_driver.as_ref());
+            for row in &read.rows {
+                let cells: Vec<(&str, Option<Cell>)> = column_names
+                    .iter()
+                    .zip(row.iter())
+                    .map(|(name, cell)| (name.as_str(), cell.clone()))
+                    .collect();
+                let statement =
+                    datazen_driver_api::sql_builder::build_insert_statement(
+                        &dialect,
+                        target_driver.max_bound_parameters(),
+                        table,
+                        &cells,
+                    )
+                    .map_err(|error| error.to_string())?;
+                let token = runtime
+                    .issue_submission_token(
+                        &context,
+                        datazen::execution::IdempotentOperation::ExecuteAtTarget,
+                        None,
+                    )
+                    .await
+                    .map_err(|error| error.to_string())?;
+                let receipt = runtime
+                    .execute_at_target(
+                        &context,
+                        datazen::execution::application::requests::ExecuteAtTargetRequest {
+                            target: target_binding.target.clone(),
+                            expected_config_revision: Counter::new(1),
+                            call: datazen::execution::application::requests::CommandCall {
+                                command: "execute".into(),
+                                input: serde_json::json!({
+                                    "sql": statement.sql,
+                                    "boundParameters": statement.parameters,
+                                }),
+                            },
+                            idempotency_key: token.idempotency_key,
+                        },
+                    )
+                    .await
+                    .map_err(|error| error.to_string())?;
+                let view = loop {
+                    let view = runtime
+                        .get_execution(&context, receipt.execution_id.clone())
+                        .await
+                        .map_err(|error| error.to_string())?;
+                    if view.state.is_terminal() {
+                        break view;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+                };
+                if view.state != datazen::execution::ExecutionState::Succeeded {
+                    return Err(match view.error_code {
+                        Some(code) => format!("the insert failed: {code:?}"),
+                        None => "the insert failed".to_string(),
+                    });
+                }
+                landed += 1;
+            }
+            if read.rows.len() < 500 {
+                break;
+            }
+            page += 1;
+        }
+        Ok(landed)
+    }
+
+    /// Compare one table's schema between two connections (N12): the schema
+    /// diff use case over both endpoints, in its raw-comparison form (the
+    /// cross-dialect adapters are not assembled in this host; sqlite-to-sqlite
+    /// needs none). The missing-on-target columns are the sync's ADD list.
+    pub async fn compare_table(
+        &self,
+        source_connection: &str,
+        source_table: &str,
+        target_connection: &str,
+        target_table: &str,
+    ) -> Result<datazen::migration::schema_diff::api::TableSchemaComparison, String> {
+        let source_config = self.plain_config(source_connection)?;
+        let target_config = self.plain_config(target_connection)?;
+        let source_driver = self
+            .registry
+            .get(&source_config.database_type)
+            .await
+            .ok_or_else(|| format!("no driver for '{}'", source_config.database_type))?;
+        let target_driver = self
+            .registry
+            .get(&target_config.database_type)
+            .await
+            .ok_or_else(|| format!("no driver for '{}'", target_config.database_type))?;
+        let source = datazen::migration::schema_diff::api::SchemaDiffEndpoint {
+            driver: source_driver.clone(),
+            handle: source_driver
+                .connect(&source_config)
+                .await
+                .map_err(|error| error.to_string())?,
+            config: source_config,
+        };
+        let target = datazen::migration::schema_diff::api::SchemaDiffEndpoint {
+            driver: target_driver.clone(),
+            handle: target_driver
+                .connect(&target_config)
+                .await
+                .map_err(|error| error.to_string())?,
+            config: target_config,
+        };
+        let comparison = datazen::migration::schema_diff::api::compare_table_schemas(
+            &source,
+            &target,
+            source_table,
+            target_table,
+            None,
+            None,
+            &NoAdapters,
+            &NoPreview,
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+        Ok(comparison)
+    }
+
     /// The connection's plaintext config from the file store.
     fn plain_config(&self, connection: &str) -> Result<datazen_driver_api::ConnectionConfig, String> {
         let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
@@ -536,6 +758,54 @@ async fn open_connection(
         read_only: config.read_only,
     };
     Ok(Catalog { databases: nodes })
+}
+
+/// The schema-diff adapter host in its raw form (N12): no cross-dialect
+/// adapters are assembled, so the comparison falls back to the raw snapshot
+/// diff — exactly the sqlite-to-sqlite case, which needs none.
+struct NoAdapters;
+
+impl datazen::migration::schema_diff::api::SchemaDiffAdapterHost for NoAdapters {
+    fn resolve_plan_pair(
+        &self,
+        source_type: &str,
+        target_type: &str,
+    ) -> Result<datazen::migration::schema_diff::api::PlanSyncAdapters, String> {
+        Err(format!("no cross-dialect plan adapters in the native host: {source_type} -> {target_type}"))
+    }
+
+    fn comparison_adapters(
+        &self,
+        _source_type: &str,
+        _target_type: &str,
+    ) -> Option<datazen::migration::schema_diff::api::ComparisonSyncAdapters> {
+        None
+    }
+}
+
+/// The preview host's raw form: no full-type reads, no DDL previews — the
+/// raw comparison path never asks.
+struct NoPreview;
+
+#[async_trait::async_trait]
+impl datazen::migration::schema_diff::api::ComparisonPreviewHost for NoPreview {
+    async fn full_column_types(
+        &self,
+        _adapter: &dyn datazen_driver_api::sync::SyncSourceAdapter,
+        _driver: &dyn DatabaseDriver,
+        _handle: &ConnectionHandle,
+        _table: &str,
+    ) -> Option<std::collections::HashMap<String, String>> {
+        None
+    }
+
+    fn create_table_ddl(
+        &self,
+        _ir_table: &datazen_driver_api::sync::IRTable,
+        _target: &dyn datazen_driver_api::sync::SyncTargetAdapter,
+    ) -> String {
+        String::new()
+    }
 }
 
 /// The single-session host's form of the read port's runner: the command
@@ -1929,6 +2199,119 @@ mod tests {
             body.len()
         );
         assert!(body.contains("users"), "the dump names the table");
+    }
+
+    #[test]
+    fn sync_copies_a_table_and_compare_finds_the_missing_column() {
+        let dir = temp_dir("sync");
+        let store_path = dir.join("connections.json");
+        // Source: the fixture database (users with 60 rows, orders with an
+        // FK, events).
+        let source_db = dir.join("live.db");
+        create_sqlite_file(&source_db);
+        let source_path = source_db.to_string_lossy().into_owned();
+        // Target: a second real database. Its users table has the source's
+        // shape (the sync's landing zone); its orders table is an older
+        // shape — no note column — for the compare to find.
+        let target_db = dir.join("target.db");
+        std::fs::File::create(&target_db).expect("the empty target file");
+        let target_path = target_db.to_string_lossy().into_owned();
+        {
+            let driver = crate::live::test_support::sqlite_driver();
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("the fixture runtime starts");
+            let value = target_path.clone();
+            runtime.block_on(async move {
+                let config = sqlite_config("target", Some(value.clone()));
+                let handle = driver.connect(&config).await.expect("the target opens");
+                driver
+                    .execute(&handle, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
+                    .await
+                    .expect("the target users table is created");
+                driver
+                    .execute(&handle, "CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER)")
+                    .await
+                    .expect("the target orders table is created without the note column");
+            });
+        }
+
+        // Both connections in the store; the adapter over them.
+        let repository = Arc::new(FileConnectionRepository::open(&store_path).unwrap());
+        let service = ConnectionService::new(repository.clone());
+        futures_executor::block_on(service.save(
+            &ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION),
+            sqlite_config("source", Some(source_path.clone())),
+        ))
+        .unwrap();
+        futures_executor::block_on(service.save(
+            &ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION),
+            sqlite_config("target", Some(target_path.clone())),
+        ))
+        .unwrap();
+        let adapter = LiveAdapter::with_data_dir(repository, &dir);
+
+        let host_runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("the host runtime starts");
+
+        // The compare: the note column is missing on the target.
+        let comparison = host_runtime
+            .block_on(async {
+                adapter
+                    .compare_table("source", "orders", "target", "orders")
+                    .await
+            })
+            .expect("the compare answers");
+        assert!(
+            comparison
+                .missing_on_target
+                .iter()
+                .any(|column| column.name == "note"),
+            "the missing column is found: {:?}",
+            comparison.missing_on_target
+        );
+
+        // The sync: 60 rows land in the same-shape target table through the
+        // read and execution use cases.
+        let landed = host_runtime
+            .block_on(async {
+                let (runtime, _, _) = crate::backend::assemble_runtime(
+                    Arc::new(host_registry()),
+                    Arc::new(FileConnectionRepository::open(&store_path).unwrap()),
+                    &dir,
+                );
+                adapter.sync_table(&runtime, "source", "users", "target").await
+            })
+            .expect("the sync lands");
+        assert_eq!(landed, 60, "every source row landed");
+
+        // The target really has the rows.
+        {
+            let driver = crate::live::test_support::sqlite_driver();
+            let value = target_path.clone();
+            host_runtime.block_on(async move {
+                let config = sqlite_config("target", Some(value.clone()));
+                let handle = driver.connect(&config).await.expect("the target reopens");
+                let result = driver
+                    .query(&handle, "SELECT COUNT(*) FROM users")
+                    .await
+                    .expect("the count answers");
+                let count = result
+                    .rows
+                    .first()
+                    .and_then(|row| row.first())
+                    .and_then(|cell| cell.as_ref())
+                    .map(|cell| match cell {
+                        Cell::Integer(value) => *value,
+                        _ => 0,
+                    })
+                    .unwrap_or(0);
+                assert_eq!(count, 60, "the target has the data");
+            });
+        }
     }
 }
 
