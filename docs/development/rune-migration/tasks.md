@@ -110,7 +110,7 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | T1 | 已完成 | b9c7745 | testing/T1-clipboard.md |
 | T2 | 已完成 | 5f7ac65 | testing/T2-file-dialogs.md |
 | T3 | 已完成 | eeb1333 | testing/T3-snippets.md |
-| T4 | 已完成 | 本提交 | testing/T4-value-search.md |
+| T4 | 已完成 | 3bfee30 | testing/T4-value-search.md |
 | T5 | 未开始 | | |
 | T6 | 未开始 | | |
 | T7 | 未开始 | | |
