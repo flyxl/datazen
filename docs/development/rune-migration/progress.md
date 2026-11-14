@@ -1,5 +1,5 @@
 ## Current Task
-- **任务**: T6（收藏）——T1–T5 已完成，正在接 FavoriteQuery 的 .sql 文件存储。
+- **任务**: T7（连接导入）——T1–T6 已完成，正在接六格式解析与预览创建。
 - **负责人**: Coder Agent
 - **状态**: 前两阶段（[plan.md](plan.md)、[plan-native.md](plan-native.md)）全部完成并推送；第三阶段 T1–T11 进行中。
 

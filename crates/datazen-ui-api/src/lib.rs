@@ -36,6 +36,18 @@ pub struct InboundRef {
     pub constraint: String,
 }
 
+/// One saved favorite query (T6): the desktop's `.sql`-file favorite as the
+/// UI sees it. The id is the file name's stem — a ULID the host mints, a
+/// rename changes the title, never the file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FavoriteSpec {
+    pub id: String,
+    /// Owning persisted connection id ("" for an unsaved editor).
+    pub connection: String,
+    pub title: String,
+    pub sql: String,
+}
+
 /// One index of a table: its name, its columns in index order, uniqueness.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IndexSpec {
@@ -313,6 +325,35 @@ pub trait DesktopAdapter {
     /// that reference it. The default answers the fixed error; the demo
     /// process has no scan and the UI refuses honestly.
     fn table_inbound_references(&self, _table: &str) -> Result<Vec<InboundRef>, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// The saved favorite queries (T6), newest first. The default answers
+    /// the fixed error; the demo process has no favorites store.
+    fn favorites(&self) -> Result<Vec<FavoriteSpec>, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// Save a favorite (T6): returns the id it was given. The connection is
+    /// the id of the persisted connection the query belongs to, or an empty
+    /// string for an unsaved editor's query.
+    fn save_favorite(
+        &mut self,
+        _connection: &str,
+        _title: &str,
+        _sql: &str,
+    ) -> Result<String, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// Rename a favorite (T6): the title changes, the file does not.
+    fn rename_favorite(&mut self, _id: &str, _title: &str) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// Delete a favorite (T6): the bytes move to the store's trash, the
+    /// panel stops listing the entry.
+    fn delete_favorite(&mut self, _id: &str) -> Result<(), String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 

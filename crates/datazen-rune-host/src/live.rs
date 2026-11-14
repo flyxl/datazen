@@ -39,7 +39,7 @@ use datazen_ui_api::{
     DashboardWidget, DatabaseNode, DesktopAdapter, ProgressSnapshot, SchemaNode, Snippet,
     TablePage, ValueSearchHit, Workflow, WorkflowStepResult, DESKTOP_NOT_IMPLEMENTED,
 };
-use datazen_ui_api::InboundRef;
+use datazen_ui_api::{FavoriteSpec, InboundRef};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -153,6 +153,9 @@ pub struct LiveAdapter {
     /// The snippets' file store (T3): reads answer from the loaded file,
     /// writes persist atomically.
     snippets: Arc<crate::snippets::FileSnippets>,
+    /// The favorites' file store (T6): the favorites root under the data
+    /// directory, the desktop's `.sql` file format.
+    favorites: Arc<crate::favorites::FileFavorites>,
     /// The dashboard rows' file store (N13); the widget use case runs over
     /// it and the registry.
     dashboard_store: Arc<crate::dashboards::FileDashboardStore>,
@@ -247,6 +250,12 @@ impl LiveAdapter {
         let snippets = Arc::new(
             crate::snippets::FileSnippets::open(&data_dir.join("snippets.json"))
                 .expect("the snippets store opens"),
+        );
+        // T6: the favorites' file store — a favorites root directory of
+        // self-describing .sql files.
+        let favorites = Arc::new(
+            crate::favorites::FileFavorites::open(&data_dir.join("favorites"))
+                .expect("the favorites store opens"),
         );
         let sync_runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -413,6 +422,7 @@ impl LiveAdapter {
             data_dir: adapter_data_dir,
             workflows,
             snippets,
+            favorites,
             dashboard_store,
             profiles,
         }
@@ -1888,6 +1898,23 @@ impl DesktopAdapter for LiveAdapter {
 
     fn delete_snippet(&mut self, name: &str) -> Result<(), String> {
         self.snippets.delete(name)
+    }
+
+    fn favorites(&self) -> Result<Vec<FavoriteSpec>, String> {
+        // T6: the favorites root is the store.
+        Ok(self.favorites.list())
+    }
+
+    fn save_favorite(&mut self, connection: &str, title: &str, sql: &str) -> Result<String, String> {
+        self.favorites.add(connection, title, sql)
+    }
+
+    fn rename_favorite(&mut self, id: &str, title: &str) -> Result<(), String> {
+        self.favorites.rename(id, title)
+    }
+
+    fn delete_favorite(&mut self, id: &str) -> Result<(), String> {
+        self.favorites.delete(id)
     }
 
     fn workflows(&self) -> Result<Vec<Workflow>, String> {

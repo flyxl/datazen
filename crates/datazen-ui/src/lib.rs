@@ -180,6 +180,10 @@ struct AppState {
     snippet_name: TextEdit,
     snippet_sql: TextEdit,
     snippet_error: Option<String>,
+    /// T6: the favorites form's title input and its last rejected write. The
+    /// statement comes from the current query editor — "save current SQL".
+    favorite_title: TextEdit,
+    favorite_error: Option<String>,
     /// T4: the value search's form and state. The value and its mode ride
     /// the job; the hits list is the scan's answer.
     value_search_value: TextEdit,
@@ -298,6 +302,8 @@ impl Default for AppState {
             snippet_name: TextEdit::new(String::new()),
             snippet_sql: TextEdit::new(String::new()),
             snippet_error: None,
+            favorite_title: TextEdit::new(String::new()),
+            favorite_error: None,
             value_search_value: TextEdit::new(String::new()),
             value_search_mode: 0,
             value_search_generation: 0,
@@ -615,6 +621,80 @@ impl AppState {
         };
         if let Err(error) = deleted {
             self.snippet_error = Some(error);
+        }
+    }
+
+    /// The favorites in force (T6): the host's root directory is the store;
+    /// the demo process has none and the panel says so.
+    fn host_favorites(&self) -> Vec<datazen_ui_api::FavoriteSpec> {
+        self.desktop.favorites().unwrap_or_default()
+    }
+
+    /// Save the current query as a favorite (T6): the title from the form,
+    /// the statement from the editor, the connection the live session holds.
+    fn save_favorite_form(&mut self) {
+        let title = self.favorite_title.text.trim().to_owned();
+        let sql = self.sql.doc().to_owned();
+        let connection = self.desktop_connection.clone().unwrap_or_default();
+        let saved = match self.desktop.save_favorite(&connection, &title, &sql) {
+            Ok(_) => Ok(()),
+            Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
+                Err("favorites need the live host".into())
+            }
+            Err(error) => Err(error),
+        };
+        match saved {
+            Ok(()) => {
+                self.favorite_error = None;
+                self.favorite_title = TextEdit::new(String::new());
+            }
+            Err(error) => self.favorite_error = Some(error),
+        }
+    }
+
+    /// Open a favorite into a query tab (T6).
+    fn open_favorite(&mut self, index: usize) {
+        let Some(favorite) = self.host_favorites().get(index).cloned() else { return };
+        self.active = Section::Workspace;
+        if self.open_query_tab(&favorite.title).is_some() {
+            self.sql = sql_editor::SqlEditor::from_doc(favorite.sql);
+        }
+    }
+
+    /// Rename a favorite to the form's title (T6): the title moves, the file
+    /// does not — that is the host store's own semantics.
+    fn rename_favorite_row(&mut self, index: usize) {
+        let Some(favorite) = self.host_favorites().get(index).cloned() else { return };
+        let title = self.favorite_title.text.trim().to_owned();
+        if title.is_empty() {
+            self.favorite_error = Some("a favorite needs a title".into());
+            return;
+        }
+        let renamed = match self.desktop.rename_favorite(&favorite.id, &title) {
+            Ok(()) => Ok(()),
+            Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
+                Err("favorites need the live host".into())
+            }
+            Err(error) => Err(error),
+        };
+        match renamed {
+            Ok(()) => self.favorite_error = None,
+            Err(error) => self.favorite_error = Some(error),
+        }
+    }
+
+    /// Delete a favorite (T6).
+    fn delete_favorite_row(&mut self, index: usize) {
+        let Some(favorite) = self.host_favorites().get(index).cloned() else { return };
+        let deleted = match self.desktop.delete_favorite(&favorite.id) {
+            Ok(()) => Ok(()),
+            Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
+                Err("favorites need the live host".into())
+            }
+            Err(error) => Err(error),
+        };
+        if let Err(error) = deleted {
+            self.favorite_error = Some(error);
         }
     }
 
@@ -3739,9 +3819,133 @@ fn settings_page(state: &AppState, theme: tok::Theme) -> El {
         );
     }
     page.child(snippets)
+        .child(favorites_section(state, theme))
         .child(export_section(state, theme))
         .child(import_section(state, theme))
         .child(backup_section(state, theme))
+}
+
+/// The favorites section (T6): save the current query, list the host's
+/// favorites, open one into a query tab, rename one (the file stays), delete
+/// one (the bytes move to the store's trash).
+fn favorites_section(state: &AppState, theme: tok::Theme) -> El {
+    let mut section = col()
+        .key("settings-favorites")
+        .w_full()
+        .gap(6.0)
+        .child(text("Favorites".to_owned()).font(type_::TITLE).color(theme.text))
+        .child(
+            row()
+                .key("favorite-form")
+                .w_full()
+                .h(28.0)
+                .gap(8.0)
+                .center_y()
+                .child(
+                    text_input(&state.favorite_title, type_::LABEL)
+                        .key("favorite-title-input")
+                        .w(200.0)
+                        .h(24.0)
+                        .on_edit(|state: &mut AppState| &mut state.favorite_title),
+                )
+                .child(
+                    row()
+                        .key("favorite-save")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(
+                            text("Save current query".to_owned())
+                                .font(type_::LABEL)
+                                .color(theme.text),
+                        )
+                        .on_press(|state: &mut AppState| state.save_favorite_form()),
+                ),
+        );
+    let favorites = state.host_favorites();
+    if favorites.is_empty() {
+        section = section.child(
+            row()
+                .key("favorite-empty")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .child(
+                    text("No favorites yet".to_owned())
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
+        );
+    }
+    for (index, favorite) in favorites.iter().enumerate() {
+        section = section.child(
+            row()
+                .key(format!("favorite-row-{index}"))
+                .w_full()
+                .h(24.0)
+                .gap(8.0)
+                .center_y()
+                .px(8.0)
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(favorite.title.clone()).font(type_::LABEL).color(theme.text))
+                .child(
+                    text(favorite.sql.clone())
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                )
+                .child(
+                    row()
+                        .key(format!("favorite-open-{index}"))
+                        .h(20.0)
+                        .px(6.0)
+                        .center_y()
+                        .radius(4.0)
+                        .fill(theme.control_off)
+                        .child(text("Open").font(type_::LABEL).color(theme.text))
+                        .on_press(move |state: &mut AppState| state.open_favorite(index)),
+                )
+                .child(
+                    row()
+                        .key(format!("favorite-rename-{index}"))
+                        .h(20.0)
+                        .px(6.0)
+                        .center_y()
+                        .radius(4.0)
+                        .fill(theme.control_off)
+                        .child(text("Rename").font(type_::LABEL).color(theme.text))
+                        .on_press(move |state: &mut AppState| state.rename_favorite_row(index)),
+                )
+                .child(
+                    row()
+                        .key(format!("favorite-delete-{index}"))
+                        .h(20.0)
+                        .px(6.0)
+                        .center_y()
+                        .radius(4.0)
+                        .fill(theme.control_off)
+                        .child(text("Delete").font(type_::LABEL).color(theme.text_secondary))
+                        .on_press(move |state: &mut AppState| state.delete_favorite_row(index)),
+                ),
+        );
+    }
+    if let Some(error) = &state.favorite_error {
+        section = section.child(
+            row()
+                .key("favorite-error")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+        );
+    }
+    section
 }
 
 /// The backup page: start, stop, and the same progress panel as exports.
@@ -7107,6 +7311,136 @@ mod tests {
         let filter = runtime.state.filter.clone().expect("the reference set a filter");
         assert_eq!(filter.column, "id");
         assert_eq!(filter.contains, "0", "the focused row's id value is the filter");
+    }
+
+    /// A host adapter that owns the favorites store (T6).
+    struct FavoritesHostAdapter {
+        favorites: Vec<datazen_ui_api::FavoriteSpec>,
+    }
+
+    impl datazen_ui_api::DesktopAdapter for FavoritesHostAdapter {
+        fn list_connections(&mut self) -> Result<Vec<datazen_ui_api::ConnectionProfile>, String> {
+            Ok(Vec::new())
+        }
+
+        fn read_table_page(
+            &mut self,
+            _: &str,
+            _: u32,
+            _: u32,
+            _: Option<&datazen_ui_api::ColumnSort>,
+            _: Option<&datazen_ui_api::ColumnFilter>,
+        ) -> Result<datazen_ui_api::TablePage, String> {
+            Err(datazen_ui_api::DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn commit_cells(
+            &mut self,
+            _: &str,
+            _: &[(u32, String, String)],
+        ) -> Result<u32, String> {
+            Err(datazen_ui_api::DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn favorites(&self) -> Result<Vec<datazen_ui_api::FavoriteSpec>, String> {
+            Ok(self.favorites.clone())
+        }
+
+        fn save_favorite(
+            &mut self,
+            connection: &str,
+            title: &str,
+            sql: &str,
+        ) -> Result<String, String> {
+            let id = format!("id-{}", self.favorites.len() + 1);
+            self.favorites.push(datazen_ui_api::FavoriteSpec {
+                id: id.clone(),
+                connection: connection.to_owned(),
+                title: title.to_owned(),
+                sql: sql.to_owned(),
+            });
+            Ok(id)
+        }
+
+        fn rename_favorite(&mut self, id: &str, title: &str) -> Result<(), String> {
+            let favorite = self
+                .favorites
+                .iter_mut()
+                .find(|favorite| favorite.id == id)
+                .ok_or_else(|| format!("no favorite {id}"))?;
+            favorite.title = title.to_owned();
+            Ok(())
+        }
+
+        fn delete_favorite(&mut self, id: &str) -> Result<(), String> {
+            self.favorites.retain(|favorite| favorite.id != id);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn the_favorites_panel_saves_opens_renames_and_deletes() {
+        use datazen_ui_api::WorkspaceApi;
+
+        // The demo process refuses honestly: no favorites without the host.
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-settings").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.find("settings-favorites").is_some());
+        assert!(runtime.find("favorite-empty").is_some(), "no favorites yet");
+        runtime.state.favorite_title = rune::TextEdit::new("top");
+        let (x, y) = runtime.find("favorite-save").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("favorite-error").is_some(), "the demo world refuses honestly");
+
+        // The host's store answers: the current query saves under the title.
+        runtime.state.desktop = Box::new(FavoritesHostAdapter { favorites: Vec::new() });
+        runtime.state.sql = sql_editor::SqlEditor::from_doc("SELECT * FROM users");
+        runtime.settle_all();
+        runtime.frame(0.0);
+        runtime.state.favorite_title = rune::TextEdit::new("top spenders");
+        let (x, y) = runtime.find("favorite-save").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("favorite-row-0").is_some(), "the saved favorite is listed");
+        assert!(runtime.find("favorite-error").is_none());
+        runtime.frame(1.0);
+
+        // Open: a query tab with the title carries the statement.
+        let (x, y) = runtime.find("favorite-open-0").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert_eq!(runtime.state.active, Section::Workspace, "open leaves the settings page");
+        let selected = runtime.state.tabs.selected().map(|tab| tab.title.clone());
+        assert_eq!(selected, Some("top spenders".into()));
+        assert_eq!(runtime.state.sql.doc(), "SELECT * FROM users");
+
+        // Rename: the form's title moves the row's title.
+        let (x, y) = runtime.find("nav-settings").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        runtime.state.favorite_title = rune::TextEdit::new("renamed");
+        let (x, y) = runtime.find("favorite-rename-0").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        let listed = runtime.state.host_favorites();
+        assert_eq!(listed[0].title, "renamed");
+
+        // Delete: the row leaves.
+        let (x, y) = runtime.find("favorite-delete-0").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.state.host_favorites().is_empty(), "the favorite is gone");
     }
 
     #[test]

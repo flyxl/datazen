@@ -23,6 +23,7 @@ cargo build --release -p datazen-rune-host
 | `settings.json` | UI 设置（主题、页大小、最大行数），`ui` 键下 | N8 |
 | `query-history.json` | 查询历史（保留最近 1000 条） | N9 |
 | `snippets.json` | SQL 片段存储（原子写） | T3 |
+| `favorites/` | SQL 收藏（每条一个自述 `.sql` 文件，删除进 `.trash/`） | T6 |
 | `migration-runs.json` | 同步/传输/对比的运行记录 | N12 |
 | `workflows.json` | 工作流定义（registry 用例的行存储） | N13 |
 | `dashboards.json` | 仪表盘与部件行 | N13 |
@@ -50,12 +51,13 @@ cargo build --release -p datazen-rune-host
 - **工具**：导出 CSV、备份、两连接间单表同步、结构对比、传输（作业化进度）、值搜索（T4：逐表逐列 `search_table_values`，命中清单定位开表带过滤）
 - **设置**：主题/页大小/最大行数持久化
 - **片段**：增改删经宿主文件存储持久化（T3），内存端口仅作演示回退
+- **收藏**（T6）：保存当前查询/列表/打开/改名/删除，桌面同格式 `.sql` 文件（front-matter 元数据+语句），改名不改文件，删除进 `.trash/`
 - **工作流与仪表盘**：registry 用例持久化、部件经 `create_widget_from_sql`、步骤与部件查询经执行用例真跑（N13）
 
 剩余差距（本系列范围外，如实列出）：
 
 - **宿主能力**：托盘、系统菜单、多窗口、加密密钥存储（文件对话框与系统剪贴板已由 T1/T2 接线：导出/备份/导入经系统对话框选路径，网格与编辑器走系统剪贴板）。
-- **用例域**：AI、MCP 审批、监控、隧道、收藏、连接导入、语言包、admin——需要外部服务或宿主能力，另立任务，不做空接线。
+- **用例域**：AI、MCP 审批、监控、隧道、连接导入、语言包、admin——需要外部服务或宿主能力，另立任务，不做空接线。
 - **工作流引擎**：宿主路径真跑 query 步；command/ai/condition/foreach/merge/transform 步报告 not wired（完整引擎的 grants/plan guard/资源块是独立任务）；部件运行历史同属引擎侧。
 - **WAPPS 管理与 Onboarding 向导**：永久留在 React（第一阶段 C4 结论）。
 - **远程驱动的作业化**：部件查询与工作流步骤目前在同步路径上（本地 sqlite 的有界 IO 类，N10 同判据）；远程驱动接入时需移到 N1 的作业通道。

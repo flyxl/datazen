@@ -7,6 +7,7 @@
 
 pub mod backend;
 pub mod dashboards;
+pub mod favorites;
 pub mod history;
 pub mod jobs;
 pub mod live;
