@@ -212,6 +212,19 @@ impl AppState {
         }
     }
 
+    /// Commit every staged edit to the stored rows, then reload the page.
+    fn commit_staged_edits(&mut self) {
+        if self.workspace.commit_staged().is_ok() {
+            self.reload_table_page();
+        }
+    }
+
+    /// Drop every staged edit and reload the page back to the stored values.
+    fn rollback_staged_edits(&mut self) {
+        self.workspace.rollback_staged();
+        self.reload_table_page();
+    }
+
     /// Any tab event lands in the workspace: the selected tab decides what the
     /// workspace shows, so the tab strip and its content stay on one page.
     fn sync_grid_to_selected_tab(&mut self) {
@@ -979,6 +992,53 @@ mod tests {
         runtime.frame(0.0);
         assert_eq!(runtime.state.grid.total_rows(), 40);
         assert_eq!(runtime.state.grid.rows, 25);
+    }
+
+    #[test]
+    fn commit_and_rollback_buttons_drive_the_staged_edits() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.frame(0.0);
+
+        let edit = |runtime: &mut rune::Runtime<AppState>| {
+            runtime.state.grid.select(0, 1);
+            runtime.state.grid.begin_edit();
+            runtime.state.grid.editor = rune::TextEdit::new(String::new());
+            runtime.state.grid.editor.insert("renamed");
+            runtime.state.commit_grid_edit();
+            runtime.frame(0.0);
+        };
+
+        edit(&mut runtime);
+        assert_eq!(runtime.state.grid.cell(0, 1), "renamed");
+        assert_eq!(runtime.state.grid.dirty_cells(), 1);
+
+        let (x, y) = runtime.find("rollback-staged").expect("rollback button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.grid.cell(0, 1), "customer-0", "rollback restores the original");
+        assert_eq!(runtime.state.grid.dirty_cells(), 0);
+
+        edit(&mut runtime);
+        let (x, y) = runtime.find("commit-staged").expect("commit button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.grid.cell(0, 1), "renamed");
+        assert_eq!(
+            runtime
+                .state
+                .workspace
+                .open_table("customers", 0, TABLE_PAGE_SIZE, None, None)
+                .unwrap()
+                .rows[0][1],
+            "renamed",
+            "committed values survive reopening the table"
+        );
     }
 
     #[test]

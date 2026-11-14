@@ -482,6 +482,26 @@ fn footer(grid: &DataGrid, ink: rune::Color, muted: rune::Color) -> El {
                 .font(label_style())
                 .color(muted),
         )
+        .child(
+            row()
+                .key("commit-staged")
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .child(text("Commit").font(label_style()).color(ink))
+                .on_press(|state: &mut crate::AppState| state.commit_staged_edits()),
+        )
+        .child(
+            row()
+                .key("rollback-staged")
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .child(text("Rollback").font(label_style()).color(ink))
+                .on_press(|state: &mut crate::AppState| state.rollback_staged_edits()),
+        )
 }
 
 fn header_row(grid: &DataGrid, ink: rune::Color) -> El {

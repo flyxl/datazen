@@ -5,6 +5,8 @@
 
 mod tabs;
 
+use std::collections::HashMap;
+
 pub use tabs::{Tab, TabKind, Tabs};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -63,12 +65,19 @@ pub trait WorkspaceApi {
         filter: Option<&ColumnFilter>,
     ) -> Result<TablePage, String>;
     fn stage_cell(&mut self, row: u32, column: &str, value: String) -> Result<(), String>;
+    /// Apply every staged edit to the stored rows and report how many landed.
+    fn commit_staged(&mut self) -> Result<u32, String>;
+    /// Drop every staged edit; the stored rows keep their values.
+    fn rollback_staged(&mut self);
 }
 
 #[derive(Clone, Debug)]
 struct StoredTable {
     columns: Vec<String>,
     rows: Vec<Vec<String>>,
+    /// Staged cell edits keyed by (stored row, column index); open_table overlays
+    /// them, commit_staged applies them, rollback_staged drops them.
+    staged: HashMap<(u32, usize), String>,
 }
 
 /// The table the workspace last opened, with the page window it asked for.
@@ -117,12 +126,20 @@ impl MemoryWorkspace {
             }],
             session: None,
             tables: vec![
-                ("customers".into(), StoredTable { columns: columns.into_iter().map(str::to_owned).collect(), rows }),
+                (
+                    "customers".into(),
+                    StoredTable {
+                        columns: columns.into_iter().map(str::to_owned).collect(),
+                        rows,
+                        staged: HashMap::new(),
+                    },
+                ),
                 (
                     "orders".into(),
                     StoredTable {
                         columns: vec!["id".into(), "name".into()],
                         rows: vec![vec!["1".into(), "order-0".into()]],
+                        staged: HashMap::new(),
                     },
                 ),
             ],
@@ -154,6 +171,9 @@ impl WorkspaceApi for MemoryWorkspace {
     fn disconnect(&mut self) {
         self.session = None;
         self.open = None;
+        for (_, stored) in self.tables.iter_mut() {
+            stored.staged.clear();
+        }
     }
 
     fn open_table(
@@ -202,11 +222,21 @@ impl WorkspaceApi for MemoryWorkspace {
         let total = order.len() as u32;
         let page_size = page_size.max(1);
         let page = page.min(total / page_size);
-        let rows = order
-            [(page * page_size) as usize..(((page + 1) * page_size) as usize).min(total as usize)]
+        let window =
+            (page * page_size) as usize..(((page + 1) * page_size) as usize).min(total as usize);
+        let mut rows: Vec<Vec<String>> = order[window.clone()]
             .iter()
             .map(|index| stored.1.rows[*index as usize].clone())
             .collect();
+        for ((row, col), value) in &stored.1.staged {
+            if let Some(page_index) = order[window.clone()].iter().position(|index| index == row) {
+                if let Some(record) = rows.get_mut(page_index) {
+                    if let Some(cell) = record.get_mut(*col) {
+                        *cell = value.clone();
+                    }
+                }
+            }
+        }
         self.open = Some(OpenTable { name: table.to_owned(), page, page_size });
         Ok(TablePage {
             table: table.to_owned(),
@@ -234,13 +264,32 @@ impl WorkspaceApi for MemoryWorkspace {
             .iter()
             .position(|name| name == column)
             .ok_or_else(|| format!("unknown column {column}"))?;
-        let record = stored
-            .1
-            .rows
-            .get_mut(stored_row as usize)
-            .ok_or_else(|| format!("row {row} is outside the page"))?;
-        record[index] = value;
+        if stored_row as usize >= stored.1.rows.len() {
+            return Err(format!("row {row} is outside the page"));
+        }
+        stored.1.staged.insert((stored_row, index), value);
         Ok(())
+    }
+
+    fn commit_staged(&mut self) -> Result<u32, String> {
+        let mut applied = 0u32;
+        for (_, stored) in self.tables.iter_mut() {
+            for ((row, col), value) in stored.staged.drain() {
+                if let Some(record) = stored.rows.get_mut(row as usize) {
+                    if let Some(cell) = record.get_mut(col) {
+                        *cell = value;
+                        applied += 1;
+                    }
+                }
+            }
+        }
+        Ok(applied)
+    }
+
+    fn rollback_staged(&mut self) {
+        for (_, stored) in self.tables.iter_mut() {
+            stored.staged.clear();
+        }
     }
 }
 
@@ -341,6 +390,44 @@ mod tests {
         workspace.connect("local").unwrap();
         let filter = ColumnFilter { column: "missing".into(), contains: "x".into() };
         assert!(workspace.open_table("customers", 0, 25, None, Some(&filter)).is_err());
+    }
+
+    #[test]
+    fn rollback_restores_the_original_value() {
+        let mut workspace = MemoryWorkspace::new();
+        workspace.connect("local").unwrap();
+        workspace.open_table("customers", 0, 25, None, None).unwrap();
+        workspace.stage_cell(0, "name", "staged".into()).unwrap();
+        let page = workspace.open_table("customers", 0, 25, None, None).unwrap();
+        assert_eq!(page.rows[0][1], "staged", "staged values show on the page");
+        workspace.rollback_staged();
+        let page = workspace.open_table("customers", 0, 25, None, None).unwrap();
+        assert_eq!(page.rows[0][1], "customer-0");
+    }
+
+    #[test]
+    fn commit_keeps_the_new_value_after_reopening() {
+        let mut workspace = MemoryWorkspace::new();
+        workspace.connect("local").unwrap();
+        workspace.open_table("customers", 0, 25, None, None).unwrap();
+        workspace.stage_cell(0, "name", "kept".into()).unwrap();
+        assert_eq!(workspace.commit_staged().unwrap(), 1);
+        let page = workspace.open_table("customers", 0, 25, None, None).unwrap();
+        assert_eq!(page.rows[0][1], "kept");
+        workspace.rollback_staged();
+        let page = workspace.open_table("customers", 0, 25, None, None).unwrap();
+        assert_eq!(page.rows[0][1], "kept", "rollback cannot undo a commit");
+    }
+
+    #[test]
+    fn staged_values_follow_their_row_through_sorting() {
+        let mut workspace = MemoryWorkspace::new();
+        workspace.connect("local").unwrap();
+        workspace.open_table("customers", 0, 25, None, None).unwrap();
+        workspace.stage_cell(0, "name", "aaa-first".into()).unwrap();
+        let sort = ColumnSort { column: "name".into(), descending: false };
+        let page = workspace.open_table("customers", 0, 25, Some(&sort), None).unwrap();
+        assert_eq!(page.rows[0][1], "aaa-first", "the staged name sorts with its row");
     }
 
     #[test]
