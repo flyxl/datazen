@@ -23,6 +23,13 @@ datazen-driver-api = { workspace = true }
 # T9: the system tray — StatusNotifierItem over D-Bus on Linux (rune's
 # `dbus` feature; a busless desktop is an honest absence, see `tray.rs`).
 rune = { workspace = true, features = ["dbus"] }
+# T10: the OS keychain the password encryption key lives in — the same
+# version and API surface the desktop uses (`v1`), so both hosts speak the
+# same keychain.
+keyring = { version = "4", features = ["v1"] }
+# The master key's generation and base64 form.
+rand = "0.8"
+base64 = "0.22"
 # N3: linked so its inventory factory registers with datazen's driver
 # registry; the live adapter resolves "sqlite" through the registry, never
 # a registration of its own.

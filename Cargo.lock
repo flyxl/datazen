@@ -2568,6 +2568,7 @@ name = "datazen-rune-host"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "chrono",
  "datazen",
  "datazen-driver-api",
@@ -2575,6 +2576,8 @@ dependencies = [
  "datazen-ui",
  "datazen-ui-api",
  "futures-executor",
+ "keyring",
+ "rand 0.8.7",
  "rune",
  "serde",
  "serde_json",

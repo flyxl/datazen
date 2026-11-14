@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 /// The DataZen export crypto helpers, shared with the host's export path and
 /// its security documentation.
-pub use datazen::{decrypt_datazen_fields, derive_argon2_key, encrypt_field};
+pub use datazen::{decrypt_datazen_fields, decrypt_field, derive_argon2_key, encrypt_field};
 pub use tableplus::export_connections as build_tableplus_export;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

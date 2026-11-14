@@ -11,6 +11,7 @@ pub mod favorites;
 pub mod history;
 pub mod jobs;
 pub mod live;
+pub mod secrets;
 pub mod settings;
 pub mod snippets;
 pub mod tray;

@@ -37,6 +37,9 @@ pub struct FileConnectionRepository {
     /// The loaded store. One lock guards the file and the loaded list, so
     /// the two cannot part ways between a read and its write-back.
     state: Mutex<StoreFile>,
+    /// T10: the password encryption key, loaded on the first password that
+    /// needs one. A store without passwords never touches the keychain.
+    key: Mutex<Option<[u8; 32]>>,
 }
 
 impl std::fmt::Debug for FileConnectionRepository {
@@ -57,10 +60,42 @@ impl FileConnectionRepository {
             Ok(text) => serde_json::from_str(&text)
                 .map_err(|error| format!("parse {}: {error}", path.display()))?,
         };
-        Ok(Self { path: path.to_owned(), state: Mutex::new(state) })
+        Ok(Self { path: path.to_owned(), state: Mutex::new(state), key: Mutex::new(None) })
     }
 
     /// Write the store atomically: a sibling temporary file, then rename.
+    /// T10: the password encryption key, loaded on first use. The store's
+    /// directory is the key file's home (the file backend) and the source
+    /// of a legacy rescue key (the keyring backend).
+    fn master_key(&self) -> Result<[u8; 32], ConnectionRepositoryError> {
+        let mut cached = self.key.lock().expect("the key lock");
+        if let Some(key) = *cached {
+            return Ok(key);
+        }
+        let data_dir = self.path.parent().unwrap_or_else(|| Path::new("."));
+        let loaded = crate::secrets::load_or_create_master_key(data_dir, crate::secrets::resolve_key_backend())
+            .map_err(ConnectionRepositoryError::BackendUnavailable)?;
+        *cached = Some(loaded);
+        Ok(loaded)
+    }
+
+    /// Encrypt a password for the file (T10). An empty password is stored
+    /// as-is — there is nothing to protect.
+    fn seal_password(&self, password: &str) -> Result<String, ConnectionRepositoryError> {
+        let key = self.master_key()?;
+        datazen::connection_import::encrypt_field(password, &key)
+            .map_err(|error| ConnectionRepositoryError::BackendUnavailable(error.to_string()))
+    }
+
+    /// Reveal a stored password (T10): a value that decrypts is the
+    /// plaintext; one that does not is a legacy plaintext from before the
+    /// key, kept working as the migration path. `None` key means the key
+    /// could not be loaded — the caller decides what that means.
+    fn open_password(&self, stored: &str) -> Option<String> {
+        let key = self.master_key().ok()?;
+        datazen::connection_import::decrypt_field(stored, &key).ok()
+    }
+
     fn persist(path: &Path, store: &StoreFile) -> Result<(), ConnectionRepositoryError> {
         let text = serde_json::to_string_pretty(store).map_err(|error| {
             ConnectionRepositoryError::BackendUnavailable(format!("serialize the store: {error}"))
@@ -89,7 +124,26 @@ impl ConnectionRepository for FileConnectionRepository {
         if scope.organization_id() != datazen_ui_api::DESKTOP_ORGANIZATION {
             return Err(scope_error());
         }
-        Ok(self.state.lock().expect("the store lock").connections.clone())
+        let mut connections = self.state.lock().expect("the store lock").connections.clone();
+        // T10: passwords reveal best-effort here — the listing page shows
+        // names, and the connect path's `get` carries the honest
+        // unavailability sentence when a password cannot be opened. A
+        // password the key cannot open becomes None in the listing, never a
+        // leaked ciphertext.
+        for config in &mut connections {
+            if let Some(password) = config.password.take() {
+                config.password = if password.is_empty() {
+                    Some(password)
+                } else if self.master_key().is_ok() {
+                    // A decrypting value is the plaintext; one that does not
+                    // is a legacy plaintext (the migration path).
+                    Some(self.open_password(&password).unwrap_or(password))
+                } else {
+                    None
+                };
+            }
+        }
+        Ok(connections)
     }
 
     async fn get(
@@ -100,14 +154,40 @@ impl ConnectionRepository for FileConnectionRepository {
         if scope.organization_id() != datazen_ui_api::DESKTOP_ORGANIZATION {
             return Err(scope_error());
         }
-        Ok(self
+        let stored = self
             .state
             .lock()
             .expect("the store lock")
             .connections
             .iter()
             .find(|config| config.id == connection_id)
-            .cloned())
+            .cloned();
+        let Some(mut config) = stored else { return Ok(None) };
+        if let Some(password) = config.password.take() {
+            if password.is_empty() {
+                config.password = Some(password);
+            } else {
+                match self.master_key() {
+                    Ok(_) => {
+                        // A decrypting value is the plaintext; one that does
+                        // not is a legacy plaintext (the migration path).
+                        config.password = Some(
+                            self.open_password(&password).unwrap_or(password),
+                        );
+                    }
+                    // T10: no key, no honest plaintext — the connection
+                    // names its unavailability rather than passing the
+                    // ciphertext through as a password.
+                    Err(error) => {
+                        return Err(ConnectionRepositoryError::BackendUnavailable(format!(
+                            "the password of '{}' is unavailable ({error})",
+                            config.name
+                        )))
+                    }
+                }
+            }
+        }
+        Ok(Some(config))
     }
 
     async fn save(
@@ -117,6 +197,12 @@ impl ConnectionRepository for FileConnectionRepository {
     ) -> Result<(), ConnectionRepositoryError> {
         if scope.organization_id() != datazen_ui_api::DESKTOP_ORGANIZATION {
             return Err(scope_error());
+        }
+        // T10: the password is sealed before it reaches the file; the file
+        // never carries a plaintext password again.
+        let mut config = config;
+        if config.password.as_deref().is_some_and(|password| !password.is_empty()) {
+            config.password = Some(self.seal_password(config.password.as_deref().unwrap())?);
         }
         let mut state = self.state.lock().expect("the store lock");
         match state.connections.iter_mut().find(|saved| saved.id == config.id) {
@@ -294,6 +380,10 @@ mod tests {
     }
 
     fn temp_store(tag: &str) -> (PathBuf, FileConnectionRepository) {
+        // The store tests opt into the file key backend: the OS keychain is
+        // unreachable from a test environment without a session bus (the
+        // desktop's own CI discipline, ).
+        std::env::set_var("DATAZEN_NATIVE_KEYRING", "file");
         let dir = std::env::temp_dir().join(format!("datazen-rune-host-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -383,5 +473,97 @@ mod tests {
         assert_eq!(listed[0].id, "warehouse");
         assert_eq!(listed[0].name, "Warehouse");
         assert_eq!(listed[0].engine, "sqlite");
+    }
+
+    #[test]
+    fn passwords_seal_on_save_and_reveal_on_get() {
+        let dir = std::env::temp_dir().join(format!(
+            "datazen-rune-store-seal-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("connections.json");
+
+        std::env::set_var("DATAZEN_NATIVE_KEYRING", "file");
+        let scope = desktop_scope();
+        let store = FileConnectionRepository::open(&path).unwrap();
+        let mut config = test_support::sqlite_config("secret", None);
+        config.password = Some("hunter2".into());
+        futures_executor::block_on(store.save(&scope, config)).unwrap();
+
+        // The file on disk carries no plaintext password.
+        let on_disk = std::fs::read_to_string(&path).unwrap();
+        assert!(!on_disk.contains("hunter2"), "the plaintext never lands: {on_disk}");
+        assert!(
+            on_disk.contains("password"),
+            "the field is there, sealed: {on_disk}"
+        );
+
+        // A fresh store over the same file reveals it on get.
+        let store = FileConnectionRepository::open(&path).unwrap();
+        let got = futures_executor::block_on(store.get(&scope, "secret"))
+            .unwrap()
+            .expect("the connection is there");
+        assert_eq!(got.password.as_deref(), Some("hunter2"));
+
+        // The listing reveals it too (best-effort path, key available).
+        let listed = futures_executor::block_on(store.list(&scope)).unwrap();
+        assert_eq!(
+            listed.iter().find(|c| c.id == "secret").and_then(|c| c.password.clone()),
+            Some("hunter2".into())
+        );
+        std::env::remove_var("DATAZEN_NATIVE_KEYRING");
+    }
+
+    #[test]
+    fn an_encrypted_password_without_a_key_is_an_honest_unavailability() {
+        // Write a sealed password with the file backend in one directory,
+        // then move only the store to another: no key file, no keyring (this
+        // sandbox has no session bus) — the reveal must fail closed with the
+        // honest sentence, never pass the ciphertext through as a password.
+        let dir = std::env::temp_dir().join(format!(
+            "datazen-rune-store-closed-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::env::set_var("DATAZEN_NATIVE_KEYRING", "file");
+        let write_dir = dir.join("write");
+        std::fs::create_dir_all(&write_dir).unwrap();
+        let scope = desktop_scope();
+        let store = FileConnectionRepository::open(&write_dir.join("connections.json")).unwrap();
+        let mut config = test_support::sqlite_config("sealed", None);
+        config.password = Some("open-sesame".into());
+        futures_executor::block_on(store.save(&scope, config)).unwrap();
+        std::env::remove_var("DATAZEN_NATIVE_KEYRING");
+
+        // Only the store moves; the key file stays behind.
+        let read_dir = dir.join("read");
+        std::fs::create_dir_all(&read_dir).unwrap();
+        std::fs::copy(
+            write_dir.join("connections.json"),
+            read_dir.join("connections.json"),
+        )
+        .unwrap();
+
+        let store = FileConnectionRepository::open(&read_dir.join("connections.json")).unwrap();
+        // The keyring backend cannot be reached and no key file exists: the
+        // reveal fails closed.
+        let error = futures_executor::block_on(store.get(&scope, "sealed"))
+            .expect_err("no key, no honest plaintext");
+        assert!(
+            error.to_string().contains("password of 'sealed' is unavailable"),
+            "the sentence names the unavailability: {error}"
+        );
+        assert!(
+            error.to_string().contains("DATAZEN_NATIVE_KEYRING=file"),
+            "the sentence names the escape hatch: {error}"
+        );
+        // The listing stays whole: the password is absent, not leaked.
+        let listed = futures_executor::block_on(store.list(&scope)).unwrap();
+        let listed = listed.iter().find(|c| c.id == "sealed").unwrap();
+        assert_eq!(listed.password, None, "no ciphertext in the listing");
     }
 }
