@@ -13,5 +13,12 @@ fn main() {
             std::process::exit(1);
         }
     };
-    datazen_ui::run_with_adapter(Box::new(datazen_rune_host::LiveAdapter::new(repository)));
+    // T9: the app is constructed, not run — the tray installs over the
+    // handle between the two. A busless desktop logs the absence and the
+    // window interface continues.
+    let app = datazen_ui::app_with_adapter(Box::new(datazen_rune_host::LiveAdapter::new(
+        repository,
+    )));
+    datazen_rune_host::tray::install(app.handle());
+    app.run();
 }

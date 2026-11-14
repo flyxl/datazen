@@ -13,6 +13,7 @@ pub mod jobs;
 pub mod live;
 pub mod settings;
 pub mod snippets;
+pub mod tray;
 pub mod store;
 
 pub use dashboards::{FileDashboardStore, FileWorkflowStore};

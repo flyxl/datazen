@@ -103,7 +103,7 @@ enum Tool {
     ValueSearch,
 }
 
-struct AppState {
+pub struct AppState {
     active: Section,
     sql: SqlEditor,
     grid: DataGrid,
@@ -4994,6 +4994,13 @@ pub fn run() {
 /// `init_state` does for the demo.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn run_with_adapter(adapter: Box<dyn DesktopAdapter>) {
+    app_with_adapter(adapter).run();
+}
+
+/// The same app `run_with_adapter` runs, before it runs (T9): the host
+/// installs its own process capabilities — a system tray, say — between the
+/// construction and `run`, over the handle the app hands out.
+pub fn app_with_adapter(adapter: Box<dyn DesktopAdapter>) -> App<AppState> {
     App::new(AppSpec {
         on_key: Some(app_key),
         poll: Some(app_poll),
@@ -5010,7 +5017,6 @@ pub fn run_with_adapter(adapter: Box<dyn DesktopAdapter>) {
         state
     })
     .on_ime(app_ime)
-    .run();
 }
 
 /// The desktop process starts on the connections page, so the adapter is

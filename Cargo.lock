@@ -2575,6 +2575,7 @@ dependencies = [
  "datazen-ui",
  "datazen-ui-api",
  "futures-executor",
+ "rune",
  "serde",
  "serde_json",
  "tokio",

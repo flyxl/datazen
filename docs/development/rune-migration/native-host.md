@@ -56,7 +56,7 @@ cargo build --release -p datazen-rune-host
 
 剩余差距（本系列范围外，如实列出）：
 
-- **宿主能力**：托盘、系统菜单、多窗口、加密密钥存储（文件对话框与系统剪贴板已由 T1/T2 接线：导出/备份/导入经系统对话框选路径，网格与编辑器走系统剪贴板）。
+- **宿主能力**：系统菜单、多窗口、加密密钥存储（文件对话框与系统剪贴板已由 T1/T2 接线；托盘已由 T9 接线：显示窗口/退出菜单，无总线环境如实缺席）。
 - **用例域**：AI、MCP 审批、监控、隧道、语言包、admin——需要外部服务或宿主能力，另立任务，不做空接线。
 - **工作流引擎**（T8 后）：宿主实现 `WorkflowHost` 四方法，`WorkflowExecutor` 经作业通道真跑 query/command（query 与 list_tables/get_schema/describe_table 目录读）/condition/foreach/merge/transform 步；AI 步如实报"未配置"；命令按引擎 deadline 拒绝过期。计划文档里"进程执行"的说法已更正为引擎的真实词汇（七类读工具）。grants/plan guard/资源块与部件运行历史仍属引擎侧后续任务。
 - **WAPPS 管理与 Onboarding 向导**：永久留在 React（第一阶段 C4 结论）。

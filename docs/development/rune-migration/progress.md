@@ -1,5 +1,5 @@
 ## Current Task
-- **任务**: T9（托盘）——T1–T8 已完成，正在接 Tray spec、菜单与无总线容错。
+- **任务**: T10（加密钥匙串）——T1–T9 已完成，正在接 keyring v4 存连接密码。
 - **负责人**: Coder Agent
 - **状态**: 前两阶段（[plan.md](plan.md)、[plan-native.md](plan-native.md)）全部完成并推送；第三阶段 T1–T11 进行中。
 
