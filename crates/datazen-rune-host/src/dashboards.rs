@@ -219,10 +219,6 @@ impl FileDashboardStore {
     }
 }
 
-fn store_error(error: String) -> DashboardRepositoryError {
-    DashboardRepositoryError::Db(error)
-}
-
 impl DashboardRepository for FileDashboardStore {
     fn list_dashboard_rows(
         &self,
