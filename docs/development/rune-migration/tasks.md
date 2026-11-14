@@ -73,8 +73,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | W1 | 已完成 | bb00522 | testing/W1-dashboard-list.md |
 | W2 | 已完成 | cd80202 | testing/W2-bar-chart.md |
 | W3 | 已完成 | 745b60c3b | testing/W3-widget-form.md |
-| W4 | 进行中 | | |
-| W5 | 未开始 | | |
+| W4 | 已完成 | 6fc883c35 | testing/W4-workflow-list.md |
+| W5 | 进行中 | | |
 | W6 | 未开始 | | |
 | W7 | 未开始 | | |
 | H1 | 未开始 | | |
