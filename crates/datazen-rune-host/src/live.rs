@@ -11,10 +11,19 @@
 use datazen::connection::application::ConnectionService;
 use datazen::connection::domain::{ConnectionRepository, ConnectionScope};
 use datazen::execution::runtime::driver_registry::DriverRegistry;
-use datazen_driver_api::{ConnectionHandle, DatabaseDriver};
+use datazen::execution::target::ExecutionTarget;
+use datazen::shared::context::RequestContext;
+use datazen::shared::error::{ApiError, ApiErrorCode};
+use datazen::shared::id::{ConnectionId, Counter};
+use datazen::table_browsing::api::{
+    read_table_page, TargetBinding, TargetCommandRunner, TableReadRequest,
+};
+use datazen::table_editing::change_set::RowChangeTableContext;
+use datazen_driver_api::filters::{FilterCondition, FilterOperator, SortCondition};
+use datazen_driver_api::{ConnectionHandle, DatabaseDriver, Value as Cell};
 use datazen_ui_api::{
-    AdapterDelivery, AdapterJob, Catalog, ConnectionProfile, DatabaseNode, DesktopAdapter,
-    SchemaNode, TablePage, DESKTOP_NOT_IMPLEMENTED,
+    AdapterDelivery, AdapterJob, Catalog, ColumnFilter, ColumnSort, ConnectionProfile,
+    DatabaseNode, DesktopAdapter, SchemaNode, TablePage, DESKTOP_NOT_IMPLEMENTED,
 };
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -33,11 +42,20 @@ fn host_registry() -> DriverRegistry {
 /// A job on the worker's channel, with the generation the UI expects back.
 enum HostJob {
     OpenConnection { generation: u32, id: String },
+    ReadTable {
+        generation: u32,
+        table: String,
+        page: u32,
+        page_size: u32,
+        sort: Option<ColumnSort>,
+        filter: Option<ColumnFilter>,
+    },
 }
 
 /// A finished job on the answer channel.
 enum HostAnswer {
     Connection { generation: u32, id: String, catalog: Result<Catalog, String> },
+    TablePage { generation: u32, page: Result<TablePage, String> },
 }
 
 /// The open live session, shared between the adapter and the worker. N4's
@@ -47,6 +65,8 @@ struct LiveSession {
     driver: Option<Arc<dyn DatabaseDriver>>,
     handle: Option<ConnectionHandle>,
     database: Option<String>,
+    /// The connection id the session was opened for (N4's read context).
+    connection: Option<String>,
 }
 
 impl LiveSession {
@@ -101,6 +121,10 @@ impl LiveAdapter {
                                     id,
                                     catalog: Err(format!("the job runtime did not start: {error}")),
                                 },
+                                HostJob::ReadTable { generation, .. } => HostAnswer::TablePage {
+                                    generation,
+                                    page: Err(format!("the job runtime did not start: {error}")),
+                                },
                             };
                             if answer_tx.send(answer).is_err() {
                                 break;
@@ -116,6 +140,17 @@ impl LiveAdapter {
                             let catalog = runtime
                                 .block_on(open_connection(&worker_service, &registry, &worker_session, &id));
                             HostAnswer::Connection { generation, id: id_for_answer, catalog }
+                        }
+                        HostJob::ReadTable { generation, table, page, page_size, sort, filter } => {
+                            let page_result = runtime.block_on(read_table(
+                                &worker_session,
+                                &table,
+                                page,
+                                page_size,
+                                sort,
+                                filter,
+                            ));
+                            HostAnswer::TablePage { generation, page: page_result }
                         }
                     };
                     if answer_tx.send(answer).is_err() {
@@ -211,8 +246,183 @@ async fn open_connection(
         driver: Some(driver),
         handle: Some(handle),
         database: databases.first().cloned(),
+        connection: Some(id.to_owned()),
     };
     Ok(Catalog { databases: nodes })
+}
+
+/// The single-session host's form of the read port's runner: the command
+/// runs inline on the session the host already holds — no submission tokens,
+/// no polling, no artifact chunks, because there is no runtime facade in
+/// front of the driver to go through. The output wraps the driver's command
+/// result in the one `commandResult` chunk the read algorithm reads
+/// (`data.results` for queries, `data.schema` for schema fetches), the same
+/// shape the desktop and server runners publish from their runtimes.
+struct SessionRunner {
+    session: Arc<Mutex<LiveSession>>,
+}
+
+#[async_trait::async_trait]
+impl TargetCommandRunner for SessionRunner {
+    async fn run(
+        &self,
+        _context: &RequestContext,
+        _binding: &TargetBinding,
+        command: &str,
+        input: serde_json::Value,
+    ) -> Result<Vec<serde_json::Value>, ApiError> {
+        let (driver, handle) = {
+            let session = self.session.lock().expect("the live session lock");
+            (
+                session.driver.clone().ok_or_else(session_closed)?,
+                session.handle.clone().ok_or_else(session_closed)?,
+            )
+        };
+        let result = driver
+            .execute_command(&handle, command, input)
+            .await
+            .map_err(|error| ApiError::new(ApiErrorCode::ServiceUnavailable, error.to_string()))?;
+        Ok(vec![serde_json::json!({
+            "kind": "commandResult",
+            "data": result.data,
+        })])
+    }
+}
+
+fn session_closed() -> ApiError {
+    ApiError::new(
+        ApiErrorCode::ServiceUnavailable,
+        "the live session is not open".to_string(),
+    )
+}
+
+/// The host's request context: the single-tenant desktop organization and a
+/// synthetic principal for the host process — the read's authorization
+/// vocabulary, filled the only way a local single-user host can.
+fn host_request_context() -> RequestContext {
+    RequestContext::new(
+        datazen::shared::id::OrganizationId::new(datazen_ui_api::DESKTOP_ORGANIZATION),
+        datazen::shared::id::PrincipalId::new("datazen-native"),
+        None,
+        datazen::shared::id::ClientInstanceId::new("datazen-native"),
+        datazen::shared::id::RequestId::new("datazen-native"),
+        None,
+    )
+}
+
+/// One page of a table through the existing read use case, over the live
+/// session (N4). The paging, sorting and filtering are served by the SQL the
+/// use case assembles — nothing here re-implements a read. The `Contains`
+/// filter and the single sort arrive in the UI's vocabulary and map to the
+/// use case's own conditions.
+#[allow(clippy::too_many_arguments)]
+async fn read_table(
+    session: &Arc<Mutex<LiveSession>>,
+    table: &str,
+    page: u32,
+    page_size: u32,
+    sort: Option<ColumnSort>,
+    filter: Option<ColumnFilter>,
+) -> Result<TablePage, String> {
+    let (driver, database, connection) = {
+        let session = session.lock().expect("the live session lock");
+        if !session.is_open() {
+            return Err("the live session is not open".into());
+        }
+        (
+            session.driver.clone().expect("checked"),
+            session.database.clone(),
+            session.connection.clone().unwrap_or_default(),
+        )
+    };
+    let driver_type = driver.driver_type();
+    let runner = SessionRunner { session: Arc::clone(session) };
+    let context = host_request_context();
+    let binding = TargetBinding {
+        target: ExecutionTarget::new(
+            ConnectionId::new(connection),
+            datazen::connection::domain::NamespaceTarget::new(
+                database.clone(),
+                None,
+                None,
+                Vec::new(),
+            ),
+        ),
+        // The host opened the session itself and holds it; no second writer
+        // can race the revision, so one stable value serves every read.
+        revision: Counter::new(1),
+        manual_handle: None,
+    };
+    let sorts = sort.clone().map(|sort| {
+        vec![SortCondition { column: sort.column, descending: sort.descending }]
+    });
+    let filters = filter.clone().map(|filter| {
+        vec![FilterCondition {
+            column: filter.column,
+            operator: FilterOperator::Contains,
+            value: Cell::String(filter.contains),
+            connector: None,
+        }]
+    });
+    let request = TableReadRequest {
+        manual_handle: None,
+        context: RowChangeTableContext {
+            connection_id: binding.target.connection_id.to_string(),
+            db_session_id: "datazen-native".into(),
+            driver_type,
+            database,
+            schema: None,
+            table: table.to_owned(),
+        },
+        page,
+        page_size,
+        filters,
+        sorts,
+        skip_count: None,
+        filter_logic: None,
+        raw_where: None,
+        count_strategy: None,
+        default_order_columns: None,
+        after_key: None,
+        require_keyset: None,
+        cursor_depth: None,
+    };
+    let read = read_table_page(driver.as_ref(), request, binding.revision, context, &runner)
+        .await
+        .map_err(|error| error.to_string())?;
+    // The count the driver could not give is the absence of a fact: fall
+    // back to the best lower bound (the page's own end), never to zero.
+    let known = read.total_rows.unwrap_or(page as i64 * page_size as i64 + read.rows.len() as i64);
+    Ok(TablePage {
+        table: table.to_owned(),
+        columns: read.columns.into_iter().map(|column| column.name).collect(),
+        rows: read
+            .rows
+            .into_iter()
+            .map(|row| row.into_iter().map(cell_to_text).collect())
+            .collect(),
+        page: read.page,
+        page_size: read.page_size,
+        total_rows: known.max(0) as u32,
+        sort,
+        filter,
+        read_only: None,
+    })
+}
+
+/// One driver cell as the grid's text: null is the empty string, bytes land
+/// as their lossy text, everything else its own display form.
+fn cell_to_text(cell: Option<Cell>) -> String {
+    match cell {
+        None | Some(Cell::Null) => String::new(),
+        Some(Cell::Bool(value)) => value.to_string(),
+        Some(Cell::Integer(value)) => value.to_string(),
+        Some(Cell::Float(value)) => value.to_string(),
+        Some(Cell::String(value)) => value,
+        Some(Cell::Bytes(bytes)) => String::from_utf8_lossy(&bytes).into_owned(),
+        Some(Cell::Timestamp(value)) => value,
+        Some(Cell::Json(value)) => value.to_string(),
+    }
 }
 
 impl DesktopAdapter for LiveAdapter {
@@ -252,7 +462,10 @@ impl DesktopAdapter for LiveAdapter {
     fn begin_job(&mut self, job: AdapterJob) -> bool {
         let job = match job {
             AdapterJob::OpenConnection { generation, id } => HostJob::OpenConnection { generation, id },
-            // N4-N6 wire the reads, commits and queries; until then decline
+            AdapterJob::ReadTable { generation, table, page, page_size, sort, filter } => {
+                HostJob::ReadTable { generation, table, page, page_size, sort, filter }
+            }
+            // N5-N6 wire the commits and queries; until then decline
             // so the synchronous paths answer.
             _ => return false,
         };
@@ -266,6 +479,9 @@ impl DesktopAdapter for LiveAdapter {
             match answer {
                 HostAnswer::Connection { generation, id, catalog } => {
                     deliveries.push(AdapterDelivery::ConnectionOpened { generation, id, catalog });
+                }
+                HostAnswer::TablePage { generation, page } => {
+                    deliveries.push(AdapterDelivery::TablePage { generation, page });
                 }
             }
         }
@@ -318,6 +534,14 @@ mod tests {
                 .execute(&handle, "CREATE TABLE events (id INTEGER PRIMARY KEY, label TEXT)")
                 .await
                 .expect("the events table is created");
+            for index in 0..60 {
+                driver
+                    .execute(&handle, &format!(
+                        "INSERT INTO users (id, name) VALUES ({index}, 'user-{index:02}')"
+                    ))
+                    .await
+                    .expect("the fixture row is inserted");
+            }
         });
     }
 
@@ -420,5 +644,125 @@ mod tests {
         assert!(adapter.begin_job(AdapterJob::OpenConnection { generation: 1, id: "nope".into() }));
         let error = poll_open(&mut adapter).expect_err("an unknown id is a failure");
         assert!(error.contains("no connection"), "the sentence names it: {error}");
+    }
+
+    /// Poll the adapter until its read job answers.
+    fn poll_read(adapter: &mut LiveAdapter) -> Result<TablePage, String> {
+        for _ in 0..300 {
+            for delivery in adapter.poll_jobs() {
+                if let AdapterDelivery::TablePage { page, .. } = delivery {
+                    return page;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("the read job never answered");
+    }
+
+    /// Open the fixture connection through the adapter (the N3 job path) and
+    /// return the adapter, ready for read jobs.
+    fn opened_adapter(dir: &std::path::Path) -> LiveAdapter {
+        let database = dir.join("live.db");
+        create_sqlite_file(&database);
+        let store_path = dir.join("connections.json");
+        save_connection(
+            &store_path,
+            sqlite_config("live", Some(database.to_string_lossy().into_owned())),
+        );
+        let mut adapter = LiveAdapter::new(Arc::new(
+            FileConnectionRepository::open(&store_path).unwrap(),
+        ));
+        assert!(
+            adapter.begin_job(AdapterJob::OpenConnection { generation: 1, id: "live".into() })
+        );
+        poll_open(&mut adapter).expect("the session opens");
+        adapter
+    }
+
+    #[test]
+    fn read_jobs_serve_real_pages_sorts_and_filters_from_sqlite() {
+        let dir = temp_dir("read");
+        let mut adapter = opened_adapter(&dir);
+
+        // Page 2 of 25: the second half of the 60 fixture rows, in id order
+        // (the read's default order).
+        assert!(adapter.begin_job(AdapterJob::ReadTable {
+            generation: 2,
+            table: "users".into(),
+            page: 1,
+            page_size: 25,
+            sort: None,
+            filter: None,
+        }));
+        let page = poll_read(&mut adapter).expect("the read answers");
+        assert_eq!(page.table, "users");
+        assert_eq!(page.columns, vec!["id".to_string(), "name".to_string()]);
+        assert_eq!(page.rows.len(), 25, "the second page is full");
+        assert_eq!(page.rows[0][1], "user-25", "page 2 starts at row 25");
+        assert_eq!(page.rows[24][1], "user-49", "page 2 ends at row 49");
+        assert_eq!(page.total_rows, 60, "the count is exact");
+
+        // A descending sort is served by SQL: the last page's first row is
+        // the highest id.
+        assert!(adapter.begin_job(AdapterJob::ReadTable {
+            generation: 3,
+            table: "users".into(),
+            page: 1,
+            page_size: 25,
+            sort: Some(ColumnSort { column: "id".into(), descending: true }),
+            filter: None,
+        }));
+        let page = poll_read(&mut adapter).expect("the sorted read answers");
+        assert_eq!(page.rows[0][1], "user-34", "descending id: page 2 starts at 34");
+        assert_eq!(page.rows[24][1], "user-10", "descending id: page 2 ends at 10");
+
+        // A contains filter is served by SQL too: only the matching rows.
+        assert!(adapter.begin_job(AdapterJob::ReadTable {
+            generation: 4,
+            table: "users".into(),
+            page: 0,
+            page_size: 25,
+            sort: None,
+            filter: Some(ColumnFilter { column: "name".into(), contains: "user-5".into() }),
+        }));
+        let page = poll_read(&mut adapter).expect("the filtered read answers");
+        let names: Vec<&str> = page.rows.iter().map(|row| row[1].as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["user-50", "user-51", "user-52", "user-53", "user-54", "user-55",
+                "user-56", "user-57", "user-58", "user-59"],
+            "the fixture's user-5x decade (user-05 does not contain 'user-5'), in id order"
+        );
+        assert_eq!(page.total_rows, 10, "the count follows the filter");
+
+        // An unknown table is a failure, not an empty page.
+        assert!(adapter.begin_job(AdapterJob::ReadTable {
+            generation: 5,
+            table: "nope".into(),
+            page: 0,
+            page_size: 25,
+            sort: None,
+            filter: None,
+        }));
+        let error = poll_read(&mut adapter).expect_err("an unknown table fails");
+        assert!(!error.is_empty(), "the failure carries a sentence: {error}");
+    }
+
+    #[test]
+    fn a_read_without_a_session_answers_a_sentence() {
+        let dir = temp_dir("read-closed");
+        let store_path = dir.join("connections.json");
+        let mut adapter =
+            LiveAdapter::new(Arc::new(FileConnectionRepository::open(&store_path).unwrap()));
+        assert!(adapter.begin_job(AdapterJob::ReadTable {
+            generation: 1,
+            table: "users".into(),
+            page: 0,
+            page_size: 25,
+            sort: None,
+            filter: None,
+        }));
+        let error = poll_read(&mut adapter).expect_err("no session, no read");
+        assert!(error.contains("session"), "the sentence names the state: {error}");
     }
 }
