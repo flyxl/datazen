@@ -67,8 +67,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | D5 | 已完成 | 5a7e176d0 | testing/D5-sync-run.md |
 | D6 | 已完成 | 176b0cf | testing/D6-compare-objects.md |
 | D7 | 已完成 | de44da5 | testing/D7-compare-plan.md |
-| D8 | 进行中 | | |
-| D9 | 未开始 | | |
+| D8 | 已完成 | 860c4e0 | testing/D8-compare-apply.md |
+| D9 | 进行中 | | |
 | D10 | 未开始 | | |
 | W1 | 未开始 | | |
 | W2 | 未开始 | | |
