@@ -146,6 +146,14 @@ struct MemoryJob {
     fail_line: Option<String>,
 }
 
+/// One dashboard widget: its id, its title, its kind.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DashboardWidget {
+    pub id: u64,
+    pub title: String,
+    pub kind: String,
+}
+
 /// One object of a structure comparison: its name and whether the target
 /// endpoint has an object of the same name.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -236,6 +244,8 @@ pub trait WorkspaceApi {
     fn run_compare_plan(&mut self, plan: &str) -> Result<u64, String>;
     /// D10: run the transfer as a job. No pairs, no job.
     fn run_transfer(&mut self, pairs: &[(String, String)]) -> Result<u64, String>;
+    /// W1: the dashboard's widgets.
+    fn dashboard_widgets(&self) -> Vec<DashboardWidget>;
     /// Stop a running job. A stopped job reports "stopped" from then on.
     fn stop_job(&mut self, job: u64) -> Result<(), String>;
     /// Apply a DDL script to the table. The port records what it applied; a
@@ -301,6 +311,8 @@ pub struct MemoryWorkspace {
     snippets: Vec<Snippet>,
     /// Export jobs the memory port runs.
     jobs: Vec<MemoryJob>,
+    /// The dashboard's widgets.
+    widgets: Vec<DashboardWidget>,
 }
 
 impl Default for MemoryWorkspace {
@@ -390,6 +402,7 @@ impl MemoryWorkspace {
             ],
             snippets: Vec::new(),
             jobs: Vec::new(),
+            widgets: Vec::new(),
         }
     }
 }
@@ -769,6 +782,10 @@ impl WorkspaceApi for MemoryWorkspace {
             fail_line: fails.then(|| "the replica cannot create analytics tables".to_owned()),
         });
         Ok(job)
+    }
+
+    fn dashboard_widgets(&self) -> Vec<DashboardWidget> {
+        self.widgets.clone()
     }
 
     fn run_transfer(&mut self, pairs: &[(String, String)]) -> Result<u64, String> {
@@ -1683,6 +1700,12 @@ mod tests {
         assert_eq!(first.log[1], "transferring 1 column pairs");
         workspace.job_progress(job).unwrap();
         assert_eq!(workspace.job_progress(job).unwrap().status, "completed");
+    }
+
+    #[test]
+    fn a_dashboard_starts_with_no_widgets() {
+        let workspace = MemoryWorkspace::new();
+        assert!(workspace.dashboard_widgets().is_empty(), "the widget list starts empty");
     }
 
     #[test]

@@ -33,10 +33,19 @@ enum Section {
     Workspace,
     Settings,
     Tools,
+    Dashboards,
+    Workflows,
 }
 
 impl Section {
-    const ALL: [Self; 4] = [Self::Connections, Self::Workspace, Self::Settings, Self::Tools];
+    const ALL: [Self; 6] = [
+        Self::Connections,
+        Self::Workspace,
+        Self::Settings,
+        Self::Tools,
+        Self::Dashboards,
+        Self::Workflows,
+    ];
 
     const fn key(self) -> &'static str {
         match self {
@@ -44,6 +53,8 @@ impl Section {
             Self::Workspace => "workspace",
             Self::Settings => "settings",
             Self::Tools => "tools",
+            Self::Dashboards => "dashboards",
+            Self::Workflows => "workflows",
         }
     }
 
@@ -53,6 +64,8 @@ impl Section {
             Self::Workspace => "Workspace",
             Self::Settings => "Settings",
             Self::Tools => "Tools",
+            Self::Dashboards => "Dashboards",
+            Self::Workflows => "Workflows",
         }
     }
 }
@@ -1062,7 +1075,55 @@ fn page_body(state: &AppState, theme: tok::Theme) -> El {
         Section::Workspace => workspace_body(state, theme),
         Section::Settings => settings_page(state, theme),
         Section::Tools => tools_page(state, theme),
+        Section::Dashboards => dashboards_page(state, theme),
+        Section::Workflows => col().key("workflows-page").w_full(),
     }
+}
+
+/// The dashboards page: the widget list. An empty list has its own state.
+fn dashboards_page(state: &AppState, theme: tok::Theme) -> El {
+    let widgets = state.workspace.dashboard_widgets();
+    let mut page = col()
+        .key("dashboards-page")
+        .w_full()
+        .gap(8.0)
+        .child(text("Dashboards".to_owned()).font(type_::TITLE).color(theme.text));
+    if widgets.is_empty() {
+        return page.child(
+            col()
+                .key("dashboard-empty")
+                .w_full()
+                .h(120.0)
+                .px(12.0)
+                .py(8.0)
+                .radius(8.0)
+                .fill(theme.control_off)
+                .child(text("No widgets yet".to_owned()).font(type_::TITLE).color(theme.text))
+                .child(
+                    text("The widget form arrives with the next task")
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
+        );
+    }
+    for widget in &widgets {
+        page = page.child(
+            row()
+                .key(format!("widget-{}", widget.id))
+                .w_full()
+                .h(28.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(
+                    text(format!("#{} · {} · {}", widget.id, widget.title, widget.kind))
+                        .font(type_::LABEL)
+                        .color(theme.text),
+                ),
+        );
+    }
+    page
 }
 
 /// The tools page: one switcher, three tools. Sync, compare, transfer.
@@ -3268,7 +3329,9 @@ mod tests {
             let id = format!("nav-{key}");
             assert!(runtime.find(&id).is_some(), "missing navigation node: {id}");
         }
-        for key in ["sql-editor", "data-browser", "schema", "workflows"] {
+        // Three of the four old placeholder pages are gone for good; workflows
+        // returned as a real page with the W series.
+        for key in ["sql-editor", "data-browser", "schema"] {
             let id = format!("nav-{key}");
             assert!(runtime.find(&id).is_none(), "{id} is not a product page anymore");
         }
@@ -5104,6 +5167,20 @@ mod tests {
         runtime.frame(0.0);
         assert_eq!(runtime.state.transfer_snapshot.as_ref().unwrap().status, "completed");
         assert!(runtime.find("transfer-progress").is_some());
+    }
+
+    #[test]
+    fn an_empty_dashboard_has_its_own_empty_state() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-dashboards").expect("dashboards navigation");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+
+        assert!(runtime.find("dashboards-page").is_some());
+        assert!(runtime.find("dashboard-empty").is_some(), "the empty list has its own state");
+        assert!(runtime.find("widget-1").is_none());
     }
 
     #[test]
