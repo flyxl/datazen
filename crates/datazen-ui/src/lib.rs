@@ -140,6 +140,9 @@ struct AppState {
     sync_error: Option<String>,
     /// The sync preview grid (read-only, the B8 sheet).
     sync_preview_grid: Option<DataGrid>,
+    /// The sync run job and its last snapshot.
+    sync_job: Option<u64>,
+    sync_snapshot: Option<ProgressSnapshot>,
 }
 
 impl Default for AppState {
@@ -195,6 +198,8 @@ impl Default for AppState {
             sync_options: [false, false, true],
             sync_error: None,
             sync_preview_grid: None,
+            sync_job: None,
+            sync_snapshot: None,
         }
     }
 }
@@ -445,6 +450,30 @@ impl AppState {
     fn toggle_sync_option(&mut self, index: usize) {
         if let Some(option) = self.sync_options.get_mut(index) {
             *option = !*option;
+        }
+    }
+
+    /// D5: run the sync. No selected tables, no job.
+    fn sync_run(&mut self) {
+        let source = self.sync_source.clone();
+        let target = self.sync_target.clone();
+        let tables: Vec<String> = self.sync_tables.iter().cloned().collect();
+        match self.workspace.run_sync(&source, &target, &tables) {
+            Ok(job) => {
+                self.sync_job = Some(job);
+                self.sync_snapshot = self.workspace.job_progress(job);
+                self.sync_error = None;
+            }
+            Err(error) => {
+                self.sync_job = None;
+                self.sync_error = Some(error);
+            }
+        }
+    }
+
+    fn refresh_sync_progress(&mut self) {
+        if let Some(job) = self.sync_job {
+            self.sync_snapshot = self.workspace.job_progress(job);
         }
     }
 
@@ -1093,6 +1122,39 @@ fn sync_tool(state: &AppState, theme: tok::Theme) -> El {
                     theme.text_secondary,
                     theme.control_off,
                 ));
+            }
+            section = section.child(
+                row()
+                    .key("sync-run-controls")
+                    .w_full()
+                    .h(28.0)
+                    .gap(8.0)
+                    .center_y()
+                    .child(
+                        row()
+                            .key("sync-run")
+                            .h(24.0)
+                            .px(8.0)
+                            .center_y()
+                            .radius(6.0)
+                            .fill(theme.control_off)
+                            .child(text("Run sync").font(type_::LABEL).color(theme.text))
+                            .on_press(|state: &mut AppState| state.sync_run()),
+                    )
+                    .child(
+                        row()
+                            .key("sync-refresh")
+                            .h(24.0)
+                            .px(8.0)
+                            .center_y()
+                            .radius(6.0)
+                            .fill(theme.control_off)
+                            .child(text("Refresh").font(type_::LABEL).color(theme.text))
+                            .on_press(|state: &mut AppState| state.refresh_sync_progress()),
+                    ),
+            );
+            if let Some(snapshot) = &state.sync_snapshot {
+                section = section.child(progress_panel(snapshot, "sync", theme));
             }
         }
         _ => section = section.child(
@@ -4225,6 +4287,54 @@ mod tests {
         assert!(!grid.is_editing(), "the editor refuses the preview");
         assert!(runtime.find("result-grid").is_some(), "drawn through the B8 sheet");
         assert!(runtime.find("result-cell-0-0").is_some());
+    }
+
+    #[test]
+    fn the_sync_run_needs_tables_and_finishes_through_snapshots() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-tools").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        runtime.state.sync_next_endpoints();
+        runtime.state.sync_tables.insert("customers".into());
+        runtime.state.sync_next_tables();
+        runtime.state.sync_show_preview();
+        runtime.settle_all();
+        runtime.frame(1.0);
+
+        // No selection, no run: clear the tables behind the wizard's back.
+        runtime.state.sync_tables.clear();
+        let (x, y) = runtime.find("sync-run").expect("run button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.state.sync_job.is_none(), "no tables selected, no job");
+        assert!(runtime.find("sync-error").is_some());
+
+        runtime.state.sync_tables.insert("customers".into());
+        let (x, y) = runtime.find("sync-run").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.state.sync_job.is_some());
+        assert_eq!(runtime.state.sync_snapshot.as_ref().unwrap().status, "running");
+
+        let (x, y) = runtime.find("sync-refresh").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("sync-refresh").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(
+            runtime.state.sync_snapshot.as_ref().unwrap().status,
+            "completed",
+            "the sync job finishes through snapshots"
+        );
+        assert!(runtime.find("sync-progress").is_some());
     }
 
     #[test]

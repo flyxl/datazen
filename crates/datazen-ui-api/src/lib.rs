@@ -213,6 +213,8 @@ pub trait WorkspaceApi {
     fn connection_tables(&self, connection: &str) -> Vec<String>;
     /// D4: a read-only preview page of one table, as the sync would copy it.
     fn sync_preview(&mut self, source: &str, table: &str) -> Result<TablePage, String>;
+    /// D5: run the sync as a job. No tables selected, no job.
+    fn run_sync(&mut self, source: &str, target: &str, tables: &[String]) -> Result<u64, String>;
     /// Stop a running job. A stopped job reports "stopped" from then on.
     fn stop_job(&mut self, job: u64) -> Result<(), String>;
     /// Apply a DDL script to the table. The port records what it applied; a
@@ -689,6 +691,26 @@ impl WorkspaceApi for MemoryWorkspace {
         page.table = format!("sync preview: {table}");
         page.read_only = Some("sync preview".into());
         Ok(page)
+    }
+
+    fn run_sync(&mut self, source: &str, target: &str, tables: &[String]) -> Result<u64, String> {
+        self.sync_endpoints(source, target)?;
+        if tables.is_empty() {
+            return Err("no tables selected".into());
+        }
+        let job = self.jobs.last().map(|job| job.job + 1).unwrap_or(1);
+        self.jobs.push(MemoryJob {
+            job,
+            format: "sync".into(),
+            range: format!("{} tables", tables.len()),
+            reads: 0,
+            stopped: false,
+            log: vec![
+                "queued".to_owned(),
+                format!("syncing {source} into {target}"),
+            ],
+        });
+        Ok(job)
     }
 
     fn connection_tables(&self, connection: &str) -> Vec<String> {
@@ -1485,6 +1507,21 @@ mod tests {
         assert_eq!(page.read_only.as_deref(), Some("sync preview"));
         assert!(workspace.sync_preview("replica", "catalog").is_err(), "the replica cannot preview analytics");
         assert!(workspace.sync_preview("local", "missing").is_err());
+    }
+
+    #[test]
+    fn a_sync_without_selected_tables_gets_no_job() {
+        let mut workspace = MemoryWorkspace::new();
+        assert!(workspace.run_sync("local", "replica", &[]).is_err(), "no selection, no job");
+        assert!(workspace.run_sync("local", "local", &["customers".to_owned()]).is_err());
+        let tables = vec!["customers".to_owned(), "orders".to_owned()];
+        let job = workspace.run_sync("local", "replica", &tables).unwrap();
+        let first = workspace.job_progress(job).unwrap();
+        assert_eq!(first.status, "running");
+        assert_eq!(first.log[1], "syncing local into replica");
+        workspace.job_progress(job).unwrap();
+        let done = workspace.job_progress(job).unwrap();
+        assert_eq!(done.status, "completed", "a sync job finishes like the others");
     }
 
     #[test]
