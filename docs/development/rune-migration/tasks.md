@@ -36,8 +36,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | Q2 | 已完成 | df65321 | testing/Q2-find-replace.md |
 | Q3 | 已完成 | ec844ee | testing/Q3-statements.md |
 | Q4 | 已完成 | c0048c6 | testing/Q4-query-api.md |
-| Q5 | 进行中 | | |
-| Q6 | 未开始 | | |
+| Q5 | 已完成 | 9db816d | testing/Q5-generations.md |
+| Q6 | 进行中 | | |
 | Q7 | 未开始 | | |
 | Q8 | 未开始 | | |
 | O1 | 未开始 | | |
