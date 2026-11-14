@@ -174,6 +174,10 @@ struct AppState {
     transfer_confirming: bool,
     transfer_job: Option<u64>,
     transfer_snapshot: Option<ProgressSnapshot>,
+    /// The widget form's fields and its last rejected save.
+    widget_title: TextEdit,
+    widget_query: TextEdit,
+    widget_error: Option<String>,
 }
 
 impl Default for AppState {
@@ -245,6 +249,9 @@ impl Default for AppState {
             transfer_confirming: false,
             transfer_job: None,
             transfer_snapshot: None,
+            widget_title: TextEdit::new(String::new()),
+            widget_query: TextEdit::new(String::new()),
+            widget_error: None,
         }
     }
 }
@@ -578,6 +585,20 @@ impl AppState {
     fn refresh_transfer_progress(&mut self) {
         if let Some(job) = self.transfer_job {
             self.transfer_snapshot = self.workspace.job_progress(job);
+        }
+    }
+
+    /// Save the widget form through the port. An empty title is refused.
+    fn save_widget_form(&mut self) {
+        let title = self.widget_title.text.trim().to_owned();
+        let query = self.widget_query.text.trim().to_owned();
+        match self.workspace.save_dashboard_widget(&title, &query) {
+            Ok(_) => {
+                self.widget_error = None;
+                self.widget_title = TextEdit::new(String::new());
+                self.widget_query = TextEdit::new(String::new());
+            }
+            Err(error) => self.widget_error = Some(error),
         }
     }
 
@@ -1087,7 +1108,53 @@ fn dashboards_page(state: &AppState, theme: tok::Theme) -> El {
         .key("dashboards-page")
         .w_full()
         .gap(8.0)
-        .child(text("Dashboards".to_owned()).font(type_::TITLE).color(theme.text));
+        .child(text("Dashboards".to_owned()).font(type_::TITLE).color(theme.text))
+        .child(
+            row()
+                .key("widget-form")
+                .w_full()
+                .h(28.0)
+                .gap(8.0)
+                .center_y()
+                .child(
+                    text_input(&state.widget_title, type_::LABEL)
+                        .key("widget-title-input")
+                        .w(160.0)
+                        .h(24.0)
+                        .on_edit(|state: &mut AppState| &mut state.widget_title),
+                )
+                .child(
+                    text_input(&state.widget_query, type_::LABEL)
+                        .key("widget-query-input")
+                        .w(260.0)
+                        .h(24.0)
+                        .on_edit(|state: &mut AppState| &mut state.widget_query),
+                )
+                .child(
+                    row()
+                        .key("widget-save")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Save widget").font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.save_widget_form()),
+                ),
+        );
+    if let Some(error) = &state.widget_error {
+        page = page.child(
+            row()
+                .key("widget-form-error")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+        );
+    }
     if widgets.is_empty() {
         return page.child(
             col()
@@ -5254,6 +5321,34 @@ mod tests {
         assert!(zero.0[3] >= 1.0, "the zero bar keeps a sliver: {:?}", zero);
         assert!(max.0[3] >= 80.0, "the maximum bar is tall: {:?}", max);
         assert!(max.0[3] > zero.0[3] + 60.0, "the chart is proportional");
+    }
+
+    #[test]
+    fn a_widget_without_a_title_cannot_be_saved() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-dashboards").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.find("widget-form").is_some());
+
+        let (x, y) = runtime.find("widget-save").expect("save button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("dashboard-empty").is_some(), "nothing was saved");
+        assert!(runtime.find("widget-form-error").is_some(), "the refusal is visible");
+
+        runtime.state.widget_title = rune::TextEdit::new("Weekly");
+        runtime.state.widget_query = rune::TextEdit::new("select 1");
+        let (x, y) = runtime.find("widget-save").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("widget-1").is_some(), "the widget joins the dashboard");
+        assert!(runtime.find("widget-chart-1").is_some(), "its chart renders");
+        assert!(runtime.find("widget-form-error").is_none());
     }
 
     #[test]
