@@ -92,6 +92,11 @@ struct AppState {
     page_size_input: TextEdit,
     max_rows_input: TextEdit,
     settings_error: Option<String>,
+    /// The connection form's fields and its last rejected save.
+    connection_name: TextEdit,
+    connection_engine: TextEdit,
+    connection_address: TextEdit,
+    connection_error: Option<String>,
 }
 
 impl Default for AppState {
@@ -120,6 +125,10 @@ impl Default for AppState {
             page_size_input: TextEdit::new(String::new()),
             max_rows_input: TextEdit::new(String::new()),
             settings_error: None,
+            connection_name: TextEdit::new(String::new()),
+            connection_engine: TextEdit::new(String::new()),
+            connection_address: TextEdit::new(String::new()),
+            connection_error: None,
         }
     }
 }
@@ -180,6 +189,23 @@ impl AppState {
                 Err(error) => self.settings_error = Some(error),
             },
             Err(_) => self.settings_error = Some("query max rows must be a number".into()),
+        }
+    }
+
+    /// Save the connection form through the port. A missing address is refused
+    /// and nothing is saved.
+    fn save_connection_form(&mut self) {
+        let name = self.connection_name.text.clone();
+        let engine = self.connection_engine.text.clone();
+        let address = self.connection_address.text.clone();
+        match self.workspace.save_connection(&name, &engine, &address) {
+            Ok(()) => {
+                self.connection_error = None;
+                self.connection_name = TextEdit::new(String::new());
+                self.connection_engine = TextEdit::new(String::new());
+                self.connection_address = TextEdit::new(String::new());
+            }
+            Err(error) => self.connection_error = Some(error),
         }
     }
 
@@ -1412,7 +1438,60 @@ fn connection_list(state: &AppState, theme: tok::Theme) -> El {
                 .on_press(move |state: &mut AppState| state.open_connection(&id)),
         );
     }
-    list
+    let mut form = col().key("connection-form").w_full().gap(8.0).child(
+        row()
+            .key("connection-form-fields")
+            .w_full()
+            .h(28.0)
+            .gap(8.0)
+            .center_y()
+            .child(
+                text_input(&state.connection_name, type_::LABEL)
+                    .key("connection-name-input")
+                    .w(150.0)
+                    .h(24.0)
+                    .on_edit(|state: &mut AppState| &mut state.connection_name),
+            )
+            .child(
+                text_input(&state.connection_engine, type_::LABEL)
+                    .key("connection-engine-input")
+                    .w(110.0)
+                    .h(24.0)
+                    .on_edit(|state: &mut AppState| &mut state.connection_engine),
+            )
+            .child(
+                text_input(&state.connection_address, type_::LABEL)
+                    .key("connection-address-input")
+                    .w(170.0)
+                    .h(24.0)
+                    .on_edit(|state: &mut AppState| &mut state.connection_address),
+            )
+            .child(
+                row()
+                    .key("connection-save")
+                    .h(24.0)
+                    .px(8.0)
+                    .center_y()
+                    .radius(6.0)
+                    .fill(theme.control_off)
+                    .child(text("Save connection").font(type_::LABEL).color(theme.text))
+                    .on_press(|state: &mut AppState| state.save_connection_form()),
+            ),
+    );
+    if let Some(error) = &state.connection_error {
+        form = form.child(
+            row()
+                .key("connection-form-error")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+        );
+    }
+    list.child(form)
 }
 
 fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
@@ -2776,6 +2855,34 @@ mod tests {
             "the rejected write changed nothing"
         );
         assert!(runtime.find("settings-error").is_some(), "the rejection is visible");
+    }
+
+    #[test]
+    fn a_connection_form_save_needs_an_address() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        assert!(runtime.find("connection-local").is_some());
+        assert!(runtime.find("connection-form").is_some());
+
+        let (x, y) = runtime.find("connection-save").expect("save button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("connection-remote-postgres").is_none(), "nothing was saved");
+        assert!(runtime.find("connection-form-error").is_some(), "the refusal is visible");
+
+        runtime.state.connection_name = rune::TextEdit::new("Remote Postgres");
+        runtime.state.connection_engine = rune::TextEdit::new("postgres");
+        runtime.state.connection_address = rune::TextEdit::new("db.example.com:5432");
+        let (x, y) = runtime.find("connection-save").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(
+            runtime.find("connection-remote-postgres").is_some(),
+            "the saved connection joins the list"
+        );
+        assert!(runtime.find("connection-form-error").is_none(), "the error clears");
     }
 
     #[test]

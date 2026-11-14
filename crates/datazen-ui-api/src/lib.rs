@@ -157,6 +157,9 @@ pub trait WorkspaceApi {
     fn table_indexes(&self, table: &str) -> Result<Vec<IndexSpec>, String>;
     /// The table's foreign keys; a compound key is not split.
     fn table_foreign_keys(&self, table: &str) -> Result<Vec<ForeignKeySpec>, String>;
+    /// Save a connection from the form: name, engine, address. It goes into
+    /// the port only, never the system keychain. A missing address is refused.
+    fn save_connection(&mut self, name: &str, engine: &str, address: &str) -> Result<(), String>;
     /// Apply a DDL script to the table. The port records what it applied; a
     /// failure changes nothing.
     fn apply_ddl(&mut self, table: &str, sql: &str) -> Result<(), String>;
@@ -493,6 +496,40 @@ impl WorkspaceApi for MemoryWorkspace {
             }],
             _ => Vec::new(),
         })
+    }
+
+    fn save_connection(&mut self, name: &str, engine: &str, address: &str) -> Result<(), String> {
+        if address.trim().is_empty() {
+            return Err("address is required".into());
+        }
+        let name = if name.trim().is_empty() { "Untitled" } else { name.trim() };
+        let engine = if engine.trim().is_empty() { "postgres" } else { engine.trim() };
+        let slug = |name: &str| {
+            let mut id: String = name
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '-' })
+                .collect();
+            while id.contains("--") {
+                id = id.replace("--", "-");
+            }
+            id.trim_matches('-').to_owned()
+        };
+        let mut id = slug(name);
+        if id.is_empty() {
+            id = format!("connection-{}", self.connections.len() + 1);
+        }
+        let mut candidate = id.clone();
+        let mut counter = 2;
+        while self.connections.iter().any(|profile| profile.id == candidate) {
+            candidate = format!("{id}-{counter}");
+            counter += 1;
+        }
+        self.connections.push(ConnectionProfile {
+            id: candidate,
+            name: name.to_owned(),
+            engine: engine.to_owned(),
+        });
+        Ok(())
     }
 
     fn apply_ddl(&mut self, table: &str, sql: &str) -> Result<(), String> {
@@ -1062,6 +1099,26 @@ mod tests {
 
         assert!(workspace.write_setting(Setting::Theme { dark: false }).is_ok());
         assert!(workspace.read_settings().contains(&Setting::Theme { dark: false }));
+    }
+
+    #[test]
+    fn a_connection_without_an_address_cannot_be_saved() {
+        let mut workspace = MemoryWorkspace::new();
+        let before = workspace.connections().len();
+        assert!(workspace.save_connection("Remote", "postgres", "").is_err());
+        assert!(workspace.save_connection("Remote", "postgres", "   ").is_err());
+        assert_eq!(workspace.connections().len(), before, "nothing was saved");
+
+        workspace.save_connection("Remote Postgres", "postgres", "db.example.com:5432").unwrap();
+        let saved = workspace.connections().last().unwrap();
+        assert_eq!(saved.id, "remote-postgres");
+        assert_eq!(saved.name, "Remote Postgres");
+        assert_eq!(saved.engine, "postgres");
+        assert_eq!(workspace.connections().len(), before + 1);
+
+        // A duplicate name gets its own id; both are in the port, not the keychain.
+        workspace.save_connection("Remote Postgres", "mysql", "db2.example.com:3306").unwrap();
+        assert_eq!(workspace.connections().last().unwrap().id, "remote-postgres-2");
     }
 
     #[test]
