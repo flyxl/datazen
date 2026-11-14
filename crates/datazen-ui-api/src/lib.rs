@@ -219,6 +219,12 @@ pub const DESKTOP_NOT_IMPLEMENTED: &str = "not implemented in the desktop adapte
 /// `read_table_page`, H5 `commit_cells` — and until a method is wired it
 /// answers with the fixed error, which the UI displays while the memory port
 /// answers instead.
+///
+/// N1 adds the job twin of those use cases: work that can take real time (a
+/// live driver IO) goes through [`DesktopAdapter::begin_job`] and comes back
+/// through [`DesktopAdapter::poll_jobs`], so the UI's frame loop never
+/// blocks. The synchronous methods stay the in-memory world's path; adapters
+/// that answer every request quickly simply leave `begin_job` declined.
 pub trait DesktopAdapter {
     /// The connection list from the desktop use case.
     fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String>;
@@ -234,6 +240,62 @@ pub trait DesktopAdapter {
     /// Apply one batch of cell edits through the desktop use case and report
     /// how many landed. One edit is (row, column name, new value).
     fn commit_cells(&mut self, table: &str, edits: &[(u32, String, String)]) -> Result<u32, String>;
+
+    /// Offer real work to the host. `true` = the host took the job and its
+    /// answer arrives later through [`poll_jobs`](DesktopAdapter::poll_jobs);
+    /// `false` = this adapter serves the synchronous methods only and the
+    /// caller falls back to them. The default declines, so every existing
+    /// adapter keeps its synchronous behavior unchanged.
+    fn begin_job(&mut self, _job: AdapterJob) -> bool {
+        false
+    }
+
+    /// Completed jobs since the last call, oldest first. The default answers
+    /// nothing.
+    fn poll_jobs(&mut self) -> Vec<AdapterDelivery> {
+        Vec::new()
+    }
+}
+
+/// One unit of host work that can take real time — a live driver IO. The job
+/// twin of the adapter's synchronous methods, plus query execution: each job
+/// carries the generation of the request it answers, and the UI drops
+/// deliveries whose generation the state has moved past (plan invariant 3).
+#[derive(Clone, Debug, PartialEq)]
+pub enum AdapterJob {
+    /// Read one page of a table, the job twin of `read_table_page`.
+    ReadTable {
+        generation: u32,
+        table: String,
+        page: u32,
+        page_size: u32,
+        sort: Option<ColumnSort>,
+        filter: Option<ColumnFilter>,
+    },
+    /// Apply one batch of cell edits, the job twin of `commit_cells`. The
+    /// row numbers are page-local, as in the synchronous method.
+    CommitCells {
+        generation: u32,
+        table: String,
+        edits: Vec<(u32, String, String)>,
+    },
+    /// Run one SQL statement, the job twin of the workspace's `execute`.
+    RunQuery {
+        generation: u32,
+        sql: String,
+    },
+}
+
+/// A completed job's answer. The generation is the requesting job's; the UI
+/// matches it against the live one before writing any state.
+#[derive(Clone, Debug, PartialEq)]
+pub enum AdapterDelivery {
+    /// A read job's page (or its failure sentence).
+    TablePage { generation: u32, page: Result<TablePage, String> },
+    /// A commit job's landed edit count (or its failure sentence).
+    CommitCount { generation: u32, count: Result<u32, String> },
+    /// A query job's result page (or its failure sentence).
+    QueryPage { generation: u32, page: Result<TablePage, String> },
 }
 
 /// The stand-in adapter while no desktop use case is wired: every method
@@ -2293,6 +2355,28 @@ mod tests {
             DESKTOP_NOT_IMPLEMENTED,
             "commit_cells is not wired yet"
         );
+    }
+
+    #[test]
+    fn every_adapter_declines_jobs_and_polls_nothing_by_default() {
+        // N1: the job surface is opt-in. The unwired adapter and the wired
+        // use-case adapter both decline `begin_job` and answer no deliveries,
+        // so the synchronous paths of H3–H5 keep serving them unchanged.
+        let job = AdapterJob::ReadTable {
+            generation: 1,
+            table: "customers".into(),
+            page: 0,
+            page_size: 25,
+            sort: None,
+            filter: None,
+        };
+        let mut unwired = UnimplementedAdapter;
+        assert!(!unwired.begin_job(job.clone()), "the unwired adapter declines");
+        assert!(unwired.poll_jobs().is_empty(), "the unwired adapter delivers nothing");
+
+        let mut wired = UseCaseAdapter::new(Vec::new());
+        assert!(!wired.begin_job(job), "the use-case adapter declines");
+        assert!(wired.poll_jobs().is_empty(), "the use-case adapter delivers nothing");
     }
 
     #[test]

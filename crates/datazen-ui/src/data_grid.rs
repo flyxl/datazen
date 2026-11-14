@@ -489,7 +489,7 @@ pub fn panel(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well
     panel
         .child(filter_bar(state, ink, muted, well))
         .child(sheet(grid, GridSlot::Table, ink, well, 380.0))
-        .child(footer(grid, ink, muted))
+        .child(footer(state, ink, muted))
 }
 
 /// The query result area: the same sheet as the table page, without the filter
@@ -565,14 +565,40 @@ fn filter_bar(state: &crate::AppState, ink: rune::Color, muted: rune::Color, wel
         )
 }
 
-/// Prev / next paging over the table behind the loaded page.
-fn footer(grid: &DataGrid, ink: rune::Color, muted: rune::Color) -> El {
-    row()
+/// Prev / next paging over the table behind the loaded page, and the host
+/// job markers (N1): a read in flight says "Loading…", a commit in flight
+/// says "Saving…". The markers live in the footer's fixed height, so the
+/// grid's layout does not shift while a job runs.
+fn footer(state: &crate::AppState, ink: rune::Color, muted: rune::Color) -> El {
+    let grid = &state.grid;
+    let mut footer = row()
         .key("grid-footer")
         .w_full()
         .h(28.0)
         .gap(8.0)
-        .center_y()
+        .center_y();
+    if state.commit_loading.is_some() {
+        footer = footer.child(
+            row()
+                .key("commit-loading")
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .child(text("Saving…").font(label_style()).color(muted)),
+        );
+    } else if state.table_loading.is_some() {
+        footer = footer.child(
+            row()
+                .key("table-loading")
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .child(text("Loading…").font(label_style()).color(muted)),
+        );
+    }
+    footer
         .child(
             row()
                 .key("page-prev")

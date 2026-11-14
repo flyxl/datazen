@@ -7,7 +7,7 @@ mod data_grid;
 mod sql_editor;
 
 use data_grid::DataGrid;
-use datazen_ui_api::{ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile, DESKTOP_NOT_IMPLEMENTED, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, UnimplementedAdapter, WorkflowStepResult, WorkspaceApi};
+use datazen_ui_api::{AdapterDelivery, AdapterJob, ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile, DESKTOP_NOT_IMPLEMENTED, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, UnimplementedAdapter, WorkflowStepResult, WorkspaceApi};
 // The desktop host's use-case adapter; the wasm host brings its own later.
 #[cfg(not(target_arch = "wasm32"))]
 use datazen_ui_api::UseCaseAdapter;
@@ -127,6 +127,17 @@ struct AppState {
     /// The query generation: bumped by every run and every cancel. A result page
     /// from a generation that is not the current one is dropped.
     query_generation: u32,
+    /// The table read generation (N1): bumped by every read request. A job
+    /// delivery from a generation that is not the current one is dropped.
+    read_generation: u32,
+    /// A read job the host accepted and has not answered yet (N1). While it
+    /// is in flight the grid keeps its previous page and the footer says so.
+    table_loading: Option<u32>,
+    /// A commit job the host accepted and has not answered yet (N1). The
+    /// dirty marks stay until the delivery lands.
+    commit_loading: Option<u32>,
+    /// A query job the host accepted and has not answered yet (N1).
+    query_loading: Option<u32>,
     /// Catalog nodes the tree keeps collapsed, by path: "db" or "db/schema".
     collapsed: std::collections::BTreeSet<String>,
     /// Which side of the selected table tab the workspace shows.
@@ -232,6 +243,10 @@ impl Default for AppState {
             filter_editor: TextEdit::new(String::new()),
             result_grid: None,
             query_generation: 0,
+            read_generation: 0,
+            table_loading: None,
+            commit_loading: None,
+            query_loading: None,
             collapsed: std::collections::BTreeSet::new(),
             table_view: TableView::Data,
             er_schema: None,
@@ -944,6 +959,12 @@ impl AppState {
         self.er_schema = None;
         self.er_positions.clear();
         self.er_drag = None;
+        // N1: a read the disconnect invalidates must not land later, and no
+        // loading marker outlives the session it belonged to.
+        self.next_read_generation();
+        self.table_loading = None;
+        self.commit_loading = None;
+        self.query_loading = None;
     }
 
     fn open_table_tab(&mut self, title: &str) -> Option<u32> {
@@ -967,6 +988,24 @@ impl AppState {
     }
 
     fn show_table(&mut self, title: &str) -> bool {
+        // N1: a live host takes the read as a job and answers on its own
+        // schedule. Until the delivery lands the grid keeps its previous
+        // page and the footer says the read is in flight; a declined job
+        // falls through to the synchronous paths below (H4's contract).
+        let generation = self.next_read_generation();
+        let job = AdapterJob::ReadTable {
+            generation,
+            table: title.to_owned(),
+            page: self.table_page,
+            page_size: self.table_page_size(),
+            sort: self.sort.clone(),
+            filter: self.filter.clone(),
+        };
+        if self.desktop.begin_job(job) {
+            self.table_loading = Some(generation);
+            self.active = Section::Workspace;
+            return true;
+        }
         // H4: the desktop adapter's read use case first; the port's memory
         // use case answers while the adapter is unwired. When both fail the
         // grid keeps its previous page.
@@ -1059,6 +1098,17 @@ impl AppState {
 
     /// Commit every staged edit to the stored rows, then reload the page.
     fn commit_staged_edits(&mut self) {
+        // N1: a live host takes the batch as a job. The dirty marks stay
+        // until the delivery lands — the job twin of H5's rule that a real
+        // failure keeps them.
+        let generation = self.read_generation;
+        let table = self.grid.table_label().to_owned();
+        let edits = self.grid.staged_edits();
+        let job = AdapterJob::CommitCells { generation, table, edits };
+        if self.desktop.begin_job(job) {
+            self.commit_loading = Some(generation);
+            return;
+        }
         // H5: the desktop adapter's commit use case first — the grid's staged
         // edits travel as one batch. The fixed not-implemented error means
         // the host has not wired the use case yet, and the port's own staged
@@ -1109,9 +1159,12 @@ impl AppState {
     }
 
     /// Cancel the in-flight query: bumping the generation invalidates every
-    /// outstanding one, so their results are dropped when they arrive.
+    /// outstanding one, so their results are dropped when they arrive. A
+    /// query job in flight also stops waiting: its marker leaves with the
+    /// generation, and a late delivery finds only the stale check.
     fn cancel_query(&mut self) {
         self.next_query_generation();
+        self.query_loading = None;
     }
 
     /// Run the statement at the cursor. A failed execution changes nothing; a
@@ -1121,9 +1174,63 @@ impl AppState {
         let Some(sql) = self.sql.statement_at_cursor() else {
             return;
         };
+        // N1: a live host runs the statement as a job; the editor keeps its
+        // document and the result area says the query is in flight until the
+        // delivery lands (dropped when its generation went stale, as in Q5).
+        let job = AdapterJob::RunQuery { generation, sql: sql.clone() };
+        if self.desktop.begin_job(job) {
+            self.query_loading = Some(generation);
+            return;
+        }
         match self.workspace.execute(&sql) {
             Ok(page) => self.deliver_query_result(generation, page),
             Err(_) => {}
+        }
+    }
+
+    /// Bump and return the next table read generation. Every read request —
+    /// a fresh open, a page turn, a reload — starts one, so a delivery from
+    /// a read the state has moved past is dropped (N1, plan invariant 3).
+    fn next_read_generation(&mut self) -> u32 {
+        self.read_generation += 1;
+        self.read_generation
+    }
+
+    /// A host job's answer arrived on the poll path. The loading marker of
+    /// the finished request always clears; the state itself is written only
+    /// when the delivery's generation is still the current one.
+    fn deliver_host_job(&mut self, delivery: AdapterDelivery) {
+        match delivery {
+            AdapterDelivery::TablePage { generation, page } => {
+                if self.table_loading == Some(generation) {
+                    self.table_loading = None;
+                }
+                if generation != self.read_generation {
+                    return;
+                }
+                if let Ok(page) = page {
+                    self.table_page = page.page;
+                    self.grid.load_page(&page);
+                    self.grid.set_editable(page.read_only.is_none());
+                }
+            }
+            AdapterDelivery::CommitCount { generation, count } => {
+                if self.commit_loading == Some(generation) {
+                    self.commit_loading = None;
+                }
+                if generation != self.read_generation || count.is_err() {
+                    return;
+                }
+                self.reload_table_page();
+            }
+            AdapterDelivery::QueryPage { generation, page } => {
+                if self.query_loading == Some(generation) {
+                    self.query_loading = None;
+                }
+                if let Ok(page) = page {
+                    self.deliver_query_result(generation, page);
+                }
+            }
         }
     }
 
@@ -3393,6 +3500,17 @@ fn object_tree(state: &AppState, theme: tok::Theme) -> El {
 }
 
 fn query_workspace(state: &AppState, theme: tok::Theme) -> El {
+    // N1: a query job in flight says so above whatever the area shows —
+    // the placeholder before the first result, the stale grid of the run
+    // before it.
+    let loading = state.query_loading.is_some().then(|| {
+        row()
+            .key("query-loading")
+            .w_full()
+            .h(20.0)
+            .center_y()
+            .child(text("Running…".to_owned()).font(type_::LABEL).color(theme.text_secondary))
+    });
     let results = match &state.result_grid {
         Some(grid) => data_grid::result_panel(
             grid,
@@ -3451,6 +3569,7 @@ fn query_workspace(state: &AppState, theme: tok::Theme) -> El {
                         .color(theme.text_secondary),
                 ),
         )
+        .children(loading)
         .child(results)
 }
 
@@ -3770,13 +3889,21 @@ fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
 }
 
 fn app_poll(state: &mut AppState, _: f64, _: &mut Tx) -> bool {
+    // N1: the host's finished jobs land first, whatever section is showing;
+    // a delivery redraws (it wrote state or cleared its marker), and stale
+    // generations were dropped inside `deliver_host_job`.
+    let mut dirty = false;
+    for delivery in state.desktop.poll_jobs() {
+        state.deliver_host_job(delivery);
+        dirty = true;
+    }
     if state.active != Section::Workspace {
-        return false;
+        return dirty;
     }
     if query_selected(state) {
-        return state.result_grid.as_mut().is_some_and(|grid| grid.sync_scroll());
+        return dirty || state.result_grid.as_mut().is_some_and(|grid| grid.sync_scroll());
     }
-    state.grid.has_page() && state.grid.sync_scroll()
+    dirty || (state.grid.has_page() && state.grid.sync_scroll())
 }
 
 fn app_ime(state: &mut AppState, ev: &Ime, _: &mut Tx) -> bool {
@@ -6690,5 +6817,284 @@ mod tests {
         assert!(!runtime.state.grid.is_editable());
         runtime.state.grid.begin_edit();
         assert!(!runtime.state.grid.is_editing());
+    }
+
+    /// N1's test host: it takes every job and answers each on the poll after
+    /// the next one — one frame of work, then the delivery. The canned pages
+    /// carry the requesting generation, so one read's answer is tellable
+    /// from another's.
+    use datazen_ui_api::{
+        AdapterDelivery, AdapterJob, ColumnFilter, ColumnSort, ConnectionProfile,
+        DESKTOP_NOT_IMPLEMENTED, DesktopAdapter, TablePage,
+    };
+
+    struct JobAdapter {
+        accepted: Vec<AdapterJob>,
+        polls: u32,
+        fail_commit: bool,
+    }
+
+    impl JobAdapter {
+        fn new() -> Self {
+            Self { accepted: Vec::new(), polls: 0, fail_commit: false }
+        }
+
+        fn failing_commit() -> Self {
+            Self { fail_commit: true, ..Self::new() }
+        }
+    }
+
+    impl DesktopAdapter for JobAdapter {
+        fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String> {
+            Ok(Vec::new())
+        }
+
+        fn read_table_page(
+            &mut self,
+            _: &str,
+            _: u32,
+            _: u32,
+            _: Option<&ColumnSort>,
+            _: Option<&ColumnFilter>,
+        ) -> Result<TablePage, String> {
+            // A host that takes jobs must not be served synchronously.
+            Err(DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn commit_cells(&mut self, _: &str, _: &[(u32, String, String)]) -> Result<u32, String> {
+            Err(DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn begin_job(&mut self, job: AdapterJob) -> bool {
+            self.accepted.push(job);
+            true
+        }
+
+        fn poll_jobs(&mut self) -> Vec<AdapterDelivery> {
+            self.polls += 1;
+            if self.polls < 2 {
+                return Vec::new();
+            }
+            self.polls = 0;
+            let fail_commit = self.fail_commit;
+            std::mem::take(&mut self.accepted)
+                .into_iter()
+                .map(|job| match job {
+                    AdapterJob::ReadTable { generation, table, page, page_size, .. } => {
+                        AdapterDelivery::TablePage {
+                            generation,
+                            page: Ok(TablePage {
+                                table,
+                                columns: vec!["job".into()],
+                                rows: vec![vec![format!("read-{generation}")]],
+                                page,
+                                page_size,
+                                total_rows: 1,
+                                sort: None,
+                                filter: None,
+                                read_only: None,
+                            }),
+                        }
+                    }
+                    AdapterJob::CommitCells { generation, .. } => AdapterDelivery::CommitCount {
+                        generation,
+                        count: if fail_commit {
+                            Err("rejected by the host".into())
+                        } else {
+                            Ok(1)
+                        },
+                    },
+                    AdapterJob::RunQuery { generation, .. } => AdapterDelivery::QueryPage {
+                        generation,
+                        page: Ok(TablePage {
+                            table: "result".into(),
+                            columns: vec!["job".into()],
+                            rows: vec![vec![format!("query-{generation}")]],
+                            page: 0,
+                            page_size: 1,
+                            total_rows: 1,
+                            sort: None,
+                            filter: None,
+                            read_only: None,
+                        }),
+                    },
+                })
+                .collect()
+        }
+    }
+
+    #[test]
+    fn an_accepted_read_job_keeps_the_previous_page_until_the_delivery_lands() {
+        use super::app_poll;
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.poll = Some(app_poll);
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.settle_all();
+        runtime.frame(0.0);
+        let before = runtime.state.grid.cell(0, 0).to_owned();
+        assert!(runtime.state.grid.pages() > 1, "the demo table pages");
+
+        // The host takes the page turn as a job: the marker shows, the page
+        // the grid already loaded stays exactly as it was.
+        runtime.state.desktop = Box::new(JobAdapter::new());
+        runtime.state.next_table_page();
+        assert!(runtime.state.table_loading.is_some(), "the read job is in flight");
+        assert_eq!(
+            runtime.state.grid.cell(0, 0), before,
+            "the previous page stays while the job runs"
+        );
+        runtime.settle_all();
+        runtime.frame(0.0);
+        assert!(runtime.find("table-loading").is_some(), "the footer says the read is in flight");
+        assert_eq!(runtime.state.grid.cell(0, 0), before, "still the previous page");
+
+        // The delivery lands on the poll after the next one.
+        runtime.frame(0.0);
+        assert!(runtime.state.table_loading.is_none(), "the marker leaves with the delivery");
+        assert_eq!(
+            runtime.state.grid.cell(0, 0),
+            format!("read-{}", runtime.state.read_generation),
+            "the delivered page replaces the kept one"
+        );
+        runtime.settle_all();
+        runtime.frame(0.0);
+        assert!(runtime.find("table-loading").is_none(), "the marker leaves the footer");
+    }
+
+    #[test]
+    fn a_stale_read_delivery_is_dropped() {
+        use super::app_poll;
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.poll = Some(app_poll);
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.settle_all();
+        runtime.frame(0.0);
+
+        // Two reads in a row: the second supersedes the first, and both
+        // answers arrive together — the stale one first.
+        runtime.state.desktop = Box::new(JobAdapter::new());
+        runtime.state.reload_table_page();
+        let stale = runtime.state.read_generation;
+        runtime.state.reload_table_page();
+        let current = runtime.state.read_generation;
+        assert_ne!(stale, current, "the second read started its own generation");
+
+        runtime.frame(0.0);
+        assert!(runtime.state.table_loading.is_some(), "the newer read is in flight");
+        runtime.frame(0.0);
+        assert_eq!(
+            runtime.state.grid.cell(0, 0),
+            format!("read-{current}"),
+            "only the current generation's page lands"
+        );
+        assert_ne!(
+            runtime.state.grid.cell(0, 0),
+            format!("read-{stale}"),
+            "the superseded read does not overwrite it"
+        );
+        assert!(runtime.state.table_loading.is_none());
+    }
+
+    #[test]
+    fn an_accepted_query_job_lands_in_the_result_grid_when_it_delivers() {
+        use super::app_poll;
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.poll = Some(app_poll);
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_query_tab("Query").unwrap();
+        runtime.state.sql = sql_editor::SqlEditor::from_doc("select 1");
+        runtime.settle_all();
+        runtime.frame(0.0);
+
+        runtime.state.desktop = Box::new(JobAdapter::new());
+        runtime.state.run_query();
+        let generation = runtime.state.query_generation;
+        assert!(runtime.state.query_loading.is_some(), "the query job is in flight");
+        assert!(runtime.state.result_grid.is_none(), "no result before the delivery");
+        runtime.settle_all();
+        runtime.frame(0.0);
+        assert!(runtime.find("query-loading").is_some(), "the result area says the query runs");
+
+        runtime.frame(0.0);
+        assert!(runtime.state.query_loading.is_none(), "the marker leaves with the delivery");
+        let grid = runtime.state.result_grid.as_ref().expect("the delivery landed");
+        assert_eq!(grid.cell(0, 0), format!("query-{generation}"));
+    }
+
+    #[test]
+    fn an_accepted_commit_job_keeps_the_dirty_marks_until_the_delivery() {
+        use super::app_poll;
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.poll = Some(app_poll);
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.settle_all();
+        runtime.frame(0.0);
+        runtime.state.grid.select(0, 1);
+        runtime.state.grid.begin_edit();
+        runtime.state.grid.editor.insert("-edited");
+        runtime.state.commit_grid_edit();
+        assert_eq!(runtime.state.grid.dirty_cells(), 1, "one staged edit");
+
+        // The host takes the batch as a job: the dirty marks stay and the
+        // footer says the save is in flight.
+        runtime.state.desktop = Box::new(JobAdapter::new());
+        runtime.state.commit_staged_edits();
+        assert!(runtime.state.commit_loading.is_some(), "the commit job is in flight");
+        assert_eq!(runtime.state.grid.dirty_cells(), 1, "the dirty marks stay while it runs");
+        runtime.settle_all();
+        runtime.frame(0.0);
+        assert!(runtime.find("commit-loading").is_some(), "the footer says the save is in flight");
+
+        // The delivery lands: the marks clear through the reload the commit
+        // asked for (itself a job on this host, delivered two polls later).
+        runtime.frame(0.0);
+        assert!(runtime.state.commit_loading.is_none(), "the commit marker leaves");
+        assert!(runtime.state.table_loading.is_some(), "the reload after the commit is a read job");
+        runtime.frame(0.0);
+        runtime.frame(0.0);
+        assert!(runtime.state.table_loading.is_none());
+        assert_eq!(runtime.state.grid.dirty_cells(), 0, "the reloaded page carries no staged edits");
+    }
+
+    #[test]
+    fn a_failed_commit_delivery_keeps_the_dirty_marks() {
+        use super::app_poll;
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.poll = Some(app_poll);
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.settle_all();
+        runtime.frame(0.0);
+        runtime.state.grid.select(0, 1);
+        runtime.state.grid.begin_edit();
+        runtime.state.grid.editor.insert("-edited");
+        runtime.state.commit_grid_edit();
+        let before = runtime.state.grid.cell(0, 1).to_owned();
+
+        runtime.state.desktop = Box::new(JobAdapter::failing_commit());
+        runtime.state.commit_staged_edits();
+        runtime.frame(0.0);
+        runtime.frame(0.0);
+
+        assert!(runtime.state.commit_loading.is_none(), "the marker leaves with the failure");
+        assert_eq!(runtime.state.grid.dirty_cells(), 1, "a real failure keeps the dirty marks");
+        assert_eq!(
+            runtime.state.grid.cell(0, 1), before,
+            "no reload happened, the staged value is untouched"
+        );
+        assert!(runtime.state.table_loading.is_none(), "a failed commit does not reload");
     }
 }
