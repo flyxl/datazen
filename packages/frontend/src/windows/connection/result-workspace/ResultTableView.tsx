@@ -200,8 +200,11 @@ export function ResultTableView({
         next: edit.value as any,
       };
       if (existing) {
-        existing.changedColumns = [...existing.changedColumns, edit.column];
-        existing.cells = [...existing.cells, cell];
+        map.set(edit.row, {
+          ...existing,
+          changedColumns: [...existing.changedColumns, edit.column],
+          cells: [...existing.cells, cell],
+        });
       } else {
         map.set(edit.row, {
           identityKey: String(edit.row),
