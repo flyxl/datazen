@@ -44,8 +44,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | O2 | 已完成 | e8eaf1e | testing/O2-tree-expand.md |
 | O3 | 已完成 | 83cd143 | testing/O3-ddl-page.md |
 | O4 | 已完成 | 9565120 | testing/O4-column-list.md |
-| O5 | 进行中 | | |
-| O6 | 未开始 | | |
+| O5 | 已完成 | 86f124b | testing/O5-index-list.md |
+| O6 | 进行中 | | |
 | O7 | 未开始 | | |
 | O8 | 未开始 | | |
 | O9 | 未开始 | | |
