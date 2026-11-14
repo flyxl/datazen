@@ -9,6 +9,11 @@ cargo build --release -p datazen-rune-host
 ./target/release/datazen-native
 ```
 
+### 打包（T11）
+
+- **`.deb`**：`packaging/native/build-deb.sh [release|dev]` —— release 二进制 + desktop 项 + 应用图标 + control（`Depends: libxkbcommon0`），`dpkg-deb --root-owner-group` 产出 `target/deb/datazen-native_<版本>_<架构>.deb`；版本取 git describe（tag→净版本）。
+- **发布流水线**：`.github/workflows/release-native.yml` —— 打 `v*` tag 或手动触发，Linux（.deb + 发布）/macOS（tar.gz）/Windows（zip）三平台构建 `datazen-native`，产物上传到该 tag 的草稿 release（与 Tauri 版 `release.yml` 同惯例：softprops v3、draft、单一 notes 写者、并发组）。React/Tauri 桌面仍走 `release.yml`，两条流水线互不触碰。
+
 - 工具链：Rust stable（CI 同款）。
 - Linux 依赖：`libxkbcommon`（winit 事件层）。无显示环境（无 X/Wayland）时窗口初始化会失败——这是图形应用的预期行为。
 - 产物裁剪：workspace release 剖面（`strip` + `lto` + `codegen-units=1` + `opt-level=z"`），x86_64 Linux 实测约 36 MB。
@@ -57,7 +62,7 @@ cargo build --release -p datazen-rune-host
 
 剩余差距（本系列范围外，如实列出）：
 
-- **宿主能力**：系统菜单、多窗口（文件对话框/系统剪贴板 T1/T2、托盘 T9、加密钥匙串 T10 均已接线：连接密码以 OS 钥匙串主密钥 AES-GCM 封存，`connections.json` 不再落明文密码，`DATAZEN_NATIVE_KEYRING=file` 为无钥匙串环境的逃生口）。
+- **宿主能力**：系统菜单、多窗口（文件对话框/系统剪贴板 T1/T2、托盘 T9、加密钥匙串 T10、打包分发 T11 均已接线：连接密码以 OS 钥匙串主密钥 AES-GCM 封存，`connections.json` 不再落明文密码，`DATAZEN_NATIVE_KEYRING=file` 为无钥匙串环境的逃生口；`.deb` 与三平台发布流水线就绪）。
 - **用例域**：AI、MCP 审批、监控、隧道、语言包、admin——需要外部服务或宿主能力，另立任务，不做空接线。
 - **工作流引擎**（T8 后）：宿主实现 `WorkflowHost` 四方法，`WorkflowExecutor` 经作业通道真跑 query/command（query 与 list_tables/get_schema/describe_table 目录读）/condition/foreach/merge/transform 步；AI 步如实报"未配置"；命令按引擎 deadline 拒绝过期。计划文档里"进程执行"的说法已更正为引擎的真实词汇（七类读工具）。grants/plan guard/资源块与部件运行历史仍属引擎侧后续任务。
 - **WAPPS 管理与 Onboarding 向导**：永久留在 React（第一阶段 C4 结论）。

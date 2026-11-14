@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=DataZen
+GenericName=Database Workspace
+Comment=The DataZen database workspace — native Rune interface over real use cases
+Exec=datazen-native
+Icon=datazen-native
+Terminal=false
+Categories=Development;Database;
+StartupWMClass=datazen-native

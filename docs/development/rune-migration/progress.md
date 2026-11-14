@@ -1,7 +1,7 @@
 ## Current Task
-- **任务**: T11（打包分发）——T1–T10 已完成，正在做 .deb、发布流水线与文档。
+- **任务**: 无——第三阶段（宿主能力与分发）T1–T11 全部完成。
 - **负责人**: Coder Agent
-- **状态**: 前两阶段（[plan.md](plan.md)、[plan-native.md](plan-native.md)）全部完成并推送；第三阶段 T1–T11 进行中。
+- **状态**: 三阶段计划（[plan.md](plan.md)、[plan-native.md](plan-native.md)、[plan-native-3.md](plan-native-3.md)）全部完成并推送；后续扩展点见 plan-native.md / plan-native-3.md 范围外清单与 [native-host.md](native-host.md) 的剩余差距。
 
 ## N5 组装配方（调查结论，fc160ec 时点）
 

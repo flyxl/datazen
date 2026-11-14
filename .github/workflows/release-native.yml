@@ -1,0 +1,81 @@
+name: Build & Release (native)
+
+# The pure native host's release pipeline (T11): the `datazen-native` binary
+# on the three desktop platforms, uploaded to the tag's draft release. The
+# React/Tauri desktop ships through release.yml; this one never builds the
+# frontend.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions: {}
+
+# One release at a time per tag (release.yml's discipline).
+concurrency:
+  group: release-native-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # No OS keychain on runners: the file key backend, exactly like CI's
+  # DATAZEN_KEYRING discipline (the packaging tests' escape hatch).
+  DATAZEN_NATIVE_KEYRING: file
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            archive: tar
+          - os: macos-latest
+            archive: tar
+          - os: windows-latest
+            archive: zip
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build the release binary
+        run: cargo build --release -p datazen-rune-host
+
+      - name: Package the Linux .deb
+        if: runner.os == 'Linux'
+        run: |
+          packaging/native/build-deb.sh release
+          mkdir -p artifacts
+          mv target/deb/*.deb artifacts/
+
+      - name: Package (tar)
+        if: matrix.archive == 'tar' && runner.os != 'Linux'
+        run: |
+          mkdir -p artifacts
+          TAG="${GITHUB_REF_NAME:-native}"
+          tar -czf "artifacts/datazen-native-${TAG}-${RUNNER_OS}-${RUNNER_ARCH}.tar.gz" \
+            -C target/release datazen-native
+        shell: bash
+
+      - name: Package (zip)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $tag = if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { "native" }
+          Compress-Archive -Path target/release/datazen-native.exe `
+            -DestinationPath "artifacts/datazen-native-$tag-windows-$(${env:RUNNER_ARCH}).zip"
+
+      - name: Upload artifacts to the draft release
+        # Notes are not set here (release.yml's rule: one notes writer, not
+        # one per matrix job).
+        uses: softprops/action-gh-release@v3
+        with:
+          draft: true
+          files: artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
