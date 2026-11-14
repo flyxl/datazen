@@ -806,6 +806,43 @@ fn completion_list(editor: &SqlEditor, ink: rune::Color) -> El {
     list
 }
 
+/// A plain document surface: the editor's model and IME caret, but no SQL
+/// highlighting — for workflow YAML and other non-SQL text.
+pub fn plain_panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color) -> El {
+    let carets: Vec<(usize, bool)> = editor
+        .selection
+        .ranges()
+        .iter()
+        .enumerate()
+        .map(|(i, sel)| (sel.head, i == editor.selection.main))
+        .collect();
+    let mut doc = col().key("yaml-editor-field").w(EDITOR_SURFACE_WIDTH).min_h(160.0);
+    for (n, (start, line)) in split_lines(&editor.doc).into_iter().enumerate() {
+        doc = doc.child(line_row(n, start, line, &[], &carets, editor));
+    }
+    col()
+        .key("yaml-editor")
+        .w_full()
+        .h(220.0)
+        .gap(4.0)
+        .child(
+            text("YAML · Command+Z undoes".to_owned())
+                .font(rune::tok::type_::LABEL)
+                .color(muted),
+        )
+        .child(
+            col()
+                .key("yaml-editor-scroll")
+                .w_full()
+                .h(180.0)
+                .scroll_xy()
+                .radius(8.0)
+                .on_press(|state: &mut crate::AppState| state.workflow_yaml.focus())
+                .child(doc),
+        )
+        .child(text(" ".to_owned()).w(0.0).h(0.0).color(ink))
+}
+
 fn muted_note(editor: &SqlEditor) -> String {
     match editor.composition() {
         Some(text) => format!("composing: {text}"),

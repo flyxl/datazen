@@ -180,6 +180,8 @@ struct AppState {
     widget_error: Option<String>,
     /// The workflow being edited: its name and the step list being reordered.
     workflow_editing: Option<(String, Vec<String>)>,
+    /// The workflow's YAML, edited through the SQL editor's document model.
+    workflow_yaml: SqlEditor,
 }
 
 impl Default for AppState {
@@ -255,6 +257,7 @@ impl Default for AppState {
             widget_query: TextEdit::new(String::new()),
             widget_error: None,
             workflow_editing: None,
+            workflow_yaml: SqlEditor::new(),
         }
     }
 }
@@ -593,6 +596,7 @@ impl AppState {
 
     fn edit_workflow(&mut self, name: &str) {
         if let Some(flow) = self.workspace.workflows().into_iter().find(|flow| flow.name == name) {
+            self.workflow_yaml = SqlEditor::from_doc(workflow_yaml(&flow.name, &flow.steps));
             self.workflow_editing = Some((flow.name, flow.steps));
         }
     }
@@ -1109,6 +1113,15 @@ fn navigation_item(state: &AppState, section: Section, dark: bool) -> El {
         .on_press(move |state: &mut AppState| state.select(section))
 }
 /// The connection after `current` in the port's list, wrapping around.
+/// A workflow as YAML text.
+fn workflow_yaml(name: &str, steps: &[String]) -> String {
+    let mut out = format!("name: {name}\nsteps:\n");
+    for step in steps {
+        out.push_str(&format!("  - {step}\n"));
+    }
+    out
+}
+
 fn next_connection(workspace: &MemoryWorkspace, current: &str) -> String {
     let ids: Vec<String> = workspace.connections().iter().map(|profile| profile.id.clone()).collect();
     match ids.iter().position(|id| id == current) {
@@ -1232,6 +1245,11 @@ fn workflows_page(state: &AppState, theme: tok::Theme) -> El {
             );
         }
         page = page.child(editor);
+        page = page.child(sql_editor::plain_panel(
+            &state.workflow_yaml,
+            theme.text,
+            theme.text_secondary,
+        ));
     }
     page
 }
@@ -3508,7 +3526,9 @@ pub fn run() {
 
 fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
     if state.active != Section::Workspace {
-        return false;
+        return state.active == Section::Workflows
+            && state.workflow_editing.is_some()
+            && sql_editor::on_key(&mut state.workflow_yaml, ev);
     }
     if query_selected(state) {
         if matches!(ev.key, Key::Enter) && ev.mods.cmd {
@@ -3534,6 +3554,9 @@ fn app_poll(state: &mut AppState, _: f64, _: &mut Tx) -> bool {
 }
 
 fn app_ime(state: &mut AppState, ev: &Ime, _: &mut Tx) -> bool {
+    if state.active == Section::Workflows && state.workflow_editing.is_some() {
+        return sql_editor::on_ime(&mut state.workflow_yaml, ev);
+    }
     state.active == Section::Workspace && query_selected(state) && sql_editor::on_ime(&mut state.sql, ev)
 }
 
@@ -5574,6 +5597,47 @@ mod tests {
             .find(|flow| flow.name == "audit")
             .unwrap();
         assert_eq!(audit.steps, vec!["apply plan".to_owned(), "compare structures".to_owned()]);
+    }
+
+    #[test]
+    fn the_workflow_yaml_edits_and_undoes_through_the_document_model() {
+        use rune::{Key, KeyEvent, Mods};
+        use super::app_key;
+
+        let mut runtime = runtime();
+        runtime.on_key = Some(app_key);
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-workflows").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+
+        let (x, y) = runtime.find("workflow-audit").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+
+        assert!(runtime.find("yaml-editor").is_some(), "the YAML surface is the editor model");
+        let doc = runtime.state.workflow_yaml.doc().to_owned();
+        assert!(doc.starts_with("name: audit\nsteps:\n"), "{doc}");
+        assert!(doc.contains("  - compare structures\n"));
+        // The plain panel shares the editor's line renderer (sql-line-* keys),
+        // just without the SQL spans.
+        assert!(runtime.find("sql-line-2").is_some(), "plain lines render");
+
+        runtime.state.workflow_yaml.focus();
+        runtime.key(KeyEvent { key: Key::Text("X".into()), mods: Mods::default() });
+        runtime.frame(0.0);
+        assert!(runtime.state.workflow_yaml.doc().starts_with('X'), "typing goes in");
+        assert_ne!(runtime.state.workflow_yaml.doc(), doc);
+
+        runtime.key(KeyEvent { key: Key::Command('z'), mods: Mods::default() });
+        runtime.frame(0.0);
+        assert_eq!(
+            runtime.state.workflow_yaml.doc(),
+            doc,
+            "Command+Z still undoes on the YAML document"
+        );
     }
 
     #[test]
