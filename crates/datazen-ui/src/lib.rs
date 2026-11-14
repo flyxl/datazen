@@ -9,7 +9,7 @@ mod sql_editor;
 use data_grid::DataGrid;
 use datazen_ui_api::{ColumnFilter, ColumnSort, MemoryWorkspace, QueryApi, TabKind, Tabs, TablePage, WorkspaceApi};
 use rune::tok::{self, type_};
-use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, TextEdit, Tx, col, row, text};
+use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, TextEdit, Tx, col, oklch, row, text};
 use sql_editor::SqlEditor;
 
 /// Rows asked from the workspace for one table page.
@@ -78,6 +78,12 @@ struct AppState {
     collapsed: std::collections::BTreeSet<String>,
     /// Which side of the selected table tab the workspace shows.
     table_view: TableView,
+    /// The ER diagram's open schema, as (database, schema).
+    er_schema: Option<(String, String)>,
+    /// ER box positions per table, canvas points. UI state only, never the port.
+    er_positions: std::collections::BTreeMap<String, (f32, f32)>,
+    /// The box being dragged: its table and where the gesture started.
+    er_drag: Option<(String, (f32, f32))>,
 }
 
 impl Default for AppState {
@@ -97,6 +103,9 @@ impl Default for AppState {
             query_generation: 0,
             collapsed: std::collections::BTreeSet::new(),
             table_view: TableView::Data,
+            er_schema: None,
+            er_positions: std::collections::BTreeMap::new(),
+            er_drag: None,
         }
     }
 }
@@ -122,6 +131,33 @@ impl AppState {
 
     fn set_table_view(&mut self, view: TableView) {
         self.table_view = view;
+    }
+
+    /// Open the ER diagram for the current schema: the selected table's schema,
+    /// else the first.
+    fn open_er(&mut self) {
+        let catalog = self.workspace.catalog();
+        let Some(database) = catalog.databases.first() else {
+            return;
+        };
+        let selected = self.tabs.selected().map(|tab| tab.title.clone());
+        let schema = selected
+            .and_then(|table| {
+                database
+                    .schemas
+                    .iter()
+                    .find(|schema| schema.tables.contains(&table))
+                    .map(|schema| schema.name.clone())
+            })
+            .or_else(|| database.schemas.first().map(|schema| schema.name.clone()));
+        if let Some(schema) = schema {
+            self.er_schema = Some((database.name.clone(), schema));
+            self.active = Section::Workspace;
+        }
+    }
+
+    fn close_er(&mut self) {
+        self.er_schema = None;
     }
 
     fn open_connection(&mut self, id: &str) {
@@ -152,6 +188,9 @@ impl AppState {
         self.filter_editor = TextEdit::new(String::new());
         self.result_grid = None;
         self.collapsed.clear();
+        self.er_schema = None;
+        self.er_positions.clear();
+        self.er_drag = None;
     }
 
     fn open_table_tab(&mut self, title: &str) -> Option<u32> {
@@ -318,6 +357,7 @@ impl AppState {
     /// workspace shows, so the tab strip and its content stay on one page.
     fn sync_grid_to_selected_tab(&mut self) {
         self.active = Section::Workspace;
+        self.er_schema = None;
         self.table_page = 0;
         self.filter = None;
         self.filter_column = 0;
@@ -400,10 +440,133 @@ fn workspace_body(state: &AppState, theme: tok::Theme) -> El {
     if query_selected(state) {
         return query_workspace(state, theme);
     }
+    if let Some((database, schema)) = &state.er_schema {
+        return er_view(state, database, schema, theme);
+    }
     if state.grid.has_page() {
         return table_workspace(state, theme);
     }
     workspace_empty(theme)
+}
+
+/// The ER page: one box per table of the open schema. Wide tables (more than 12
+/// columns) draw collapsed, showing the column count. Boxes drag; their
+/// positions live in UI state.
+fn er_view(state: &AppState, database: &str, schema: &str, theme: tok::Theme) -> El {
+    let catalog = state.workspace.catalog();
+    let tables: Vec<String> = catalog
+        .databases
+        .iter()
+        .find(|db| db.name == database)
+        .and_then(|db| db.schemas.iter().find(|node| node.name == schema))
+        .map(|node| node.tables.clone())
+        .unwrap_or_default();
+    let mut canvas = col()
+        .key("er-canvas")
+        .w_full()
+        .h(420.0)
+        .radius(8.0)
+        .fill(theme.control_off);
+    for (index, table) in tables.iter().enumerate() {
+        let columns = state.workspace.table_columns(table).unwrap_or_default();
+        let default = ((index % 3) as f32 * 230.0, (index / 3) as f32 * 180.0);
+        let (x, y) = state.er_positions.get(table).copied().unwrap_or(default);
+        canvas = canvas.child(er_box(table, &columns, x, y, theme));
+    }
+    col()
+        .key("er-page")
+        .w_full()
+        .gap(8.0)
+        .child(
+            row()
+                .key("er-toolbar")
+                .w_full()
+                .h(28.0)
+                .gap(8.0)
+                .center_y()
+                .child(
+                    text(format!("ER · {database}/{schema}"))
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                )
+                .child(
+                    row()
+                        .key("er-close")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Close").font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.close_er()),
+                ),
+        )
+        .child(canvas)
+}
+
+/// One table box. Collapsed boxes show the column count instead of every column.
+fn er_box(
+    table: &str,
+    columns: &[datazen_ui_api::ColumnSpec],
+    x: f32,
+    y: f32,
+    theme: tok::Theme,
+) -> El {
+    let collapsed = columns.len() > 12;
+    let table = table.to_owned();
+    let drag_table = table.clone();
+    let mut class_box = col()
+        .key(format!("er-box-{table}"))
+        .absolute(x, y)
+        .w(200.0)
+        .radius(8.0)
+        .fill(oklch(0.24, 0.03, 250.0))
+        .px(8.0)
+        .py(6.0)
+        .gap(2.0)
+        .child(
+            text(table.to_owned())
+                .key(format!("er-title-{table}"))
+                .font(type_::TITLE)
+                .color(theme.text),
+        )
+        .on_drag(move |state: &mut AppState, drag: &mut rune::Drag, _: &mut Tx| {
+            match drag.phase {
+                rune::Phase::Down => {
+                    state.er_drag = Some((drag_table.clone(), (x, y)));
+                }
+                rune::Phase::Move => {
+                    if let Some((dragged, (start_x, start_y))) = &state.er_drag {
+                        if *dragged == drag_table {
+                            state
+                                .er_positions
+                                .insert(drag_table.clone(), ((start_x + drag.dx).max(0.0), (start_y + drag.dy).max(0.0)));
+                        }
+                    }
+                }
+                rune::Phase::Up => {
+                    state.er_drag = None;
+                }
+            }
+        });
+    if collapsed {
+        class_box = class_box.child(
+            text(format!("{} columns", columns.len()))
+                .key(format!("er-collapsed-{table}"))
+                .font(type_::LABEL)
+                .color(theme.text_secondary),
+        );
+    } else {
+        for (index, column) in columns.iter().enumerate() {
+            class_box = class_box.child(
+                text(column.name.clone())
+                    .key(format!("er-col-{table}-{index}"))
+                    .font(type_::LABEL)
+                    .color(theme.text_secondary),
+            );
+        }
+    }
+    class_box
 }
 
 /// A table tab shows the view switcher above either the data grid or the DDL.
@@ -842,6 +1005,22 @@ fn open_query_button(theme: tok::Theme) -> El {
         })
 }
 
+fn er_button(state: &AppState, theme: tok::Theme) -> El {
+    if state.workspace.session().is_none() {
+        return row().key("er-button-absent").h(0.0);
+    }
+    row()
+        .key("er-button")
+        .w_full()
+        .h(28.0)
+        .px(8.0)
+        .center_y()
+        .radius(6.0)
+        .fill(theme.control_off)
+        .child(text("ER diagram").font(type_::LABEL).color(theme.text))
+        .on_press(|state: &mut AppState| state.open_er())
+}
+
 fn refresh_button(state: &AppState, theme: tok::Theme) -> El {
     if state.workspace.session().is_none() {
         return row().key("tree-refresh-absent").h(0.0);
@@ -925,6 +1104,7 @@ fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
         .child(navigation)
         .child(object_tree(state, theme))
         .child(refresh_button(state, theme))
+        .child(er_button(state, theme))
         .child(open_query_button(theme))
         .child(disconnect_button(state, theme))
         .child(
@@ -1924,6 +2104,84 @@ mod tests {
         let keys = runtime.state.workspace.table_foreign_keys("orders").unwrap();
         assert_eq!(keys[0].columns, vec!["id", "name"]);
         assert_eq!(keys[0].target_columns, vec!["id", "name"]);
+    }
+
+    #[test]
+    fn the_er_page_draws_the_current_schema_and_collapses_wide_tables() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("connection-local").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.frame(0.0);
+
+        let (x, y) = runtime.find("er-button").expect("er button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+
+        assert!(runtime.find("er-page").is_some());
+        assert!(runtime.find("er-canvas").is_some());
+        assert!(runtime.find("er-box-customers").is_some(), "the current schema's tables");
+        assert!(runtime.find("er-box-orders").is_some());
+        assert!(runtime.find("er-col-customers-0").is_some(), "narrow tables list their columns");
+        assert!(runtime.find("er-col-customers-7").is_some());
+        assert!(runtime.find("er-box-catalog").is_none(), "analytics is another schema");
+
+        // A wide table in its own schema collapses to the count.
+        runtime.state.open_table_tab("catalog").unwrap();
+        runtime.settle_all();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("er-button").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("er-box-catalog").is_some());
+        assert!(runtime.find("er-collapsed-catalog").is_some(), "30 columns collapse to the count");
+        assert!(runtime.find("er-col-catalog-12").is_none(), "not every column is drawn");
+    }
+
+    #[test]
+    fn er_boxes_drag_and_the_position_survives_rerenders() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("connection-local").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("er-button").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+
+        let before = runtime.presented("er-box-customers").expect("the box is drawn").0;
+        let (x, y) = runtime.find("er-box-customers").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_move(x + 40.0, y + 20.0);
+        runtime.pointer_move(x + 80.0, y + 50.0);
+        runtime.pointer_up(x + 80.0, y + 50.0);
+        runtime.frame(0.0);
+
+        assert_eq!(
+            runtime.state.er_positions.get("customers"),
+            Some(&(80.0, 50.0)),
+            "the drag moved the box by its travel"
+        );
+        let after = runtime.presented("er-box-customers").expect("still drawn").0;
+        assert!(
+            after[0] >= before[0] + 70.0 && after[1] >= before[1] + 40.0,
+            "before {before:?} after {after:?}"
+        );
+
+        // A plain rerender keeps the position.
+        runtime.frame(1.0);
+        let kept = runtime.presented("er-box-customers").unwrap().0;
+        assert!((kept[0] - after[0]).abs() < 1.0 && (kept[1] - after[1]).abs() < 1.0, "kept {kept:?}");
+        assert!(runtime.state.er_drag.is_none(), "the gesture ended");
     }
 
     #[test]
