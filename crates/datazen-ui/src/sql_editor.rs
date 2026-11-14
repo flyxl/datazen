@@ -7,7 +7,7 @@
 //! the view paints lines, highlight spans and carets. The main caret is an `El::ime_cursor`,
 //! which is what turns the platform input method on.
 
-use rune::{El, Ime, Key, KeyEvent, Span, TextStyle, col, oklch, row, text};
+use rune::{El, Ime, Key, KeyEvent, Span, TextEdit, TextStyle, col, oklch, row, text, text_input};
 
 /// Editing surface width. The scroll viewport is narrower, so a long line moves sideways
 /// instead of wrapping. CodeMirror's `lineWrapping` off does this inside the line layout;
@@ -88,6 +88,9 @@ pub struct SqlEditor {
     /// Undo and redo cover character insertion and deletion only.
     undo_stack: Vec<Snapshot>,
     redo_stack: Vec<Snapshot>,
+    /// The find bar's needle and replacement.
+    pub(crate) find_input: TextEdit,
+    pub(crate) replace_input: TextEdit,
 }
 
 impl Default for SqlEditor {
@@ -113,6 +116,8 @@ impl SqlEditor {
             focused: false,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            find_input: TextEdit::new(String::new()),
+            replace_input: TextEdit::new(String::new()),
         }
     }
 
@@ -225,6 +230,91 @@ impl SqlEditor {
             }
             None => false,
         }
+    }
+
+    /// Find the next occurrence of `needle` from the main caret, wrapping around,
+    /// and select it. False when the needle is missing or empty.
+    pub fn find_next(&mut self, needle: &str) -> bool {
+        if needle.is_empty() {
+            return false;
+        }
+        let main = self.selection.main();
+        let start = if main.from() != main.to() && self.doc.get(main.from()..main.to()) == Some(needle) {
+            main.to()
+        } else {
+            main.head
+        };
+        let found = self.doc[start..]
+            .find(needle)
+            .map(|i| start + i)
+            .or_else(|| self.doc[..start].find(needle));
+        match found {
+            Some(at) => {
+                self.selection = Selection {
+                    ranges: vec![Sel { anchor: at, head: at + needle.len() }],
+                    main: 0,
+                };
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Replace the main selection when it matches `needle`, then select the next
+    /// occurrence. False when the selection is not a match.
+    pub fn replace_current(&mut self, needle: &str, replacement: &str) -> bool {
+        let main = self.selection.main();
+        if needle.is_empty() || main.from() == main.to() {
+            return false;
+        }
+        if self.doc.get(main.from()..main.to()) != Some(needle) {
+            return false;
+        }
+        self.push_history();
+        self.apply_change(main.from(), main.to(), replacement);
+        self.find_next(needle);
+        true
+    }
+
+    /// Replace every occurrence of `needle`; returns how many landed.
+    pub fn replace_all(&mut self, needle: &str, replacement: &str) -> usize {
+        if needle.is_empty() {
+            return 0;
+        }
+        let mut positions = Vec::new();
+        let mut at = 0;
+        while let Some(i) = self.doc[at..].find(needle) {
+            positions.push(at + i);
+            at = at + i + needle.len();
+        }
+        if positions.is_empty() {
+            return 0;
+        }
+        self.push_history();
+        for from in positions.iter().rev() {
+            self.apply_change(*from, from + needle.len(), replacement);
+        }
+        positions.len()
+    }
+
+    /// The find bar's Find: read the bar's needle.
+    pub fn find_from_bar(&mut self) -> bool {
+        let needle = self.find_input.text.clone();
+        self.find_next(&needle)
+    }
+
+    /// The find bar's Replace: read the bar's needle and replacement.
+    pub fn replace_current_from_bar(&mut self) -> bool {
+        let needle = self.find_input.text.clone();
+        let replacement = self.replace_input.text.clone();
+        self.replace_current(&needle, &replacement)
+    }
+
+    /// The find bar's Replace all.
+    pub fn replace_all_from_bar(&mut self) -> usize {
+        let needle = self.find_input.text.clone();
+        let replacement = self.replace_input.text.clone();
+        self.replace_all(&needle, &replacement)
     }
 
     fn push_history(&mut self) {
@@ -450,7 +540,7 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color) -> El {
     col()
         .key("sql-editor")
         .w_full()
-        .h(420.0)
+        .h(456.0)
         .gap(8.0)
         .child(
             row()
@@ -470,6 +560,63 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color) -> El {
                     text(muted_note(editor))
                         .font(rune::tok::type_::LABEL)
                         .color(muted),
+                ),
+        )
+        .child(
+            row()
+                .key("sql-find-bar")
+                .w_full()
+                .h(28.0)
+                .gap(8.0)
+                .center_y()
+                .child(
+                    text_input(&editor.find_input, editor_font())
+                        .key("sql-find-input")
+                        .w(150.0)
+                        .h(24.0)
+                        .on_edit(|state: &mut crate::AppState| &mut state.sql.find_input)
+                        .on_submit(|state: &mut crate::AppState, tx| {
+                            state.sql.find_from_bar();
+                            tx.blur();
+                        }),
+                )
+                .child(
+                    text("Find next")
+                        .font(rune::tok::type_::LABEL)
+                        .color(ink)
+                        .key("sql-find-next")
+                        .on_press(|state: &mut crate::AppState| {
+                            state.sql.find_from_bar();
+                        }),
+                )
+                .child(
+                    text_input(&editor.replace_input, editor_font())
+                        .key("sql-replace-input")
+                        .w(150.0)
+                        .h(24.0)
+                        .on_edit(|state: &mut crate::AppState| &mut state.sql.replace_input)
+                        .on_submit(|state: &mut crate::AppState, tx| {
+                            state.sql.replace_current_from_bar();
+                            tx.blur();
+                        }),
+                )
+                .child(
+                    text("Replace")
+                        .font(rune::tok::type_::LABEL)
+                        .color(ink)
+                        .key("sql-replace-current")
+                        .on_press(|state: &mut crate::AppState| {
+                            state.sql.replace_current_from_bar();
+                        }),
+                )
+                .child(
+                    text("Replace all")
+                        .font(rune::tok::type_::LABEL)
+                        .color(ink)
+                        .key("sql-replace-all")
+                        .on_press(|state: &mut crate::AppState| {
+                            state.sql.replace_all_from_bar();
+                        }),
                 ),
         )
         .child(
@@ -743,6 +890,64 @@ mod tests {
         assert_eq!(editor.doc(), "cab", "shift-command-z redoes");
         assert!(on_key(&mut editor, &KeyEvent { key: Key::Command('y'), mods: rune::Mods::default() }) == false
             || editor.doc() == "cab");
+    }
+
+    #[test]
+    fn find_next_selects_occurrences_in_order_and_wraps() {
+        let mut editor = SqlEditor::from_doc("a X b X c X");
+        editor.focus();
+        assert!(editor.find_next("X"));
+        assert_eq!(editor.selection.main().from(), 2);
+        assert!(editor.find_next("X"));
+        assert_eq!(editor.selection.main().from(), 6);
+        assert!(editor.find_next("X"));
+        assert_eq!(editor.selection.main().from(), 10);
+        assert!(editor.find_next("X"), "the search wraps around");
+        assert_eq!(editor.selection.main().from(), 2);
+        assert!(!editor.find_next("Y"), "a missing needle selects nothing");
+    }
+
+    #[test]
+    fn replace_current_replaces_the_selection_and_moves_to_the_next_match() {
+        let mut editor = SqlEditor::from_doc("cat dog cat");
+        editor.focus();
+        editor.find_next("cat");
+        assert!(editor.replace_current("cat", "bird"));
+        assert_eq!(editor.doc(), "bird dog cat");
+        assert_eq!(editor.selection.main().from(), 9, "the next match is selected");
+        assert!(editor.undo(), "replacements are undoable");
+        assert_eq!(editor.doc(), "cat dog cat");
+    }
+
+    #[test]
+    fn replace_all_swaps_every_occurrence() {
+        let mut editor = SqlEditor::from_doc("one two one two one");
+        editor.focus();
+        assert_eq!(editor.replace_all("one", "1"), 3);
+        assert_eq!(editor.doc(), "1 two 1 two 1");
+        assert!(editor.undo());
+        assert_eq!(editor.doc(), "one two one two one");
+    }
+
+    #[test]
+    fn replace_all_leaves_unmatched_documents_alone() {
+        let mut editor = SqlEditor::from_doc("abc");
+        editor.focus();
+        assert_eq!(editor.replace_all("zzz", "y"), 0);
+        assert_eq!(editor.doc(), "abc");
+        assert!(!editor.undo(), "no change, no history entry");
+    }
+
+    #[test]
+    fn the_find_bar_reads_its_own_inputs() {
+        let mut editor = SqlEditor::from_doc("old and old");
+        editor.focus();
+        editor.find_input = TextEdit::new("old");
+        editor.replace_input = TextEdit::new("new");
+        assert!(editor.find_from_bar());
+        assert_eq!(editor.selection.main().from(), 0);
+        assert_eq!(editor.replace_all_from_bar(), 2);
+        assert_eq!(editor.doc(), "new and new");
     }
 
     #[test]
