@@ -29,8 +29,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | B3 | 已完成 | 4c89e32 | testing/B3-column-sort.md |
 | B4 | 已完成 | 0be8cc5 | testing/B4-column-filter.md |
 | B5 | 已完成 | 815f525 | testing/B5-dirty-cells.md |
-| B6 | 进行中 | | |
-| B7 | 未开始 | | |
+| B6 | 已完成 | 640d3dc | testing/B6-commit-rollback.md |
+| B7 | 进行中 | | |
 | B8 | 未开始 | | |
 | Q1 | 未开始 | | |
 | Q2 | 未开始 | | |
