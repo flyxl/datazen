@@ -1,5 +1,5 @@
 ## Current Task
-- **任务**: T5（外键导航）——T1–T4 已完成，正在接出站 FK 定位与入站引用清单。
+- **任务**: T6（收藏）——T1–T5 已完成，正在接 FavoriteQuery 的 .sql 文件存储。
 - **负责人**: Coder Agent
 - **状态**: 前两阶段（[plan.md](plan.md)、[plan-native.md](plan-native.md)）全部完成并推送；第三阶段 T1–T11 进行中。
 

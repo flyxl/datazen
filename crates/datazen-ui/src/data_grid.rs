@@ -553,8 +553,111 @@ pub fn panel(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well
     }
     panel
         .child(filter_bar(state, ink, muted, well))
+        .child(fk_bar(state, ink, muted, well))
         .child(sheet(grid, GridSlot::Table, ink, well, 380.0))
         .child(footer(state, ink, muted))
+}
+
+/// T5: the foreign-key navigation bar. The focused cell's column decides
+/// what shows: a "go to the referenced row" chip when the column carries an
+/// outbound key, and the "Referenced by" list of the tables pointing at
+/// this one.
+fn fk_bar(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well: rune::Color) -> El {
+    let mut bar = row()
+        .key("fk-navigation")
+        .w_full()
+        .h(28.0)
+        .gap(8.0)
+        .center_y();
+    if let Some((key, index)) = state.outbound_fk_of_focus() {
+        let target = key
+            .target_columns
+            .get(index)
+            .cloned()
+            .unwrap_or_else(|| "?".into());
+        bar = bar.child(
+            row()
+                .key("fk-go-to")
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(well)
+                .child(
+                    text(format!("\u{2192} {} · {}", key.target_table, target))
+                        .font(label_style())
+                        .color(ink),
+                )
+                .on_press(|state: &mut crate::AppState| state.go_to_referenced_row()),
+        );
+    }
+    let inbound_open = state.inbound_refs.is_some();
+    bar = bar.child(
+        row()
+            .key("fk-referenced-by")
+            .h(24.0)
+            .px(8.0)
+            .center_y()
+            .radius(6.0)
+            .fill(well)
+            .child(
+                text(if inbound_open { "Referenced by \u{00d7}" } else { "Referenced by\u{2026}" })
+                    .font(label_style())
+                    .color(ink),
+            )
+            .on_press(move |state: &mut crate::AppState| {
+                if inbound_open {
+                    state.close_inbound_refs();
+                } else {
+                    state.load_inbound_refs();
+                }
+            }),
+    );
+    if let Some(error) = &state.fk_error {
+        bar = bar.child(
+            text(error.clone())
+                .key("fk-error")
+                .font(label_style())
+                .color(muted),
+        );
+    }
+    let mut column = col().key("fk-bar").w_full().gap(4.0).child(bar);
+    if let Some(refs) = &state.inbound_refs {
+        let mut list = col().key("fk-inbound-list").w_full().gap(4.0);
+        if refs.is_empty() {
+            list = list.child(
+                text("No table references this one".to_owned())
+                    .key("fk-inbound-empty")
+                    .font(label_style())
+                    .color(muted),
+            );
+        }
+        for (index, reference) in refs.iter().enumerate() {
+            list = list.child(
+                row()
+                    .key(format!("fk-inbound-{index}"))
+                    .w_full()
+                    .h(24.0)
+                    .px(8.0)
+                    .center_y()
+                    .radius(6.0)
+                    .fill(well)
+                    .child(
+                        text(format!(
+                            "\u{2190} {} · {} (references {})",
+                            reference.table, reference.column, reference.referenced_column
+                        ))
+                        .font(label_style())
+                        .color(ink),
+                    )
+                    .on_press(move |state: &mut crate::AppState| {
+                        state.locate_inbound_ref(index);
+                    }),
+            );
+        }
+        column = column.child(list);
+    }
+    column
 }
 
 /// The query result area: the same sheet as the table page, without the filter

@@ -191,6 +191,9 @@ struct AppState {
     /// The value the loaded hits answered, so a locate filters by what was
     /// searched, not by whatever the input holds since.
     value_search_query: String,
+    /// T5: the loaded table's inbound references (None until asked for).
+    inbound_refs: Option<Vec<datazen_ui_api::InboundRef>>,
+    fk_error: Option<String>,
     /// The export dialog's format, range and its job.
     export_format_index: u32,
     export_range: TextEdit,
@@ -302,6 +305,8 @@ impl Default for AppState {
             value_search_error: None,
             value_search_hits: Vec::new(),
             value_search_query: String::new(),
+            inbound_refs: None,
+            fk_error: None,
             export_format_index: 0,
             export_range: TextEdit::new(String::new()),
             export_job: None,
@@ -613,6 +618,88 @@ impl AppState {
         }
     }
 
+    /// The outbound foreign key of the focused cell's column (T5), with the
+    /// column's own pairing index. The loaded page's structure is the
+    /// vocabulary the N10 reads already carry.
+    fn outbound_fk_of_focus(&self) -> Option<(datazen_ui_api::ForeignKeySpec, usize)> {
+        let table = self.grid.table_label().to_owned();
+        let column = self.grid.column_name(self.grid.focus().1)?.to_owned();
+        let keys = self
+            .desktop
+            .table_foreign_keys(&table)
+            .unwrap_or_else(|_| self.workspace.table_foreign_keys(&table).unwrap_or_default());
+        keys.into_iter().find_map(|key| {
+            let index = key.columns.iter().position(|name| *name == column)?;
+            Some((key, index))
+        })
+    }
+
+    /// Open the referenced table filtered on the focused cell's value (T5).
+    /// A composite key navigates by the focused column's own pairing, the
+    /// same single-column answer the filter bar gives.
+    fn go_to_referenced_row(&mut self) {
+        let Some((key, index)) = self.outbound_fk_of_focus() else { return };
+        let Some(target_column) = key.target_columns.get(index).cloned() else { return };
+        let value = self.grid.cell(self.grid.focus().0, self.grid.focus().1);
+        let target_table = key.target_table.clone();
+        self.open_table_with_filter(&target_table, &target_column, &value);
+    }
+
+    /// Ask the host for the loaded table's inbound references (T5).
+    fn load_inbound_refs(&mut self) {
+        let table = self.grid.table_label().to_owned();
+        match self.desktop.table_inbound_references(&table) {
+            Ok(refs) => {
+                self.inbound_refs = Some(refs);
+                self.fk_error = None;
+            }
+            Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
+                self.inbound_refs = None;
+                self.fk_error = Some("the live host lists the references".into());
+            }
+            Err(error) => {
+                self.inbound_refs = None;
+                self.fk_error = Some(error);
+            }
+        }
+    }
+
+    /// Hide the inbound list.
+    fn close_inbound_refs(&mut self) {
+        self.inbound_refs = None;
+        self.fk_error = None;
+    }
+
+    /// Open a referencing table filtered on the focused row's value of the
+    /// referenced column (T5).
+    fn locate_inbound_ref(&mut self, index: usize) {
+        let Some(list) = self.inbound_refs.as_ref() else { return };
+        let Some(reference) = list.get(index).cloned() else { return };
+        let Some(referenced_index) = (0..self.grid.cols)
+            .find(|col| self.grid.column_name(*col) == Some(reference.referenced_column.as_str()))
+        else {
+            self.fk_error = Some(format!(
+                "the loaded page has no column {}",
+                reference.referenced_column
+            ));
+            return;
+        };
+        let value = self.grid.cell(self.grid.focus().0, referenced_index);
+        self.open_table_with_filter(&reference.table, &reference.column, &value);
+    }
+
+    /// Open a table with a filter preset (T4/T5 share this): the tab's own
+    /// open resets the filter, so the filter lands after it and the page
+    /// re-reads.
+    fn open_table_with_filter(&mut self, table: &str, column: &str, value: &str) {
+        self.active = Section::Workspace;
+        self.open_table_tab(table);
+        self.filter = Some(ColumnFilter { column: column.to_owned(), contains: value.to_owned() });
+        self.sort = None;
+        self.table_page = 0;
+        self.reload_table_page();
+    }
+
     /// The value search's five match modes, in cycle order (T4). The ids
     /// are the React vocabulary's (`ValueSearchMode`).
     const VALUE_SEARCH_MODES: [&'static str; 5] =
@@ -679,15 +766,7 @@ impl AppState {
     fn locate_value_search_hit(&mut self, index: usize) {
         let Some(hit) = self.value_search_hits.get(index).cloned() else { return };
         let value = self.value_search_query.clone();
-        // The tab's own open resets the filter (its lifecycle, S3); the
-        // locate sets it back and re-reads, so the page that lands is the
-        // filtered one.
-        self.active = Section::Workspace;
-        self.open_table_tab(&hit.table);
-        self.filter = Some(ColumnFilter { column: hit.column.clone(), contains: value });
-        self.sort = None;
-        self.table_page = 0;
-        self.reload_table_page();
+        self.open_table_with_filter(&hit.table, &hit.column, &value);
     }
 
     /// The export formats the dialog collects, in cycle order.
@@ -6899,6 +6978,135 @@ mod tests {
             runtime.find("value-search-hits").is_none(),
             "the cancelled scan's delivery landed nowhere"
         );
+    }
+
+    #[test]
+    fn a_foreign_key_cell_navigates_to_the_referenced_row() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("connection-local").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        runtime.state.open_table_tab("orders").unwrap();
+        runtime.frame(1.0);
+        assert!(runtime.state.grid.has_page(), "the orders page loaded");
+
+        // The focused cell's column (id) carries the demo's outbound key.
+        runtime.state.grid.select(0, 0);
+        runtime.frame(0.0);
+        assert!(runtime.find("fk-go-to").is_some(), "the go-to chip is on the bar");
+
+        let (x, y) = runtime.find("fk-go-to").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        let selected = runtime.state.tabs.selected().map(|tab| tab.title.clone());
+        assert_eq!(selected, Some("customers".into()), "the referenced table opened");
+        let filter = runtime.state.filter.clone().expect("the navigation set a filter");
+        assert_eq!(filter.column, "id");
+        assert_eq!(filter.contains, "1", "the focused cell's value is the filter");
+
+        // A table without outbound keys shows no chip.
+        runtime.state.open_table_tab("catalog").unwrap();
+        runtime.frame(1.0);
+        runtime.state.grid.select(0, 0);
+        runtime.frame(0.0);
+        assert!(
+            runtime.find("fk-go-to").is_none(),
+            "the catalog table carries no outbound key"
+        );
+    }
+
+    /// A host adapter that answers the inbound references (T5).
+    struct InboundAdapter;
+
+    impl datazen_ui_api::DesktopAdapter for InboundAdapter {
+        fn list_connections(&mut self) -> Result<Vec<datazen_ui_api::ConnectionProfile>, String> {
+            Ok(Vec::new())
+        }
+
+        fn read_table_page(
+            &mut self,
+            _: &str,
+            _: u32,
+            _: u32,
+            _: Option<&datazen_ui_api::ColumnSort>,
+            _: Option<&datazen_ui_api::ColumnFilter>,
+        ) -> Result<datazen_ui_api::TablePage, String> {
+            Err(datazen_ui_api::DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn commit_cells(
+            &mut self,
+            _: &str,
+            _: &[(u32, String, String)],
+        ) -> Result<u32, String> {
+            Err(datazen_ui_api::DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn table_inbound_references(
+            &self,
+            table: &str,
+        ) -> Result<Vec<datazen_ui_api::InboundRef>, String> {
+            if table == "customers" {
+                Ok(vec![datazen_ui_api::InboundRef {
+                    table: "orders".into(),
+                    column: "id".into(),
+                    referenced_column: "id".into(),
+                    constraint: "orders_customer_fk".into(),
+                }])
+            } else {
+                Ok(Vec::new())
+            }
+        }
+    }
+
+    #[test]
+    fn the_referenced_by_list_opens_the_referencing_table_filtered() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("connection-local").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.frame(1.0);
+        runtime.state.grid.select(0, 0);
+        runtime.frame(0.0);
+
+        // The unwired adapter refuses honestly: the demo world has no scan.
+        let (x, y) = runtime.find("fk-referenced-by").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("fk-error").is_some(), "the demo world refuses honestly");
+        runtime.state.close_inbound_refs();
+        runtime.settle_all();
+        runtime.frame(0.0);
+
+        // With the host answering: the list shows, and a row opens the
+        // referencing table filtered on the focused row's value. A direct
+        // state call needs the settle to land in the view.
+        runtime.state.desktop = Box::new(InboundAdapter);
+        runtime.state.load_inbound_refs();
+        runtime.settle_all();
+        runtime.frame(0.0);
+
+        assert!(runtime.find("fk-inbound-0").is_some(), "the inbound list is up");
+        let (x, y) = runtime.find("fk-inbound-0").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        let selected = runtime.state.tabs.selected().map(|tab| tab.title.clone());
+        assert_eq!(selected, Some("orders".into()), "the referencing table opened");
+        let filter = runtime.state.filter.clone().expect("the reference set a filter");
+        assert_eq!(filter.column, "id");
+        assert_eq!(filter.contains, "0", "the focused row's id value is the filter");
     }
 
     #[test]

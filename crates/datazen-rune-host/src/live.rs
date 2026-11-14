@@ -39,6 +39,7 @@ use datazen_ui_api::{
     DashboardWidget, DatabaseNode, DesktopAdapter, ProgressSnapshot, SchemaNode, Snippet,
     TablePage, ValueSearchHit, Workflow, WorkflowStepResult, DESKTOP_NOT_IMPLEMENTED,
 };
+use datazen_ui_api::InboundRef;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -1802,6 +1803,75 @@ impl DesktopAdapter for LiveAdapter {
             .collect())
     }
 
+    fn table_inbound_references(&self, table: &str) -> Result<Vec<InboundRef>, String> {
+        // T5: the shared scan over the sync session — its own connection on
+        // the adapter's runtime, the same one the N10 structure reads use
+        // (the live session's pool belongs to the worker's runtime).
+        struct LiveNavigationSource {
+            driver: Arc<dyn DatabaseDriver>,
+            handle: ConnectionHandle,
+            database: String,
+        }
+
+        #[async_trait::async_trait]
+        impl datazen::services::ports::ForeignKeyNavigationSource for LiveNavigationSource {
+            async fn bind_session(
+                &self,
+                _: &str,
+            ) -> Result<
+                datazen::services::ports::FkSessionBinding,
+                datazen::services::ports::FkSessionError,
+            > {
+                Ok(datazen::services::ports::FkSessionBinding {
+                    driver: Arc::clone(&self.driver),
+                    handle: self.handle.clone(),
+                    database: Some(self.database.clone()),
+                    schema: None,
+                    // The sync session lives in the adapter for as long as
+                    // the connection holds; nothing to lease.
+                    guard: Box::new(()),
+                })
+            }
+        }
+
+        let sync = self.sync_session()?;
+        let source = LiveNavigationSource {
+            driver: Arc::clone(&sync.driver),
+            handle: sync.handle.clone(),
+            database: sync.database.clone(),
+        };
+        let request = datazen::services::referenced_by::ListInboundForeignKeysRequest {
+            // The envelope requires a session label; the host's one session
+            // is the live one.
+            db_session_id: "live".into(),
+            database: None,
+            schema: None,
+            table: table.to_owned(),
+            qualified_table: None,
+        };
+        let catalog = self
+            .sync_runtime
+            .block_on(datazen::services::referenced_by::list_inbound_foreign_keys(
+                &source,
+                &request,
+            ))
+            .map_err(|error| error.to_string())?;
+        // Flatten the pairings: one row per (referencing column, referenced
+        // column), the shape the UI's list and filters speak.
+        let mut refs = Vec::new();
+        for reference in &catalog.references {
+            for (column, referenced) in reference.columns.iter().zip(&reference.referenced_columns) {
+                refs.push(InboundRef {
+                    table: reference.table.clone(),
+                    column: column.clone(),
+                    referenced_column: referenced.clone(),
+                    constraint: reference.constraint_name.clone(),
+                });
+            }
+        }
+        Ok(refs)
+    }
+
     fn snippets(&self) -> Result<Vec<Snippet>, String> {
         // T3: the snippets' file store — the same vocabulary the memory
         // port serves in the demo process.
@@ -2620,6 +2690,23 @@ mod tests {
         assert_eq!(snapshot.status, "completed", "log: {:?}", snapshot.log);
         let picked_body = std::fs::read_to_string(&picked).expect("the picked file was written");
         assert!(!picked_body.is_empty(), "the dump lands at the picked path");
+    }
+
+    #[test]
+    fn inbound_references_answer_the_scan_over_the_live_session() {
+        let dir = temp_dir("inbound");
+        let adapter = opened_adapter(&dir);
+
+        // The fixture: orders.user_id REFERENCES users(id).
+        let refs = adapter.table_inbound_references("users").expect("the scan answers");
+        assert_eq!(refs.len(), 1, "one referencing column: {refs:?}");
+        assert_eq!(refs[0].table, "orders");
+        assert_eq!(refs[0].column, "user_id");
+        assert_eq!(refs[0].referenced_column, "id");
+
+        // A table nothing references: the honest empty list.
+        let refs = adapter.table_inbound_references("events").expect("the scan answers");
+        assert!(refs.is_empty(), "no table references events: {refs:?}");
     }
 
     #[test]

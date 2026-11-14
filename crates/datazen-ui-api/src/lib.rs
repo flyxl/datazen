@@ -22,6 +22,20 @@ pub struct ForeignKeySpec {
     pub target_columns: Vec<String>,
 }
 
+/// One column pairing of an inbound foreign key (T5): another table's
+/// column that references this table's column.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InboundRef {
+    /// The referencing table.
+    pub table: String,
+    /// The referencing table's column that carries the reference.
+    pub column: String,
+    /// This table's column being referenced, paired with `column`.
+    pub referenced_column: String,
+    /// The constraint's name, as the structure view shows it.
+    pub constraint: String,
+}
+
 /// One index of a table: its name, its columns in index order, uniqueness.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IndexSpec {
@@ -292,6 +306,13 @@ pub trait DesktopAdapter {
 
     /// The table's foreign keys from the host's catalog (N10).
     fn table_foreign_keys(&self, _table: &str) -> Result<Vec<ForeignKeySpec>, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// The inbound references of one table (T5): the other tables' columns
+    /// that reference it. The default answers the fixed error; the demo
+    /// process has no scan and the UI refuses honestly.
+    fn table_inbound_references(&self, _table: &str) -> Result<Vec<InboundRef>, String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 
