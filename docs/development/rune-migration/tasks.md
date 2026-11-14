@@ -48,8 +48,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | O6 | 已完成 | 5c0aa0e | testing/O6-foreign-keys.md |
 | O7 | 已完成 | 8641bd5 | testing/O7-O8-er-canvas.md |
 | O8 | 已完成 | 8641bd5 | testing/O7-O8-er-canvas.md |
-| O9 | 进行中 | | |
-| O10 | 未开始 | | |
+| O9 | 已完成 | 39a0028 | testing/O9-column-drafts.md |
+| O10 | 进行中 | | |
 | O11 | 未开始 | | |
 | P1 | 未开始 | | |
 | P2 | 未开始 | | |
