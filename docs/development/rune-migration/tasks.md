@@ -4,12 +4,16 @@
 
 React 页面和组件不删不改。一个任务一个提交，不并行。
 
-本 issue 的门禁：
+第一阶段（S/B/Q/O/P/D/W/H/C）已全部完成。第二阶段（N 系列，原生宿主接线）的任务与门禁见 [plan-native.md](plan-native.md)。
+
+两个阶段共用的门禁：
 
 | 编号 | 命令 | 通过标准 |
 |---|---|---|
 | GR1 | `cargo test -p datazen-ui-api -p datazen-ui --offline --lib` | 全过 |
 | GR2 | `cargo check -p datazen-ui-api -p datazen-ui --offline` | 退出码 0 |
+| GR3 | `cargo test -p datazen-rune-host --offline --lib` | 全过（N2 起适用） |
+| GR4 | `cargo check -p datazen-rune-host --offline` | 退出码 0（N2 起适用） |
 | G1–G4 | 仓库根目录的 vitest / typecheck / 命名 / 全量前端测试 | 仅当该任务改了 `packages/frontend` 或 `packages/web` 时必跑。Rune 任务不改这些目录，写明不适用 |
 
 | 任务 | 状态 | coder | tester 报告 |
@@ -89,3 +93,16 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | C2 | 已完成 | 5178765 | testing/C2-grid-a11y.md |
 | C3 | 已完成 | e38fe31 | testing/C3-mount-counts.md |
 | C4 | 已完成 | 061ba45 | testing/C4-unmigrated-notice.md |
+| N1 | 未开始 | | |
+| N2 | 未开始 | | |
+| N3 | 未开始 | | |
+| N4 | 未开始 | | |
+| N5 | 未开始 | | |
+| N6 | 未开始 | | |
+| N7 | 未开始 | | |
+| N8 | 未开始 | | |
+| N9 | 未开始 | | |
+| N10 | 未开始 | | |
+| N11 | 未开始 | | |
+| N12 | 未开始 | | |
+| N13 | 未开始 | | |
