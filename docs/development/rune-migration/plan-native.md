@@ -49,25 +49,26 @@ G1–G4（前端）继续不适用：本阶段不改 `packages/frontend`、`pack
 |---|---|---|
 | N3 | 活适配器开真 sqlite 会话（驱动经 lib registry 解析）；对象树读真 catalog | 测：临时库两张表 → 树列出真表名；坏路径文件显示错误不崩 |
 | N4 | 读表页走 `table_browsing::api::read_table_page`（真驱动），作业化投递；分页/排序/过滤由真 SQL 生效 | 测：60 行临时库第 2 页是真数据；排序过滤生效 |
-| N5 | 提交脏格走 `table_editing` 用例（真 UPDATE），失败脏标记保留 | 测：提交后读回新值；约束失败时脏标记还在 |
-| N6 | 查询执行走真驱动查询路径，结果进结果网格；取消作废代次 | 测：SELECT 返回真行；错误 SQL 显示错误；取消后结果不进网格 |
+| N5 | 宿主执行 runtime 组装：`RuntimeConnectionUseCases` 装起来（文件存储投影 ProfileRepository、单租户 PolicyService、真驱动 SessionBackend + gateway + 会话登记），供提交/查询/同步用 | 测：经 runtime 开会话→执行一条真查询→读回结果→关会，全在作业线程 |
+| N6 | 提交脏格走 `table_editing` 用例（preview→fingerprint→commit，真 UPDATE），失败脏标记保留 | 测：提交后读回新值；约束失败时脏标记还在 |
+| N7 | 查询执行走真驱动查询路径（经 runtime 会话），结果进结果网格；取消作废代次 | 测：SELECT 返回真行；错误 SQL 显示错误；取消后结果不进网格 |
 
 ### 持久化
 
 | 任务 | 一天内做完的事 | 完成标准 |
 |---|---|---|
-| N7 | 设置经 `settings` use case + 文件仓储持久化；P1 端口接真后端 | 测：页大小/主题写进文件，重启仍在 |
-| N8 | 查询历史经 `history` use case + 文件仓储；执行过的 SQL 进历史 | 测：add 后 recent 读回同一条 |
-| N9 | 结构页（DDL/列/索引/外键）从真 catalog 读 | 测：带索引和外键的表，清单与建表语句一致 |
-| N10 | 导出结果为 CSV 文件（export 用例）；备份落文件（backup 用例） | 测：CSV 行列数对；备份文件存在且非空 |
-| N11 | 两个真 sqlite 连接间的同步/结构对比/传输走既有用例 | 测：源库一张表同步后目标库有数据；对比发现缺失列 |
-| N12 | 工作流与仪表盘经既有用例 + 文件存储持久化 | 测：建一个部件后重启进程仍在 |
+| N8 | 设置经 `settings` use case + 文件仓储持久化；P1 端口接真后端 | 测：页大小/主题写进文件，重启仍在 |
+| N9 | 查询历史经 `history` use case + 文件仓储；执行过的 SQL 进历史 | 测：add 后 recent 读回同一条 |
+| N10 | 结构页（DDL/列/索引/外键）从真 catalog 读 | 测：带索引和外键的表，清单与建表语句一致 |
+| N11 | 导出结果为 CSV 文件（export 用例）；备份落文件（backup 用例） | 测：CSV 行列数对；备份文件存在且非空 |
+| N12 | 两个真 sqlite 连接间的同步/结构对比/传输走既有用例 | 测：源库一张表同步后目标库有数据；对比发现缺失列 |
+| N13 | 工作流与仪表盘经既有用例 + 文件存储持久化 | 测：建一个部件后重启进程仍在 |
 
 ### 收尾
 
 | 任务 | 一天内做完的事 | 完成标准 |
 |---|---|---|
-| N13 | release 构建 + 文档：`cargo build --release -p datazen-rune-host`；README/文档写明 `datazen-native` 用法、配置目录、驱动支持矩阵与剩余差距 | release 产物存在；文档如实写明本期 sqlite 全功能、其余驱动按同一接缝后续扩展 |
+| N14 | release 构建 + 文档：`cargo build --release -p datazen-rune-host`；README/文档写明 `datazen-native` 用法、配置目录、驱动支持矩阵与剩余差距 | release 产物存在；文档如实写明本期 sqlite 全功能、其余驱动按同一接缝后续扩展 |
 
 ## 范围外（如实写明）
 
