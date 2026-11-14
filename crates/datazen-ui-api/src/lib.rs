@@ -121,6 +121,16 @@ pub struct TablePage {
     pub read_only: Option<String>,
 }
 
+/// One export job the port runs. The memory port advances a job on every
+/// progress read; real drivers advance by themselves.
+#[derive(Clone, Debug)]
+struct MemoryJob {
+    job: u64,
+    format: String,
+    range: String,
+    reads: u32,
+}
+
 /// One saved SQL snippet.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Snippet {
@@ -175,6 +185,9 @@ pub trait WorkspaceApi {
     fn update_snippet(&mut self, name: &str, sql: &str) -> Result<(), String>;
     /// Delete a snippet; an unknown name is refused.
     fn delete_snippet(&mut self, name: &str) -> Result<(), String>;
+    /// Start an export job for a format and a range. A missing range gets no
+    /// job at all.
+    fn start_export(&mut self, format: &str, range: &str) -> Result<u64, String>;
     /// Apply a DDL script to the table. The port records what it applied; a
     /// failure changes nothing.
     fn apply_ddl(&mut self, table: &str, sql: &str) -> Result<(), String>;
@@ -236,6 +249,8 @@ pub struct MemoryWorkspace {
     settings: Vec<Setting>,
     /// The saved SQL snippets.
     snippets: Vec<Snippet>,
+    /// Export jobs the memory port runs.
+    jobs: Vec<MemoryJob>,
 }
 
 impl Default for MemoryWorkspace {
@@ -317,6 +332,7 @@ impl MemoryWorkspace {
                 Setting::QueryMaxRows { rows: 100 },
             ],
             snippets: Vec::new(),
+            jobs: Vec::new(),
         }
     }
 }
@@ -548,6 +564,23 @@ impl WorkspaceApi for MemoryWorkspace {
             return Err(format!("no snippet named {name}"));
         }
         Ok(())
+    }
+
+    fn start_export(&mut self, format: &str, range: &str) -> Result<u64, String> {
+        if range.trim().is_empty() {
+            return Err("a range is required before an export can start".into());
+        }
+        if !matches!(format, "csv" | "json" | "sql" | "broken") {
+            return Err(format!("unknown export format {format}"));
+        }
+        let job = self.jobs.last().map(|job| job.job + 1).unwrap_or(1);
+        self.jobs.push(MemoryJob {
+            job,
+            format: format.to_owned(),
+            range: range.to_owned(),
+            reads: 0,
+        });
+        Ok(job)
     }
 
     fn save_connection(&mut self, name: &str, engine: &str, address: &str) -> Result<(), String> {
@@ -1198,6 +1231,18 @@ mod tests {
         workspace.delete_snippet("top").unwrap();
         assert!(workspace.snippets().is_empty());
         assert!(workspace.delete_snippet("top").is_err());
+    }
+
+    #[test]
+    fn an_export_needs_a_range_to_get_a_job() {
+        let mut workspace = MemoryWorkspace::new();
+        assert!(workspace.start_export("csv", "").is_err(), "no range, no job");
+        assert!(workspace.start_export("csv", "   ").is_err());
+        assert!(workspace.start_export("exe", "customers").is_err(), "unknown format");
+        let job = workspace.start_export("csv", "customers").unwrap();
+        assert_eq!(job, 1, "job ids count from one");
+        let second = workspace.start_export("json", "orders").unwrap();
+        assert_eq!(second, 2);
     }
 
     #[test]

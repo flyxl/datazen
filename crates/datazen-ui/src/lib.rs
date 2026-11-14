@@ -101,6 +101,11 @@ struct AppState {
     snippet_name: TextEdit,
     snippet_sql: TextEdit,
     snippet_error: Option<String>,
+    /// The export dialog's format, range and its job.
+    export_format_index: u32,
+    export_range: TextEdit,
+    export_job: Option<u64>,
+    export_error: Option<String>,
 }
 
 impl Default for AppState {
@@ -136,6 +141,10 @@ impl Default for AppState {
             snippet_name: TextEdit::new(String::new()),
             snippet_sql: TextEdit::new(String::new()),
             snippet_error: None,
+            export_format_index: 0,
+            export_range: TextEdit::new(String::new()),
+            export_job: None,
+            export_error: None,
         }
     }
 }
@@ -245,6 +254,34 @@ impl AppState {
     fn delete_snippet(&mut self, name: &str) {
         if let Err(error) = self.workspace.delete_snippet(name) {
             self.snippet_error = Some(error);
+        }
+    }
+
+    /// The export formats the dialog collects, in cycle order.
+    const EXPORT_FORMATS: [&'static str; 3] = ["csv", "json", "sql"];
+
+    fn export_format(&self) -> &'static str {
+        Self::EXPORT_FORMATS[(self.export_format_index as usize) % Self::EXPORT_FORMATS.len()]
+    }
+
+    fn cycle_export_format(&mut self) {
+        self.export_format_index =
+            (self.export_format_index + 1) % Self::EXPORT_FORMATS.len() as u32;
+    }
+
+    /// Ask the port for an export job id. A missing range gets no job.
+    fn start_export_form(&mut self) {
+        let format = self.export_format().to_owned();
+        let range = self.export_range.text.trim().to_owned();
+        match self.workspace.start_export(&format, &range) {
+            Ok(job) => {
+                self.export_job = Some(job);
+                self.export_error = None;
+            }
+            Err(error) => {
+                self.export_job = None;
+                self.export_error = Some(error);
+            }
         }
     }
 
@@ -1327,6 +1364,85 @@ fn settings_page(state: &AppState, theme: tok::Theme) -> El {
         );
     }
     page.child(snippets)
+        .child(export_section(state, theme))
+}
+
+/// The export dialog collects a format and a range, then asks the port for a
+/// job id. No range, no job.
+fn export_section(state: &AppState, theme: tok::Theme) -> El {
+    let mut section = col()
+        .key("export-section")
+        .w_full()
+        .gap(6.0)
+        .child(text("Export".to_owned()).font(type_::TITLE).color(theme.text))
+        .child(
+            row()
+                .key("export-form")
+                .w_full()
+                .h(28.0)
+                .gap(8.0)
+                .center_y()
+                .child(
+                    row()
+                        .key("export-format")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(
+                            text(format!("format: {}", state.export_format()))
+                                .font(type_::LABEL)
+                                .color(theme.text),
+                        )
+                        .on_press(|state: &mut AppState| state.cycle_export_format()),
+                )
+                .child(
+                    text_input(&state.export_range, type_::LABEL)
+                        .key("export-range-input")
+                        .w(220.0)
+                        .h(24.0)
+                        .on_edit(|state: &mut AppState| &mut state.export_range),
+                )
+                .child(
+                    row()
+                        .key("export-start")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Export").font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.start_export_form()),
+                ),
+        );
+    if let Some(error) = &state.export_error {
+        section = section.child(
+            row()
+                .key("export-error")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+        );
+    }
+    if let Some(job) = state.export_job {
+        section = section.child(
+            row()
+                .key("export-job")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(format!("job #{job} started")).font(type_::LABEL).color(theme.text_secondary)),
+        );
+    }
+    section
 }
 
 fn tab_strip(state: &AppState, theme: tok::Theme) -> El {
@@ -3063,6 +3179,41 @@ mod tests {
         runtime.frame(0.0);
         assert!(runtime.find("snippet-row-0").is_none(), "the snippet is gone");
         assert!(runtime.state.workspace.snippets().is_empty());
+    }
+
+    #[test]
+    fn an_export_without_a_range_gets_no_job() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-settings").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.find("export-section").is_some());
+
+        let (x, y) = runtime.find("export-start").expect("export button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.state.export_job.is_none(), "no range, no job");
+        assert!(runtime.find("export-error").is_some(), "the refusal is visible");
+        assert!(runtime.find("export-job").is_none());
+
+        runtime.state.export_range = rune::TextEdit::new("customers");
+        let (x, y) = runtime.find("export-start").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.export_job, Some(1), "the port handed out a job id");
+        assert!(runtime.find("export-job").is_some());
+        assert!(runtime.find("export-error").is_none());
+
+        // The format chip cycles.
+        let (x, y) = runtime.find("export-format").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.export_format(), "json");
     }
 
     #[test]
