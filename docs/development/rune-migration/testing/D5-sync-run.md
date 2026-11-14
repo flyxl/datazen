@@ -3,7 +3,7 @@
 ## 范围
 
 - 分支：`feat/rune-native-ui-migration`
-- 被测提交见 `git log`：`feat(rune): the sync run step as a job with snapshots (issue-rune D5)`
+- 被测提交：`d06255293` `feat(rune): the sync run step as a job with snapshots (issue-rune D5)`
 - 两个文件：`crates/datazen-ui-api/src/lib.rs`（`run_sync` 端口（端点校验 + 空选择拒绝；作业日志 "syncing local into replica"）+ 1 条单测）、`crates/datazen-ui/src/lib.rs`（预览步 Run sync/Refresh、`sync_job`/`sync_snapshot`、P7 面板复用 + 1 条运行时测试）。没有 `packages/frontend`、`packages/web`。React 未改
 
 ## 门禁
