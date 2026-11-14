@@ -40,6 +40,7 @@ use datazen_ui_api::{
     TablePage, ValueSearchHit, Workflow, WorkflowStepResult, DESKTOP_NOT_IMPLEMENTED,
 };
 use datazen_ui_api::{FavoriteSpec, ImportPreview, ImportedConnectionSpec, InboundRef};
+use datazen::workflow::domain::error::WorkflowError;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -59,6 +60,7 @@ pub(crate) fn host_registry() -> DriverRegistry {
 enum HostJob {
     OpenConnection { generation: u32, id: String },
     ValueSearch { generation: u32, value: String, mode: String },
+    RunWorkflow { generation: u32, name: String },
     ReadTable {
         generation: u32,
         table: String,
@@ -81,6 +83,10 @@ enum HostJob {
 enum HostAnswer {
     Connection { generation: u32, id: String, catalog: Result<Catalog, String> },
     ValueSearched { generation: u32, hits: Result<Vec<ValueSearchHit>, String> },
+    WorkflowRun {
+        generation: u32,
+        results: Result<Vec<WorkflowStepResult>, String>,
+    },
     TablePage { generation: u32, page: Result<TablePage, String> },
     CommitCount { generation: u32, count: Result<u32, String> },
     QueryPage { generation: u32, page: Result<TablePage, String> },
@@ -269,12 +275,14 @@ impl LiveAdapter {
             .expect("the adapter's sync runtime starts");
         let schemas = Arc::new(Mutex::new(std::collections::HashMap::new()));
         let worker_schemas = Arc::clone(&schemas);
+        let worker_repository = Arc::clone(&repository);
         let worker_service = ConnectionService::new(repository);
         let session = Arc::new(Mutex::new(LiveSession::default()));
         let worker_session = Arc::clone(&session);
         let worker_runtime = Arc::clone(&runtime);
         let worker_profiles = Arc::clone(&profiles);
         let worker_registry = Arc::clone(&registry);
+        let worker_workflows = Arc::clone(&workflows);
         thread::Builder::new()
             .name("datazen-live-jobs".into())
             .spawn(move || {
@@ -314,6 +322,14 @@ impl LiveAdapter {
                                         )),
                                     }
                                 }
+                                HostJob::RunWorkflow { generation, .. } => {
+                                    HostAnswer::WorkflowRun {
+                                        generation,
+                                        results: Err(format!(
+                                            "the job runtime did not start: {error}"
+                                        )),
+                                    }
+                                }
                             };
                             if answer_tx.send(answer).is_err() {
                                 break;
@@ -342,6 +358,15 @@ impl LiveAdapter {
                                 &mode,
                             ));
                             HostAnswer::ValueSearched { generation, hits }
+                        }
+                        HostJob::RunWorkflow { generation, name } => {
+                            let results = runtime.block_on(run_workflow_engine(
+                                &worker_workflows,
+                                &worker_repository,
+                                &worker_session,
+                                &name,
+                            ));
+                            HostAnswer::WorkflowRun { generation, results }
                         }
                         HostJob::ReadTable { generation, table, page, page_size, sort, filter } => {
                             let page_result = runtime.block_on(read_table(
@@ -1251,6 +1276,226 @@ async fn commit_edits(
 /// database, every column of the table, one `search_table_values` per
 /// column — the hit list is the columns with matching rows, the same
 /// per-column answers the React dialog's scan gives the front end.
+/// The workflow engine's host (T8): the four methods the shared executor
+/// calls back with. The queries and catalog reads run over the live
+/// session's own driver — the engine runs on the worker's runtime, the same
+/// one the session's pool belongs to.
+struct LiveWorkflowHost {
+    session: Arc<Mutex<LiveSession>>,
+    /// The connection store, for the connection names the report carries:
+    /// the host builds its own use case over the shared repository.
+    repository: Arc<dyn ConnectionRepository>,
+}
+
+#[async_trait::async_trait]
+impl datazen::workflow::application::host::WorkflowHost for LiveWorkflowHost {
+    async fn connection_name(&self, id: &str) -> Result<String, WorkflowError> {
+        let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
+        let service = ConnectionService::new(Arc::clone(&self.repository));
+        let config = service
+            .get(&scope, id)
+            .await
+            .map_err(|error| WorkflowError::Step(error.to_string()))?
+            .ok_or_else(|| WorkflowError::Step(format!("no connection '{id}' in the store")))?;
+        Ok(config.name)
+    }
+
+    async fn execute_command(
+        &self,
+        step: &datazen::workflow::domain::command::WorkflowCommandStep,
+        workflow_connection: Option<&str>,
+        _permission_mode: Option<datazen::execution::domain::permission::McpPermissionMode>,
+        deadline: Option<tokio::time::Instant>,
+    ) -> Result<datazen_driver_api::CommandResult, WorkflowError> {
+        // The deadline is the engine's contract: a command that cannot start
+        // before it passes is refused here, not run past it.
+        if deadline.is_some_and(|deadline| deadline <= tokio::time::Instant::now()) {
+            return Err(WorkflowError::Step(
+                "the workflow deadline passed before the command ran".into(),
+            ));
+        }
+        let (driver, handle, database, connection) = {
+            let session = self.session.lock().expect("the live session lock");
+            if !session.is_open() {
+                return Err(WorkflowError::Step("the live session is not open".into()));
+            }
+            (
+                session.driver.clone().expect("the session driver"),
+                session.handle.clone().expect("the session handle"),
+                session.database.clone().unwrap_or_else(|| "main".into()),
+                session.connection.clone().unwrap_or_default(),
+            )
+        };
+        // The step's connection — or the workflow's — must be the live one;
+        // the engine's report names connections, the host runs one.
+        let resolved = datazen::workflow::application::command_runtime::resolve_connection_id(
+            step,
+            workflow_connection,
+        )?;
+        if resolved != connection {
+            return Err(WorkflowError::Step(format!(
+                "the workflow's connection '{resolved}' is not the live session"
+            )));
+        }
+        let not_wired = |command: &str| {
+            WorkflowError::Step(format!(
+                "the native host runs query and catalog read commands; '{command}' is not wired"
+            ))
+        };
+        match step.command.as_str() {
+            "query" => {
+                let sql = step
+                    .input
+                    .get("sql")
+                    .and_then(|value| value.as_str())
+                    .ok_or_else(|| WorkflowError::Step("a query command needs sql".into()))?;
+                let limit = step
+                    .input
+                    .get("limit")
+                    .and_then(|value| value.as_u64())
+                    .unwrap_or(datazen::workflow::engine::executor::WORKFLOW_QUERY_ROW_LIMIT as u64)
+                    as usize;
+                let result = driver
+                    .query(&handle, sql)
+                    .await
+                    .map_err(|error| WorkflowError::Step(error.to_string()))?;
+                let truncated = result.rows.len() > limit;
+                let statement = datazen_driver_api::StatementResult {
+                    sql: sql.to_owned(),
+                    columns: result.columns,
+                    rows: result.rows.into_iter().take(limit).collect(),
+                    rows_affected: result.rows_affected,
+                    execution_time_ms: result.execution_time_ms,
+                    truncated,
+                };
+                let multi = datazen_driver_api::MultiQueryResult {
+                    results: vec![statement],
+                    total_time_ms: result_execution_ms_alias(&step.id),
+                };
+                Ok(datazen_driver_api::CommandResult::new(
+                    serde_json::to_value(&multi)
+                        .map_err(|error| WorkflowError::Step(error.to_string()))?,
+                ))
+            }
+            "list_tables" => {
+                let tables = driver
+                    .get_tables(&handle, &database, None)
+                    .await
+                    .map_err(|error| WorkflowError::Step(error.to_string()))?;
+                let names: Vec<&str> = tables.iter().map(|table| table.name.as_str()).collect();
+                Ok(datazen_driver_api::CommandResult::new(
+                    serde_json::json!({ "tables": names }),
+                ))
+            }
+            "get_schema" | "describe_table" => {
+                let table = step
+                    .input
+                    .get("table")
+                    .and_then(|value| value.as_str())
+                    .ok_or_else(|| {
+                        not_wired(&step.command)
+                    })?;
+                let schema = driver
+                    .get_table_schema(&handle, table, &database, None)
+                    .await
+                    .map_err(|error| WorkflowError::Step(error.to_string()))?;
+                Ok(datazen_driver_api::CommandResult::new(
+                    serde_json::json!({
+                        "table": schema.table_name,
+                        "columns": schema.columns.iter().map(|column| column.name.clone()).collect::<Vec<_>>(),
+                    }),
+                ))
+            }
+            other => Err(not_wired(other)),
+        }
+    }
+
+    async fn complete_ai(&self, _prompt: String) -> Result<String, WorkflowError> {
+        // The honest answer: the native host has no AI backend configured.
+        Err(WorkflowError::Step(
+            "AI is not configured in the native host".into(),
+        ))
+    }
+
+    async fn sql_dialect(
+        &self,
+        _connection_id: &str,
+    ) -> datazen::sql_template::SqlTemplateDialect {
+        // The host links sqlite this phase; its literals are the standard
+        // dialect's.
+        datazen::sql_template::SqlTemplateDialect::Standard
+    }
+}
+
+/// The total-time field the query command's result carries: the step's own
+/// clock is the driver's execution time; there is no separate wall to add.
+fn result_execution_ms_alias(_step_id: &str) -> u64 {
+    0
+}
+
+/// Run one workflow through the shared engine over the live session (T8):
+/// the definitions the registry holds, the four-method host above, and the
+/// step report mapped into the UI's vocabulary.
+async fn run_workflow_engine(
+    workflows: &Arc<WorkflowRegistry>,
+    repository: &Arc<dyn ConnectionRepository>,
+    session: &Arc<Mutex<LiveSession>>,
+    name: &str,
+) -> Result<Vec<WorkflowStepResult>, String> {
+    use datazen::workflow::engine::executor::WorkflowExecutor;
+
+    let scope = crate::dashboards::host_scope();
+    let definition = workflows
+        .list_definitions(&scope)
+        .await
+        .into_iter()
+        .find(|definition| definition.name == name)
+        .ok_or_else(|| format!("no workflow {name}"))?;
+    let connection = {
+        let session = session.lock().expect("the live session lock");
+        if !session.is_open() {
+            return Err("the live session is not open".into());
+        }
+        session.connection.clone()
+    };
+    let host = LiveWorkflowHost {
+        session: Arc::clone(session),
+        repository: Arc::clone(repository),
+    };
+    let result = WorkflowExecutor::execute(
+        &definition,
+        &host,
+        connection.as_deref(),
+        &serde_json::json!({}),
+    )
+    .await
+    .map_err(|error| error)?;
+    // A failing workflow still carries its step report — the list is the
+    // report; only a workflow that could not run at all is an error.
+    Ok(result
+        .steps
+        .iter()
+        .map(|step| WorkflowStepResult {
+            step: step
+                .sql_executed
+                .clone()
+                .unwrap_or_else(|| step.step_id.clone()),
+            ok: step.status == datazen::workflow::domain::model::StepStatus::Success,
+            summary: match (&step.error, &step.result) {
+                (Some(error), _) => error.clone(),
+                (None, Some(value)) => {
+                    if let Some(rows) = value.get("rows_count").and_then(|rows| rows.as_u64()) {
+                        format!("{rows} rows")
+                    } else {
+                        value.to_string()
+                    }
+                }
+                (None, None) => format!("{:?}", step.status),
+            },
+        })
+        .collect())
+}
+
 async fn value_search_scan(
     session: &Arc<Mutex<LiveSession>>,
     value: &str,
@@ -1492,6 +1737,9 @@ impl DesktopAdapter for LiveAdapter {
             AdapterJob::ValueSearch { generation, value, mode } => {
                 HostJob::ValueSearch { generation, value, mode }
             }
+            AdapterJob::RunWorkflow { generation, name } => {
+                HostJob::RunWorkflow { generation, name }
+            }
         };
         self.jobs.lock().expect("the job channel").send(job).is_ok()
     }
@@ -1506,6 +1754,9 @@ impl DesktopAdapter for LiveAdapter {
                 }
                 HostAnswer::ValueSearched { generation, hits } => {
                     deliveries.push(AdapterDelivery::ValueSearched { generation, hits });
+                }
+                HostAnswer::WorkflowRun { generation, results } => {
+                    deliveries.push(AdapterDelivery::WorkflowRun { generation, results });
                 }
                 HostAnswer::TablePage { generation, page } => {
                     deliveries.push(AdapterDelivery::TablePage { generation, page });
@@ -2702,6 +2953,24 @@ mod tests {
         assert!(!error.is_empty(), "the failure carries a sentence: {error}");
     }
 
+    /// Wait for a workflow run job's delivery (T8).
+    fn poll_workflow_run(
+        adapter: &mut LiveAdapter,
+        generation: u32,
+    ) -> Option<Result<Vec<WorkflowStepResult>, String>> {
+        for _ in 0..300 {
+            for delivery in adapter.poll_jobs() {
+                if let AdapterDelivery::WorkflowRun { generation: g, results } = delivery {
+                    if g == generation {
+                        return Some(results);
+                    }
+                }
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        None
+    }
+
     /// Wait for a value search job's delivery (T4).
     fn poll_value_search(adapter: &mut LiveAdapter, generation: u32) -> Option<Vec<ValueSearchHit>> {
         for _ in 0..300 {
@@ -2894,6 +3163,195 @@ mod tests {
             .parse_connections_import(dir.join("no-such.json").to_str().unwrap(), "")
             .expect_err("the missing file is refused");
         assert!(!error.is_empty(), "the refusal carries a sentence: {error}");
+    }
+
+    #[test]
+    fn the_workflow_engine_runs_every_step_kind_over_the_live_session() {
+        let dir = temp_dir("workflow-engine");
+        let mut adapter = opened_adapter(&dir);
+
+        // A definition with the step kinds the engine owns: a query, a
+        // catalog read command, a condition on the query's answer, and a
+        // foreach over the query's rows. The UI's save path writes
+        // query-only definitions, so the test writes the definition into
+        // the registry directly.
+        let definition = WorkflowDefinition {
+            database: None,
+            id: "engine-test".into(),
+            name: "engine test".into(),
+            description: "written by the test".into(),
+            version: None,
+            author: None,
+            variables: Vec::new(),
+            connection: None,
+            steps: vec![
+                WorkflowStep::Query {
+                    id: "count".into(),
+                    sql: "SELECT id, name FROM users LIMIT 3".into(),
+                    connection: None,
+                    database: None,
+                    timeout_secs: Some(60),
+                    on_error: None,
+                },
+                WorkflowStep::Command {
+                    id: "tables".into(),
+                    command: "list_tables".into(),
+                    connection: None,
+                    input: serde_json::json!({}),
+                    timeout_secs: Some(60),
+                    on_error: None,
+                },
+                WorkflowStep::Condition {
+                    id: "has_rows".into(),
+                    expr: "steps.count.rows_count > 0".into(),
+                    then_steps: vec![WorkflowStep::Query {
+                        id: "first_row".into(),
+                        sql: "SELECT name FROM users LIMIT 1".into(),
+                        connection: None,
+                        database: None,
+                        timeout_secs: Some(60),
+                        on_error: None,
+                    }],
+                    else_steps: None,
+                },
+                WorkflowStep::ForEach {
+                    id: "each_user".into(),
+                    items: "{{steps.count.rows}}".into(),
+                    as_var: "user".into(),
+                    steps: vec![WorkflowStep::Query {
+                        id: "echo".into(),
+                        sql: "SELECT '{{user.name}}' AS name".into(),
+                        connection: None,
+                        database: None,
+                        timeout_secs: Some(60),
+                        on_error: None,
+                    }],
+                    max_iterations: None,
+                },
+            ],
+            blocks: Vec::new(),
+            output: None,
+            timeout_secs: Some(60),
+            error_handling: None,
+            schedule: None,
+            visibility: WorkflowVisibility::User,
+        };
+        futures_executor::block_on(
+            adapter
+                .workflows
+                .save(&crate::dashboards::host_scope(), &definition),
+        )
+        .unwrap();
+
+        assert!(adapter.begin_job(AdapterJob::RunWorkflow {
+            generation: 1,
+            name: "engine test".into(),
+        }));
+        let results = poll_workflow_run(&mut adapter, 1)
+            .expect("the run answers")
+            .expect("the engine ran the workflow");
+
+        // count, tables, condition, first_row (the then branch), the three
+        // echo iterations, the foreach's own row — in engine order.
+        assert_eq!(results.len(), 8, "{results:?}");
+        assert!(results.iter().all(|result| result.ok), "{results:?}");
+        assert_eq!(results[0].step, "SELECT id, name FROM users LIMIT 3");
+        assert_eq!(results[0].summary, "3 rows", "the query step reports its rows");
+        assert!(
+            results[1].summary.contains("users"),
+            "the list_tables command answered the real catalog: {}",
+            results[1].summary
+        );
+        assert!(
+            results[2].summary.contains("condition\":true"),
+            "the condition matched: {}",
+            results[2].summary
+        );
+        assert_eq!(results[3].summary, "1 rows", "the condition's then branch ran");
+        assert!(
+            results[7].summary.contains("iterations_completed"),
+            "the foreach reports its iterations: {}",
+            results[7].summary
+        );
+    }
+
+    #[test]
+    fn an_ai_step_and_a_past_deadline_answer_honestly() {
+        let dir = temp_dir("workflow-honest");
+        let mut adapter = opened_adapter(&dir);
+
+        // An AI step: the honest missing-backend sentence, and the workflow
+        // report carries it as a failed step.
+        let definition = WorkflowDefinition {
+            database: None,
+            id: "ai-test".into(),
+            name: "ai test".into(),
+            description: "written by the test".into(),
+            version: None,
+            author: None,
+            variables: Vec::new(),
+            connection: None,
+            steps: vec![WorkflowStep::Ai {
+                id: "ask".into(),
+                prompt: "explain the users table".into(),
+                timeout_secs: Some(60),
+                on_error: None,
+            }],
+            blocks: Vec::new(),
+            output: None,
+            timeout_secs: Some(60),
+            error_handling: None,
+            schedule: None,
+            visibility: WorkflowVisibility::User,
+        };
+        futures_executor::block_on(
+            adapter
+                .workflows
+                .save(&crate::dashboards::host_scope(), &definition),
+        )
+        .unwrap();
+        assert!(adapter.begin_job(AdapterJob::RunWorkflow {
+            generation: 1,
+            name: "ai test".into(),
+        }));
+        let results = poll_workflow_run(&mut adapter, 1)
+            .expect("the run answers")
+            .expect("the engine ran the workflow");
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].ok, "the AI step failed honestly");
+        assert!(
+            results[0].summary.contains("AI is not configured"),
+            "the sentence names the missing backend: {}",
+            results[0].summary
+        );
+
+        // A deadline already past: the host refuses before running anything.
+        let host = LiveWorkflowHost {
+            session: Arc::clone(&adapter.session),
+            repository: Arc::new(
+                FileConnectionRepository::open(&dir.join("connections.json")).unwrap(),
+            ),
+        };
+        let step = datazen::workflow::domain::command::WorkflowCommandStep {
+            id: "late".into(),
+            command: "query".into(),
+            connection: None,
+            input: serde_json::json!({ "sql": "SELECT 1" }),
+            timeout_secs: None,
+            on_error: None,
+        };
+        let past = tokio::time::Instant::from_std(
+            std::time::Instant::now() - std::time::Duration::from_secs(10),
+        );
+        let error = {
+            use datazen::workflow::application::host::WorkflowHost as _;
+            futures_executor::block_on(host.execute_command(&step, None, None, Some(past)))
+                .expect_err("the past deadline is refused")
+        };
+        assert!(
+            error.to_string().contains("deadline"),
+            "the refusal names the deadline: {error}"
+        );
     }
 
     #[test]

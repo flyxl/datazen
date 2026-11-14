@@ -262,6 +262,11 @@ struct AppState {
     workflow_yaml: SqlEditor,
     /// The last workflow run's results.
     workflow_results: Vec<WorkflowStepResult>,
+    /// T8: the workflow run's generation and its in-flight marker. The host's
+    /// engine runs as a job; a delivery from a generation the state has moved
+    /// past is dropped.
+    workflow_generation: u32,
+    workflow_loading: Option<u32>,
 }
 
 impl Default for AppState {
@@ -364,6 +369,8 @@ impl Default for AppState {
             workflow_editing: None,
             workflow_yaml: SqlEditor::new(),
             workflow_results: Vec::new(),
+            workflow_generation: 0,
+            workflow_loading: None,
         }
     }
 }
@@ -1275,10 +1282,17 @@ impl AppState {
     }
 
     /// W7: run the edited workflow; the results list below is read-only.
-    /// The host runs it first (N13); its fixed not-implemented error means
-    /// the demo process, and the memory port answers instead.
+    /// T8: the host's engine runs as a job (every step kind it supports); a
+    /// declined job falls back to the sync paths — the host's N13 runner,
+    /// then the memory port's demo runner.
     fn run_edited_workflow(&mut self) {
         let Some((name, _)) = self.workflow_editing.clone() else { return };
+        let generation = self.next_workflow_generation();
+        let job = AdapterJob::RunWorkflow { generation, name: name.clone() };
+        if self.desktop.begin_job(job) {
+            self.workflow_loading = Some(generation);
+            return;
+        }
         let ran = match self.desktop.run_workflow(&name) {
             Ok(results) => Ok(results),
             Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
@@ -1290,6 +1304,11 @@ impl AppState {
             Ok(results) => self.workflow_results = results,
             Err(_) => self.workflow_results.clear(),
         }
+    }
+
+    fn next_workflow_generation(&mut self) -> u32 {
+        self.workflow_generation += 1;
+        self.workflow_generation
     }
 
     /// Save the widget form. An empty title is refused. The host's
@@ -1901,6 +1920,18 @@ impl AppState {
                 }
                 if let Ok(page) = page {
                     self.deliver_query_result(generation, page);
+                }
+            }
+            AdapterDelivery::WorkflowRun { generation, results } => {
+                if self.workflow_loading == Some(generation) {
+                    self.workflow_loading = None;
+                }
+                if generation != self.workflow_generation {
+                    return;
+                }
+                match results {
+                    Ok(results) => self.workflow_results = results,
+                    Err(_) => self.workflow_results.clear(),
                 }
             }
         }
@@ -7742,6 +7773,43 @@ mod tests {
     }
 
     #[test]
+    fn a_workflow_run_lands_through_the_job_channel() {
+        use super::app_poll;
+
+        let mut runtime = runtime();
+        runtime.poll = Some(app_poll);
+        runtime.state.desktop = Box::new(JobAdapter::new());
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-workflows").expect("workflows navigation");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        // A workflow to run: the workflow form saves through the memory port
+        // (the JobAdapter answers no sync workflows).
+        runtime.state.workflow_editing = Some(("engine run".into(), vec!["SELECT 1".into()]));
+        runtime.settle_all();
+        runtime.frame(0.0);
+
+        let (x, y) = runtime.find("workflow-run").expect("the run button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(
+            runtime.state.workflow_loading.is_some(),
+            "the engine job is in flight"
+        );
+        assert!(runtime.state.workflow_results.is_empty(), "no results yet");
+
+        runtime.settle_all();
+        runtime.frame(0.0);
+        runtime.frame(0.0);
+        assert!(runtime.state.workflow_loading.is_none(), "the delivery landed");
+        assert_eq!(runtime.state.workflow_results.len(), 1, "the step report is up");
+        assert_eq!(runtime.state.workflow_results[0].step, "SELECT 1");
+        assert!(runtime.state.workflow_results[0].ok);
+    }
+
+    #[test]
     fn the_sync_wizard_refuses_the_same_endpoint_twice() {
         let mut runtime = runtime();
         runtime.frame(0.0);
@@ -9141,6 +9209,16 @@ mod tests {
             std::mem::take(&mut self.accepted)
                 .into_iter()
                 .map(|job| match job {
+                    AdapterJob::RunWorkflow { generation, .. } => {
+                        AdapterDelivery::WorkflowRun {
+                            generation,
+                            results: Ok(vec![datazen_ui_api::WorkflowStepResult {
+                                step: "SELECT 1".into(),
+                                ok: true,
+                                summary: "1 rows".into(),
+                            }]),
+                        }
+                    }
                     AdapterJob::ValueSearch { generation, .. } => {
                         AdapterDelivery::ValueSearched {
                             generation,

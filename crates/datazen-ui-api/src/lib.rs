@@ -532,6 +532,12 @@ pub enum AdapterJob {
         generation: u32,
         batch: CellEditBatch,
     },
+    /// Run one workflow through the host's engine (T8): the real executor
+    /// over the live session, every step kind it supports.
+    RunWorkflow {
+        generation: u32,
+        name: String,
+    },
     /// Run one SQL statement, the job twin of the workspace's `execute`.
     RunQuery {
         generation: u32,
@@ -555,6 +561,11 @@ pub enum AdapterDelivery {
     CommitCount { generation: u32, count: Result<u32, String> },
     /// A query job's result page (or its failure sentence).
     QueryPage { generation: u32, page: Result<TablePage, String> },
+    /// A workflow run's step report (or its failure sentence) (T8).
+    WorkflowRun {
+        generation: u32,
+        results: Result<Vec<WorkflowStepResult>, String>,
+    },
 }
 
 /// One (table, column) a value search found the value in (T4): how many
