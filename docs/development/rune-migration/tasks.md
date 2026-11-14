@@ -61,8 +61,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | P8 | 已完成 | 77d86e6 | testing/P8-import-wizard.md |
 | P9 | 已完成 | 3ecc608 | testing/P9-backup.md |
 | D1 | 已完成 | b45490f | testing/D1-sync-endpoints.md |
-| D2 | 进行中 | | |
-| D3 | 未开始 | | |
+| D2 | 已完成 | 59aff4a | testing/D2-sync-tables.md |
+| D3 | 进行中 | | |
 | D4 | 未开始 | | |
 | D5 | 未开始 | | |
 | D6 | 未开始 | | |
