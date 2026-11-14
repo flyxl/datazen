@@ -32,6 +32,9 @@ pub struct DataGrid {
     focus: (u32, u32),
     editing: bool,
     editable: bool,
+    page: u32,
+    page_size: u32,
+    total_rows: u32,
     pub(crate) editor: TextEdit,
     /// Horizontal scroll, in points. `on_scroll_offset` writes it; it cannot touch this struct.
     scroll_x: rune::Live<f32>,
@@ -56,10 +59,26 @@ impl DataGrid {
             focus: (0, 0),
             editing: false,
             editable: true,
+            page: 0,
+            page_size: 0,
+            total_rows: 0,
             editor: TextEdit::new(String::new()),
             scroll_x: rune::Live::new(0.0),
             origin_col: 0,
         }
+    }
+
+    pub fn page(&self) -> u32 {
+        self.page
+    }
+
+    pub fn page_size(&self) -> u32 {
+        self.page_size
+    }
+
+    /// Rows in the whole table behind this page.
+    pub fn total_rows(&self) -> u32 {
+        self.total_rows
     }
 
     pub fn origin_col(&self) -> u32 {
@@ -80,6 +99,7 @@ impl DataGrid {
         self.editable = editable;
         if !editable {
             self.editing = false;
+            self.editor.focused = false;
         }
     }
 
@@ -116,11 +136,15 @@ impl DataGrid {
     pub fn load_page(&mut self, page: &datazen_ui_api::TablePage) {
         if self.editing {
             self.editing = false;
+            self.editor.focused = false;
         }
         self.source = Some(page.rows.clone());
         self.columns = page.columns.clone();
         self.rows = page.rows.len() as u32;
         self.cols = page.columns.len() as u32;
+        self.page = page.page;
+        self.page_size = page.page_size;
+        self.total_rows = page.total_rows;
         self.edits.clear();
         self.anchor = (0, 0);
         self.focus = (0, 0);
@@ -156,6 +180,9 @@ impl DataGrid {
         }
         self.edits.insert(self.focus, self.editor.text.clone());
         self.editing = false;
+        // The editor element is about to unmount; an editor that keeps the IME
+        // focus eats Command keys that belong to the grid (copy, select-all).
+        self.editor.focused = false;
     }
 
     pub fn copy_tsv(&self) -> String {
@@ -417,7 +444,10 @@ fn cell(grid: &DataGrid, row_index: u32, col_index: u32, ink: rune::Color) -> El
                 .w(COL_W - 16.0)
                 .h(ROW_H - 4.0)
                 .on_edit(|state: &mut crate::AppState| &mut state.grid.editor)
-                .on_submit(|state: &mut crate::AppState, _| state.commit_grid_edit()),
+                .on_submit(|state: &mut crate::AppState, tx| {
+                    state.commit_grid_edit();
+                    tx.blur();
+                }),
         )
     } else {
         box_el.child(text(grid.cell(row_index, col_index)).font(label_style()).color(ink))

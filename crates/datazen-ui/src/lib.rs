@@ -12,6 +12,9 @@ use rune::tok::{self, type_};
 use rune::{App, AppSpec, Cx, El, Ime, KeyEvent, Tx, col, row, text};
 use sql_editor::SqlEditor;
 
+/// Rows asked from the workspace for one table page.
+pub const TABLE_PAGE_SIZE: u32 = 25;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Section {
     #[default]
@@ -69,7 +72,7 @@ impl AppState {
         if self.workspace.connect(id).is_err() {
             return;
         }
-        if let Ok(page) = self.workspace.open_table("customers") {
+        if let Ok(page) = self.workspace.open_table("customers", 0, TABLE_PAGE_SIZE) {
             self.grid.load_page(&page);
             self.grid.set_editable(true);
             self.active = Section::Workspace;
@@ -103,7 +106,7 @@ impl AppState {
     }
 
     fn show_table(&mut self, title: &str) -> bool {
-        match self.workspace.open_table(title) {
+        match self.workspace.open_table(title, 0, TABLE_PAGE_SIZE) {
             Ok(page) => {
                 self.grid.load_page(&page);
                 self.grid.set_editable(true);
@@ -510,7 +513,7 @@ pub fn start() {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppState, Section, query_selected, view};
+    use super::{AppState, Section, TABLE_PAGE_SIZE, query_selected, view};
     use rune::{Env, Runtime};
 
     fn runtime() -> Runtime<AppState> {
@@ -638,6 +641,7 @@ mod tests {
             rows,
             page: 0,
             page_size: 6000,
+            total_rows: 6000,
         });
         runtime.state.active = Section::Workspace;
         runtime.frame(0.0);
@@ -688,8 +692,11 @@ mod tests {
         runtime.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
         runtime.frame(0.0);
         assert!(runtime.state.grid.is_editing());
-        runtime.state.grid.commit_edit();
+        // The second Enter is the production commit: the focused input's on_submit
+        // commits the cell and blurs, so later Command keys still reach the grid.
+        runtime.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
         runtime.frame(0.0);
+        assert!(!runtime.state.grid.is_editing());
 
         runtime.state.grid.paste_tsv("A\tB");
         assert_eq!(runtime.state.grid.cell(0, 1), "A");
@@ -718,7 +725,28 @@ mod tests {
         runtime.state.grid.begin_edit();
         runtime.state.grid.editor.insert("-edited");
         runtime.state.commit_grid_edit();
-        assert_eq!(runtime.state.workspace.open_table("customers").unwrap().rows[0][1], "customer-0-edited");
+        assert_eq!(
+            runtime.state.workspace.open_table("customers", 0, TABLE_PAGE_SIZE).unwrap().rows[0][1],
+            "customer-0-edited"
+        );
+    }
+
+    #[test]
+    fn opening_a_table_loads_the_first_page_of_the_table() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.frame(0.0);
+
+        let grid = &runtime.state.grid;
+        assert_eq!(grid.page(), 0);
+        assert_eq!(grid.page_size(), TABLE_PAGE_SIZE);
+        assert_eq!(grid.total_rows(), 40);
+        assert_eq!(grid.rows, 25, "only the page is loaded, not the whole table");
+        assert_eq!(grid.cell(24, 1), "customer-24");
+        assert_eq!(grid.cell(0, 1), "customer-0");
     }
 
     #[test]
