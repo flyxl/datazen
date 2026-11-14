@@ -32,16 +32,18 @@ enum Section {
     Connections,
     Workspace,
     Settings,
+    Tools,
 }
 
 impl Section {
-    const ALL: [Self; 3] = [Self::Connections, Self::Workspace, Self::Settings];
+    const ALL: [Self; 4] = [Self::Connections, Self::Workspace, Self::Settings, Self::Tools];
 
     const fn key(self) -> &'static str {
         match self {
             Self::Connections => "connections",
             Self::Workspace => "workspace",
             Self::Settings => "settings",
+            Self::Tools => "tools",
         }
     }
 
@@ -50,8 +52,18 @@ impl Section {
             Self::Connections => "Connections",
             Self::Workspace => "Workspace",
             Self::Settings => "Settings",
+            Self::Tools => "Tools",
         }
     }
+}
+
+/// Which data tool the tools page shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Tool {
+    #[default]
+    Sync,
+    Compare,
+    Transfer,
 }
 
 struct AppState {
@@ -117,6 +129,15 @@ struct AppState {
     backup_job: Option<u64>,
     backup_snapshot: Option<ProgressSnapshot>,
     backup_error: Option<String>,
+    /// The tools page's active tool.
+    tool: Tool,
+    /// The sync wizard: endpoints, tables, options, preview, run.
+    sync_step: u32,
+    sync_source: String,
+    sync_target: String,
+    sync_tables: std::collections::BTreeSet<String>,
+    sync_options: [bool; 3],
+    sync_error: Option<String>,
 }
 
 impl Default for AppState {
@@ -164,6 +185,13 @@ impl Default for AppState {
             backup_job: None,
             backup_snapshot: None,
             backup_error: None,
+            tool: Tool::Sync,
+            sync_step: 0,
+            sync_source: "local".into(),
+            sync_target: "replica".into(),
+            sync_tables: std::collections::BTreeSet::new(),
+            sync_options: [false, false, true],
+            sync_error: None,
         }
     }
 }
@@ -363,6 +391,32 @@ impl AppState {
     fn refresh_backup_progress(&mut self) {
         if let Some(job) = self.backup_job {
             self.backup_snapshot = self.workspace.job_progress(job);
+        }
+    }
+
+    fn set_tool(&mut self, tool: Tool) {
+        self.tool = tool;
+    }
+
+    /// Cycle the sync source through the connections.
+    fn cycle_sync_source(&mut self) {
+        self.sync_source = next_connection(&self.workspace, &self.sync_source);
+    }
+
+    fn cycle_sync_target(&mut self) {
+        self.sync_target = next_connection(&self.workspace, &self.sync_target);
+    }
+
+    /// Step 1 done: the port validates the two endpoints.
+    fn sync_next_endpoints(&mut self) {
+        let source = self.sync_source.clone();
+        let target = self.sync_target.clone();
+        match self.workspace.sync_endpoints(&source, &target) {
+            Ok(()) => {
+                self.sync_error = None;
+                self.sync_step = 1;
+            }
+            Err(error) => self.sync_error = Some(error),
         }
     }
 
@@ -724,6 +778,15 @@ fn navigation_item(state: &AppState, section: Section, dark: bool) -> El {
         .label(section.label())
         .on_press(move |state: &mut AppState| state.select(section))
 }
+/// The connection after `current` in the port's list, wrapping around.
+fn next_connection(workspace: &MemoryWorkspace, current: &str) -> String {
+    let ids: Vec<String> = workspace.connections().iter().map(|profile| profile.id.clone()).collect();
+    match ids.iter().position(|id| id == current) {
+        Some(index) => ids[(index + 1) % ids.len()].clone(),
+        None => ids.first().cloned().unwrap_or_else(|| current.to_owned()),
+    }
+}
+
 fn query_selected(state: &AppState) -> bool {
     state.tabs.selected().is_some_and(|tab| tab.kind == TabKind::Query)
 }
@@ -733,7 +796,127 @@ fn page_body(state: &AppState, theme: tok::Theme) -> El {
         Section::Connections => connection_list(state, theme),
         Section::Workspace => workspace_body(state, theme),
         Section::Settings => settings_page(state, theme),
+        Section::Tools => tools_page(state, theme),
     }
+}
+
+/// The tools page: one switcher, three tools. Sync, compare, transfer.
+fn tools_page(state: &AppState, theme: tok::Theme) -> El {
+    let entry = |key: &str, label: &str, tool: Tool, active: bool| {
+        row()
+            .key(key)
+            .h(24.0)
+            .px(10.0)
+            .center_y()
+            .radius(6.0)
+            .fill(if active { tok::accent(0, true) } else { theme.control_off })
+            .child(text(label).font(type_::LABEL).color(theme.text))
+            .on_press(move |state: &mut AppState| state.set_tool(tool))
+    };
+    col()
+        .key("tools-page")
+        .w_full()
+        .gap(8.0)
+        .child(
+            row()
+                .key("tool-switcher")
+                .w_full()
+                .h(28.0)
+                .gap(6.0)
+                .center_y()
+                .child(text("Data tools".to_owned()).font(type_::TITLE).color(theme.text))
+                .child(entry("tool-sync", "Sync", Tool::Sync, state.tool == Tool::Sync))
+                .child(entry("tool-compare", "Compare", Tool::Compare, state.tool == Tool::Compare))
+                .child(entry("tool-transfer", "Transfer", Tool::Transfer, state.tool == Tool::Transfer)),
+        )
+        .child(match state.tool {
+            Tool::Sync => sync_tool(state, theme),
+            Tool::Compare => col().key("compare-tool").w_full(),
+            Tool::Transfer => col().key("transfer-tool").w_full(),
+        })
+}
+
+/// The sync wizard. Step 1: pick the two endpoints.
+fn sync_tool(state: &AppState, theme: tok::Theme) -> El {
+    let mut section = col().key("sync-tool").w_full().gap(6.0);
+    match state.sync_step {
+        0 => section = section
+            .child(
+                row()
+                    .key("sync-step-1")
+                    .w_full()
+                    .h(28.0)
+                    .gap(8.0)
+                    .center_y()
+                    .child(
+                        row()
+                            .key("sync-source")
+                            .h(24.0)
+                            .px(8.0)
+                            .center_y()
+                            .radius(6.0)
+                            .fill(theme.control_off)
+                            .child(
+                                text(format!("source: {}", state.sync_source))
+                                    .font(type_::LABEL)
+                                    .color(theme.text),
+                            )
+                            .on_press(|state: &mut AppState| state.cycle_sync_source()),
+                    )
+                    .child(
+                        row()
+                            .key("sync-target")
+                            .h(24.0)
+                            .px(8.0)
+                            .center_y()
+                            .radius(6.0)
+                            .fill(theme.control_off)
+                            .child(
+                                text(format!("target: {}", state.sync_target))
+                                    .font(type_::LABEL)
+                                    .color(theme.text),
+                            )
+                            .on_press(|state: &mut AppState| state.cycle_sync_target()),
+                    )
+                    .child(
+                        row()
+                            .key("sync-endpoints-next")
+                            .h(24.0)
+                            .px(8.0)
+                            .center_y()
+                            .radius(6.0)
+                            .fill(theme.control_off)
+                            .child(text("Next").font(type_::LABEL).color(theme.text))
+                            .on_press(|state: &mut AppState| state.sync_next_endpoints()),
+                    ),
+            ),
+        _ => section = section.child(
+            row()
+                .key("sync-step-1-done")
+                .w_full()
+                .h(24.0)
+                .center_y()
+                .child(
+                    text(format!("{} → {}", state.sync_source, state.sync_target))
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
+        ),
+    }
+    if let Some(error) = &state.sync_error {
+        section = section.child(
+            row()
+                .key("sync-error")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+        );
+    }
+    section
 }
 
 /// The workspace is driven by the tabs: a query tab shows the SQL editor above the
@@ -3670,6 +3853,47 @@ mod tests {
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
         assert!(runtime.find("backup-error").is_some());
+    }
+
+    #[test]
+    fn the_sync_wizard_refuses_the_same_endpoint_twice() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-tools").expect("tools navigation");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.find("tools-page").is_some());
+        assert!(runtime.find("sync-tool").is_some());
+        assert!(runtime.find("tool-compare").is_some());
+        assert!(runtime.find("tool-transfer").is_some());
+
+        // Cycle the target onto the source: both ends local.
+        let (x, y) = runtime.find("sync-target").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.sync_target, "local", "one connection away");
+
+        let (x, y) = runtime.find("sync-endpoints-next").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.sync_step, 0, "the same end twice does not advance");
+        assert!(runtime.find("sync-error").is_some(), "the refusal is visible");
+
+        // Back to distinct endpoints: the step advances.
+        let (x, y) = runtime.find("sync-target").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.sync_target, "replica");
+        let (x, y) = runtime.find("sync-endpoints-next").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.sync_step, 1);
+        assert!(runtime.find("sync-error").is_none());
     }
 
     #[test]

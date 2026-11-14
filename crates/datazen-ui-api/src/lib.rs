@@ -206,6 +206,9 @@ pub trait WorkspaceApi {
     fn job_progress(&mut self, job: u64) -> Option<ProgressSnapshot>;
     /// Start a backup of the connected database.
     fn start_backup(&mut self) -> Result<u64, String>;
+    /// D1: the two endpoints of a sync. Unknown endpoints, or the same endpoint
+    /// twice, are refused.
+    fn sync_endpoints(&mut self, source: &str, target: &str) -> Result<(), String>;
     /// Stop a running job. A stopped job reports "stopped" from then on.
     fn stop_job(&mut self, job: u64) -> Result<(), String>;
     /// Apply a DDL script to the table. The port records what it applied; a
@@ -336,11 +339,18 @@ impl MemoryWorkspace {
             ),
         ];
         Self {
-            connections: vec![ConnectionProfile {
-                id: "local".into(),
-                name: "Local Postgres".into(),
-                engine: "postgres".into(),
-            }],
+            connections: vec![
+                ConnectionProfile {
+                    id: "local".into(),
+                    name: "Local Postgres".into(),
+                    engine: "postgres".into(),
+                },
+                ConnectionProfile {
+                    id: "replica".into(),
+                    name: "Read Replica".into(),
+                    engine: "postgres".into(),
+                },
+            ],
             session: None,
             tables,
             open: None,
@@ -647,6 +657,18 @@ impl WorkspaceApi for MemoryWorkspace {
         }
     }
 
+    fn sync_endpoints(&mut self, source: &str, target: &str) -> Result<(), String> {
+        for endpoint in [source, target] {
+            if !self.connections.iter().any(|profile| profile.id == endpoint) {
+                return Err(format!("unknown connection {endpoint}"));
+            }
+        }
+        if source == target {
+            return Err("both ends are the same connection".into());
+        }
+        Ok(())
+    }
+
     fn start_backup(&mut self) -> Result<u64, String> {
         if self.session.is_none() {
             return Err("not connected".into());
@@ -818,9 +840,15 @@ impl WorkspaceApi for MemoryWorkspace {
         if !self.connections.iter().any(|profile| profile.id == id) {
             return Err(format!("unknown connection {id}"));
         }
+        let tables = self
+            .tables
+            .iter()
+            .filter(|(_, stored)| !(id == "replica" && stored.schema == "analytics"))
+            .map(|(name, _)| name.clone())
+            .collect();
         self.session = Some(Session {
             connection_id: id.to_owned(),
-            tables: self.tables.iter().map(|(name, _)| name.clone()).collect(),
+            tables,
         });
         Ok(())
     }
@@ -1401,6 +1429,21 @@ mod tests {
 
         assert!(workspace.stop_job(job).is_err(), "stopping twice is refused");
         assert!(workspace.stop_job(999).is_err());
+    }
+
+    #[test]
+    fn sync_endpoints_refuse_the_same_connection_twice() {
+        let mut workspace = MemoryWorkspace::new();
+        assert!(workspace.sync_endpoints("local", "local").is_err(), "the same end twice");
+        assert!(workspace.sync_endpoints("local", "missing").is_err());
+        assert!(workspace.sync_endpoints("missing", "local").is_err());
+        workspace.sync_endpoints("local", "replica").unwrap();
+
+        // The replica connection sees no analytics tables.
+        workspace.connect("replica").unwrap();
+        let session = workspace.session().unwrap();
+        assert!(session.tables.contains(&"customers".to_owned()));
+        assert!(!session.tables.contains(&"catalog".to_owned()), "the replica lacks analytics");
     }
 
     #[test]
