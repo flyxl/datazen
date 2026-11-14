@@ -7,7 +7,7 @@ mod data_grid;
 mod sql_editor;
 
 use data_grid::DataGrid;
-use datazen_ui_api::{ColumnDraft, ColumnFilter, ColumnSort, MemoryWorkspace, QueryApi, TabKind, Tabs, TablePage, WorkspaceApi};
+use datazen_ui_api::{ColumnDraft, ColumnFilter, ColumnSort, MemoryWorkspace, QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, WorkspaceApi};
 use rune::tok::{self, type_};
 use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, TextEdit, Tx, col, oklch, row, text, text_input};
 use sql_editor::SqlEditor;
@@ -138,6 +138,20 @@ impl AppState {
 
     fn set_table_view(&mut self, view: TableView) {
         self.table_view = view;
+    }
+
+    /// Flip the theme. The only write goes to the settings port.
+    fn toggle_theme(&mut self) {
+        let dark = self
+            .workspace
+            .read_settings()
+            .iter()
+            .find_map(|setting| match setting {
+                Setting::Theme { dark } => Some(*dark),
+                _ => None,
+            })
+            .unwrap_or(true);
+        let _ = self.workspace.write_setting(Setting::Theme { dark: !dark });
     }
 
     /// Open the ER diagram for the current schema: the selected table's schema,
@@ -492,7 +506,7 @@ fn page_body(state: &AppState, theme: tok::Theme) -> El {
     match state.active {
         Section::Connections => connection_list(state, theme),
         Section::Workspace => workspace_body(state, theme),
-        Section::Settings => settings_page(theme),
+        Section::Settings => settings_page(state, theme),
     }
 }
 
@@ -985,22 +999,47 @@ fn workspace_empty(theme: tok::Theme) -> El {
         )
 }
 
-fn settings_page(theme: tok::Theme) -> El {
+fn settings_page(state: &AppState, theme: tok::Theme) -> El {
+    let dark = state
+        .workspace
+        .read_settings()
+        .iter()
+        .find_map(|setting| match setting {
+            Setting::Theme { dark } => Some(*dark),
+            _ => None,
+        })
+        .unwrap_or(true);
     col()
-        .key("settings-empty")
+        .key("settings-page")
         .w_full()
-        .h(220.0)
-        .px(20.0)
-        .py(20.0)
         .gap(12.0)
-        .radius(12.0)
-        .fill(theme.control_off)
-        .child(text("Settings are not wired into the Rune workspace yet").font(type_::TITLE).color(theme.text))
         .child(
-            text("This page arrives with the settings port. The existing settings screen is unchanged.")
-                .font(type_::LABEL)
-                .color(theme.text_secondary)
-                .w_full(),
+            row()
+                .key("settings-appearance")
+                .w_full()
+                .h(32.0)
+                .gap(12.0)
+                .center_y()
+                .child(
+                    text("Appearance".to_owned())
+                        .font(type_::TITLE)
+                        .color(theme.text),
+                )
+                .child(
+                    row()
+                        .key("settings-theme")
+                        .h(28.0)
+                        .px(10.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(
+                            text(if dark { "Theme: Dark" } else { "Theme: Light" }.to_owned())
+                                .font(type_::LABEL)
+                                .color(theme.text),
+                        )
+                        .on_press(|state: &mut AppState| state.toggle_theme()),
+                ),
         )
 }
 
@@ -1247,7 +1286,15 @@ fn connection_list(state: &AppState, theme: tok::Theme) -> El {
 }
 
 fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
-    let dark = cx.system_dark();
+    let dark = state
+        .workspace
+        .read_settings()
+        .iter()
+        .find_map(|setting| match setting {
+            Setting::Theme { dark } => Some(*dark),
+            _ => None,
+        })
+        .unwrap_or_else(|| cx.system_dark());
     let theme = tok::theme(dark);
 
     let mut navigation = col().w_full().gap(4.0);
@@ -2487,6 +2534,71 @@ mod tests {
     }
 
     #[test]
+    fn the_theme_toggles_through_the_port_and_survives_reopening() {
+        use datazen_ui_api::{Setting, SettingsApi};
+
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+
+        let (x, y) = runtime.find("nav-settings").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.find("settings-page").is_some());
+        assert!(runtime.find("settings-theme").is_some());
+
+        runtime
+            .state
+            .workspace
+            .write_setting(Setting::Theme { dark: true })
+            .unwrap();
+        runtime.frame(0.0);
+
+        let (x, y) = runtime.find("settings-theme").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(
+            runtime
+                .state
+                .workspace
+                .read_settings()
+                .contains(&Setting::Theme { dark: false }),
+            "the toggle wrote the port"
+        );
+
+        // Leave and come back: the setting is where the port keeps it.
+        let (x, y) = runtime.find("nav-connections").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-settings").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(
+            runtime
+                .state
+                .workspace
+                .read_settings()
+                .contains(&Setting::Theme { dark: false }),
+            "reopening the page keeps the theme"
+        );
+
+        let (x, y) = runtime.find("settings-theme").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(
+            runtime
+                .state
+                .workspace
+                .read_settings()
+                .contains(&Setting::Theme { dark: true })
+        );
+    }
+
+    #[test]
     fn tab_strip_selects_and_closes_table_tabs() {
         let mut runtime = runtime();
         let first = runtime.state.open_table_tab("customers").unwrap();
@@ -2634,7 +2746,7 @@ mod tests {
     }
 
     #[test]
-    fn the_settings_page_is_an_empty_state_not_the_old_preview_card() {
+    fn the_settings_page_is_its_own_page_not_the_old_preview_card() {
         let mut runtime = runtime();
         runtime.frame(0.0);
         let (x, y) = runtime.find("nav-settings").expect("settings navigation");
@@ -2643,7 +2755,7 @@ mod tests {
         runtime.frame(0.0);
 
         assert_eq!(runtime.state.active, Section::Settings);
-        assert!(runtime.find("settings-empty").is_some());
+        assert!(runtime.find("settings-page").is_some(), "the settings page is real since P2");
         assert!(runtime.find("datazen-preview-card").is_none(), "the placeholder card is gone");
         assert!(runtime.find("connection-local").is_none(), "the connection list is its own page");
         assert!(runtime.find("workspace-empty").is_none(), "the workspace empty state is not here");
