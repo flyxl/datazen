@@ -121,6 +121,17 @@ pub struct TablePage {
     pub read_only: Option<String>,
 }
 
+/// One job's progress, in one piece. The port hands these out when asked;
+/// the UI never streams.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProgressSnapshot {
+    pub job: u64,
+    /// "running", "completed", "failed" or "stopped".
+    pub status: String,
+    pub percent: u32,
+    pub log: Vec<String>,
+}
+
 /// One export job the port runs. The memory port advances a job on every
 /// progress read; real drivers advance by themselves.
 #[derive(Clone, Debug)]
@@ -188,6 +199,9 @@ pub trait WorkspaceApi {
     /// Start an export job for a format and a range. A missing range gets no
     /// job at all.
     fn start_export(&mut self, format: &str, range: &str) -> Result<u64, String>;
+    /// One job's progress snapshot, if the job exists. The memory port
+    /// advances the job one step per read.
+    fn job_progress(&mut self, job: u64) -> Option<ProgressSnapshot>;
     /// Apply a DDL script to the table. The port records what it applied; a
     /// failure changes nothing.
     fn apply_ddl(&mut self, table: &str, sql: &str) -> Result<(), String>;
@@ -581,6 +595,34 @@ impl WorkspaceApi for MemoryWorkspace {
             reads: 0,
         });
         Ok(job)
+    }
+
+    fn job_progress(&mut self, job: u64) -> Option<ProgressSnapshot> {
+        let entry = self.jobs.iter_mut().find(|running| running.job == job)?;
+        entry.reads += 1;
+        let mut log = vec![
+            "queued".to_owned(),
+            format!("exporting {} of {}", entry.format, entry.range),
+        ];
+        match entry.reads {
+            1 => Some(ProgressSnapshot { job, status: "running".into(), percent: 0, log }),
+            2 => {
+                log.push("halfway".into());
+                Some(ProgressSnapshot { job, status: "running".into(), percent: 50, log })
+            }
+            _ => {
+                if entry.format == "broken" {
+                    log.push("the port cannot write broken files".into());
+                    Some(ProgressSnapshot { job, status: "failed".into(), percent: 100, log })
+                } else if entry.range == "no-such-table" {
+                    log.push("no such table no-such-table".into());
+                    Some(ProgressSnapshot { job, status: "failed".into(), percent: 100, log })
+                } else {
+                    log.push("done".into());
+                    Some(ProgressSnapshot { job, status: "completed".into(), percent: 100, log })
+                }
+            }
+        }
     }
 
     fn save_connection(&mut self, name: &str, engine: &str, address: &str) -> Result<(), String> {
@@ -1243,6 +1285,42 @@ mod tests {
         assert_eq!(job, 1, "job ids count from one");
         let second = workspace.start_export("json", "orders").unwrap();
         assert_eq!(second, 2);
+    }
+
+    #[test]
+    fn a_progress_snapshot_advances_and_failures_show_their_error_line() {
+        let mut workspace = MemoryWorkspace::new();
+        let job = workspace.start_export("csv", "customers").unwrap();
+        let first = workspace.job_progress(job).unwrap();
+        assert_eq!(first.status, "running");
+        assert_eq!(first.percent, 0);
+        assert_eq!(first.log.len(), 2);
+        let second = workspace.job_progress(job).unwrap();
+        assert_eq!(second.percent, 50);
+        let third = workspace.job_progress(job).unwrap();
+        assert_eq!(third.status, "completed");
+        assert_eq!(third.percent, 100);
+        assert!(third.log.last() == Some(&"done".to_owned()));
+        let settled = workspace.job_progress(job).unwrap();
+        assert_eq!(settled, third, "a finished job stays settled");
+
+        let broken = workspace.start_export("broken", "customers").unwrap();
+        workspace.job_progress(broken).unwrap();
+        workspace.job_progress(broken).unwrap();
+        let failed = workspace.job_progress(broken).unwrap();
+        assert_eq!(failed.status, "failed");
+        assert!(
+            failed.log.last() == Some(&"the port cannot write broken files".to_owned()),
+            "the failure's error line is in the snapshot"
+        );
+
+        let missing = workspace.start_export("csv", "no-such-table").unwrap();
+        workspace.job_progress(missing).unwrap();
+        workspace.job_progress(missing).unwrap();
+        let failed = workspace.job_progress(missing).unwrap();
+        assert_eq!(failed.status, "failed");
+        assert!(failed.log.last() == Some(&"no such table no-such-table".to_owned()));
+        assert!(workspace.job_progress(999).is_none(), "an unknown job has no snapshot");
     }
 
     #[test]

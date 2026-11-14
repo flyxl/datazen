@@ -7,7 +7,7 @@ mod data_grid;
 mod sql_editor;
 
 use data_grid::DataGrid;
-use datazen_ui_api::{ColumnDraft, ColumnFilter, ColumnSort, MemoryWorkspace, QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, WorkspaceApi};
+use datazen_ui_api::{ColumnDraft, ColumnFilter, ColumnSort, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, WorkspaceApi};
 use rune::tok::{self, type_};
 use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, TextEdit, Tx, col, oklch, row, text, text_input};
 use sql_editor::SqlEditor;
@@ -106,6 +106,8 @@ struct AppState {
     export_range: TextEdit,
     export_job: Option<u64>,
     export_error: Option<String>,
+    /// The export job's last snapshot. Refreshed only on demand.
+    export_snapshot: Option<ProgressSnapshot>,
 }
 
 impl Default for AppState {
@@ -145,6 +147,7 @@ impl Default for AppState {
             export_range: TextEdit::new(String::new()),
             export_job: None,
             export_error: None,
+            export_snapshot: None,
         }
     }
 }
@@ -277,11 +280,19 @@ impl AppState {
             Ok(job) => {
                 self.export_job = Some(job);
                 self.export_error = None;
+                self.export_snapshot = self.workspace.job_progress(job);
             }
             Err(error) => {
                 self.export_job = None;
                 self.export_error = Some(error);
             }
+        }
+    }
+
+    /// Pull one progress snapshot from the port. No streaming, no polling.
+    fn refresh_export_progress(&mut self) {
+        if let Some(job) = self.export_job {
+            self.export_snapshot = self.workspace.job_progress(job);
         }
     }
 
@@ -1439,10 +1450,64 @@ fn export_section(state: &AppState, theme: tok::Theme) -> El {
                 .center_y()
                 .radius(6.0)
                 .fill(theme.control_off)
-                .child(text(format!("job #{job} started")).font(type_::LABEL).color(theme.text_secondary)),
+                .child(text(format!("job #{job}")).font(type_::LABEL).color(theme.text_secondary))
+                .child(
+                    row()
+                        .key("export-refresh")
+                        .h(20.0)
+                        .px(6.0)
+                        .center_y()
+                        .radius(4.0)
+                        .fill(theme.control_off)
+                        .child(text("Refresh").font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.refresh_export_progress()),
+                ),
         );
     }
+    if let Some(snapshot) = &state.export_snapshot {
+        section = section.child(progress_panel(snapshot, "export", theme));
+    }
     section
+}
+
+/// One job's progress drawn from a single snapshot: status, percent, the log.
+/// Export and backup share this component.
+fn progress_panel(snapshot: &ProgressSnapshot, prefix: &str, theme: tok::Theme) -> El {
+    let mut panel = col()
+        .key(format!("{prefix}-progress"))
+        .w_full()
+        .gap(4.0)
+        .px(8.0)
+        .py(6.0)
+        .radius(8.0)
+        .fill(theme.control_off)
+        .child(
+            row()
+                .key(format!("{prefix}-status"))
+                .w_full()
+                .h(24.0)
+                .center_y()
+                .child(
+                    text(format!("{} · {}%", snapshot.status, snapshot.percent))
+                        .font(type_::LABEL)
+                        .color(theme.text),
+                ),
+        );
+    for (index, line) in snapshot.log.iter().enumerate() {
+        panel = panel.child(
+            row()
+                .key(format!("{prefix}-log-{index}"))
+                .w_full()
+                .h(18.0)
+                .center_y()
+                .child(
+                    text(line.clone())
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
+        );
+    }
+    panel
 }
 
 fn tab_strip(state: &AppState, theme: tok::Theme) -> El {
@@ -3214,6 +3279,52 @@ mod tests {
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
         assert_eq!(runtime.state.export_format(), "json");
+    }
+
+    #[test]
+    fn a_failed_export_shows_its_error_line_from_the_snapshot() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-settings").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+
+        // A range naming no table fails on the third snapshot.
+        runtime.state.export_range = rune::TextEdit::new("no-such-table");
+        let (x, y) = runtime.find("export-start").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        let snapshot = runtime.state.export_snapshot.clone().unwrap();
+        assert_eq!(snapshot.status, "running");
+        assert_eq!(snapshot.percent, 0);
+        assert!(runtime.find("export-progress").is_some());
+        assert!(runtime.find("export-log-0").is_some());
+
+        let (x, y) = runtime.find("export-refresh").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.export_snapshot.as_ref().unwrap().percent, 50);
+
+        runtime.frame(1.0);
+        let (x, y) = runtime.find("export-refresh").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        let snapshot = runtime.state.export_snapshot.clone().unwrap();
+        assert_eq!(snapshot.status, "failed");
+        assert_eq!(
+            snapshot.log.last().map(String::as_str),
+            Some("no such table no-such-table"),
+            "the failure's error sentence is in the snapshot"
+        );
+        assert!(
+            runtime.find(&format!("export-log-{}", snapshot.log.len() - 1)).is_some(),
+            "the error line is drawn"
+        );
+        assert!(runtime.find("export-status").is_some());
     }
 
     #[test]
