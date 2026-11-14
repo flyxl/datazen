@@ -7,7 +7,10 @@ mod data_grid;
 mod sql_editor;
 
 use data_grid::DataGrid;
-use datazen_ui_api::{ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile, DESKTOP_NOT_IMPLEMENTED, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, UnimplementedAdapter, UseCaseAdapter, WorkflowStepResult, WorkspaceApi};
+use datazen_ui_api::{ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile, DESKTOP_NOT_IMPLEMENTED, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, UnimplementedAdapter, WorkflowStepResult, WorkspaceApi};
+// The desktop host's use-case adapter; the wasm host brings its own later.
+#[cfg(not(target_arch = "wasm32"))]
+use datazen_ui_api::UseCaseAdapter;
 use rune::tok::{self, type_};
 use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, TextEdit, Tx, col, oklch, row, text, text_input};
 use sql_editor::SqlEditor;
@@ -3667,11 +3670,15 @@ pub fn run() {
 
 /// The desktop process starts on the connections page, so the adapter is
 /// consulted before the first frame: its answer (or its fixed error) is on
-/// the page from the start. H3: the process lists connections through the
-/// connection use case, over the adapter's in-memory store.
+/// the page from the start. H3: the native process lists connections through
+/// the connection use case, over the adapter's in-memory store; the wasm
+/// host starts on the unwired adapter and the port answers.
 fn init_state() -> AppState {
     let mut state = AppState::default();
-    state.desktop = Box::new(UseCaseAdapter::with_demo_connections());
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        state.desktop = Box::new(UseCaseAdapter::with_demo_connections());
+    }
     state.sync_desktop_connections();
     state
 }

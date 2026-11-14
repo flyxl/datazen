@@ -36,15 +36,21 @@ RUSTUP_TOOLCHAIN=1.99.1 cargo run -p datazen-ui --bin datazen-rune
 
 ## Web preview
 
+The WebAssembly package builds without a page around it (H6):
+
 ~~~sh
 rustup target add wasm32-unknown-unknown
-pnpm --filter datazen-web build:rune-ui
-pnpm --filter datazen-web dev
+cargo build -p datazen-ui --target wasm32-unknown-unknown
 ~~~
 
-Open the Web host at http://localhost:5174/?ui=rune. The Web target requires a supported browser and HTTPS or localhost. The optional WebGL backend is compiled in, but it is not yet treated as a supported fallback until browser/runtime verification is complete.
-
-The Web build wrapper calls Rune's own wasm packager so its helper assets and embedded web fonts are copied together with the wasm-bindgen output. Vite copies the generated files under packages/web/public/rune-ui into the Web distribution.
+The artifact is `target/wasm32-unknown-unknown/debug/datazen_ui.wasm`
+(a cdylib; the release profile plus wasm-opt shrinks it for shipping). The
+web host is WebGPU-only: the optional WebGL backend is NOT compiled in —
+wgpu's WebGL backend makes its hal instance `!Sync` on wasm32, which rune's
+process-wide instance cache requires, so that feature breaks the wasm
+build (rune's own web app ships WebGPU-only the same way). A standalone
+static page that mounts the wasm is the next slice (H7); the React host's
+index and routes stay untouched.
 
 ## Next slice
 

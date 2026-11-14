@@ -61,7 +61,11 @@ datazen-driver-vector = { path = "crates/drivers/vector" }
 # home_dir/data_dir/data_local_dir/config_dir functions, whose signatures are
 # unchanged between the majors, so no code adaptation was needed.
 # Rune is pinned to an immutable upstream commit because it has no stable release.
-rune = { path = "vendor/rune/crates/rune", default-features = false, features = ["accessibility", "embedded-fonts", "metal-backend", "svg", "webgl"] }
+# No `webgl`: wgpu's WebGL backend makes its hal instance !Sync on wasm32,
+# which rune's process-wide instance cache requires, so that feature breaks
+# the wasm build of datazen-ui (H6). The web host ships WebGPU-only, the
+# same way rune's own web app does.
+rune = { path = "vendor/rune/crates/rune", default-features = false, features = ["accessibility", "embedded-fonts", "metal-backend", "svg"] }
 wasm-bindgen = "=0.2.129"
 thiserror = "1"
 async-trait = "0.1"

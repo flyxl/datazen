@@ -7,6 +7,7 @@ mod tabs;
 
 use std::collections::HashMap;
 
+#[cfg(not(target_arch = "wasm32"))]
 use datazen_driver_api::{ConnectionConfig, SslMode};
 
 pub use tabs::{Tab, TabKind, Tabs};
@@ -265,16 +266,19 @@ impl DesktopAdapter for UnimplementedAdapter {
 }
 
 /// The one organization a desktop process recognizes (single-tenant).
+#[cfg(not(target_arch = "wasm32"))]
 const DESKTOP_ORGANIZATION: &str = "desktop";
 
 /// The adapter's in-memory connection store, seeded at construction. The
 /// desktop host swaps in its real store later; the use case above it is
 /// unchanged. Out-of-scope access answers empty, the way the boundary
 /// defines it.
+#[cfg(not(target_arch = "wasm32"))]
 struct MemoryConnectionRepository {
     connections: Vec<ConnectionConfig>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[async_trait::async_trait]
 impl datazen::connection::domain::ConnectionRepository for MemoryConnectionRepository {
     async fn list(
@@ -363,6 +367,7 @@ impl datazen::connection::domain::ConnectionRepository for MemoryConnectionRepos
 /// One connection as the form's IPC payload, from the UI vocabulary. The
 /// adapter's demo seed carries only what the list shows; the desktop host
 /// seeds real configs instead.
+#[cfg(not(target_arch = "wasm32"))]
 fn config_from_profile(profile: &ConnectionProfile) -> ConnectionConfig {
     ConnectionConfig {
         id: profile.id.clone(),
@@ -396,6 +401,11 @@ fn config_from_profile(profile: &ConnectionProfile) -> ConnectionConfig {
 /// `ConnectionService::list_redacted` over a connection repository. H4 wired
 /// `read_table_page` and H5 `commit_cells` to the existing in-memory use
 /// cases (`MemoryWorkspace::open_table`, staging plus `commit_staged`).
+///
+/// Native only: this is the desktop host's adapter. The wasm host compiles
+/// the same ports over the memory workspace and brings its own adapter
+/// later.
+#[cfg(not(target_arch = "wasm32"))]
 pub struct UseCaseAdapter {
     service: datazen::connection::application::ConnectionService,
     /// The existing in-memory world the read use case runs over. The desktop
@@ -405,12 +415,14 @@ pub struct UseCaseAdapter {
 
 /// The existing in-memory world with its session open: the read use case
 /// needs one, and the demo process has no connect call of its own.
+#[cfg(not(target_arch = "wasm32"))]
 fn demo_workspace() -> MemoryWorkspace {
     let mut workspace = MemoryWorkspace::new();
     workspace.connect("local").expect("the demo connection exists");
     workspace
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl UseCaseAdapter {
     /// The real seam: the desktop host provides its connection store.
     pub fn from_repository(
@@ -448,6 +460,7 @@ impl UseCaseAdapter {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl DesktopAdapter for UseCaseAdapter {
     fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String> {
         let scope = datazen::connection::domain::ConnectionScope::new(DESKTOP_ORGANIZATION);

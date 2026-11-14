@@ -6,11 +6,18 @@ license = "GPL-3.0-or-later"
 description = "UI ports and the desktop adapter for the DataZen Rune interface"
 
 [dependencies]
-# H3: the desktop adapter calls the existing connection use case. The
-# `application` umbrella is the feature set the desktop host itself enables
-# (`connection` alone does not compile datazen's ungated modules).
+
+# H3/H6: the desktop adapter — the native host's use cases. Everything here is
+# native-only: the wasm host compiles the same ports over the memory workspace
+# and brings its own adapter later, and datazen's `execution` feature carries
+# tokio's net stack (mio), which does not exist on wasm32.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 async-trait = { workspace = true }
-datazen = { workspace = true, features = ["application"] }
+# Only the connection module is needed; `execution` rides along because the
+# connection DTO surface re-exports its vocabulary (`connection` alone does
+# not compile). The rest of the `application` umbrella (dashboard/schema_diff/
+# tunnel, and with them the whole russh crypto stack) stays out.
+datazen = { workspace = true, features = ["connection", "execution"] }
 # The adapter's repository boundary and the form payload's own types.
 datazen-driver-api = { workspace = true }
 # The use case is async; the UI event loop is sync. The adapter bridges with a
