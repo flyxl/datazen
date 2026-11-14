@@ -100,8 +100,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | N5 | 已完成 | 65f4b49 | testing/N5-runtime-assembly.md |
 | N6 | 已完成 | 104a277 | testing/N6-real-commits.md |
 | N7 | 已完成 | 0b24e12 | testing/N7-real-queries.md |
-| N8 | 进行中 | | |
-| N9 | 未开始 | | |
+| N8 | 已完成 | f0babc4 | testing/N8-settings-persistence.md |
+| N9 | 进行中 | | |
 | N10 | 未开始 | | |
 | N11 | 未开始 | | |
 | N12 | 未开始 | | |
