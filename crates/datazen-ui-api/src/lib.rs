@@ -234,6 +234,8 @@ pub trait WorkspaceApi {
     /// replica cannot create analytics tables, so that plan's job fails and
     /// the difference stays.
     fn run_compare_plan(&mut self, plan: &str) -> Result<u64, String>;
+    /// D10: run the transfer as a job. No pairs, no job.
+    fn run_transfer(&mut self, pairs: &[(String, String)]) -> Result<u64, String>;
     /// Stop a running job. A stopped job reports "stopped" from then on.
     fn stop_job(&mut self, job: u64) -> Result<(), String>;
     /// Apply a DDL script to the table. The port records what it applied; a
@@ -765,6 +767,26 @@ impl WorkspaceApi for MemoryWorkspace {
             stopped: false,
             log: vec!["queued".to_owned(), "applying the plan".into()],
             fail_line: fails.then(|| "the replica cannot create analytics tables".to_owned()),
+        });
+        Ok(job)
+    }
+
+    fn run_transfer(&mut self, pairs: &[(String, String)]) -> Result<u64, String> {
+        if pairs.is_empty() {
+            return Err("no column pairs to transfer".into());
+        }
+        let job = self.jobs.last().map(|job| job.job + 1).unwrap_or(1);
+        self.jobs.push(MemoryJob {
+            job,
+            format: "transfer".into(),
+            range: format!("{} pairs", pairs.len()),
+            reads: 0,
+            stopped: false,
+            log: vec![
+                "queued".to_owned(),
+                format!("transferring {} column pairs", pairs.len()),
+            ],
+            fail_line: None,
         });
         Ok(job)
     }
@@ -1648,6 +1670,19 @@ mod tests {
         workspace.job_progress(job).unwrap();
         let done = workspace.job_progress(job).unwrap();
         assert_eq!(done.status, "completed");
+    }
+
+    #[test]
+    fn a_transfer_without_pairs_gets_no_job() {
+        let mut workspace = MemoryWorkspace::new();
+        assert!(workspace.run_transfer(&[]).is_err(), "no pairs, no job");
+        let pairs = vec![("id".to_owned(), "id".to_owned())];
+        let job = workspace.run_transfer(&pairs).unwrap();
+        let first = workspace.job_progress(job).unwrap();
+        assert_eq!(first.status, "running");
+        assert_eq!(first.log[1], "transferring 1 column pairs");
+        workspace.job_progress(job).unwrap();
+        assert_eq!(workspace.job_progress(job).unwrap().status, "completed");
     }
 
     #[test]

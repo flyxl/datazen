@@ -157,6 +157,10 @@ struct AppState {
     transfer_pair_right: String,
     transfer_pairs: Vec<(String, String)>,
     transfer_error: Option<String>,
+    /// The transfer's confirmation step and its job.
+    transfer_confirming: bool,
+    transfer_job: Option<u64>,
+    transfer_snapshot: Option<ProgressSnapshot>,
 }
 
 impl Default for AppState {
@@ -225,6 +229,9 @@ impl Default for AppState {
             transfer_pair_right: "id".into(),
             transfer_pairs: Vec::new(),
             transfer_error: None,
+            transfer_confirming: false,
+            transfer_job: None,
+            transfer_snapshot: None,
         }
     }
 }
@@ -528,6 +535,37 @@ impl AppState {
         }
         self.transfer_pairs.push((left, right));
         self.transfer_error = None;
+    }
+
+    /// Open the confirmation row. Cancelling it leaves no job.
+    fn begin_transfer_confirm(&mut self) {
+        self.transfer_confirming = true;
+    }
+
+    fn cancel_transfer(&mut self) {
+        self.transfer_confirming = false;
+    }
+
+    fn confirm_transfer(&mut self) {
+        self.transfer_confirming = false;
+        let pairs = self.transfer_pairs.clone();
+        match self.workspace.run_transfer(&pairs) {
+            Ok(job) => {
+                self.transfer_job = Some(job);
+                self.transfer_snapshot = self.workspace.job_progress(job);
+                self.transfer_error = None;
+            }
+            Err(error) => {
+                self.transfer_job = None;
+                self.transfer_error = Some(error);
+            }
+        }
+    }
+
+    fn refresh_transfer_progress(&mut self) {
+        if let Some(job) = self.transfer_job {
+            self.transfer_snapshot = self.workspace.job_progress(job);
+        }
     }
 
     /// The left table's columns not yet paired.
@@ -1193,6 +1231,53 @@ fn transfer_tool(state: &AppState, theme: tok::Theme) -> El {
         let _ = &mut block;
         section = section.child(block);
     }
+    // D10: confirm before the port hands out a job; cancelling leaves none.
+    if state.transfer_confirming {
+        section = section.child(
+            row()
+                .key("transfer-confirm")
+                .w_full()
+                .h(28.0)
+                .gap(8.0)
+                .center_y()
+                .child(text("Transfer now?".to_owned()).font(type_::LABEL).color(theme.text))
+                .child(
+                    row()
+                        .key("transfer-yes")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Confirm".to_owned()).font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.confirm_transfer()),
+                )
+                .child(
+                    row()
+                        .key("transfer-no")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Cancel".to_owned()).font(type_::LABEL).color(theme.text_secondary))
+                        .on_press(|state: &mut AppState| state.cancel_transfer()),
+                ),
+        );
+    } else {
+        section = section.child(
+            row()
+                .key("transfer-start")
+                .w(140.0)
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text("Transfer".to_owned()).font(type_::LABEL).color(theme.text))
+                .on_press(|state: &mut AppState| state.begin_transfer_confirm()),
+        );
+    }
     if let Some(error) = &state.transfer_error {
         section = section.child(
             row()
@@ -1205,6 +1290,33 @@ fn transfer_tool(state: &AppState, theme: tok::Theme) -> El {
                 .fill(theme.control_off)
                 .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
         );
+    }
+    if let Some(job) = state.transfer_job {
+        section = section.child(
+            row()
+                .key("transfer-job")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(format!("job #{job}")).font(type_::LABEL).color(theme.text_secondary))
+                .child(
+                    row()
+                        .key("transfer-refresh")
+                        .h(20.0)
+                        .px(6.0)
+                        .center_y()
+                        .radius(4.0)
+                        .fill(theme.control_off)
+                        .child(text("Refresh").font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.refresh_transfer_progress()),
+                ),
+        );
+    }
+    if let Some(snapshot) = &state.transfer_snapshot {
+        section = section.child(progress_panel(snapshot, "transfer", theme));
     }
     section
 }
@@ -4927,6 +5039,71 @@ mod tests {
         assert!(!runtime.state.transfer_unmapped(true).contains(&"name".to_owned()));
         assert!(runtime.find("transfer-unmapped-left").is_some());
         assert!(runtime.find("transfer-unmapped-right").is_some());
+    }
+
+    #[test]
+    fn cancelling_the_transfer_confirmation_leaves_no_job() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-tools").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        let (x, y) = runtime.find("tool-transfer").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+
+        // No pairs: the confirmation refuses with no job.
+        let (x, y) = runtime.find("transfer-start").expect("transfer button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.find("transfer-confirm").is_some());
+        let (x, y) = runtime.find("transfer-yes").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.state.transfer_job.is_none(), "no pairs, no job");
+        assert!(runtime.find("transfer-error").is_some());
+
+        // With a pair: cancelling the confirmation leaves no job.
+        runtime.frame(1.0);
+        runtime.state.pair_transfer_columns();
+        let (x, y) = runtime.find("transfer-start").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        let (x, y) = runtime.find("transfer-no").expect("cancel button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.state.transfer_job.is_none(), "a cancelled confirmation gets no job");
+        assert!(runtime.find("transfer-job").is_none());
+
+        // Confirming hands out a job and the progress follows snapshots.
+        runtime.frame(1.0);
+        let (x, y) = runtime.find("transfer-start").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        let (x, y) = runtime.find("transfer-yes").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.state.transfer_job.is_some(), "the port handed out a job id");
+        assert_eq!(runtime.state.transfer_snapshot.as_ref().unwrap().status, "running");
+        runtime.frame(1.0);
+        let (x, y) = runtime.find("transfer-refresh").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("transfer-refresh").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.transfer_snapshot.as_ref().unwrap().status, "completed");
+        assert!(runtime.find("transfer-progress").is_some());
     }
 
     #[test]
