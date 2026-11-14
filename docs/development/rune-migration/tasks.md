@@ -112,7 +112,7 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | T3 | 已完成 | eeb1333 | testing/T3-snippets.md |
 | T4 | 已完成 | 3bfee30 | testing/T4-value-search.md |
 | T5 | 已完成 | 86062d7 | testing/T5-fk-navigation.md |
-| T6 | 已完成 | 本提交 | testing/T6-favorites.md |
+| T6 | 已完成 | d3e26bc | testing/T6-favorites.md |
 | T7 | 未开始 | | |
 | T8 | 未开始 | | |
 | T9 | 未开始 | | |
