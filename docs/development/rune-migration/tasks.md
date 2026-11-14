@@ -52,8 +52,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | O10 | 已完成 | 21ecd93 | testing/O10-draft-sql.md |
 | O11 | 已完成 | 32b75bf | testing/O11-apply-drafts.md |
 | P1 | 已完成 | 7c95aa3 | testing/P1-settings-port.md |
-| P2 | 进行中 | | |
-| P3 | 未开始 | | |
+| P2 | 已完成 | 0221bf0 | testing/P2-theme.md |
+| P3 | 进行中 | | |
 | P4 | 未开始 | | |
 | P5 | 未开始 | | |
 | P6 | 未开始 | | |
