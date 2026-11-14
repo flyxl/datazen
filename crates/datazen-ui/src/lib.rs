@@ -3889,6 +3889,104 @@ mod tests {
     }
 
     #[test]
+    fn twenty_thousand_rows_mount_a_window_and_two_hundred_columns_build_one_window_of_cells() {
+        use super::app_key;
+        use datazen_ui_api::WorkspaceApi;
+        use serde_json::Value;
+
+        fn find<'a>(v: &'a Value, key: &str) -> Option<&'a Value> {
+            if v["key"] == key {
+                return Some(v);
+            }
+            v["children"].as_array()?.iter().find_map(|child| find(child, key))
+        }
+        fn walk<'a>(v: &'a Value, f: &mut dyn FnMut(&'a Value)) {
+            f(v);
+            if let Some(children) = v["children"].as_array() {
+                for child in children {
+                    walk(child, f);
+                }
+            }
+        }
+
+        let mut runtime = runtime();
+        runtime.on_key = Some(app_key);
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        // The POC's scale as a loaded page: 20,000 rows × 200 columns. The
+        // records carry no values — the grid's fallback reads r{r}c{c} — so
+        // the page costs 20,000 empty records, not four million cells. The
+        // surface stays the product table tab's; the sheet virtualizes the
+        // 20,000-row list at the table page's size.
+        let columns: Vec<String> = (0..200).map(|c| format!("c{c}")).collect();
+        let records: Vec<Vec<String>> = (0..20_000).map(|_| Vec::new()).collect();
+        let page = datazen_ui_api::TablePage {
+            table: "customers".into(),
+            columns,
+            rows: records,
+            page: 0,
+            page_size: 20_000,
+            total_rows: 20_000,
+            sort: None,
+            filter: None,
+            read_only: None,
+        };
+        runtime.update(|state, _| state.grid.load_page(&page));
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.grid.rows, 20_000);
+        assert_eq!(runtime.state.grid.cols, 200);
+        assert!(runtime.state.grid.has_page());
+
+        let tree = runtime.accessibility_json();
+        let scroll = find(&tree, "data-grid-scroll").expect("the grid is in the tree");
+        assert_eq!(scroll["value"], "20000 rows × 200 columns");
+        assert_eq!(scroll["name"], "customers");
+
+        // One row node per mounted row; one cell node per built cell.
+        let mut rows: Vec<u32> = Vec::new();
+        let mut cells: Vec<(u32, u32)> = Vec::new();
+        let mut headers: Vec<u32> = Vec::new();
+        walk(scroll, &mut |node| {
+            let Some(key) = node["key"].as_str() else { return };
+            if let Some(row) = key.strip_prefix("grid-row-").and_then(|r| r.parse().ok()) {
+                rows.push(row);
+            } else if let Some(col) = key.strip_prefix("head-").and_then(|c| c.parse().ok()) {
+                headers.push(col);
+            } else if let Some((r, c)) = key
+                .strip_prefix("cell-")
+                .and_then(|rest| rest.split_once('-'))
+                .and_then(|(r, c)| Some((r.parse().ok()?, c.parse().ok()?)))
+            {
+                cells.push((r, c));
+            }
+        });
+        rows.sort_unstable();
+        rows.dedup();
+        headers.sort_unstable();
+        headers.dedup();
+        cells.sort_unstable();
+        cells.dedup();
+
+        // 20,000 rows mount a 21-row window at the top of the list: the first
+        // frame's window over the 380-point sheet at the 28-point row height,
+        // whatever the list's length — not the list.
+        assert_eq!(
+            rows,
+            (0..21).collect::<Vec<u32>>(),
+            "20,000 rows mount a 21-row window, not the list"
+        );
+
+        // A 200-column page builds one column window per row: 12 cells at rest —
+        // COL_WINDOW with the frozen first column inside it — and 12 headers.
+        assert_eq!(headers, (0..12).collect::<Vec<u32>>(), "the header builds the window");
+        for row in rows.iter().copied() {
+            let built: Vec<u32> = cells.iter().filter(|(r, _)| *r == row).map(|(_, c)| *c).collect();
+            assert_eq!(built, (0..12).collect::<Vec<u32>>(), "row {row} builds the 12-column window");
+        }
+        assert!(cells.contains(&(0, 0)), "the focus cell is mounted");
+    }
+
+    #[test]
     fn a_chinese_grid_cell_is_not_a_box_under_the_apps_fonts() {
         // The grid runs under the app's font pool; a Chinese cell value
         // renders with the glyphs the pool shaped above, not fallback boxes.
