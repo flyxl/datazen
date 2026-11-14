@@ -9,6 +9,25 @@ use std::collections::HashMap;
 
 pub use tabs::{Tab, TabKind, Tabs};
 
+/// The three name layers the port reports: databases, their schemas, and the
+/// tables inside each schema. Orders are the port's and stay stable.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Catalog {
+    pub databases: Vec<DatabaseNode>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DatabaseNode {
+    pub name: String,
+    pub schemas: Vec<SchemaNode>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SchemaNode {
+    pub name: String,
+    pub tables: Vec<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConnectionProfile {
     pub id: String,
@@ -62,6 +81,7 @@ pub trait QueryApi {
 pub trait WorkspaceApi {
     fn connections(&self) -> &[ConnectionProfile];
     fn session(&self) -> Option<&Session>;
+    fn catalog(&self) -> Catalog;
     fn connect(&mut self, id: &str) -> Result<(), String>;
     fn disconnect(&mut self);
     fn open_table(
@@ -90,6 +110,8 @@ struct StoredTable {
     staged: HashMap<(u32, usize), String>,
     /// Why the table cannot be edited; None means writable.
     read_only: Option<String>,
+    /// The schema the table lives in.
+    schema: String,
 }
 
 /// The table the workspace last opened, with the page window it asked for.
@@ -132,6 +154,43 @@ impl MemoryWorkspace {
                 "CN".to_owned(),
             ]);
         }
+        // A wide demo table for the analytics schema: 30 columns x 60 rows.
+        let wide_columns: Vec<String> = (0..30).map(|i| format!("c{i}")).collect();
+        let wide_rows: Vec<Vec<String>> = (0..60)
+            .map(|row| wide_columns.iter().map(|col| format!("{col}-{row}")).collect())
+            .collect();
+        let tables = vec![
+            (
+                "customers".to_owned(),
+                StoredTable {
+                    columns: columns.into_iter().map(str::to_owned).collect(),
+                    rows,
+                    staged: HashMap::new(),
+                    read_only: None,
+                    schema: "public".into(),
+                },
+            ),
+            (
+                "orders".to_owned(),
+                StoredTable {
+                    columns: vec!["id".into(), "name".into()],
+                    rows: vec![vec!["1".into(), "order-0".into()]],
+                    staged: HashMap::new(),
+                    read_only: Some("no primary key".into()),
+                    schema: "public".into(),
+                },
+            ),
+            (
+                "catalog".to_owned(),
+                StoredTable {
+                    columns: wide_columns,
+                    rows: wide_rows,
+                    staged: HashMap::new(),
+                    read_only: None,
+                    schema: "analytics".into(),
+                },
+            ),
+        ];
         Self {
             connections: vec![ConnectionProfile {
                 id: "local".into(),
@@ -139,26 +198,7 @@ impl MemoryWorkspace {
                 engine: "postgres".into(),
             }],
             session: None,
-            tables: vec![
-                (
-                    "customers".into(),
-                    StoredTable {
-                        columns: columns.into_iter().map(str::to_owned).collect(),
-                        rows,
-                        staged: HashMap::new(),
-                        read_only: None,
-                    },
-                ),
-                (
-                    "orders".into(),
-                    StoredTable {
-                        columns: vec!["id".into(), "name".into()],
-                        rows: vec![vec!["1".into(), "order-0".into()]],
-                        staged: HashMap::new(),
-                        read_only: Some("no primary key".into()),
-                    },
-                ),
-            ],
+            tables,
             open: None,
             result_open: false,
         }
@@ -215,6 +255,30 @@ impl QueryApi for MemoryWorkspace {
 impl WorkspaceApi for MemoryWorkspace {
     fn connections(&self) -> &[ConnectionProfile] {
         &self.connections
+    }
+
+    fn catalog(&self) -> Catalog {
+        let Some(session) = &self.session else {
+            return Catalog { databases: Vec::new() };
+        };
+        let mut schemas: Vec<(String, Vec<String>)> = Vec::new();
+        for (name, stored) in &self.tables {
+            if !session.tables.contains(name) {
+                continue;
+            }
+            match schemas.iter_mut().find(|(schema, _)| *schema == stored.schema) {
+                Some(existing) => existing.1.push(name.clone()),
+                None => schemas.push((stored.schema.clone(), vec![name.clone()])),
+            }
+        }
+        let databases = vec![DatabaseNode {
+            name: session.connection_id.clone(),
+            schemas: schemas
+                .into_iter()
+                .map(|(name, tables)| SchemaNode { name, tables })
+                .collect(),
+        }];
+        Catalog { databases }
     }
 
     fn session(&self) -> Option<&Session> {
@@ -580,6 +644,23 @@ mod tests {
     fn execute_without_a_session_is_an_error() {
         let mut workspace = MemoryWorkspace::new();
         assert!(workspace.execute("select 1").is_err());
+    }
+
+    #[test]
+    fn the_catalog_reports_three_levels_in_a_stable_order() {
+        let mut workspace = MemoryWorkspace::new();
+        assert!(workspace.catalog().databases.is_empty(), "no session, no catalog");
+        workspace.connect("local").unwrap();
+        let catalog = workspace.catalog();
+        assert_eq!(catalog.databases.len(), 1);
+        assert_eq!(catalog.databases[0].name, "local");
+        let schemas = &catalog.databases[0].schemas;
+        assert_eq!(schemas.len(), 2, "two schemas");
+        assert_eq!(schemas[0].name, "public");
+        assert_eq!(schemas[0].tables, vec!["customers", "orders"]);
+        assert_eq!(schemas[1].name, "analytics");
+        assert_eq!(schemas[1].tables, vec!["catalog"]);
+        assert_eq!(workspace.catalog(), catalog, "the order is stable across calls");
     }
 
     #[test]
