@@ -7,7 +7,7 @@ mod data_grid;
 mod sql_editor;
 
 use data_grid::DataGrid;
-use datazen_ui_api::{ColumnDraft, ColumnFilter, ColumnSort, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, WorkspaceApi};
+use datazen_ui_api::{ColumnDraft, ColumnFilter, ColumnSort, CompareObject, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, WorkspaceApi};
 use rune::tok::{self, type_};
 use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, TextEdit, Tx, col, oklch, row, text, text_input};
 use sql_editor::SqlEditor;
@@ -143,6 +143,9 @@ struct AppState {
     /// The sync run job and its last snapshot.
     sync_job: Option<u64>,
     sync_snapshot: Option<ProgressSnapshot>,
+    /// The compare tool's endpoints.
+    compare_source: String,
+    compare_target: String,
 }
 
 impl Default for AppState {
@@ -200,6 +203,8 @@ impl Default for AppState {
             sync_preview_grid: None,
             sync_job: None,
             sync_snapshot: None,
+            compare_source: "local".into(),
+            compare_target: "replica".into(),
         }
     }
 }
@@ -404,6 +409,14 @@ impl AppState {
 
     fn set_tool(&mut self, tool: Tool) {
         self.tool = tool;
+    }
+
+    fn cycle_compare_source(&mut self) {
+        self.compare_source = next_connection(&self.workspace, &self.compare_source);
+    }
+
+    fn cycle_compare_target(&mut self) {
+        self.compare_target = next_connection(&self.workspace, &self.compare_target);
     }
 
     /// Cycle the sync source through the connections.
@@ -921,9 +934,89 @@ fn tools_page(state: &AppState, theme: tok::Theme) -> El {
         )
         .child(match state.tool {
             Tool::Sync => sync_tool(state, theme),
-            Tool::Compare => col().key("compare-tool").w_full(),
+            Tool::Compare => compare_tool(state, theme),
             Tool::Transfer => col().key("transfer-tool").w_full(),
         })
+}
+
+/// The structure comparison. Step 1: the objects, same names marked.
+fn compare_tool(state: &AppState, theme: tok::Theme) -> El {
+    let objects = state.workspace.compare_objects(&state.compare_source, &state.compare_target)
+        .unwrap_or_default();
+    let mut section = col()
+        .key("compare-tool")
+        .w_full()
+        .gap(6.0)
+        .child(
+            row()
+                .key("compare-endpoints")
+                .w_full()
+                .h(28.0)
+                .gap(8.0)
+                .center_y()
+                .child(
+                    row()
+                        .key("compare-source")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(
+                            text(format!("source: {}", state.compare_source))
+                                .font(type_::LABEL)
+                                .color(theme.text),
+                        )
+                        .on_press(|state: &mut AppState| state.cycle_compare_source()),
+                )
+                .child(
+                    row()
+                        .key("compare-target")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(
+                            text(format!("target: {}", state.compare_target))
+                                .font(type_::LABEL)
+                                .color(theme.text),
+                        )
+                        .on_press(|state: &mut AppState| state.cycle_compare_target()),
+                ),
+        );
+    let mut list = col().key("compare-objects").w_full().gap(4.0);
+    for object in &objects {
+        let mark = if object.present_on_target {
+            format!("compare-match-{}", object.name)
+        } else {
+            format!("compare-missing-{}", object.name)
+        };
+        let label = format!(
+            "{} {}",
+            object.name,
+            if object.present_on_target { "= both ends" } else { "= source only" }
+        );
+        list = list.child(
+            row()
+                .key(format!("compare-object-{}", object.name))
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(label).font(type_::LABEL).color(theme.text))
+                .child(row().key(mark).w(10.0).h(10.0).radius(5.0).fill(
+                    if object.present_on_target {
+                        oklch(0.75, 0.12, 145.0)
+                    } else {
+                        oklch(0.7, 0.14, 25.0)
+                    },
+                )),
+        );
+    }
+    section.child(list)
 }
 
 /// The sync wizard. Step 1: pick the two endpoints.
@@ -4335,6 +4428,26 @@ mod tests {
             "the sync job finishes through snapshots"
         );
         assert!(runtime.find("sync-progress").is_some());
+    }
+
+    #[test]
+    fn the_compare_step_marks_same_name_objects() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-tools").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        let (x, y) = runtime.find("tool-compare").expect("compare tab");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+
+        assert!(runtime.find("compare-tool").is_some());
+        assert!(runtime.find("compare-object-customers").is_some());
+        assert!(runtime.find("compare-match-customers").is_some(), "same name on both ends");
+        assert!(runtime.find("compare-match-orders").is_some());
+        assert!(runtime.find("compare-missing-catalog").is_some(), "the replica lacks analytics");
     }
 
     #[test]

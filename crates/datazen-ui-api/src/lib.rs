@@ -144,6 +144,14 @@ struct MemoryJob {
     log: Vec<String>,
 }
 
+/// One object of a structure comparison: its name and whether the target
+/// endpoint has an object of the same name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CompareObject {
+    pub name: String,
+    pub present_on_target: bool,
+}
+
 /// One saved SQL snippet.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Snippet {
@@ -215,6 +223,8 @@ pub trait WorkspaceApi {
     fn sync_preview(&mut self, source: &str, table: &str) -> Result<TablePage, String>;
     /// D5: run the sync as a job. No tables selected, no job.
     fn run_sync(&mut self, source: &str, target: &str, tables: &[String]) -> Result<u64, String>;
+    /// D6: the source's objects, marked when the target has the same name.
+    fn compare_objects(&self, source: &str, target: &str) -> Result<Vec<CompareObject>, String>;
     /// Stop a running job. A stopped job reports "stopped" from then on.
     fn stop_job(&mut self, job: u64) -> Result<(), String>;
     /// Apply a DDL script to the table. The port records what it applied; a
@@ -711,6 +721,23 @@ impl WorkspaceApi for MemoryWorkspace {
             ],
         });
         Ok(job)
+    }
+
+    fn compare_objects(&self, source: &str, target: &str) -> Result<Vec<CompareObject>, String> {
+        for endpoint in [source, target] {
+            if !self.connections.iter().any(|profile| profile.id == endpoint) {
+                return Err(format!("unknown connection {endpoint}"));
+            }
+        }
+        let target_tables = self.connection_tables(target);
+        Ok(self
+            .connection_tables(source)
+            .into_iter()
+            .map(|name| CompareObject {
+                present_on_target: target_tables.contains(&name),
+                name,
+            })
+            .collect())
     }
 
     fn connection_tables(&self, connection: &str) -> Vec<String> {
@@ -1522,6 +1549,21 @@ mod tests {
         workspace.job_progress(job).unwrap();
         let done = workspace.job_progress(job).unwrap();
         assert_eq!(done.status, "completed", "a sync job finishes like the others");
+    }
+
+    #[test]
+    fn the_same_object_name_is_marked_on_both_ends() {
+        let workspace = MemoryWorkspace::new();
+        let objects = workspace.compare_objects("local", "replica").unwrap();
+        let find = |name: &str| objects.iter().find(|object| object.name == name).unwrap();
+        assert!(find("customers").present_on_target, "the same name is marked present");
+        assert!(find("orders").present_on_target);
+        assert!(!find("catalog").present_on_target, "the replica lacks analytics");
+        assert_eq!(objects.len(), 3);
+        assert!(workspace.compare_objects("local", "missing").is_err());
+        // A connection against itself: every name matches.
+        let same = workspace.compare_objects("local", "local").unwrap();
+        assert!(same.iter().all(|object| object.present_on_target));
     }
 
     #[test]
