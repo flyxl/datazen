@@ -225,6 +225,9 @@ pub trait WorkspaceApi {
     fn run_sync(&mut self, source: &str, target: &str, tables: &[String]) -> Result<u64, String>;
     /// D6: the source's objects, marked when the target has the same name.
     fn compare_objects(&self, source: &str, target: &str) -> Result<Vec<CompareObject>, String>;
+    /// D7: the plan as text — one statement per object the target lacks.
+    /// An empty string means no differences.
+    fn compare_plan(&self, source: &str, target: &str) -> Result<String, String>;
     /// Stop a running job. A stopped job reports "stopped" from then on.
     fn stop_job(&mut self, job: u64) -> Result<(), String>;
     /// Apply a DDL script to the table. The port records what it applied; a
@@ -738,6 +741,16 @@ impl WorkspaceApi for MemoryWorkspace {
                 name,
             })
             .collect())
+    }
+
+    fn compare_plan(&self, source: &str, target: &str) -> Result<String, String> {
+        let objects = self.compare_objects(source, target)?;
+        let lines: Vec<String> = objects
+            .iter()
+            .filter(|object| !object.present_on_target)
+            .map(|object| format!("CREATE TABLE {} (...); -- missing on {}", object.name, target))
+            .collect();
+        Ok(lines.join("\n"))
     }
 
     fn connection_tables(&self, connection: &str) -> Vec<String> {
@@ -1564,6 +1577,23 @@ mod tests {
         // A connection against itself: every name matches.
         let same = workspace.compare_objects("local", "local").unwrap();
         assert!(same.iter().all(|object| object.present_on_target));
+    }
+
+    #[test]
+    fn a_compare_plan_lists_missing_objects_and_can_be_empty() {
+        let workspace = MemoryWorkspace::new();
+        let plan = workspace.compare_plan("local", "replica").unwrap();
+        assert!(
+            plan.contains("CREATE TABLE catalog"),
+            "the plan names the object the target lacks: {plan}"
+        );
+        assert!(plan.contains("-- missing on replica"));
+        assert_eq!(
+            workspace.compare_plan("local", "local").unwrap(),
+            "",
+            "the same endpoint twice: no differences, an empty plan"
+        );
+        assert!(workspace.compare_plan("local", "missing").is_err());
     }
 
     #[test]

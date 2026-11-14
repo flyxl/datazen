@@ -1016,6 +1016,43 @@ fn compare_tool(state: &AppState, theme: tok::Theme) -> El {
                 )),
         );
     }
+    // The plan text: the port's string verbatim; an empty plan has its own state.
+    match state.workspace.compare_plan(&state.compare_source, &state.compare_target) {
+        Ok(plan) if !plan.is_empty() => {
+            let mut block = col()
+                .key("compare-plan")
+                .w_full()
+                .gap(2.0)
+                .px(12.0)
+                .py(8.0)
+                .radius(8.0)
+                .fill(theme.control_off);
+            for line in plan.lines() {
+                block = block.child(
+                    text(line.to_owned())
+                        .font(sql_editor::editor_font())
+                        .color(theme.text),
+                );
+            }
+            section = section.child(block);
+        }
+        Ok(_) => section = section.child(
+            row()
+                .key("compare-plan-empty")
+                .w_full()
+                .h(40.0)
+                .px(12.0)
+                .center_y()
+                .radius(8.0)
+                .fill(theme.control_off)
+                .child(
+                    text("No differences".to_owned())
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
+        ),
+        Err(_) => {}
+    }
     section.child(list)
 }
 
@@ -4448,6 +4485,32 @@ mod tests {
         assert!(runtime.find("compare-match-customers").is_some(), "same name on both ends");
         assert!(runtime.find("compare-match-orders").is_some());
         assert!(runtime.find("compare-missing-catalog").is_some(), "the replica lacks analytics");
+    }
+
+    #[test]
+    fn an_empty_compare_plan_has_its_own_empty_state() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-tools").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        let (x, y) = runtime.find("tool-compare").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+
+        assert!(runtime.find("compare-plan").is_some(), "local vs replica has a plan");
+        assert!(runtime.find("compare-plan-empty").is_none());
+
+        // The same endpoint twice: the plan is empty.
+        let (x, y) = runtime.find("compare-target").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.compare_target, "local");
+        assert!(runtime.find("compare-plan").is_none(), "an empty plan draws no lines");
+        assert!(runtime.find("compare-plan-empty").is_some(), "the empty state shows");
     }
 
     #[test]
