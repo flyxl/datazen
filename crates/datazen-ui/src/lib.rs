@@ -1407,6 +1407,34 @@ mod tests {
     }
 
     #[test]
+    fn the_completion_list_is_drawn_in_the_canvas() {
+        use datazen_ui_api::WorkspaceApi;
+        use rune::{Key, KeyEvent, Mods};
+        use super::app_key;
+
+        let mut runtime = runtime();
+        runtime.on_key = Some(app_key);
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_query_tab("Query").unwrap();
+        runtime.state.sql = sql_editor::SqlEditor::from_doc("");
+        runtime.state.sql.focus();
+        runtime.frame(0.0);
+
+        for ch in ["S", "E", "L"] {
+            runtime.key(KeyEvent { key: Key::Text(ch.into()), mods: Mods::default() });
+        }
+        runtime.frame(0.0);
+        assert!(runtime.find("sql-completion").is_some(), "the list is in the canvas");
+        assert!(runtime.find("sql-completion-item-0").is_some());
+        assert!(runtime.find("sql-editor-field").is_some());
+
+        runtime.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.sql.doc(), "SELECT");
+        assert!(runtime.find("sql-completion").is_none(), "the list leaves after the insert");
+    }
+
+    #[test]
     fn tab_strip_selects_and_closes_table_tabs() {
         let mut runtime = runtime();
         let first = runtime.state.open_table_tab("customers").unwrap();

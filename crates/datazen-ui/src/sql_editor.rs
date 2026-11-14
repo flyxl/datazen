@@ -78,6 +78,17 @@ struct Snapshot {
 /// How many insert and delete steps the editor remembers.
 const HISTORY_LIMIT: usize = 100;
 
+/// How many keyword completions the canvas list shows at most.
+const COMPLETION_LIMIT: usize = 8;
+
+/// The in-canvas completion: the word prefix at the caret and its candidates.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Completion {
+    prefix: String,
+    items: Vec<&'static str>,
+    selected: usize,
+}
+
 #[derive(Debug)]
 pub struct SqlEditor {
     doc: String,
@@ -91,6 +102,8 @@ pub struct SqlEditor {
     /// The find bar's needle and replacement.
     pub(crate) find_input: TextEdit,
     pub(crate) replace_input: TextEdit,
+    /// The open completion list, if any.
+    completion: Option<Completion>,
 }
 
 impl Default for SqlEditor {
@@ -118,6 +131,7 @@ impl SqlEditor {
             redo_stack: Vec::new(),
             find_input: TextEdit::new(String::new()),
             replace_input: TextEdit::new(String::new()),
+            completion: None,
         }
     }
 
@@ -158,6 +172,71 @@ impl SqlEditor {
             .filter(|(i, _)| *i != self.selection.main)
             .map(|(_, sel)| sel.head)
             .collect()
+    }
+
+    /// The completion candidates, newest refresh; empty when closed.
+    pub fn completion_items(&self) -> &[&'static str] {
+        self.completion.as_ref().map(|c| c.items.as_slice()).unwrap_or(&[])
+    }
+
+    /// Which completion item is highlighted.
+    pub fn completion_selected(&self) -> usize {
+        self.completion.as_ref().map(|c| c.selected).unwrap_or(0)
+    }
+
+    fn completion_down(&mut self) {
+        if let Some(completion) = &mut self.completion {
+            completion.selected = (completion.selected + 1) % completion.items.len();
+        }
+    }
+
+    fn completion_up(&mut self) {
+        if let Some(completion) = &mut self.completion {
+            completion.selected = (completion.selected + completion.items.len() - 1) % completion.items.len();
+        }
+    }
+
+    fn completion_close(&mut self) {
+        self.completion = None;
+    }
+
+    /// Insert the highlighted completion over its prefix.
+    fn completion_accept(&mut self) {
+        let selected = self.completion_selected();
+        self.completion_accept_index(selected);
+    }
+
+    /// Insert completion item `index` over the prefix (the canvas list's click).
+    pub fn completion_accept_index(&mut self, index: usize) {
+        let Some(completion) = self.completion.clone() else { return };
+        let Some(word) = completion.items.get(index) else { return };
+        let head = self.selection.main().head;
+        let start = head - completion.prefix.len();
+        self.push_history();
+        self.apply_change(start, head, word);
+        self.completion = None;
+    }
+
+    /// Rebuild the completion from the word at the caret; close it when nothing matches.
+    fn refresh_completion(&mut self) {
+        let head = self.selection.main().head;
+        let start = word_start(&self.doc, head);
+        let prefix = &self.doc[start..head];
+        if prefix.is_empty() || !prefix.bytes().all(|byte| byte.is_ascii_alphabetic()) {
+            self.completion = None;
+            return;
+        }
+        let items: Vec<&'static str> = KEYWORDS
+            .iter()
+            .filter(|keyword| starts_with_ignore_ascii_case(keyword, prefix))
+            .take(COMPLETION_LIMIT)
+            .copied()
+            .collect();
+        self.completion = if items.is_empty() {
+            None
+        } else {
+            Some(Completion { prefix: prefix.to_owned(), items, selected: 0 })
+        };
     }
 
     /// Put one caret at `byte`, replacing every range (a single selection).
@@ -448,17 +527,41 @@ pub fn on_key(editor: &mut SqlEditor, ev: &KeyEvent) -> bool {
     if !editor.focused() || editor.composition().is_some() {
         return false;
     }
+    if editor.completion.is_some() {
+        match &ev.key {
+            Key::Down => {
+                editor.completion_down();
+                return true;
+            }
+            Key::Up => {
+                editor.completion_up();
+                return true;
+            }
+            Key::Enter if !ev.mods.cmd && !ev.mods.shift => {
+                editor.completion_accept();
+                return true;
+            }
+            Key::Escape => {
+                editor.completion_close();
+                return true;
+            }
+            _ => {}
+        }
+    }
     match &ev.key {
         Key::Text(text) if !ev.mods.cmd && !ev.mods.ctrl => {
             editor.insert(text);
+            editor.refresh_completion();
             true
         }
         Key::Enter => {
             editor.insert("\n");
+            editor.completion_close();
             true
         }
         Key::Backspace => {
             editor.backspace();
+            editor.refresh_completion();
             true
         }
         Key::Command('z') if ev.mods.shift => {
@@ -567,9 +670,16 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color) -> El {
         .enumerate()
         .map(|(i, sel)| (sel.head, i == editor.selection.main))
         .collect();
+    let main_head = editor.main_head();
     let mut doc = col().key("sql-editor-field").w(EDITOR_SURFACE_WIDTH).min_h(300.0);
     for (n, (start, line)) in split_lines(&editor.doc).into_iter().enumerate() {
         doc = doc.child(line_row(n, start, line, &spans, &carets, editor));
+        if !editor.completion_items().is_empty()
+            && main_head >= start
+            && main_head <= start + line.len()
+        {
+            doc = doc.child(completion_list(editor, ink));
+        }
     }
     let count = editor.cursor_count();
     let label = format!(
@@ -668,6 +778,32 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color) -> El {
                 .on_press(|state: &mut crate::AppState| state.sql.focus())
                 .child(doc),
         )
+}
+
+/// The keyword completion, drawn in the canvas below the caret's line.
+fn completion_list(editor: &SqlEditor, ink: rune::Color) -> El {
+    let mut list = col()
+        .key("sql-completion")
+        .w(170.0)
+        .radius(6.0)
+        .fill(oklch(0.22, 0.03, 250.0));
+    for (index, item) in editor.completion_items().iter().enumerate() {
+        let selected = index == editor.completion_selected();
+        list = list.child(
+            row()
+                .key(format!("sql-completion-item-{index}"))
+                .w_full()
+                .h(18.0)
+                .px(8.0)
+                .center_y()
+                .fill(if selected { oklch(0.34, 0.08, 250.0) } else { oklch(0.22, 0.03, 250.0) })
+                .child(text(*item).font(editor_font()).color(ink))
+                .on_press(move |state: &mut crate::AppState| {
+                    state.sql.completion_accept_index(index);
+                }),
+        );
+    }
+    list
 }
 
 fn muted_note(editor: &SqlEditor) -> String {
@@ -784,6 +920,24 @@ fn cmp_ignore_ascii_case(a: &str, b: &str) -> std::cmp::Ordering {
         .iter()
         .map(|c| c.to_ascii_uppercase())
         .cmp(b.as_bytes().iter().map(|c| c.to_ascii_uppercase()))
+}
+
+/// The byte offset where the word (identifier characters) before `head` starts.
+fn word_start(doc: &str, head: usize) -> usize {
+    let bytes = doc.as_bytes();
+    let mut i = head.min(doc.len());
+    while i > 0 && (bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_') {
+        i -= 1;
+    }
+    i
+}
+
+fn starts_with_ignore_ascii_case(haystack: &str, prefix: &str) -> bool {
+    haystack.len() >= prefix.len()
+        && haystack.as_bytes()[..prefix.len()]
+            .iter()
+            .zip(prefix.as_bytes())
+            .all(|(a, b)| a.eq_ignore_ascii_case(b))
 }
 
 fn boundary(text: &str, byte: usize) -> usize {
@@ -1031,6 +1185,68 @@ mod tests {
         assert_eq!(editor.statement_at_cursor(), None);
         let editor = SqlEditor::from_doc("  ;  ");
         assert_eq!(editor.statement_at_cursor(), None, "whitespace-only statements do not count");
+    }
+
+    #[test]
+    fn typing_sel_offers_select_and_enter_inserts_it() {
+        let mut editor = SqlEditor::from_doc("");
+        editor.focus();
+        for ch in ["S", "E", "L"] {
+            assert!(on_key(&mut editor, &KeyEvent { key: Key::Text(ch.into()), mods: rune::Mods::default() }));
+        }
+        assert_eq!(editor.completion_items(), &["SELECT"] as &[&str]);
+        assert!(on_key(&mut editor, &KeyEvent { key: Key::Enter, mods: rune::Mods::default() }));
+        assert_eq!(editor.doc(), "SELECT", "Enter inserts the keyword over the prefix");
+        assert!(editor.completion_items().is_empty(), "the list closes on insert");
+        assert_eq!(editor.main_head(), "SELECT".len());
+        assert!(editor.undo(), "the completion insert is undoable");
+        assert_eq!(editor.doc(), "SEL");
+    }
+
+    #[test]
+    fn arrow_keys_cycle_the_completion_and_escape_closes() {
+        let mut editor = SqlEditor::from_doc("");
+        editor.focus();
+        on_key(&mut editor, &KeyEvent { key: Key::Text("S".into()), mods: rune::Mods::default() });
+        assert_eq!(editor.completion_items(), &["SELECT", "SET", "SUM"] as &[&str]);
+        on_key(&mut editor, &KeyEvent { key: Key::Down, mods: rune::Mods::default() });
+        assert_eq!(editor.completion_selected(), 1);
+        on_key(&mut editor, &KeyEvent { key: Key::Down, mods: rune::Mods::default() });
+        on_key(&mut editor, &KeyEvent { key: Key::Down, mods: rune::Mods::default() });
+        assert_eq!(editor.completion_selected(), 0, "down wraps around");
+        on_key(&mut editor, &KeyEvent { key: Key::Up, mods: rune::Mods::default() });
+        assert_eq!(editor.completion_selected(), 2, "up wraps around");
+        on_key(&mut editor, &KeyEvent { key: Key::Escape, mods: rune::Mods::default() });
+        assert!(editor.completion_items().is_empty());
+        assert_eq!(editor.doc(), "S", "escape only closes the list");
+    }
+
+    #[test]
+    fn typing_narrows_the_completion_and_no_match_closes_it() {
+        let mut editor = SqlEditor::from_doc("");
+        editor.focus();
+        for ch in ["S", "E"] {
+            on_key(&mut editor, &KeyEvent { key: Key::Text(ch.into()), mods: rune::Mods::default() });
+        }
+        assert_eq!(editor.completion_items(), &["SELECT", "SET"] as &[&str]);
+        on_key(&mut editor, &KeyEvent { key: Key::Backspace, mods: rune::Mods::default() });
+        assert_eq!(editor.completion_items().len(), 3, "backspace reopens the wider list");
+        on_key(&mut editor, &KeyEvent { key: Key::Text("Q".into()), mods: rune::Mods::default() });
+        assert!(editor.completion_items().is_empty(), "no keyword starts with SQ");
+        on_key(&mut editor, &KeyEvent { key: Key::Enter, mods: rune::Mods::default() });
+        assert_eq!(editor.doc(), "SQ\n", "Enter is a newline once the list is closed");
+    }
+
+    #[test]
+    fn completion_matches_ignore_case() {
+        let mut editor = SqlEditor::from_doc("");
+        editor.focus();
+        for ch in ["s", "e", "l"] {
+            on_key(&mut editor, &KeyEvent { key: Key::Text(ch.into()), mods: rune::Mods::default() });
+        }
+        assert_eq!(editor.completion_items(), &["SELECT"] as &[&str]);
+        on_key(&mut editor, &KeyEvent { key: Key::Enter, mods: rune::Mods::default() });
+        assert_eq!(editor.doc(), "SELECT");
     }
 
     #[test]
