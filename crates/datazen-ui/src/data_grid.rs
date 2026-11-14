@@ -526,11 +526,7 @@ fn sheet(grid: &DataGrid, slot: GridSlot, ink: rune::Color, well: rune::Color, h
             scroll_x.set(at.offset[0]);
         })
         .child(sheet);
-    if slot == GridSlot::Table {
-        scroll.on_paste(|state: &mut crate::AppState, text, _| state.grid.paste_tsv(text))
-    } else {
-        scroll
-    }
+    scroll
 }
 
 pub fn panel(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well: rune::Color) -> El {
@@ -815,6 +811,15 @@ fn cell(grid: &DataGrid, slot: GridSlot, row_index: u32, col_index: u32, ink: ru
         .fill(fill);
     if slot == GridSlot::Table {
         box_el = box_el.on_press(move |state: &mut crate::AppState| state.grid.select(row_index, col_index));
+    } else if slot == GridSlot::Result {
+        // T1: a pressed result cell takes the selection and the keyboard; the
+        // editor's surface and typing hand the keys back.
+        box_el = box_el.on_press(move |state: &mut crate::AppState| {
+            if let Some(grid) = state.result_grid.as_mut() {
+                grid.select(row_index, col_index);
+            }
+            state.result_focused = true;
+        });
     }
     if frozen {
         box_el = box_el.sticky_left(0.0);

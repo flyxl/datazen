@@ -1,5 +1,5 @@
 ## Current Task
-- **任务**: T1（系统剪贴板）——第三阶段（宿主能力与分发）开工，计划见 [plan-native-3.md](plan-native-3.md)。
+- **任务**: T2（文件对话框）——T1 已完成，正在接线导出/备份/导入的路径选择。
 - **负责人**: Coder Agent
 - **状态**: 前两阶段（[plan.md](plan.md)、[plan-native.md](plan-native.md)）全部完成并推送；第三阶段 T1–T11 进行中。
 

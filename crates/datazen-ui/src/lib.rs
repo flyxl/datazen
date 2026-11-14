@@ -124,6 +124,9 @@ struct AppState {
     filter_editor: TextEdit,
     /// The read-only query result grid of the selected query tab.
     result_grid: Option<DataGrid>,
+    /// T1: the result grid holds the keyboard after a result cell is pressed;
+    /// typing, Escape or pressing the editor surface hands it back.
+    result_focused: bool,
     /// The query generation: bumped by every run and every cancel. A result page
     /// from a generation that is not the current one is dropped.
     query_generation: u32,
@@ -250,6 +253,7 @@ impl Default for AppState {
             filter_column: 0,
             filter_editor: TextEdit::new(String::new()),
             result_grid: None,
+            result_focused: false,
             query_generation: 0,
             read_generation: 0,
             table_loading: None,
@@ -1144,6 +1148,7 @@ impl AppState {
         self.filter_column = 0;
         self.filter_editor = TextEdit::new(String::new());
         self.result_grid = None;
+        self.result_focused = false;
         self.collapsed.clear();
         self.er_schema = None;
         self.er_positions.clear();
@@ -1332,6 +1337,8 @@ impl AppState {
         grid.load_page(&page);
         grid.set_editable(false);
         self.result_grid = Some(grid);
+        // T1: a fresh result starts with the editor holding the keyboard.
+        self.result_focused = false;
     }
 
     /// Bump and return the next query generation. Every run and every cancel
@@ -4079,6 +4086,21 @@ fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
         .w_full()
         .h_full()
         .fill(theme.bg)
+        .on_paste(|state: &mut AppState, text, _| {
+            // T1: OS paste lands here when no platform text field is focused
+            // (the grid's inline editor and every plain input keep their own
+            // paste path). The editable table grid takes TSV at the focus
+            // cell; the focused editor takes the text.
+            if state.active == Section::Workspace
+                && !query_selected(state)
+                && state.grid.has_page()
+                && state.grid.is_editable()
+            {
+                state.grid.paste_tsv(text);
+            } else if query_selected(state) && state.sql.focused() {
+                state.sql.insert(text);
+            }
+        })
         .child(sidebar)
         .child(page)
 }
@@ -4141,14 +4163,31 @@ fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
     if state.active != Section::Workspace {
         return state.active == Section::Workflows
             && state.workflow_editing.is_some()
-            && sql_editor::on_key(&mut state.workflow_yaml, ev);
+            && sql_editor::on_key(&mut state.workflow_yaml, ev, tx);
     }
     if query_selected(state) {
         if matches!(ev.key, Key::Enter) && ev.mods.cmd {
             state.run_query();
             return true;
         }
-        return sql_editor::on_key(&mut state.sql, ev);
+        // T1: after a result cell is pressed the result grid holds the
+        // keyboard: arrows walk its selection, Command-C copies TSV. Typing
+        // or Escape hands the keys back to the editor, and so does any key
+        // the grid does not answer.
+        if state.result_focused {
+            if matches!(ev.key, Key::Text(_) | Key::Escape) {
+                state.result_focused = false;
+            } else if state
+                .result_grid
+                .as_mut()
+                .is_some_and(|grid| data_grid::on_key(grid, ev, tx))
+            {
+                return true;
+            } else {
+                state.result_focused = false;
+            }
+        }
+        return sql_editor::on_key(&mut state.sql, ev, tx);
     }
     if state.grid.has_page() {
         return data_grid::on_key(&mut state.grid, ev, tx);
@@ -4593,8 +4632,8 @@ mod tests {
         use rune::{Key, KeyEvent, Mods};
 
         let mut runtime = runtime();
-        runtime.on_key = Some(|state, ev, _| {
-            state.active == Section::Workspace && query_selected(state) && on_key(&mut state.sql, ev)
+        runtime.on_key = Some(|state, ev, tx| {
+            state.active == Section::Workspace && query_selected(state) && on_key(&mut state.sql, ev, tx)
         });
         runtime.state.open_query_tab("Query");
         runtime.state.sql.focus();
@@ -5129,6 +5168,148 @@ mod tests {
         let grid = runtime.state.result_grid.as_ref().expect("second statement ran");
         assert_eq!(grid.rows, 1);
         assert_eq!(grid.cell(0, 0), "1");
+    }
+
+    #[test]
+    fn the_result_grid_takes_the_keyboard_and_copies_tsv() {
+        use datazen_ui_api::WorkspaceApi;
+        use rune::{Key, KeyEvent, Mods};
+        use super::app_key;
+
+        let clipboard = rune::clipboard::memory();
+        let mut runtime = runtime();
+        runtime.use_clipboard(&clipboard);
+        runtime.on_key = Some(app_key);
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_query_tab("Query").unwrap();
+        runtime.state.sql = sql_editor::SqlEditor::from_doc("SELECT * FROM CUSTOMERS");
+        runtime.state.sql.focus();
+        runtime.frame(0.0);
+        runtime.key(KeyEvent { key: Key::Enter, mods: Mods { cmd: true, ..Mods::default() } });
+        runtime.frame(1.0);
+        assert!(runtime.state.result_grid.is_some(), "the statement ran");
+
+        // Pressing a result cell takes the selection and the keyboard.
+        let (x, y) = runtime.find("result-cell-0-1").expect("result cell");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.result_grid.as_ref().unwrap().focus(), (0, 1));
+        assert!(runtime.state.result_focused, "the result grid holds the keyboard");
+
+        // Shift-Down and Shift-Right grow the rectangle to 2x2, and Command-C
+        // puts the rectangle on the system clipboard as TSV.
+        let shift = Mods { shift: true, ..Mods::default() };
+        runtime.key(KeyEvent { key: Key::Down, mods: shift });
+        runtime.key(KeyEvent { key: Key::Right, mods: shift });
+        runtime.frame(0.0);
+        runtime.key(KeyEvent { key: Key::Command('c'), mods: Mods::default() });
+        runtime.frame(0.0);
+        let grid = runtime.state.result_grid.as_ref().unwrap();
+        let expected = format!(
+            "{}\t{}\n{}\t{}",
+            grid.cell(0, 1),
+            grid.cell(0, 2),
+            grid.cell(1, 1),
+            grid.cell(1, 2),
+        );
+        assert_eq!(clipboard.text().as_deref().map(String::as_str), Some(expected.as_str()), "2x2 TSV lands on the clipboard");
+
+        // Typing hands the keyboard back to the editor, and Command-V pastes
+        // the clipboard text into it through the app root's paste handler.
+        clipboard.set_text(" pasted");
+        runtime.state.sql.set_main_caret(runtime.state.sql.doc().len());
+        runtime.frame(0.0);
+        runtime.key(KeyEvent { key: Key::Text("x".into()), mods: Mods::default() });
+        runtime.frame(0.0);
+        assert!(!runtime.state.result_focused, "typing goes back to the editor");
+        assert!(runtime.state.sql.doc().ends_with('x'));
+        runtime.key(KeyEvent { key: Key::Command('v'), mods: Mods::default() });
+        // The paste request round-trips through the action queue: one frame
+        // hands it to the clipboard, the next lands the text in the editor.
+        runtime.frame(0.0);
+        runtime.frame(0.0);
+        assert!(
+            runtime.state.sql.doc().ends_with("x pasted"),
+            "the editor receives the pasted text: {}",
+            runtime.state.sql.doc()
+        );
+    }
+
+    #[test]
+    fn the_table_grid_copies_a_2x2_selection_as_tsv() {
+        use rune::{Key, KeyEvent, Mods};
+        use super::app_key;
+
+        let clipboard = rune::clipboard::memory();
+        let mut runtime = runtime();
+        runtime.use_clipboard(&clipboard);
+        runtime.on_key = Some(app_key);
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("connection-local").expect("connection row");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.state.grid.has_page(), "the table page loaded");
+
+        let (x, y) = runtime.find("cell-0-0").expect("first cell");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        let shift = Mods { shift: true, ..Mods::default() };
+        runtime.key(KeyEvent { key: Key::Down, mods: shift });
+        runtime.key(KeyEvent { key: Key::Right, mods: shift });
+        runtime.frame(0.0);
+        runtime.key(KeyEvent { key: Key::Command('c'), mods: Mods::default() });
+        runtime.frame(0.0);
+        let expected = format!(
+            "{}\t{}\n{}\t{}",
+            runtime.state.grid.cell(0, 0),
+            runtime.state.grid.cell(0, 1),
+            runtime.state.grid.cell(1, 0),
+            runtime.state.grid.cell(1, 1),
+        );
+        assert_eq!(clipboard.text().as_deref().map(String::as_str), Some(expected.as_str()), "2x2 TSV lands on the clipboard");
+    }
+
+    #[test]
+    fn command_c_copies_the_editor_selection_and_command_x_cuts_it() {
+        use datazen_ui_api::WorkspaceApi;
+        use rune::{Key, KeyEvent, Mods};
+        use super::app_key;
+
+        let clipboard = rune::clipboard::memory();
+        let mut runtime = runtime();
+        runtime.use_clipboard(&clipboard);
+        runtime.on_key = Some(app_key);
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_query_tab("Query").unwrap();
+        runtime.state.sql = sql_editor::SqlEditor::from_doc("SELECT one FROM t");
+        runtime.state.sql.focus();
+        runtime.frame(0.0);
+
+        // A find selects its match: Command-C copies exactly that text.
+        assert!(runtime.state.sql.find_next("SELECT"));
+        runtime.frame(0.0);
+        runtime.key(KeyEvent { key: Key::Command('c'), mods: Mods::default() });
+        runtime.frame(0.0);
+        assert_eq!(clipboard.text().as_deref().map(String::as_str), Some("SELECT"));
+
+        // Command-C with a bare caret copies nothing and leaves the clipboard.
+        runtime.state.sql.set_main_caret(0);
+        runtime.frame(0.0);
+        clipboard.set_text("kept");
+        runtime.key(KeyEvent { key: Key::Command('c'), mods: Mods::default() });
+        runtime.frame(0.0);
+        assert_eq!(clipboard.text().as_deref().map(String::as_str), Some("kept"), "no selection, no write");
+
+        // Command-X copies and removes the selection in one history step.
+        assert!(runtime.state.sql.find_next("FROM"));
+        runtime.frame(0.0);
+        runtime.key(KeyEvent { key: Key::Command('x'), mods: Mods::default() });
+        runtime.frame(0.0);
+        assert_eq!(clipboard.text().as_deref().map(String::as_str), Some("FROM"));
+        assert_eq!(runtime.state.sql.doc(), "SELECT one  t");
     }
 
     #[test]

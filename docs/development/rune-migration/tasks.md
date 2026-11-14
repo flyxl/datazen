@@ -107,7 +107,7 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | N12 | 已完成 | 54ca210 | testing/N12-sync-compare.md |
 | N13 | 已完成 | a4644d1 | testing/N13-workflow-dashboard.md |
 | N14 | 已完成 | cda8ca3 | testing/N14-release-docs.md |
-| T1 | 未开始 | | |
+| T1 | 已完成 | 见本行 tester 报告 | testing/T1-clipboard.md |
 | T2 | 未开始 | | |
 | T3 | 未开始 | | |
 | T4 | 未开始 | | |

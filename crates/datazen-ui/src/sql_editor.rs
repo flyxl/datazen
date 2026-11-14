@@ -7,7 +7,7 @@
 //! the view paints lines, highlight spans and carets. The main caret is an `El::ime_cursor`,
 //! which is what turns the platform input method on.
 
-use rune::{El, Ime, Key, KeyEvent, Span, TextEdit, TextStyle, col, oklch, row, text, text_input};
+use rune::{El, Ime, Key, KeyEvent, Span, TextEdit, TextStyle, Tx, col, oklch, row, text, text_input};
 
 /// Editing surface width. The scroll viewport is narrower, so a long line moves sideways
 /// instead of wrapping. CodeMirror's `lineWrapping` off does this inside the line layout;
@@ -141,6 +141,30 @@ impl SqlEditor {
 
     pub fn selection(&self) -> &Selection {
         &self.selection
+    }
+
+    /// T1: the text of every non-empty range, joined by newlines the way a
+    /// multi-caret copy works; empty when every range is a caret.
+    pub fn selected_text(&self) -> String {
+        self.selection
+            .ranges()
+            .iter()
+            .filter(|range| range.from() != range.to())
+            .map(|range| self.doc[range.from()..range.to()].to_owned())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// T1: delete every non-empty range in one history step. All-caret
+    /// selections are a no-op, so a plain Command-X never bites.
+    pub fn cut_selection(&mut self) {
+        if self.composition.is_some()
+            || self.selection.ranges.iter().all(|range| range.from() == range.to())
+        {
+            return;
+        }
+        self.push_history();
+        self.change_by_range(|sel| (sel.from(), sel.to(), String::new()));
     }
 
     pub fn composition(&self) -> Option<&str> {
@@ -523,9 +547,33 @@ impl SqlEditor {
     }
 }
 
-pub fn on_key(editor: &mut SqlEditor, ev: &KeyEvent) -> bool {
+pub fn on_key(editor: &mut SqlEditor, ev: &KeyEvent, tx: &mut Tx) -> bool {
     if !editor.focused() || editor.composition().is_some() {
         return false;
+    }
+    // T1: the system clipboard vocabulary. Copy and cut answer the selection;
+    // paste asks the shell for the clipboard and the app root's on_paste
+    // lands it in the editor (no platform text field is focused here).
+    if ev.is_command('c') {
+        let text = editor.selected_text();
+        if text.is_empty() {
+            return false;
+        }
+        tx.copy(text);
+        return true;
+    }
+    if ev.is_command('x') {
+        let text = editor.selected_text();
+        if text.is_empty() {
+            return false;
+        }
+        tx.copy(text);
+        editor.cut_selection();
+        return true;
+    }
+    if ev.is_command('v') {
+        tx.request_paste();
+        return true;
     }
     if editor.completion.is_some() {
         match &ev.key {
@@ -775,7 +823,12 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color) -> El {
                 .h(380.0)
                 .scroll_xy()
                 .radius(8.0)
-                .on_press(|state: &mut crate::AppState| state.sql.focus())
+                .on_press(|state: &mut crate::AppState| {
+                    // T1: pressing the editor surface hands the keyboard back
+                    // from the result grid.
+                    state.result_focused = false;
+                    state.sql.focus();
+                })
                 .child(doc),
         )
 }
@@ -996,6 +1049,11 @@ fn prev_boundary(text: &str, byte: usize) -> usize {
 mod tests {
     use super::*;
 
+    /// T1: `on_key` answers through a `Tx`; the unit tests press with a bare one.
+    fn press(editor: &mut SqlEditor, ev: KeyEvent) -> bool {
+        on_key(editor, &ev, &mut Tx::default())
+    }
+
     #[test]
     fn keyword_table_is_sorted() {
         let mut sorted = KEYWORDS.to_vec();
@@ -1109,16 +1167,16 @@ mod tests {
     fn command_z_and_command_shift_z_go_through_on_key() {
         let mut editor = SqlEditor::from_doc("ab");
         editor.focus();
-        assert!(on_key(&mut editor, &KeyEvent { key: Key::Text("c".into()), mods: rune::Mods::default() }));
+        assert!(press(&mut editor, KeyEvent { key: Key::Text("c".into()), mods: rune::Mods::default() }));
         assert_eq!(editor.doc(), "cab");
-        assert!(on_key(&mut editor, &KeyEvent { key: Key::Command('z'), mods: rune::Mods::default() }));
+        assert!(press(&mut editor, KeyEvent { key: Key::Command('z'), mods: rune::Mods::default() }));
         assert_eq!(editor.doc(), "ab");
-        assert!(on_key(
+        assert!(press(
             &mut editor,
-            &KeyEvent { key: Key::Command('z'), mods: rune::Mods { shift: true, ..rune::Mods::default() } }
+            KeyEvent { key: Key::Command('z'), mods: rune::Mods { shift: true, ..rune::Mods::default() } }
         ));
         assert_eq!(editor.doc(), "cab", "shift-command-z redoes");
-        assert!(on_key(&mut editor, &KeyEvent { key: Key::Command('y'), mods: rune::Mods::default() }) == false
+        assert!(press(&mut editor, KeyEvent { key: Key::Command('y'), mods: rune::Mods::default() }) == false
             || editor.doc() == "cab");
     }
 
@@ -1229,10 +1287,10 @@ mod tests {
         let mut editor = SqlEditor::from_doc("");
         editor.focus();
         for ch in ["S", "E", "L"] {
-            assert!(on_key(&mut editor, &KeyEvent { key: Key::Text(ch.into()), mods: rune::Mods::default() }));
+            assert!(press(&mut editor, KeyEvent { key: Key::Text(ch.into()), mods: rune::Mods::default() }));
         }
         assert_eq!(editor.completion_items(), &["SELECT"] as &[&str]);
-        assert!(on_key(&mut editor, &KeyEvent { key: Key::Enter, mods: rune::Mods::default() }));
+        assert!(press(&mut editor, KeyEvent { key: Key::Enter, mods: rune::Mods::default() }));
         assert_eq!(editor.doc(), "SELECT", "Enter inserts the keyword over the prefix");
         assert!(editor.completion_items().is_empty(), "the list closes on insert");
         assert_eq!(editor.main_head(), "SELECT".len());
@@ -1244,16 +1302,16 @@ mod tests {
     fn arrow_keys_cycle_the_completion_and_escape_closes() {
         let mut editor = SqlEditor::from_doc("");
         editor.focus();
-        on_key(&mut editor, &KeyEvent { key: Key::Text("S".into()), mods: rune::Mods::default() });
+        press(&mut editor, KeyEvent { key: Key::Text("S".into()), mods: rune::Mods::default() });
         assert_eq!(editor.completion_items(), &["SELECT", "SET", "SUM"] as &[&str]);
-        on_key(&mut editor, &KeyEvent { key: Key::Down, mods: rune::Mods::default() });
+        press(&mut editor, KeyEvent { key: Key::Down, mods: rune::Mods::default() });
         assert_eq!(editor.completion_selected(), 1);
-        on_key(&mut editor, &KeyEvent { key: Key::Down, mods: rune::Mods::default() });
-        on_key(&mut editor, &KeyEvent { key: Key::Down, mods: rune::Mods::default() });
+        press(&mut editor, KeyEvent { key: Key::Down, mods: rune::Mods::default() });
+        press(&mut editor, KeyEvent { key: Key::Down, mods: rune::Mods::default() });
         assert_eq!(editor.completion_selected(), 0, "down wraps around");
-        on_key(&mut editor, &KeyEvent { key: Key::Up, mods: rune::Mods::default() });
+        press(&mut editor, KeyEvent { key: Key::Up, mods: rune::Mods::default() });
         assert_eq!(editor.completion_selected(), 2, "up wraps around");
-        on_key(&mut editor, &KeyEvent { key: Key::Escape, mods: rune::Mods::default() });
+        press(&mut editor, KeyEvent { key: Key::Escape, mods: rune::Mods::default() });
         assert!(editor.completion_items().is_empty());
         assert_eq!(editor.doc(), "S", "escape only closes the list");
     }
@@ -1263,14 +1321,14 @@ mod tests {
         let mut editor = SqlEditor::from_doc("");
         editor.focus();
         for ch in ["S", "E"] {
-            on_key(&mut editor, &KeyEvent { key: Key::Text(ch.into()), mods: rune::Mods::default() });
+            press(&mut editor, KeyEvent { key: Key::Text(ch.into()), mods: rune::Mods::default() });
         }
         assert_eq!(editor.completion_items(), &["SELECT", "SET"] as &[&str]);
-        on_key(&mut editor, &KeyEvent { key: Key::Backspace, mods: rune::Mods::default() });
+        press(&mut editor, KeyEvent { key: Key::Backspace, mods: rune::Mods::default() });
         assert_eq!(editor.completion_items().len(), 3, "backspace reopens the wider list");
-        on_key(&mut editor, &KeyEvent { key: Key::Text("Q".into()), mods: rune::Mods::default() });
+        press(&mut editor, KeyEvent { key: Key::Text("Q".into()), mods: rune::Mods::default() });
         assert!(editor.completion_items().is_empty(), "no keyword starts with SQ");
-        on_key(&mut editor, &KeyEvent { key: Key::Enter, mods: rune::Mods::default() });
+        press(&mut editor, KeyEvent { key: Key::Enter, mods: rune::Mods::default() });
         assert_eq!(editor.doc(), "SQ\n", "Enter is a newline once the list is closed");
     }
 
@@ -1279,10 +1337,10 @@ mod tests {
         let mut editor = SqlEditor::from_doc("");
         editor.focus();
         for ch in ["s", "e", "l"] {
-            on_key(&mut editor, &KeyEvent { key: Key::Text(ch.into()), mods: rune::Mods::default() });
+            press(&mut editor, KeyEvent { key: Key::Text(ch.into()), mods: rune::Mods::default() });
         }
         assert_eq!(editor.completion_items(), &["SELECT"] as &[&str]);
-        on_key(&mut editor, &KeyEvent { key: Key::Enter, mods: rune::Mods::default() });
+        press(&mut editor, KeyEvent { key: Key::Enter, mods: rune::Mods::default() });
         assert_eq!(editor.doc(), "SELECT");
     }
 
@@ -1291,7 +1349,7 @@ mod tests {
         let mut editor = SqlEditor::from_doc("ab");
         editor.focus();
         editor.preedit("中");
-        assert!(!on_key(&mut editor, &KeyEvent { key: Key::Text("A".into()), mods: rune::Mods::default() }));
+        assert!(!press(&mut editor, KeyEvent { key: Key::Text("A".into()), mods: rune::Mods::default() }));
         assert_eq!(editor.doc(), "ab");
     }
 }
