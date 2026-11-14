@@ -108,6 +108,11 @@ struct AppState {
     export_error: Option<String>,
     /// The export job's last snapshot. Refreshed only on demand.
     export_snapshot: Option<ProgressSnapshot>,
+    /// The import wizard: 0 source step, 1 target step, 2 ready.
+    import_step: u32,
+    import_source: TextEdit,
+    import_target: TextEdit,
+    import_error: Option<String>,
 }
 
 impl Default for AppState {
@@ -148,6 +153,10 @@ impl Default for AppState {
             export_job: None,
             export_error: None,
             export_snapshot: None,
+            import_step: 0,
+            import_source: TextEdit::new(String::new()),
+            import_target: TextEdit::new(String::new()),
+            import_error: None,
         }
     }
 }
@@ -294,6 +303,31 @@ impl AppState {
         if let Some(job) = self.export_job {
             self.export_snapshot = self.workspace.job_progress(job);
         }
+    }
+
+    /// The import wizard's step 1: a source is required to move on.
+    fn import_next(&mut self) {
+        if self.import_source.text.trim().is_empty() {
+            self.import_error = Some("a source is required".into());
+            return;
+        }
+        self.import_error = None;
+        self.import_step = 1;
+    }
+
+    /// Step 2: a target table is required to finish.
+    fn import_finish(&mut self) {
+        if self.import_target.text.trim().is_empty() {
+            self.import_error = Some("a target table is required".into());
+            return;
+        }
+        self.import_error = None;
+        self.import_step = 2;
+    }
+
+    fn import_back(&mut self) {
+        self.import_step = 0;
+        self.import_error = None;
     }
 
     /// Flip the theme. The only write goes to the settings port.
@@ -1376,6 +1410,126 @@ fn settings_page(state: &AppState, theme: tok::Theme) -> El {
     }
     page.child(snippets)
         .child(export_section(state, theme))
+        .child(import_section(state, theme))
+}
+
+/// The import wizard's first two steps: source, then target table. No target,
+/// no next step.
+fn import_section(state: &AppState, theme: tok::Theme) -> El {
+    let mut section = col()
+        .key("import-section")
+        .w_full()
+        .gap(6.0)
+        .child(text("Import".to_owned()).font(type_::TITLE).color(theme.text));
+    match state.import_step {
+        0 => section = section.child(
+            row()
+                .key("import-step-1")
+                .w_full()
+                .h(28.0)
+                .gap(8.0)
+                .center_y()
+                .child(
+                    text("Step 1 · Source".to_owned())
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                )
+                .child(
+                    text_input(&state.import_source, type_::LABEL)
+                        .key("import-source-input")
+                        .w(240.0)
+                        .h(24.0)
+                        .on_edit(|state: &mut AppState| &mut state.import_source),
+                )
+                .child(
+                    row()
+                        .key("import-next")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Next").font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.import_next()),
+                ),
+        ),
+        1 => section = section
+            .child(
+                row()
+                    .key("import-step-2")
+                    .w_full()
+                    .h(28.0)
+                    .gap(8.0)
+                    .center_y()
+                    .child(
+                        text("Step 2 · Target table".to_owned())
+                            .font(type_::LABEL)
+                            .color(theme.text_secondary),
+                    )
+                    .child(
+                        text_input(&state.import_target, type_::LABEL)
+                            .key("import-target-input")
+                            .w(180.0)
+                            .h(24.0)
+                            .on_edit(|state: &mut AppState| &mut state.import_target),
+                    )
+                    .child(
+                        row()
+                            .key("import-finish")
+                            .h(24.0)
+                            .px(8.0)
+                            .center_y()
+                            .radius(6.0)
+                            .fill(theme.control_off)
+                            .child(text("Finish").font(type_::LABEL).color(theme.text))
+                            .on_press(|state: &mut AppState| state.import_finish()),
+                    )
+                    .child(
+                        row()
+                            .key("import-back")
+                            .h(24.0)
+                            .px(8.0)
+                            .center_y()
+                            .radius(6.0)
+                            .fill(theme.control_off)
+                            .child(text("Back").font(type_::LABEL).color(theme.text_secondary))
+                            .on_press(|state: &mut AppState| state.import_back()),
+                    ),
+            ),
+        _ => section = section.child(
+            row()
+                .key("import-ready")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(
+                    text(format!(
+                        "Import ready: {} into {}",
+                        state.import_source.text.trim(),
+                        state.import_target.text.trim()
+                    ))
+                    .font(type_::LABEL)
+                    .color(theme.text),
+                ),
+        ),
+    }
+    if let Some(error) = &state.import_error {
+        section = section.child(
+            row()
+                .key("import-error")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+        );
+    }
+    section
 }
 
 /// The export dialog collects a format and a range, then asks the port for a
@@ -3325,6 +3479,50 @@ mod tests {
             "the error line is drawn"
         );
         assert!(runtime.find("export-status").is_some());
+    }
+
+    #[test]
+    fn the_import_wizard_needs_a_target_to_move_on() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-settings").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.find("import-step-1").is_some());
+        assert!(runtime.find("import-step-2").is_none());
+
+        // Step 1 needs a source.
+        let (x, y) = runtime.find("import-next").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("import-step-1").is_some(), "still on step 1");
+        assert!(runtime.find("import-error").is_some());
+
+        runtime.state.import_source = rune::TextEdit::new("dump.csv");
+        let (x, y) = runtime.find("import-next").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.find("import-step-2").is_some(), "step 2 arrived");
+        assert!(runtime.find("import-step-1").is_none());
+
+        // Step 2 needs a target table: no target, no next step.
+        let (x, y) = runtime.find("import-finish").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("import-step-2").is_some(), "still on step 2");
+        assert!(runtime.find("import-ready").is_none());
+        assert!(runtime.find("import-error").is_some(), "the refusal is visible");
+
+        runtime.state.import_target = rune::TextEdit::new("customers");
+        let (x, y) = runtime.find("import-finish").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("import-ready").is_some(), "both steps done");
     }
 
     #[test]
