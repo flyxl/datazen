@@ -207,6 +207,25 @@ impl DataGrid {
         self.editor.focused = false;
     }
 
+    /// The loaded page's value at a cell, or the POC fallback when no page is loaded.
+    fn original(&self, row: u32, col: u32) -> String {
+        self.source
+            .as_ref()
+            .and_then(|rows| rows.get(row as usize))
+            .and_then(|record| record.get(col as usize))
+            .cloned()
+            .unwrap_or_else(|| format!("r{row}c{col}"))
+    }
+
+    /// Cells whose displayed value differs from the loaded page's value. An edit
+    /// that lands back on the original value is not dirty.
+    pub fn dirty_cells(&self) -> u32 {
+        self.edits
+            .iter()
+            .filter(|((row, col), value)| self.original(*row, *col) != **value)
+            .count() as u32
+    }
+
     pub fn copy_tsv(&self) -> String {
         let (r0, r1, c0, c1) = self.rect();
         let mut lines = Vec::new();
@@ -329,15 +348,7 @@ pub fn on_key(grid: &mut DataGrid, ev: &KeyEvent, tx: &mut Tx) -> bool {
 
 pub fn panel(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well: rune::Color) -> El {
     let grid = &state.grid;
-    let (r0, r1, c0, c1) = grid.rect();
-    let status = format!(
-        "{}×{} · window at column {} · selection r{r0}c{c0}..r{r1}c{c1} · {} edit{}",
-        grid.rows,
-        grid.cols,
-        grid.origin_col,
-        grid.edits.len(),
-        if grid.edits.len() == 1 { "" } else { "s" }
-    );
+    let status = status_line(grid);
     let scroll_x = grid.scroll_x();
     let width = COL_W * grid.cols as f32;
     let sheet = col()
@@ -379,6 +390,15 @@ pub fn panel(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well
                 .child(sheet),
         )
         .child(footer(grid, ink, muted))
+}
+
+/// The status line above the grid: page shape, column window, selection, dirty cells.
+fn status_line(grid: &DataGrid) -> String {
+    let (r0, r1, c0, c1) = grid.rect();
+    format!(
+        "{}×{} · window at column {} · selection r{r0}c{c0}..r{r1}c{c1} · {} dirty",
+        grid.rows, grid.cols, grid.origin_col, grid.dirty_cells()
+    )
 }
 
 /// One text filter on one column: a column chip that cycles, a text field, the row count.
@@ -615,6 +635,41 @@ mod tests {
         grid.focus = (3, 4);
         grid.anchor = (2, 3);
         assert_eq!(grid.copy_tsv(), "A\tB\nC\tD");
+    }
+
+    #[test]
+    fn a_cell_edited_back_to_its_original_value_is_not_dirty() {
+        let mut grid = DataGrid::new();
+        assert_eq!(grid.dirty_cells(), 0);
+        grid.select(2, 2);
+        grid.begin_edit();
+        grid.editor.insert("x");
+        grid.commit_edit();
+        assert_eq!(grid.cell(2, 2), "r2c2x");
+        assert_eq!(grid.dirty_cells(), 1, "an edited cell is dirty");
+
+        grid.begin_edit();
+        grid.editor = TextEdit::new(String::new());
+        grid.editor.insert("r2c2");
+        grid.commit_edit();
+        assert_eq!(grid.cell(2, 2), "r2c2");
+        assert_eq!(grid.dirty_cells(), 0, "edited back to the original value");
+    }
+
+    #[test]
+    fn the_status_line_counts_dirty_cells_not_edits() {
+        let mut grid = DataGrid::new();
+        grid.select(1, 1);
+        grid.begin_edit();
+        grid.editor.insert("z");
+        grid.commit_edit();
+        grid.begin_edit();
+        grid.editor = TextEdit::new(String::new());
+        grid.editor.insert("r1c1");
+        grid.commit_edit();
+        let status = status_line(&grid);
+        assert!(status.contains("0 dirty"), "status says 0 dirty: {status}");
+        assert!(status.contains("selection r1c1..r1c1"), "selection stays: {status}");
     }
 
     #[test]
