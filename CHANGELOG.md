@@ -10,46 +10,90 @@
 
 ## [Unreleased]
 
+---
+
+## [0.3.0] - 2026-11-14
+
+> 自 v0.2.3 以来累计 **2326** 次提交。主线是**数据浏览与编辑全链路重做**（键盘导航 / 剪贴板 / 类型化单元格编辑 / 外键跳转 / 行数三态 / 筛选与分页重做）、**导入导出扩充**（导入向导、XLSX / Parquet / TSV / Markdown / SQL UPDATE 导出、无会话导出）、**值呈现规则**（时间显示设置与列级覆盖）、**AI 助手能力对标**（Agent 模式 / AI 记忆 / MCP 工具治理 / datazen CLI），以及**团队 Web 服务**（`/api/v1` 十五域 108 路由 + 浏览器壳）首版落地。
+
 ### ⚠️ 破坏性变更（Breaking Changes）
 
-**`DatabaseDriver` 移除 `split_restore_sql`**（`datazen-driver-api` 0.0.19 → 0.0.20）。备份文件的 SQL 切分规则改由领域契约 `BackupDialect` 承载，唯一实现是 `sql_text::split_restore_sql`；旧 trait 方法只是转发一跳，删除它才能让「同一项行为只有一个实际实现」成立。**只实现过该方法的外部驱动需要删掉这段实现**；没有实现过该方法的驱动零编译影响（仓库内 15 个 path 驱动均未显式声明它）。
+**`DatabaseDriver` 移除 `split_restore_sql`**（`datazen-driver-api` 0.0.19 → 0.0.20）。备份文件的 SQL 切分规则改由领域契约 `BackupDialect` 承载，唯一实现是 `sql_text::split_restore_sql`。**只实现过该方法的外部驱动需要删掉这段实现**；没有实现过该方法的驱动零编译影响（仓库内 15 个 path 驱动均未显式声明它）。
+
+**`olap` 驱动删除。** `drivers-registry.json` 不再声明 `olap`，`driver-olap` Cargo feature、Presto/Trino 连接类型映射、`sync_taxonomy` 中的 `presto → trino` 归一化以及前端 Presto/Trino 方言配置一并移除。已保存的 `olap` 连接不会再解析到驱动；需要访问 Presto/Trino 的用户应改用通用的 HTTP/SQL 驱动或重新接入独立驱动。
+
+`PROTOCOL_VERSION` 冻结为 **6**（2026-10-21 起；兼容门禁族一并退役），详见 [驱动层 §2.5](docs/architecture/backend/drivers.md#25-协议版本闸门)。
 
 ### 🚀 新功能（Added）
 
-**团队 Web 服务（P7，W8 交付）**：`crates/datazen-server/` axum HTTP 宿主 `/api/v1` 十五域全亮——settings、identity、connection、session、execution、job、artifact、events（SSE）、tableData、driverGateway（过渡）、queryAssets、schemaDiff、workflow、dashboard、dataSync，合计 **112 个域客户端方法 / 108 条路由**，契约见 [HTTP API 契约](docs/architecture/platform/web-http-api.md)（v1.10.1）。要点：
+#### 数据浏览与编辑全链路重做（DB-01…DB-07 / DBR-01…06）
+
+- **键盘导航**（DB-02）：结果网格接上完整键盘导航（方向键 / Enter / Escape / ⌘A），行容器退出 Tab 序列；8 个快捷键补全 i18n 提示。
+- **剪贴板复制与粘贴**（DB-03）：跨类型列复制粘贴、剪贴板「来源」与内容绑定（陈旧来源不再静默写错列）、粘贴拒绝给出点名文案。
+- **类型化单元格编辑**（DB-05）：列类型归一化为 11 种 `CellType`，每个族一个专用控件，提交时机只有一处；**写入意图三态**——`NULL`、值、「不写这一列」不再互相折叠；JSON 列非法输入阻止提交并给出行内原因；驱动的类型声明同时约束单元格编辑器、着色与筛选算子（筛选器不再把 SQL Server `timestamp` 当时间列）。
+- **脏标记与新增行**（DB-06）：未保存单元格高亮、按脏索引一处计算、「撤销删除标记」；新增行走草稿通道，跨页身份冲突显式拒绝。
+- **外键跳转**（DB-07）：单元格 FK 箭头 → 目标表透传跳转，面包屑、返回栈、首帧预置与快捷键；隐藏外键成员不再让整组失去箭头。
+- **行数三态**：`≈` 估算（PostgreSQL 走 `pg_class` 统计）、明确的「估不出来」提示与精确统计入口；估算不得钳制用户页码，判定活过每一次重读。
+- **筛选重做**：逐条 `AND` / `OR` 连接符取代全局 mixed-logic；算子按列类型分派（几何/数组/二进制/枚举各有正确算子集）；不完整条件显式阻断而不是发出错误 SQL；LIKE 大小写语义按方言纪律。
+- **分页重做**：keyset 分页按驱动能力启用；四方言各自的 seek 语法；「无法 seek」如实告知而不是换一种写法。
+- **导入向导**（DBR-01）：RFC-4180 解析器、列映射向导、分批事务执行与可解释的错误报告。
+- **行复制与粘贴新增**（DBR-02）：行负载通道、`⌘D` 复制当前行。
+- **全库值搜索增强**（DBR-03）：Not Contains、Schema 感知的搜索范围与定位、类型范围按驱动声明开放。
+- **Any Column / Raw SQL 筛选**（DBR-04）：模式行 + 后端校验的原始谓词，预览执行同链。
+- **Set Value**（DBR-05）：「设为当前时间」类型化写表达式、Quick Look 快捷入口、二进制从文件加载。
+- **表头排序对齐 Navicat**：单击三态循环（升 → 降 → 无）、列级排序菜单、底栏排序状态净化。
+
+#### 导入导出格式扩充
+
+- **XLSX 导出**（`rust_xlsxwriter`，calamine 读回验收）与 **Parquet 导出**（按方言与列值做 schema 推断 + 读回验收）。
+- **TSV / Markdown / SQL UPDATE** 加入 Rust 批量导出；导出源支持查询结果与已加载结果集。
+- **无会话导出**：只依赖已加载数据的导出不再要求打开会话；单表 / 对话框路径统一走 `DataFetcher`。
+- **导出体验一致化**（DBR-06）：列选择、格式门槛（不可用格式禁用并说明原因）、流式进度与**中途取消**（含 SQL 导出路径）、`.part` 中转原子保存——失败保留原文件、abort 如实报告。
+- **CSV 公式注入防护**统一到 Rust 流式写出与文本格式化路径（此前只防前端下载）。
+
+#### 值呈现规则（issue-32）
+
+- **时间显示设置**：全局时间戳显示规则（格式、时区、毫秒精度）。
+- **可编辑的呈现规则**与**列级覆盖**（来源隔离持久化、继承清除预览规则值）。
+- 跨窗口设置同步（路径作用域保存）、未知版本字段保存时保留不丢弃。
+- 网格、详情抽屉与草稿行走同一份呈现计划。
+
+#### AI 助手能力对标
+
+- **Ask / Agent 双聊天模式**：Agent 模式带只读查询与采样工具（未绑定连接时 fail-closed）。
+- **AI 记忆**：检索注入对话与 NL2SQL 入口、连接笔记优先、记忆管理 UI、修正模式与陈旧过滤。
+- **会话与上下文**：AI 会话绑定稳定连接 id 并持久化到 AppDb；自动聊天上下文快照；编辑器选区注入对话；对话中的 SQL 方言代码块可直接执行并给出出网摘要。
+- **MCP 治理**：批量与 Redis 读工具、Streamable HTTP 传输（opt-in）、工具调用作用域与审计、插件与工作流工具经确认接入。
+- **Provider 与 CLI**：AI Provider 预设、兼容性探测（models 端点不可用时自动探测）、本地 CLI agent provider、`datazen` CLI 与 agent skill、技能发现与预算上限。
+
+#### 团队 Web 服务（W8 首版）
+
+`crates/datazen-server/` axum HTTP 宿主 `/api/v1` 十五域全亮——settings、identity、connection、session、execution、job、artifact、events（SSE）、tableData、driverGateway（过渡）、queryAssets、schemaDiff、workflow、dashboard、dataSync，合计 **112 个域客户端方法 / 108 条路由**，契约见 [HTTP API 契约](docs/architecture/platform/web-http-api.md)（v1.10.1）。要点：
 
 - `packages/backend-client` 域客户端是 HTTP 面的唯一契约来源；桌面 Tauri command 与 server HTTP handler 是同一用例的两个薄绑定，桌面 IPC wire 逐字节不变。
-- `packages/web/` 浏览器壳落地（HTTP transport、SSE 事件流、108 键路由分发）；web 不支持名单收敛至 134 个 legacy 桌面命令（`webUnsupportedMethods.ts`，文件系统/对话框等桌面专属语义留表）。
+- `packages/web/` 浏览器壳落地（HTTP transport、SSE 事件流、108 键路由分发）；web 不支持名单收敛至 134 个 legacy 桌面命令（文件系统/对话框等桌面专属语义留表）。
 - 服务端管理库首版为 **SQLite**（expand-only 迁移链 V12–V15：jobs、workflows、dashboards、sync）；PostgreSQL 适配器为后续生产化切片。凭据行内只存 `SecretRef`，不复用宿主 AES 落盘。
 - Workflow / Dashboard / Data Sync / Schema Diff / 查询资产五域的服务端半边：双端定时调度器（授权单确定性派生）、双端刷新监控引擎、sync 执行面（compare 冻结投影 + 受理幂等键）、恢复核验只读裁决。
-- Wapp 资产 origin 静态面 `GET /wapps/{id}/{path}`：CSP/MIME/拒绝语义复用共享内核单源，web 形态沙箱 iframe 的 server 半边。
+- Wapp 资产 origin 静态面 `GET /wapps/{id}/{path}`：web 形态沙箱 iframe 的 server 半边。
 - `deploy/dev/` 一键开发栈：dex OIDC + 引导链 + seed + `up.sh` / `down.sh`。
 - 未随本版：桌面团队认证（P8）、多 worker 协调（P9）、server 形态 AI 供应商注册表（交互面按执行器默认错误策略 fail-closed）。
 
-**五个驱动领域契约**（`datazen-driver-api` 0.0.13 → 0.0.19）：`SqlDialect`（方言文本规则 + 共享 SQL builder）、`CatalogReader`（目录读取）、`CommandCatalog`（命令描述）、`SchemaMigration`（结构迁移规则）、`BackupDialect`（备份文件规则）。每个契约都配一个**借用适配器**（`LegacySqlDialect` / `LegacyCatalogReader` / `LegacyCommandCatalog` / `LegacySchemaMigration` / `LegacyBackupDialect`），适配器单向委托给旧 trait 方法——新增契约是 additive，外部驱动无需重新编译即可继续工作。宿主侧的 schema cache 与 SQL builder 已不再依赖驱动的目录/方言实现，运行时执行路径收敛到 `ResourceProvider`，per-database 池维护收敛到 runtime 会话层用例（宿主不再直接调用驱动）。
+#### 应用与更新
 
-`PROTOCOL_VERSION` 保持 **6**（2026-10-21 起冻结；兼容门禁族一并退役），详见 [驱动层 §2.5](docs/architecture/backend/drivers.md#25-协议版本闸门)。
+- **设置页安装外部语言包**：共享 `language_packs` 域 + 桌面 IPC + 前端注册链；内置语言保持同步切换，包语言异步注册。
+- **定时更新提醒**：空闲唤醒检查，不再打扰专注时段。
+- **驱动领域契约 additive 升级**（`datazen-driver-api` 0.0.13 → 0.0.20）：`SqlDialect` / `CatalogReader` / `CommandCatalog` / `SchemaMigration` / `BackupDialect` 五契约各配借用适配器单向委托旧 trait——**外部驱动无需重新编译即可继续工作**。
 
-### 🗑️ 移除（Removed）
-
-**`olap` 驱动删除。** `drivers-registry.json` 不再声明 `olap`，`driver-olap` Cargo feature、Presto/Trino 连接类型映射、`sync_taxonomy` 中的 `presto → trino` 归一化以及前端 Presto/Trino 方言配置一并移除。已保存的 `olap` 连接不会再解析到驱动；需要访问 Presto/Trino 的用户应改用通用的 HTTP/SQL 驱动或重新接入独立驱动。仓库内不再保留该驱动的构建入口或测试夹具。
-
-### 🔧 变更（Changed）
+### 🔧 改进（Changed）
 
 **git 驱动 `kiwi` / `superset` 对齐 `datazen-driver-api` 0.0.20。** 两者此前只实现 `DatabaseDriver`，宿主通过 `require_resource_provider` 拿到的是 `ResourceProviderMissing`。现在两者都提供真实的 `ResourceProvider`：
 
-- 工厂与 provider 各自 memoize 同一个驱动实例，避免每次查找都新建 provider、导致已签发的 handle 被 epoch 检查拒绝；
-- 补齐 `CapabilitySet` 的 12 个能力格与逐格证据：`namespace_switch = PerRequest`、`data = BufferedReadWrite`，事务/快照/会话句柄/重置均明确拒绝，`precise_cancel` 保持 `Unknown`，Superset 备份明确 `Unsupported`、Kiwi 备份保持 `Unknown`；
+- 工厂与 provider memoize 同一驱动实例，避免已签发 handle 被 epoch 检查拒绝；
+- 补齐 `CapabilitySet` 的 12 个能力格与逐格证据：`namespace_switch = PerRequest`、`data = BufferedReadWrite`，事务/快照/会话句柄/重置均明确拒绝，Superset 备份明确 `Unsupported`；
 - 命名空间形状声明为单个**可选** `Database` 层，`Schema`/`Catalog` 目标按名拒绝，不静默丢弃；
-- 补齐 `TableSchema` 新增的 `check_constraints` / `table_options` 字段，Superset 自定义 schema 树的缓存桥接改为显式传入 `dbSessionId`。
+- 补齐 `TableSchema` 新增的 `check_constraints` / `table_options` 字段。
 
-`kiwi` 与 `superset` 仍是独立 git 仓库，改动已在各自仓库提交并推送；`drivers-registry.json` 的两条 `source: "git"` 条目跟随 `main`，无需改 pin。
-
-**数据浏览网格：单元格编辑改成类型感知（DB-05）。** 列类型先归一化成 11 种 `CellType`（`src/lib/cellTypes.ts`），编辑器、单元格颜色与筛选算子都从它投影，从此不再各判各的。
-
-**行为变化一：JSON 列的非法输入不再被提交。** 旧编辑器在 `JSON.parse` 失败时会把原文当值提交，等于往 JSON 列里写了一段非 JSON 文本，直到下游解析才炸；现在它**阻止提交**并给出行内原因。
-
-**行为变化二：类型归一化改了若干列的渲染族与筛选算子集。** 旧实现是一串子串判断（`type.includes('int')` …），因此把几何列当成数字、把数组当成文本。归一化后，下列类型名的**渲染族**（即单元格的着色族）与**筛选算子集**发生了变化——清单由 `src/lib/__tests__/filterOperators.cellTypeMigration.test.ts` 逐条钉住，多一条少一条都会红：
+**行为变化：类型归一化改了若干列的渲染族与筛选算子集。** 旧实现是一串子串判断（`type.includes('int')` …），因此把几何列当成数字、把数组当成文本。归一化后，下列类型名的**渲染族**（即单元格的着色族）与**筛选算子集**发生了变化——清单由 `src/lib/__tests__/filterOperators.cellTypeMigration.test.ts` 逐条钉住：
 
 | 类型名 | 渲染族（旧 → 新） | 筛选算子集的变化 |
 | --- | --- | --- |
@@ -62,11 +106,29 @@
 | `enum('a','b')`、`set('a','b')`、`Enum8('a' = 1)`、`Enum` | text → text（族不变，控件变成下拉） | 去掉大小比较、LIKE 家族与 `isEmpty`/`isNotEmpty`、`regex` —— PostgreSQL 上这些入口必然报错 |
 | `uuid`、`uniqueidentifier`、`UUID` | text → text（族不变，控件加 UUID 校验） | 同上 |
 
-其余类型名（含 `UInt8`…`UInt256` 这类 ClickHouse 无符号整数、`Int128`/`Int256`）的族与算子集**不变**；无符号整数此前靠 `'uint64'.includes('int')` 碰巧落在 number 族，新规则表为此显式写了 `uint` 一条。
+其余类型名（含 `UInt8`…`UInt256` 这类 ClickHouse 无符号整数、`Int128`/`Int256`）的族与算子集**不变**；无符号整数此前靠 `'uint64'.includes('int')` 碰巧落在 number 族，新规则表为此显式写了 `uint` 一条。SQL Server 的 `timestamp`/`rowversion` 按行版本（字节）处理且不可就地编辑，MySQL 的 `tinyint(1)` 按布尔处理——这两条由驱动自己的元数据声明，宿主不写驱动分支。
 
-**行为变化三：编辑器的写入意图从此是三态。** `NULL`、值、以及「不写这一列」（撤销该格改动）三者不再互相折叠——一次「改成空串」不会再被某个 `.filter(Boolean)` 变成「这一列没改动」。
+**Windows portable 包含完整运行时资源**：portable zip 现与安装器一致，附带 `prompts/` 与 Pro 扩展 `builtin-ep/`，不再依赖构建机缓存遗留目录。
 
-此外，SQL Server 的 `timestamp`/`rowversion` 按行版本（字节）处理且不可就地编辑，MySQL 的 `tinyint(1)` 按布尔处理；这两条由驱动自己的元数据声明，宿主不写驱动分支，且**同一份声明**同时约束单元格编辑器与筛选算子（筛选器不再把 `timestamp` 当成时间列）。
+**运行时与驱动失败映射为可行动的错误消息**：失败码收敛到安全、可操作的文案，不再裸露内部状态。
+
+### 🐛 修复（Fixed）
+
+- **事务状态**：未知/不支持的事务状态不再误弹回滚确认，也不误报「事务中」；流式查询会话的面板命名空间目标正确送达。
+- **Redis Pub/Sub**：载荷按持久化 `connectionId` 归属，修复前端丢弃全部消息。
+- **SQL Server**：括号包裹的外键引用解析；租约会话如实应答；T-SQL 限制边界。
+- **MySQL**：空列清单 INSERT 使用 `() VALUES ()`，其余方言保持 `DEFAULT VALUES`。
+- **导出**：批次最后一张表加载途中取消不再继续整批；`structure_only` 导出文件名用 `.sql`；ExportDialog 默认范围在整表不可服务时回落正确；XLSX 整数写单元格不再因 `i64::MIN` panic。
+- **SQL 防护**：EXPLAIN ANALYZE VERBOSE/ANALYSE 选项次序 fail-open 封堵；深度类型与连接/SQL guard 边界加固。
+- **连接与运行时**：会话复用钉住连接，修掉目录读取 30s 池超时；未配置 database 的 profile 允许打开会话；空闲会话在派发授权期间保活。
+- **数据网格**：外键箭头整组失效；全格被跳过时不再发布一次状态；跨页身份冲突覆盖缺口；粘贴拒绝的用户可见错误四处收口。
+
+### 🧪 工程与质量
+
+- TypeScript 7 升级并以双 TS7 编译器门禁。
+- DDD 内核重构收口：唯一业务内核 crate（`datazen`），桌面/服务端宿主薄壳化，命令层 `_impl` 115 → 21。
+- E2E 全量 145 specs 绿并支持并行整跑；CI docs-only PR 豁免重型 job、runner 磁盘加固。
+- 全文档系统与代码一致性对齐（DDD 迁移后 64 处修复）。
 
 ---
 
