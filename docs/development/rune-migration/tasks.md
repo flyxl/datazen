@@ -70,8 +70,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | D8 | 已完成 | 860c4e0 | testing/D8-compare-apply.md |
 | D9 | 已完成 | ca5ab44 | testing/D9-transfer-mapping.md |
 | D10 | 已完成 | 1f0eecc | testing/D10-transfer-confirm.md |
-| W1 | 进行中 | | |
-| W2 | 未开始 | | |
+| W1 | 已完成 | bb00522 | testing/W1-dashboard-list.md |
+| W2 | 进行中 | | |
 | W3 | 未开始 | | |
 | W4 | 未开始 | | |
 | W5 | 未开始 | | |
