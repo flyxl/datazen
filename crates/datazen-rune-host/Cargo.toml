@@ -1,0 +1,35 @@
+[package]
+name = "datazen-rune-host"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Native desktop host for the DataZen Rune UI over real use cases"
+
+[lib]
+name = "datazen_rune_host"
+path = "src/lib.rs"
+
+[[bin]]
+name = "datazen-native"
+path = "src/main.rs"
+
+[dependencies]
+datazen-ui = { path = "../datazen-ui" }
+datazen-ui-api = { path = "../datazen-ui-api" }
+# The connection use case and its repository boundary, the same feature slice
+# the use-case adapter compiles with.
+datazen = { workspace = true, features = ["connection", "execution"] }
+datazen-driver-api = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# `touch_last_connected_at` writes an RFC 3339 timestamp.
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+[dev-dependencies]
+# The use cases are async; the tests poll them to completion over the file
+# store, whose futures are always ready.
+futures-executor = "0.3"
+
+[lints]
+workspace = true

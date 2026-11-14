@@ -2564,6 +2564,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "datazen-rune-host"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "datazen",
+ "datazen-driver-api",
+ "datazen-ui",
+ "datazen-ui-api",
+ "futures-executor",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "datazen-server"
 version = "0.1.0"
 dependencies = [

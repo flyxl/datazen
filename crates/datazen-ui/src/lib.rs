@@ -3854,6 +3854,32 @@ pub fn run() {
     .run();
 }
 
+/// Launch the native process with the host's own adapter (N2): the live
+/// host's entry. `run()` stays the demo process — the in-memory world and
+/// its seeded connections; here the adapter the host built owns the real
+/// use cases, and the first state consults it before the first frame, as
+/// `init_state` does for the demo.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn run_with_adapter(adapter: Box<dyn DesktopAdapter>) {
+    App::new(AppSpec {
+        on_key: Some(app_key),
+        poll: Some(app_poll),
+        fonts: APP_FONTS,
+        families: APP_FONT_FAMILIES,
+        ..AppSpec::new("DataZen", (1440.0, 900.0), init_state, view)
+    })
+    // The spec's `init` is a plain fn pointer; `App::init` takes the closure
+    // that captured the host's adapter instead.
+    .init(move || {
+        let mut state = AppState::default();
+        state.desktop = adapter;
+        state.sync_desktop_connections();
+        state
+    })
+    .on_ime(app_ime)
+    .run();
+}
+
 /// The desktop process starts on the connections page, so the adapter is
 /// consulted before the first frame: its answer (or its fixed error) is on
 /// the page from the start. H3: the native process lists connections through

@@ -327,9 +327,11 @@ impl DesktopAdapter for UnimplementedAdapter {
     }
 }
 
-/// The one organization a desktop process recognizes (single-tenant).
+/// The one organization a desktop process recognizes (single-tenant). The
+/// native host's repositories pair with it: a scope with another
+/// organization sees nothing.
 #[cfg(not(target_arch = "wasm32"))]
-const DESKTOP_ORGANIZATION: &str = "desktop";
+pub const DESKTOP_ORGANIZATION: &str = "desktop";
 
 /// The adapter's in-memory connection store, seeded at construction. The
 /// desktop host swaps in its real store later; the use case above it is
