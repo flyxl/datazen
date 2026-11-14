@@ -3,7 +3,7 @@
 ## 范围
 
 - 分支：`feat/rune-native-ui-migration`
-- 被测提交见 git log：`feat(rune): the widget edit form (issue-rune W3)`
+- 被测提交：`745b60c3b` `feat(rune): the widget edit form (issue-rune W3)`
 - 一个文件：`crates/datazen-ui/src/lib.rs`（`widget_title`/`widget_query` 输入、`save_widget_form`、表单渲染与错误行 + 1 条运行时测试）。没有 `packages/frontend`、`packages/web`。React 未改
 
 ## 门禁

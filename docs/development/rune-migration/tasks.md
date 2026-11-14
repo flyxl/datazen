@@ -72,7 +72,7 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | D10 | 已完成 | 1f0eecc | testing/D10-transfer-confirm.md |
 | W1 | 已完成 | bb00522 | testing/W1-dashboard-list.md |
 | W2 | 已完成 | cd80202 | testing/W2-bar-chart.md |
-| W3 | 已完成 | 见提交 | testing/W3-widget-form.md |
+| W3 | 已完成 | 745b60c3b | testing/W3-widget-form.md |
 | W4 | 进行中 | | |
 | W5 | 未开始 | | |
 | W6 | 未开始 | | |
