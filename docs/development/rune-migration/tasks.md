@@ -82,8 +82,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | H3 | 已完成 | 3a441166 | testing/H3-list-connections.md |
 | H4 | 已完成 | 031c1e71 | testing/H4-read-table-page.md |
 | H5 | 已完成 | 235574f7 | testing/H5-commit-cells.md |
-| H6 | 进行中 | | |
-| H7 | 未开始 | | |
+| H6 | 已完成 | 66c65eae | testing/H6-wasm-build.md |
+| H7 | 进行中 | | |
 | H8 | 未开始 | | |
 | C1 | 未开始 | | |
 | C2 | 未开始 | | |
