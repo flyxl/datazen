@@ -114,7 +114,7 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | T5 | 已完成 | 86062d7 | testing/T5-fk-navigation.md |
 | T6 | 已完成 | d3e26bc | testing/T6-favorites.md |
 | T7 | 已完成 | 787cea5 | testing/T7-connection-import.md |
-| T8 | 已完成 | 本提交 | testing/T8-workflow-engine.md |
+| T8 | 已完成 | 915507c | testing/T8-workflow-engine.md |
 | T9 | 未开始 | | |
 | T10 | 未开始 | | |
 | T11 | 未开始 | | |
