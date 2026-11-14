@@ -435,6 +435,16 @@ impl AppState {
         self.sync_step = 2;
     }
 
+    /// The sync options' labels, in order.
+    const SYNC_OPTION_LABELS: [&'static str; 3] =
+        ["Create missing tables", "Drop extra tables", "Copy data"];
+
+    fn toggle_sync_option(&mut self, index: usize) {
+        if let Some(option) = self.sync_options.get_mut(index) {
+            *option = !*option;
+        }
+    }
+
     /// Step 1 done: the port validates the two endpoints.
     fn sync_next_endpoints(&mut self) {
         let source = self.sync_source.clone();
@@ -990,6 +1000,41 @@ fn sync_tool(state: &AppState, theme: tok::Theme) -> El {
                                 .on_press(|state: &mut AppState| state.sync_next_tables()),
                         ),
                 );
+        }
+        2 => {
+            section = section.child(
+                row()
+                    .key("sync-step-1-done")
+                    .w_full()
+                    .h(24.0)
+                    .center_y()
+                    .child(
+                        text(format!("{} → {}", state.sync_source, state.sync_target))
+                            .font(type_::LABEL)
+                            .color(theme.text_secondary),
+                    ),
+            );
+            let mut options = col().key("sync-step-3").w_full().gap(4.0);
+            for (index, label) in AppState::SYNC_OPTION_LABELS.iter().enumerate() {
+                let on = state.sync_options[index];
+                options = options.child(
+                    row()
+                        .key(format!("sync-option-{index}"))
+                        .w(260.0)
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(if on { tok::accent(0, true) } else { theme.control_off })
+                        .child(
+                            text(format!("{}: {}", if on { "on" } else { "off" }, label))
+                                .font(type_::LABEL)
+                                .color(theme.text),
+                        )
+                        .on_press(move |state: &mut AppState| state.toggle_sync_option(index)),
+                );
+            }
+            section = section.child(options);
         }
         _ => section = section.child(
             row()
@@ -4041,6 +4086,51 @@ mod tests {
         runtime.state.sync_next_tables();
         assert_eq!(runtime.state.sync_step, 1, "no selection, no next step");
         assert!(runtime.state.sync_error.is_some());
+    }
+
+    #[test]
+    fn the_sync_options_default_and_round_trip() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-tools").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        runtime.state.sync_next_endpoints();
+        runtime.state.sync_select_all();
+        runtime.state.sync_next_tables();
+        runtime.settle_all();
+        runtime.frame(0.0);
+
+        assert!(runtime.find("sync-step-3").is_some());
+        assert_eq!(
+            runtime.state.sync_options,
+            [false, false, true],
+            "defaults: no create, no drop, copy data on"
+        );
+
+        let (x, y) = runtime.find("sync-option-0").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.sync_options, [true, false, true]);
+
+        let (x, y) = runtime.find("sync-option-2").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.sync_options, [true, false, false]);
+
+        // Toggling back restores the defaults.
+        let (x, y) = runtime.find("sync-option-0").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("sync-option-2").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.sync_options, [false, false, true], "the round trip restores the defaults");
     }
 
     #[test]
