@@ -96,8 +96,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | N1 | 已完成 | 25ef637 | testing/N1-job-interface.md |
 | N2 | 已完成 | 0737388 | testing/N2-host-crate.md |
 | N3 | 已完成 | cb72a28 | testing/N3-live-sqlite-session.md |
-| N4 | 进行中 | | |
-| N5 | 未开始 | | |
+| N4 | 已完成 | a1cdadd | testing/N4-real-reads.md |
+| N5 | 进行中 | | |
 | N6 | 未开始 | | |
 | N7 | 未开始 | | |
 | N8 | 未开始 | | |
