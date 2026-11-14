@@ -150,6 +150,13 @@ struct AppState {
     compare_job: Option<u64>,
     compare_snapshot: Option<ProgressSnapshot>,
     compare_error: Option<String>,
+    /// The transfer tool's tables, pairing chips and the pairs themselves.
+    transfer_left: String,
+    transfer_right: String,
+    transfer_pair_left: String,
+    transfer_pair_right: String,
+    transfer_pairs: Vec<(String, String)>,
+    transfer_error: Option<String>,
 }
 
 impl Default for AppState {
@@ -212,6 +219,12 @@ impl Default for AppState {
             compare_job: None,
             compare_snapshot: None,
             compare_error: None,
+            transfer_left: "customers".into(),
+            transfer_right: "orders".into(),
+            transfer_pair_left: "id".into(),
+            transfer_pair_right: "id".into(),
+            transfer_pairs: Vec::new(),
+            transfer_error: None,
         }
     }
 }
@@ -453,6 +466,81 @@ impl AppState {
         if let Some(job) = self.compare_job {
             self.compare_snapshot = self.workspace.job_progress(job);
         }
+    }
+
+    /// The columns of a table (its ColumnSpec names).
+    fn table_columns_of(&self, table: &str) -> Vec<String> {
+        self.workspace
+            .table_columns(table)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|column| column.name)
+            .collect()
+    }
+
+    fn cycle_transfer_table(&mut self, side: bool) {
+        let tables = self.workspace.connection_tables("local");
+        let current = if side { &self.transfer_left } else { &self.transfer_right };
+        let next = match tables.iter().position(|name| name == current) {
+            Some(index) => tables[(index + 1) % tables.len()].clone(),
+            None => tables.first().cloned().unwrap_or_default(),
+        };
+        if side {
+            self.transfer_left = next;
+        } else {
+            self.transfer_right = next;
+        }
+        self.transfer_pair_left = self.table_columns_of(&self.transfer_left).first().cloned().unwrap_or_default();
+        self.transfer_pair_right = self.table_columns_of(&self.transfer_right).first().cloned().unwrap_or_default();
+    }
+
+    fn cycle_transfer_pair_column(&mut self, side: bool) {
+        let (table, current) = if side {
+            (&self.transfer_left, self.transfer_pair_left.clone())
+        } else {
+            (&self.transfer_right, self.transfer_pair_right.clone())
+        };
+        let columns = self.table_columns_of(table);
+        let next = match columns.iter().position(|name| *name == current) {
+            Some(index) => columns[(index + 1) % columns.len()].clone(),
+            None => columns.first().cloned().unwrap_or_default(),
+        };
+        if side {
+            self.transfer_pair_left = next;
+        } else {
+            self.transfer_pair_right = next;
+        }
+    }
+
+    /// Pair the two picked columns. A column that already appears in a pair —
+    /// a duplicate name — cannot pair again.
+    fn pair_transfer_columns(&mut self) {
+        let left = self.transfer_pair_left.clone();
+        let right = self.transfer_pair_right.clone();
+        if left.is_empty() || right.is_empty() {
+            self.transfer_error = Some("pick a column on both ends".into());
+            return;
+        }
+        if self.transfer_pairs.iter().any(|(l, r)| *l == left || *r == right) {
+            self.transfer_error =
+                Some(format!("{left} or {right} is already paired — a column pairs once"));
+            return;
+        }
+        self.transfer_pairs.push((left, right));
+        self.transfer_error = None;
+    }
+
+    /// The left table's columns not yet paired.
+    fn transfer_unmapped(&self, side: bool) -> Vec<String> {
+        let (table, used_left): (String, Vec<String>) = if side {
+            (self.transfer_left.clone(), self.transfer_pairs.iter().map(|(l, _)| l.clone()).collect())
+        } else {
+            (self.transfer_right.clone(), self.transfer_pairs.iter().map(|(_, r)| r.clone()).collect())
+        };
+        self.table_columns_of(&table)
+            .into_iter()
+            .filter(|column| !used_left.contains(column))
+            .collect()
     }
 
     /// Cycle the sync source through the connections.
@@ -971,8 +1059,154 @@ fn tools_page(state: &AppState, theme: tok::Theme) -> El {
         .child(match state.tool {
             Tool::Sync => sync_tool(state, theme),
             Tool::Compare => compare_tool(state, theme),
-            Tool::Transfer => col().key("transfer-tool").w_full(),
+            Tool::Transfer => transfer_tool(state, theme),
         })
+}
+
+/// The transfer tool: pair the two tables' columns; unmapped columns are
+/// listed explicitly.
+fn transfer_tool(state: &AppState, theme: tok::Theme) -> El {
+    let mut section = col()
+        .key("transfer-tool")
+        .w_full()
+        .gap(6.0)
+        .child(
+            row()
+                .key("transfer-tables")
+                .w_full()
+                .h(28.0)
+                .gap(8.0)
+                .center_y()
+                .child(
+                    row()
+                        .key("transfer-left-table")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(
+                            text(format!("left: {}", state.transfer_left))
+                                .font(type_::LABEL)
+                                .color(theme.text),
+                        )
+                        .on_press(|state: &mut AppState| state.cycle_transfer_table(true)),
+                )
+                .child(
+                    row()
+                        .key("transfer-right-table")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(
+                            text(format!("right: {}", state.transfer_right))
+                                .font(type_::LABEL)
+                                .color(theme.text),
+                        )
+                        .on_press(|state: &mut AppState| state.cycle_transfer_table(false)),
+                ),
+        )
+        .child(
+            row()
+                .key("transfer-pair-controls")
+                .w_full()
+                .h(28.0)
+                .gap(8.0)
+                .center_y()
+                .child(
+                    row()
+                        .key("transfer-left-col")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(
+                            text(format!("col: {}", state.transfer_pair_left))
+                                .font(type_::LABEL)
+                                .color(theme.text),
+                        )
+                        .on_press(|state: &mut AppState| state.cycle_transfer_pair_column(true)),
+                )
+                .child(
+                    row()
+                        .key("transfer-right-col")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(
+                            text(format!("col: {}", state.transfer_pair_right))
+                                .font(type_::LABEL)
+                                .color(theme.text),
+                        )
+                        .on_press(|state: &mut AppState| state.cycle_transfer_pair_column(false)),
+                )
+                .child(
+                    row()
+                        .key("transfer-pair")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Pair").font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.pair_transfer_columns()),
+                ),
+        );
+    for (index, (left, right)) in state.transfer_pairs.iter().enumerate() {
+        section = section.child(
+            row()
+                .key(format!("transfer-pair-row-{index}"))
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(
+                    text(format!("{left} → {right}"))
+                        .font(type_::LABEL)
+                        .color(theme.text),
+                ),
+        );
+    }
+    for (side, key) in [(true, "transfer-unmapped-left"), (false, "transfer-unmapped-right")] {
+        let label = if side { "left" } else { "right" };
+        let unmapped = state.transfer_unmapped(side);
+        let mut block = col()
+            .key(key)
+            .w_full()
+            .gap(2.0)
+            .px(8.0)
+            .py(4.0)
+            .radius(6.0)
+            .fill(theme.control_off)
+            .child(
+                text(format!("unmapped {label}: {}", unmapped.join(", ")))
+                    .font(type_::LABEL)
+                    .color(theme.text_secondary),
+            );
+        let _ = &mut block;
+        section = section.child(block);
+    }
+    if let Some(error) = &state.transfer_error {
+        section = section.child(
+            row()
+                .key("transfer-error")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+        );
+    }
+    section
 }
 
 /// The structure comparison. Step 1: the objects, same names marked.
@@ -4650,6 +4884,49 @@ mod tests {
         runtime.frame(0.0);
         assert!(runtime.state.compare_job.is_none());
         assert!(runtime.find("compare-error").is_some(), "nothing to apply is visible");
+    }
+
+    #[test]
+    fn a_column_already_in_a_pair_cannot_pair_again() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-tools").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        let (x, y) = runtime.find("tool-transfer").expect("transfer tab");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.find("transfer-tool").is_some());
+
+        // Pair id -> id.
+        let (x, y) = runtime.find("transfer-pair").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("transfer-pair-row-0").is_some());
+        assert!(!runtime.state.transfer_unmapped(true).contains(&"id".to_owned()));
+
+        // A duplicate name cannot pair again: id is already used on both ends.
+        let (x, y) = runtime.find("transfer-pair").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("transfer-pair-row-1").is_none(), "the duplicate pairing was refused");
+        assert!(runtime.find("transfer-error").is_some(), "the refusal is visible");
+
+        // A fresh pair still works and both unmapped lists shrink.
+        runtime.state.transfer_pair_left = "name".into();
+        runtime.state.transfer_pair_right = "name".into();
+        let (x, y) = runtime.find("transfer-pair").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("transfer-pair-row-1").is_some());
+        assert!(!runtime.state.transfer_unmapped(true).contains(&"name".to_owned()));
+        assert!(runtime.find("transfer-unmapped-left").is_some());
+        assert!(runtime.find("transfer-unmapped-right").is_some());
     }
 
     #[test]
