@@ -4,9 +4,9 @@
 
 React 页面和组件不删不改。一个任务一个提交，不并行。
 
-第一阶段（S/B/Q/O/P/D/W/H/C）已全部完成。第二阶段（N 系列，原生宿主接线）的任务与门禁见 [plan-native.md](plan-native.md)。第三阶段（T 系列，宿主能力与分发）的任务与门禁见 [plan-native-3.md](plan-native-3.md)。
+第一阶段（S/B/Q/O/P/D/W/H/C）已全部完成。第二阶段（N 系列，原生宿主接线）的任务与门禁见 [plan-native.md](plan-native.md)。第三阶段（T 系列，宿主能力与分发）的任务与门禁见 [plan-native-3.md](plan-native-3.md)。第四阶段（E 系列，basic 驱动接入）的任务与门禁见 [plan-native-4.md](plan-native-4.md)。
 
-两个阶段共用的门禁：
+两个阶段共用的门禁（E 系列沿用，另见 [plan-native-4.md](plan-native-4.md) 的 GR5）：
 
 | 编号 | 命令 | 通过标准 |
 |---|---|---|
@@ -118,3 +118,10 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | T9 | 已完成 | f6c22ff | testing/T9-tray.md |
 | T10 | 已完成 | 3c518fc | testing/T10-keyring.md |
 | T11 | 已完成 | d5a1671 | testing/T11-packaging.md |
+| E1 | 未开始 | | |
+| E2 | 未开始 | | |
+| E3 | 未开始 | | |
+| E4 | 未开始 | | |
+| E5 | 未开始 | | |
+| E6 | 未开始 | | |
+| E7 | 未开始 | | |

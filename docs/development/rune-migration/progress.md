@@ -1,7 +1,7 @@
 ## Current Task
-- **任务**: 无——第三阶段（宿主能力与分发）T1–T11 全部完成。
+- **任务**: E1（结构读作业化）——第四阶段（basic 驱动接入，[plan-native-4.md](plan-native-4.md)）开工。
 - **负责人**: Coder Agent
-- **状态**: 三阶段计划（[plan.md](plan.md)、[plan-native.md](plan-native.md)、[plan-native-3.md](plan-native-3.md)）全部完成并推送；后续扩展点见 plan-native.md / plan-native-3.md 范围外清单与 [native-host.md](native-host.md) 的剩余差距。
+- **状态**: 第四阶段计划已立项（本提交）；E1 进行中。
 
 ## N5 组装配方（调查结论，fc160ec 时点）
 
