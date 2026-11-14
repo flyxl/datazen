@@ -232,6 +232,39 @@ impl SqlEditor {
         }
     }
 
+    /// Split the document into statements at semicolons: each non-empty segment's
+    /// byte range, without its terminating semicolon. Empty segments are skipped.
+    pub fn statements(&self) -> Vec<(usize, usize)> {
+        let mut out = Vec::new();
+        let mut start = 0;
+        for (i, byte) in self.doc.bytes().enumerate() {
+            if byte == b';' {
+                if !self.doc[start..i].trim().is_empty() {
+                    out.push((start, i));
+                }
+                start = i + 1;
+            }
+        }
+        if !self.doc[start..].trim().is_empty() {
+            out.push((start, self.doc.len()));
+        }
+        out
+    }
+
+    /// The statement the main caret is in: the first statement ending at or after
+    /// the caret. A caret right after a semicolon picks the next statement; a
+    /// caret past the last statement picks the last one. None when the document
+    /// holds no statement.
+    pub fn statement_at_cursor(&self) -> Option<String> {
+        let head = self.selection.main().head;
+        let statements = self.statements();
+        statements
+            .iter()
+            .find(|(_, end)| head <= *end)
+            .or_else(|| statements.last())
+            .map(|(start, end)| self.doc[*start..*end].trim().to_owned())
+    }
+
     /// Find the next occurrence of `needle` from the main caret, wrapping around,
     /// and select it. False when the needle is missing or empty.
     pub fn find_next(&mut self, needle: &str) -> bool {
@@ -948,6 +981,50 @@ mod tests {
         assert_eq!(editor.selection.main().from(), 0);
         assert_eq!(editor.replace_all_from_bar(), 2);
         assert_eq!(editor.doc(), "new and new");
+    }
+
+    #[test]
+    fn statements_split_at_semicolons_and_skip_empty_ones() {
+        let editor = SqlEditor::from_doc("a;; b ;  c");
+        let texts: Vec<&str> = editor
+            .statements()
+            .iter()
+            .map(|(start, end)| &editor.doc()[*start..*end])
+            .collect();
+        assert_eq!(texts, vec!["a", " b ", "  c"]);
+    }
+
+    #[test]
+    fn the_cursor_picks_its_own_statement() {
+        let mut editor = SqlEditor::from_doc("first; second; third");
+        editor.focus();
+        editor.selection = Selection::single(10);
+        assert_eq!(editor.statement_at_cursor().as_deref(), Some("second"), "inside the second");
+        editor.selection = Selection::single(0);
+        assert_eq!(editor.statement_at_cursor().as_deref(), Some("first"));
+        editor.selection = Selection::single(7);
+        assert_eq!(
+            editor.statement_at_cursor().as_deref(),
+            Some("second"),
+            "right after a semicolon picks the next statement"
+        );
+        editor.selection = Selection::single(editor.doc().len());
+        assert_eq!(editor.statement_at_cursor().as_deref(), Some("third"));
+    }
+
+    #[test]
+    fn a_document_without_semicolons_is_one_statement() {
+        let mut editor = SqlEditor::from_doc("select 1");
+        editor.focus();
+        assert_eq!(editor.statement_at_cursor().as_deref(), Some("select 1"));
+    }
+
+    #[test]
+    fn an_empty_document_has_no_statement() {
+        let editor = SqlEditor::from_doc("");
+        assert_eq!(editor.statement_at_cursor(), None);
+        let editor = SqlEditor::from_doc("  ;  ");
+        assert_eq!(editor.statement_at_cursor(), None, "whitespace-only statements do not count");
     }
 
     #[test]
