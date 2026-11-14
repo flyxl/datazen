@@ -1108,22 +1108,69 @@ fn dashboards_page(state: &AppState, theme: tok::Theme) -> El {
     }
     for widget in &widgets {
         page = page.child(
-            row()
+            col()
                 .key(format!("widget-{}", widget.id))
                 .w_full()
-                .h(28.0)
+                .gap(4.0)
                 .px(8.0)
-                .center_y()
-                .radius(6.0)
+                .py(6.0)
+                .radius(8.0)
                 .fill(theme.control_off)
                 .child(
-                    text(format!("#{} · {} · {}", widget.id, widget.title, widget.kind))
-                        .font(type_::LABEL)
-                        .color(theme.text),
-                ),
+                    row()
+                        .key(format!("widget-head-{}", widget.id))
+                        .w_full()
+                        .h(24.0)
+                        .center_y()
+                        .child(
+                            text(format!("#{} · {} · {}", widget.id, widget.title, widget.kind))
+                                .font(type_::LABEL)
+                                .color(theme.text),
+                        ),
+                )
+                .child(bar_chart(state, widget.id, theme)),
         );
     }
     page
+}
+
+/// A bar chart drawn with color blocks — the port's integers, no chart library.
+/// The zero bar keeps a visible sliver and its label.
+fn bar_chart(state: &AppState, id: u64, theme: tok::Theme) -> El {
+    let bars = state.workspace.widget_bars(id).unwrap_or_default();
+    let max = bars.iter().map(|(_, value)| *value).max().unwrap_or(1).max(1);
+    let mut chart = row()
+        .key(format!("widget-chart-{id}"))
+        .w_full()
+        .h(120.0)
+        .gap(10.0);
+    for (label, value) in &bars {
+        let height = if *value == 0 {
+            2.0
+        } else {
+            12.0 + (*value as f32 / max as f32) * 84.0
+        };
+        chart = chart.child(
+            col()
+                .key(format!("widget-bar-{id}-{label}"))
+                .w(46.0)
+                .gap(4.0)
+                .child(
+                    row()
+                        .key(format!("widget-block-{id}-{label}"))
+                        .w(30.0)
+                        .h(height)
+                        .radius(3.0)
+                        .fill(oklch(0.72, 0.13, 250.0)),
+                )
+                .child(
+                    text(format!("{label} {value}"))
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
+        );
+    }
+    chart
 }
 
 /// The tools page: one switcher, three tools. Sync, compare, transfer.
@@ -5181,6 +5228,32 @@ mod tests {
         assert!(runtime.find("dashboards-page").is_some());
         assert!(runtime.find("dashboard-empty").is_some(), "the empty list has its own state");
         assert!(runtime.find("widget-1").is_none());
+    }
+
+    #[test]
+    fn a_bar_chart_shows_the_zero_and_the_maximum() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        runtime
+            .state
+            .workspace
+            .save_dashboard_widget("Weekly", "select 1")
+            .unwrap();
+        let (x, y) = runtime.find("nav-dashboards").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.settle_all();
+        runtime.frame(1.0);
+
+        assert!(runtime.find("widget-1").is_some());
+        assert!(runtime.find("widget-chart-1").is_some());
+        let zero = runtime.presented("widget-block-1-mon").expect("the zero bar is drawn");
+        let max = runtime.presented("widget-block-1-thu").expect("the maximum bar is drawn");
+        assert!(zero.0[3] >= 1.0, "the zero bar keeps a sliver: {:?}", zero);
+        assert!(max.0[3] >= 80.0, "the maximum bar is tall: {:?}", max);
+        assert!(max.0[3] > zero.0[3] + 60.0, "the chart is proportional");
     }
 
     #[test]

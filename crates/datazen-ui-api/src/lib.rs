@@ -246,6 +246,11 @@ pub trait WorkspaceApi {
     fn run_transfer(&mut self, pairs: &[(String, String)]) -> Result<u64, String>;
     /// W1: the dashboard's widgets.
     fn dashboard_widgets(&self) -> Vec<DashboardWidget>;
+    /// W2: save a widget (a title and its query text); an empty title is
+    /// refused. Returns the widget's id.
+    fn save_dashboard_widget(&mut self, title: &str, query: &str) -> Result<u64, String>;
+    /// W2: the widget's chart data: labeled integers from the port.
+    fn widget_bars(&self, id: u64) -> Result<Vec<(String, u32)>, String>;
     /// Stop a running job. A stopped job reports "stopped" from then on.
     fn stop_job(&mut self, job: u64) -> Result<(), String>;
     /// Apply a DDL script to the table. The port records what it applied; a
@@ -786,6 +791,33 @@ impl WorkspaceApi for MemoryWorkspace {
 
     fn dashboard_widgets(&self) -> Vec<DashboardWidget> {
         self.widgets.clone()
+    }
+
+    fn save_dashboard_widget(&mut self, title: &str, query: &str) -> Result<u64, String> {
+        if title.trim().is_empty() {
+            return Err("a widget needs a title".into());
+        }
+        let id = self.widgets.last().map(|widget| widget.id + 1).unwrap_or(1);
+        self.widgets.push(DashboardWidget {
+            id,
+            title: title.trim().to_owned(),
+            kind: "bar".into(),
+        });
+        let _ = query;
+        Ok(id)
+    }
+
+    fn widget_bars(&self, id: u64) -> Result<Vec<(String, u32)>, String> {
+        if !self.widgets.iter().any(|widget| widget.id == id) {
+            return Err(format!("no widget {id}"));
+        }
+        // The memory port's demo series: a zero and a maximum, both visible.
+        Ok(vec![
+            ("mon".into(), 0),
+            ("tue".into(), 3),
+            ("wed".into(), 7),
+            ("thu".into(), 12),
+        ])
     }
 
     fn run_transfer(&mut self, pairs: &[(String, String)]) -> Result<u64, String> {
@@ -1706,6 +1738,22 @@ mod tests {
     fn a_dashboard_starts_with_no_widgets() {
         let workspace = MemoryWorkspace::new();
         assert!(workspace.dashboard_widgets().is_empty(), "the widget list starts empty");
+    }
+
+    #[test]
+    fn a_bar_widget_gets_its_integers_from_the_port() {
+        let mut workspace = MemoryWorkspace::new();
+        assert!(workspace.save_dashboard_widget("", "select 1").is_err(), "a title is required");
+        let id = workspace.save_dashboard_widget("Weekly", "select 1").unwrap();
+        assert_eq!(id, 1);
+        let bars = workspace.widget_bars(id).unwrap();
+        assert_eq!(bars.first().map(|(label, _)| label.as_str()), Some("mon"));
+        assert_eq!(bars[0].1, 0, "the zero bar is in the data");
+        assert_eq!(bars.last().unwrap().1, 12, "the maximum is in the data");
+        assert!(workspace.widget_bars(999).is_err());
+        let second = workspace.save_dashboard_widget("Monthly", "select 2").unwrap();
+        assert_eq!(second, 2);
+        assert_eq!(workspace.dashboard_widgets().len(), 2);
     }
 
     #[test]
