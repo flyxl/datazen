@@ -258,6 +258,12 @@ impl AppState {
         self.load_result_page(page.columns, page.rows);
     }
 
+    /// Cancel the in-flight query: bumping the generation invalidates every
+    /// outstanding one, so their results are dropped when they arrive.
+    fn cancel_query(&mut self) {
+        self.next_query_generation();
+    }
+
     /// Any tab event lands in the workspace: the selected tab decides what the
     /// workspace shows, so the tab strip and its content stay on one page.
     fn sync_grid_to_selected_tab(&mut self) {
@@ -1201,6 +1207,35 @@ mod tests {
         let grid = runtime.state.result_grid.as_ref().expect("the current generation lands");
         assert_eq!(grid.cell(0, 0), "1");
         assert!(runtime.find("result-grid").is_some());
+    }
+
+    #[test]
+    fn a_cancelled_generation_never_reaches_the_grid() {
+        use datazen_ui_api::{QueryApi, WorkspaceApi};
+
+        let mut runtime = runtime();
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_query_tab("Query").unwrap();
+        runtime.frame(0.0);
+
+        let generation = runtime.state.next_query_generation();
+        runtime.state.cancel_query();
+        let cancelled = runtime.state.workspace.execute("select 1").unwrap();
+        runtime.state.deliver_query_result(generation, cancelled);
+        runtime.settle_all();
+        runtime.frame(0.0);
+        assert!(
+            runtime.state.result_grid.is_none(),
+            "the cancelled result does not enter the grid"
+        );
+
+        // A fresh run after the cancel still lands.
+        let fresh = runtime.state.next_query_generation();
+        let page = runtime.state.workspace.execute("select 1").unwrap();
+        runtime.state.deliver_query_result(fresh, page);
+        runtime.settle_all();
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.result_grid.as_ref().unwrap().cell(0, 0), "1");
     }
 
     #[test]
