@@ -211,6 +211,8 @@ pub trait WorkspaceApi {
     fn sync_endpoints(&mut self, source: &str, target: &str) -> Result<(), String>;
     /// The tables a connection can see, without opening a session.
     fn connection_tables(&self, connection: &str) -> Vec<String>;
+    /// D4: a read-only preview page of one table, as the sync would copy it.
+    fn sync_preview(&mut self, source: &str, table: &str) -> Result<TablePage, String>;
     /// Stop a running job. A stopped job reports "stopped" from then on.
     fn stop_job(&mut self, job: u64) -> Result<(), String>;
     /// Apply a DDL script to the table. The port records what it applied; a
@@ -669,6 +671,24 @@ impl WorkspaceApi for MemoryWorkspace {
             return Err("both ends are the same connection".into());
         }
         Ok(())
+    }
+
+    fn sync_preview(&mut self, source: &str, table: &str) -> Result<TablePage, String> {
+        if !self.connections.iter().any(|profile| profile.id == source) {
+            return Err(format!("unknown connection {source}"));
+        }
+        if !self.connection_tables(source).iter().any(|name| name == table) {
+            return Err(format!("{source} cannot see {table}"));
+        }
+        let stored = self
+            .tables
+            .iter()
+            .find(|(name, _)| name == table)
+            .ok_or_else(|| format!("unknown table {table}"))?;
+        let mut page = Self::result_page(stored.1.columns.clone(), stored.1.rows.clone());
+        page.table = format!("sync preview: {table}");
+        page.read_only = Some("sync preview".into());
+        Ok(page)
     }
 
     fn connection_tables(&self, connection: &str) -> Vec<String> {
@@ -1454,6 +1474,17 @@ mod tests {
         let session = workspace.session().unwrap();
         assert!(session.tables.contains(&"customers".to_owned()));
         assert!(!session.tables.contains(&"catalog".to_owned()), "the replica lacks analytics");
+    }
+
+    #[test]
+    fn a_sync_preview_is_a_read_only_page() {
+        let mut workspace = MemoryWorkspace::new();
+        let page = workspace.sync_preview("local", "customers").unwrap();
+        assert_eq!(page.table, "sync preview: customers");
+        assert_eq!(page.rows.len(), 40);
+        assert_eq!(page.read_only.as_deref(), Some("sync preview"));
+        assert!(workspace.sync_preview("replica", "catalog").is_err(), "the replica cannot preview analytics");
+        assert!(workspace.sync_preview("local", "missing").is_err());
     }
 
     #[test]

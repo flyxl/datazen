@@ -138,6 +138,8 @@ struct AppState {
     sync_tables: std::collections::BTreeSet<String>,
     sync_options: [bool; 3],
     sync_error: Option<String>,
+    /// The sync preview grid (read-only, the B8 sheet).
+    sync_preview_grid: Option<DataGrid>,
 }
 
 impl Default for AppState {
@@ -192,6 +194,7 @@ impl Default for AppState {
             sync_tables: std::collections::BTreeSet::new(),
             sync_options: [false, false, true],
             sync_error: None,
+            sync_preview_grid: None,
         }
     }
 }
@@ -442,6 +445,26 @@ impl AppState {
     fn toggle_sync_option(&mut self, index: usize) {
         if let Some(option) = self.sync_options.get_mut(index) {
             *option = !*option;
+        }
+    }
+
+    /// Step 3 done: build the read-only preview of the first picked table.
+    fn sync_show_preview(&mut self) {
+        let Some(table) = self.sync_tables.iter().next().cloned() else {
+            self.sync_error = Some("pick at least one table".into());
+            return;
+        };
+        let source = self.sync_source.clone();
+        match self.workspace.sync_preview(&source, &table) {
+            Ok(page) => {
+                let mut grid = DataGrid::new();
+                grid.load_page(&page);
+                grid.set_editable(false);
+                self.sync_preview_grid = Some(grid);
+                self.sync_error = None;
+                self.sync_step = 3;
+            }
+            Err(error) => self.sync_error = Some(error),
         }
     }
 
@@ -1034,7 +1057,39 @@ fn sync_tool(state: &AppState, theme: tok::Theme) -> El {
                         .on_press(move |state: &mut AppState| state.toggle_sync_option(index)),
                 );
             }
-            section = section.child(options);
+            section = section
+                .child(options)
+                .child(
+                    row()
+                        .key("sync-preview-next")
+                        .w(120.0)
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Preview").font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.sync_show_preview()),
+                );
+        }
+        3 => {
+            section = section.child(
+                row()
+                    .key("sync-step-1-done")
+                    .w_full()
+                    .h(24.0)
+                    .center_y()
+                    .child(
+                        text(format!("{} → {}", state.sync_source, state.sync_target))
+                            .font(type_::LABEL)
+                            .color(theme.text_secondary),
+                    ),
+            );
+            if let Some(grid) = &state.sync_preview_grid {
+                section = section.child(
+                    data_grid::result_panel(grid, theme.text, theme.text_secondary, theme.control_off),
+                );
+            }
         }
         _ => section = section.child(
             row()
@@ -4131,6 +4186,35 @@ mod tests {
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
         assert_eq!(runtime.state.sync_options, [false, false, true], "the round trip restores the defaults");
+    }
+
+    #[test]
+    fn the_sync_preview_is_a_read_only_grid() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-tools").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        runtime.state.sync_next_endpoints();
+        runtime.state.sync_tables.insert("customers".into());
+        runtime.state.sync_next_tables();
+        runtime.settle_all();
+        runtime.frame(1.0);
+
+        let (x, y) = runtime.find("sync-preview-next").expect("preview button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.settle_all();
+        runtime.frame(0.0);
+
+        let grid = runtime.state.sync_preview_grid.as_mut().expect("the preview grid");
+        assert_eq!(grid.cell(0, 1), "customer-0");
+        assert!(!grid.is_editable(), "the preview page cannot be edited");
+        grid.begin_edit();
+        assert!(!grid.is_editing(), "the editor refuses the preview");
+        assert!(runtime.find("result-grid").is_some(), "drawn through the B8 sheet");
+        assert!(runtime.find("result-cell-0-0").is_some());
     }
 
     #[test]
