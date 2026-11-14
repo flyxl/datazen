@@ -49,8 +49,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | O7 | 已完成 | 8641bd5 | testing/O7-O8-er-canvas.md |
 | O8 | 已完成 | 8641bd5 | testing/O7-O8-er-canvas.md |
 | O9 | 已完成 | 39a0028 | testing/O9-column-drafts.md |
-| O10 | 进行中 | | |
-| O11 | 未开始 | | |
+| O10 | 已完成 | 21ecd93 | testing/O10-draft-sql.md |
+| O11 | 进行中 | | |
 | P1 | 未开始 | | |
 | P2 | 未开始 | | |
 | P3 | 未开始 | | |
