@@ -140,6 +140,11 @@ pub trait WorkspaceApi {
     fn table_indexes(&self, table: &str) -> Result<Vec<IndexSpec>, String>;
     /// The table's foreign keys; a compound key is not split.
     fn table_foreign_keys(&self, table: &str) -> Result<Vec<ForeignKeySpec>, String>;
+    /// Apply a DDL script to the table. The port records what it applied; a
+    /// failure changes nothing.
+    fn apply_ddl(&mut self, table: &str, sql: &str) -> Result<(), String>;
+    /// The DDL scripts this port has applied, in order.
+    fn applied_ddl(&self) -> Vec<String>;
     fn connect(&mut self, id: &str) -> Result<(), String>;
     fn disconnect(&mut self);
     fn open_table(
@@ -170,6 +175,8 @@ struct StoredTable {
     read_only: Option<String>,
     /// The schema the table lives in.
     schema: String,
+    /// Per-column SQL types, parallel to `columns`; missing entries read "text".
+    column_types: Vec<String>,
 }
 
 /// The table the workspace last opened, with the page window it asked for.
@@ -188,6 +195,8 @@ pub struct MemoryWorkspace {
     open: Option<OpenTable>,
     /// A query result is showing: the port rejects staging until a table reopens.
     result_open: bool,
+    /// DDL scripts the port has applied, in order.
+    applied_ddl: Vec<String>,
 }
 
 impl Default for MemoryWorkspace {
@@ -226,6 +235,7 @@ impl MemoryWorkspace {
                     staged: HashMap::new(),
                     read_only: None,
                     schema: "public".into(),
+                    column_types: Vec::new(),
                 },
             ),
             (
@@ -236,6 +246,7 @@ impl MemoryWorkspace {
                     staged: HashMap::new(),
                     read_only: Some("no primary key".into()),
                     schema: "public".into(),
+                    column_types: Vec::new(),
                 },
             ),
             (
@@ -246,6 +257,7 @@ impl MemoryWorkspace {
                     staged: HashMap::new(),
                     read_only: None,
                     schema: "analytics".into(),
+                    column_types: Vec::new(),
                 },
             ),
         ];
@@ -259,6 +271,7 @@ impl MemoryWorkspace {
             tables,
             open: None,
             result_open: false,
+            applied_ddl: Vec::new(),
         }
     }
 }
@@ -416,6 +429,78 @@ impl WorkspaceApi for MemoryWorkspace {
         })
     }
 
+    fn apply_ddl(&mut self, table: &str, sql: &str) -> Result<(), String> {
+        if self.session.is_none() {
+            return Err("not connected".into());
+        }
+        let stored = self
+            .tables
+            .iter_mut()
+            .find(|(name, _)| name == table)
+            .ok_or_else(|| format!("unknown table {table}"))?;
+        if let Some(reason) = &stored.1.read_only {
+            return Err(format!("{table} is read-only: {reason}"));
+        }
+        enum Change {
+            Add(String, String),
+            Type(usize, String),
+        }
+        let add_prefix = format!("ALTER TABLE {table} ADD COLUMN ");
+        let type_prefix = format!("ALTER TABLE {table} ALTER COLUMN ");
+        let mut changes = Vec::new();
+        for line in sql.lines() {
+            let line = line.trim().trim_end_matches(';');
+            if let Some(rest) = line.strip_prefix(&add_prefix) {
+                let Some((name, sql_type)) = rest.split_once(' ') else {
+                    return Err(format!("cannot apply: {line}"));
+                };
+                changes.push(Change::Add(name.to_owned(), sql_type.to_owned()));
+            } else if let Some(rest) = line.strip_prefix(&type_prefix) {
+                let Some((column, tail)) = rest.split_once(' ') else {
+                    return Err(format!("cannot apply: {line}"));
+                };
+                let Some(sql_type) = tail.strip_prefix("TYPE ") else {
+                    return Err(format!("cannot apply: {line}"));
+                };
+                let index = stored
+                    .1
+                    .columns
+                    .iter()
+                    .position(|name| name == column)
+                    .ok_or_else(|| format!("unknown column {column}"))?;
+                changes.push(Change::Type(index, sql_type.to_owned()));
+            } else {
+                return Err(format!("cannot apply: {line}"));
+            }
+        }
+        for change in changes {
+            match change {
+                Change::Add(name, sql_type) => {
+                    while stored.1.column_types.len() < stored.1.columns.len() {
+                        stored.1.column_types.push("text".into());
+                    }
+                    stored.1.columns.push(name);
+                    stored.1.column_types.push(sql_type);
+                    for row in &mut stored.1.rows {
+                        row.push("NULL".into());
+                    }
+                }
+                Change::Type(index, sql_type) => {
+                    while stored.1.column_types.len() < stored.1.columns.len() {
+                        stored.1.column_types.push("text".into());
+                    }
+                    stored.1.column_types[index] = sql_type;
+                }
+            }
+        }
+        self.applied_ddl.push(sql.to_owned());
+        Ok(())
+    }
+
+    fn applied_ddl(&self) -> Vec<String> {
+        self.applied_ddl.clone()
+    }
+
     fn table_columns(&self, table: &str) -> Result<Vec<ColumnSpec>, String> {
         let stored = self
             .tables
@@ -429,7 +514,12 @@ impl WorkspaceApi for MemoryWorkspace {
             .enumerate()
             .map(|(index, name)| ColumnSpec {
                 name: name.clone(),
-                sql_type: "text".into(),
+                sql_type: stored
+                    .1
+                    .column_types
+                    .get(index)
+                    .cloned()
+                    .unwrap_or_else(|| "text".into()),
                 // The demo port keeps the first column a key, the rest nullable.
                 nullable: index != 0,
             })
@@ -837,6 +927,45 @@ mod tests {
             "ALTER TABLE customers ALTER COLUMN name TYPE varchar(80);",
             "a retype draft shows its ALTER COLUMN ... TYPE SQL"
         );
+    }
+
+    #[test]
+    fn applying_a_draft_adds_the_column_and_the_port_records_it() {
+        let mut workspace = MemoryWorkspace::new();
+        workspace.connect("local").unwrap();
+        let sql = "ALTER TABLE customers ADD COLUMN score int;";
+        workspace.apply_ddl("customers", sql).unwrap();
+        let columns = workspace.table_columns("customers").unwrap();
+        assert_eq!(columns.len(), 9);
+        assert_eq!(columns[8].name, "score");
+        assert_eq!(columns[8].sql_type, "int");
+        let page = workspace.open_table("customers", 0, 25, None, None).unwrap();
+        assert!(page.rows.iter().all(|row| row.len() == 9), "rows grow with the column");
+        assert_eq!(page.rows[0][8], "NULL");
+        assert_eq!(workspace.applied_ddl(), vec![sql.to_owned()], "the port records what it applied");
+
+        workspace
+            .apply_ddl("customers", "ALTER TABLE customers ALTER COLUMN score TYPE bigint;")
+            .unwrap();
+        assert_eq!(workspace.table_columns("customers").unwrap()[8].sql_type, "bigint");
+    }
+
+    #[test]
+    fn a_failed_apply_changes_nothing() {
+        let mut workspace = MemoryWorkspace::new();
+        workspace.connect("local").unwrap();
+        assert!(workspace.apply_ddl("orders", "ALTER TABLE orders ADD COLUMN x int;").is_err());
+        assert_eq!(workspace.table_columns("orders").unwrap().len(), 2, "read-only tables refuse");
+        assert!(workspace.apply_ddl("customers", "DROP TABLE nope;").is_err());
+        assert_eq!(workspace.table_columns("customers").unwrap().len(), 8, "unknown statements refuse");
+        assert!(
+            workspace
+                .apply_ddl("customers", "ALTER TABLE customers ADD COLUMN ok int;\nDROP TABLE nope;")
+                .is_err(),
+            "one bad line fails the whole script"
+        );
+        assert_eq!(workspace.table_columns("customers").unwrap().len(), 8, "nothing half-applied");
+        assert!(workspace.applied_ddl().is_empty(), "failures are not recorded");
     }
 
     #[test]

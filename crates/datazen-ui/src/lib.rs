@@ -190,6 +190,19 @@ impl AppState {
         self.draft_type = TextEdit::new(String::new());
     }
 
+    /// Apply the table's drafts through the port. A failure keeps the drafts.
+    fn apply_column_drafts(&mut self) {
+        let Some(table) = self.selected_table() else { return };
+        let Some(drafts) = self.column_drafts.get(&table) else { return };
+        if drafts.is_empty() {
+            return;
+        }
+        let sql = drafts.iter().map(|draft| draft.sql(&table)).collect::<Vec<_>>().join("\n");
+        if self.workspace.apply_ddl(&table, &sql).is_ok() {
+            self.column_drafts.remove(&table);
+        }
+    }
+
     /// Queue a retype draft for the column named in the draft inputs.
     fn add_retype_draft(&mut self) {
         let Some(table) = self.selected_table() else { return };
@@ -779,6 +792,19 @@ fn column_drafts_section(state: &AppState, title: &str, theme: tok::Theme) -> El
                 .radius(6.0)
                 .fill(theme.control_off)
                 .child(text(label).font(type_::LABEL).color(theme.text_secondary)),
+        );
+    }
+    if !drafts.is_empty() {
+        section = section.child(
+            row()
+                .key("draft-apply")
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text("Apply").font(type_::LABEL).color(theme.text))
+                .on_press(|state: &mut AppState| state.apply_column_drafts()),
         );
     }
     if !drafts.is_empty() {
@@ -2402,6 +2428,62 @@ mod tests {
             8,
             "the preview executed nothing"
         );
+    }
+
+    #[test]
+    fn applying_the_drafts_lands_and_a_failure_keeps_them() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("view-columns").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+
+        runtime.state.draft_name = rune::TextEdit::new("score");
+        runtime.state.draft_type = rune::TextEdit::new("int");
+        let (x, y) = runtime.find("draft-add").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+
+        let (x, y) = runtime.find("draft-apply").expect("apply button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("draft-row-0").is_none(), "the drafts are gone");
+        assert!(runtime.find("draft-sql").is_none());
+        assert!(runtime.find("column-row-8").is_some(), "the official list grew");
+        assert_eq!(
+            runtime.state.workspace.table_columns("customers").unwrap()[8].name,
+            "score"
+        );
+        assert_eq!(
+            runtime.state.workspace.applied_ddl().len(),
+            1,
+            "the port recorded the apply"
+        );
+
+        // A read-only table refuses: the drafts stay, the official list is untouched.
+        runtime.state.open_table_tab("orders").unwrap();
+        runtime.settle_all();
+        runtime.frame(1.0);
+        runtime.state.draft_name = rune::TextEdit::new("x");
+        runtime.state.draft_type = rune::TextEdit::new("int");
+        let (x, y) = runtime.find("draft-add").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        let (x, y) = runtime.find("draft-apply").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("draft-row-0").is_some(), "the failed apply keeps the drafts");
+        assert!(runtime.find("column-row-2").is_none(), "the official columns are unchanged");
+        assert_eq!(runtime.state.workspace.table_columns("orders").unwrap().len(), 2);
     }
 
     #[test]
