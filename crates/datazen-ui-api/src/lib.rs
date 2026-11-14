@@ -132,14 +132,16 @@ pub struct ProgressSnapshot {
     pub log: Vec<String>,
 }
 
-/// One export job the port runs. The memory port advances a job on every
-/// progress read; real drivers advance by themselves.
+/// One job the port runs (export or backup). The memory port advances a job
+/// on every progress read; real drivers advance by themselves.
 #[derive(Clone, Debug)]
 struct MemoryJob {
     job: u64,
     format: String,
     range: String,
     reads: u32,
+    stopped: bool,
+    log: Vec<String>,
 }
 
 /// One saved SQL snippet.
@@ -202,6 +204,10 @@ pub trait WorkspaceApi {
     /// One job's progress snapshot, if the job exists. The memory port
     /// advances the job one step per read.
     fn job_progress(&mut self, job: u64) -> Option<ProgressSnapshot>;
+    /// Start a backup of the connected database.
+    fn start_backup(&mut self) -> Result<u64, String>;
+    /// Stop a running job. A stopped job reports "stopped" from then on.
+    fn stop_job(&mut self, job: u64) -> Result<(), String>;
     /// Apply a DDL script to the table. The port records what it applied; a
     /// failure changes nothing.
     fn apply_ddl(&mut self, table: &str, sql: &str) -> Result<(), String>;
@@ -593,36 +599,88 @@ impl WorkspaceApi for MemoryWorkspace {
             format: format.to_owned(),
             range: range.to_owned(),
             reads: 0,
+            stopped: false,
+            log: vec![
+                "queued".to_owned(),
+                format!("exporting {format} of {range}"),
+            ],
         });
         Ok(job)
     }
 
     fn job_progress(&mut self, job: u64) -> Option<ProgressSnapshot> {
         let entry = self.jobs.iter_mut().find(|running| running.job == job)?;
+        let snapshot = |status: &str, percent: u32, entry: &MemoryJob| ProgressSnapshot {
+            job,
+            status: status.to_owned(),
+            percent,
+            log: entry.log.clone(),
+        };
+        if entry.stopped {
+            return Some(snapshot("stopped", 100, entry));
+        }
         entry.reads += 1;
-        let mut log = vec![
-            "queued".to_owned(),
-            format!("exporting {} of {}", entry.format, entry.range),
-        ];
         match entry.reads {
-            1 => Some(ProgressSnapshot { job, status: "running".into(), percent: 0, log }),
+            1 => Some(snapshot("running", 0, entry)),
             2 => {
-                log.push("halfway".into());
-                Some(ProgressSnapshot { job, status: "running".into(), percent: 50, log })
+                entry.log.push("halfway".into());
+                Some(snapshot("running", 50, entry))
             }
             _ => {
-                if entry.format == "broken" {
-                    log.push("the port cannot write broken files".into());
-                    Some(ProgressSnapshot { job, status: "failed".into(), percent: 100, log })
-                } else if entry.range == "no-such-table" {
-                    log.push("no such table no-such-table".into());
-                    Some(ProgressSnapshot { job, status: "failed".into(), percent: 100, log })
-                } else {
-                    log.push("done".into());
-                    Some(ProgressSnapshot { job, status: "completed".into(), percent: 100, log })
+                if entry.reads == 3 {
+                    // The terminal line lands once, on the transition.
+                    if entry.format == "broken" {
+                        entry.log.push("the port cannot write broken files".into());
+                    } else if entry.range == "no-such-table" {
+                        entry.log.push("no such table no-such-table".into());
+                    } else {
+                        entry.log.push("done".into());
+                    }
                 }
+                let status = if entry.format == "broken" || entry.range == "no-such-table" {
+                    "failed"
+                } else {
+                    "completed"
+                };
+                Some(snapshot(status, 100, entry))
             }
         }
+    }
+
+    fn start_backup(&mut self) -> Result<u64, String> {
+        if self.session.is_none() {
+            return Err("not connected".into());
+        }
+        let job = self.jobs.last().map(|job| job.job + 1).unwrap_or(1);
+        self.jobs.push(MemoryJob {
+            job,
+            format: "backup".into(),
+            range: "the database".into(),
+            reads: 0,
+            stopped: false,
+            log: vec![
+                "queued".to_owned(),
+                "backing up the database".into(),
+            ],
+        });
+        Ok(job)
+    }
+
+    fn stop_job(&mut self, job: u64) -> Result<(), String> {
+        let entry = self
+            .jobs
+            .iter_mut()
+            .find(|running| running.job == job)
+            .ok_or_else(|| format!("no job {job}"))?;
+        if entry.stopped {
+            return Err("the job is already stopped".into());
+        }
+        if entry.reads >= 3 {
+            return Err("the job already finished".into());
+        }
+        entry.stopped = true;
+        entry.log.push("stopped by the user".into());
+        Ok(())
     }
 
     fn save_connection(&mut self, name: &str, engine: &str, address: &str) -> Result<(), String> {
@@ -1321,6 +1379,28 @@ mod tests {
         assert_eq!(failed.status, "failed");
         assert!(failed.log.last() == Some(&"no such table no-such-table".to_owned()));
         assert!(workspace.job_progress(999).is_none(), "an unknown job has no snapshot");
+    }
+
+    #[test]
+    fn a_backup_stops_and_reports_stopped() {
+        let mut workspace = MemoryWorkspace::new();
+        assert!(workspace.start_backup().is_err(), "no session, no backup");
+        workspace.connect("local").unwrap();
+        let job = workspace.start_backup().unwrap();
+        let first = workspace.job_progress(job).unwrap();
+        assert_eq!(first.status, "running");
+        assert_eq!(first.log[1], "backing up the database");
+
+        workspace.job_progress(job).unwrap();
+        workspace.stop_job(job).unwrap();
+        let stopped = workspace.job_progress(job).unwrap();
+        assert_eq!(stopped.status, "stopped", "a stopped job reports stopped");
+        assert!(stopped.log.last() == Some(&"stopped by the user".to_owned()));
+        let settled = workspace.job_progress(job).unwrap();
+        assert_eq!(settled, stopped, "stopped stays settled");
+
+        assert!(workspace.stop_job(job).is_err(), "stopping twice is refused");
+        assert!(workspace.stop_job(999).is_err());
     }
 
     #[test]

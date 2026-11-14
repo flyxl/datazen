@@ -113,6 +113,10 @@ struct AppState {
     import_source: TextEdit,
     import_target: TextEdit,
     import_error: Option<String>,
+    /// The backup job and its last snapshot.
+    backup_job: Option<u64>,
+    backup_snapshot: Option<ProgressSnapshot>,
+    backup_error: Option<String>,
 }
 
 impl Default for AppState {
@@ -157,6 +161,9 @@ impl Default for AppState {
             import_source: TextEdit::new(String::new()),
             import_target: TextEdit::new(String::new()),
             import_error: None,
+            backup_job: None,
+            backup_snapshot: None,
+            backup_error: None,
         }
     }
 }
@@ -328,6 +335,35 @@ impl AppState {
     fn import_back(&mut self) {
         self.import_step = 0;
         self.import_error = None;
+    }
+
+    fn start_backup_form(&mut self) {
+        match self.workspace.start_backup() {
+            Ok(job) => {
+                self.backup_job = Some(job);
+                self.backup_error = None;
+                self.backup_snapshot = self.workspace.job_progress(job);
+            }
+            Err(error) => self.backup_error = Some(error),
+        }
+    }
+
+    /// Stop the backup and pull the stopped snapshot.
+    fn stop_backup(&mut self) {
+        let Some(job) = self.backup_job else { return };
+        match self.workspace.stop_job(job) {
+            Ok(()) => {
+                self.backup_error = None;
+                self.backup_snapshot = self.workspace.job_progress(job);
+            }
+            Err(error) => self.backup_error = Some(error),
+        }
+    }
+
+    fn refresh_backup_progress(&mut self) {
+        if let Some(job) = self.backup_job {
+            self.backup_snapshot = self.workspace.job_progress(job);
+        }
     }
 
     /// Flip the theme. The only write goes to the settings port.
@@ -1411,6 +1447,74 @@ fn settings_page(state: &AppState, theme: tok::Theme) -> El {
     page.child(snippets)
         .child(export_section(state, theme))
         .child(import_section(state, theme))
+        .child(backup_section(state, theme))
+}
+
+/// The backup page: start, stop, and the same progress panel as exports.
+fn backup_section(state: &AppState, theme: tok::Theme) -> El {
+    let mut section = col()
+        .key("backup-section")
+        .w_full()
+        .gap(6.0)
+        .child(text("Backup".to_owned()).font(type_::TITLE).color(theme.text))
+        .child(
+            row()
+                .key("backup-controls")
+                .w_full()
+                .h(28.0)
+                .gap(8.0)
+                .center_y()
+                .child(
+                    row()
+                        .key("backup-start")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Start backup").font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.start_backup_form()),
+                )
+                .child(
+                    row()
+                        .key("backup-stop")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Stop").font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.stop_backup()),
+                )
+                .child(
+                    row()
+                        .key("backup-refresh")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Refresh").font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.refresh_backup_progress()),
+                ),
+        );
+    if let Some(error) = &state.backup_error {
+        section = section.child(
+            row()
+                .key("backup-error")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+        );
+    }
+    if let Some(snapshot) = &state.backup_snapshot {
+        section = section.child(progress_panel(snapshot, "backup", theme));
+    }
+    section
 }
 
 /// The import wizard's first two steps: source, then target table. No target,
@@ -3523,6 +3627,49 @@ mod tests {
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
         assert!(runtime.find("import-ready").is_some(), "both steps done");
+    }
+
+    #[test]
+    fn a_backup_page_stops_and_shows_stopped() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("connection-local").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        let (x, y) = runtime.find("nav-settings").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.find("backup-section").is_some());
+
+        let (x, y) = runtime.find("backup-start").expect("start button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        let snapshot = runtime.state.backup_snapshot.clone().unwrap();
+        assert_eq!(snapshot.status, "running");
+        assert!(runtime.find("backup-progress").is_some());
+        assert!(runtime.find("backup-log-1").is_some());
+
+        let (x, y) = runtime.find("backup-stop").expect("stop button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        let snapshot = runtime.state.backup_snapshot.clone().unwrap();
+        assert_eq!(snapshot.status, "stopped", "after stopping the status is stopped");
+        assert!(snapshot.log.last() == Some(&"stopped by the user".to_owned()));
+        assert!(
+            runtime.find(&format!("backup-log-{}", snapshot.log.len() - 1)).is_some(),
+            "the stop line is drawn"
+        );
+
+        // A second stop is refused and visible.
+        let (x, y) = runtime.find("backup-stop").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("backup-error").is_some());
     }
 
     #[test]
