@@ -113,6 +113,9 @@ pub struct LiveAdapter {
     /// cached in memory — reads are memory-speed, writes go through.
     settings: datazen::settings::application::SettingsService,
     settings_document: Arc<Mutex<serde_json::Value>>,
+    /// The query history use case over the history files (N9): every executed
+    /// statement lands in it, success or failure.
+    history: datazen::history::HistoryService,
 }
 
 impl LiveAdapter {
@@ -161,6 +164,18 @@ impl LiveAdapter {
             futures_executor::block_on(settings.read_app_settings())
                 .unwrap_or_else(|_| serde_json::json!({})),
         ));
+        // N9: the history use case over the two history files.
+        let history = datazen::history::HistoryService::new(
+            Arc::new(
+                crate::history::FileQueryHistory::open(&data_dir.join("query-history.json"))
+                    .expect("the query history store opens"),
+            ),
+            Arc::new(
+                crate::history::FileMigrationRuns::open(&data_dir.join("migration-runs.json"))
+                    .expect("the migration run store opens"),
+            ),
+        );
+        let worker_history = history.clone();
         let worker_service = ConnectionService::new(repository);
         let session = Arc::new(Mutex::new(LiveSession::default()));
         let worker_session = Arc::clone(&session);
@@ -236,11 +251,41 @@ impl LiveAdapter {
                             HostAnswer::CommitCount { generation, count }
                         }
                         HostJob::RunQuery { generation, sql } => {
+                            let started = std::time::Instant::now();
                             let page = runtime.block_on(run_query(
                                 &worker_runtime,
                                 &worker_profiles,
                                 &worker_session,
                                 &sql,
+                            ));
+                            // N9: the executed statement lands in the history
+                            // — success and failure alike, with its own
+                            // timing. A failed history write never costs the
+                            // query its answer (the use case logs it).
+                            let (connection, database) = {
+                                let session =
+                                    worker_session.lock().expect("the live session lock");
+                                (
+                                    session.connection.clone().unwrap_or_default(),
+                                    session.database.clone().unwrap_or_default(),
+                                )
+                            };
+                            runtime.block_on(worker_history.add_query_history(
+                                datazen::history::QueryHistoryEntry {
+                                    id: uuid::Uuid::new_v4().to_string(),
+                                    connection_id: connection,
+                                    database,
+                                    schema: None,
+                                    sql: sql.clone(),
+                                    executed_at: chrono::Utc::now(),
+                                    execution_time_ms: started
+                                        .elapsed()
+                                        .as_millis()
+                                        .min(u64::MAX as u128) as u64,
+                                    rows_affected: None,
+                                    success: page.is_ok(),
+                                    error_message: page.as_ref().err().map(|error| error.clone()),
+                                },
                             ));
                             HostAnswer::QueryPage { generation, page }
                         }
@@ -259,6 +304,7 @@ impl LiveAdapter {
             runtime,
             settings,
             settings_document,
+            history,
         }
     }
 
@@ -1143,9 +1189,10 @@ mod tests {
             &store_path,
             sqlite_config("live", Some(database.to_string_lossy().into_owned())),
         );
-        let mut adapter = LiveAdapter::new(Arc::new(
-            FileConnectionRepository::open(&store_path).unwrap(),
-        ));
+        let mut adapter = LiveAdapter::with_data_dir(
+            Arc::new(FileConnectionRepository::open(&store_path).unwrap()),
+            &dir,
+        );
         assert!(
             adapter.begin_job(AdapterJob::OpenConnection { generation: 1, id: "live".into() })
         );
@@ -1456,7 +1503,40 @@ mod tests {
         let after = std::fs::read_to_string(&dir.join("settings.json")).unwrap();
         assert_eq!(before, after, "a refused write changes nothing on disk");
     }
+
+    #[test]
+    fn executed_statements_land_in_the_history_file() {
+        let dir = temp_dir("history");
+        let mut adapter = opened_adapter(&dir);
+
+        // One successful query and one failed one — both belong in history.
+        assert!(adapter.begin_job(AdapterJob::RunQuery {
+            generation: 2,
+            sql: "SELECT id FROM users WHERE id = 0".into(),
+        }));
+        poll_query(&mut adapter).expect("the good query answers");
+        assert!(adapter.begin_job(AdapterJob::RunQuery {
+            generation: 3,
+            sql: "SELECT no_such_column FROM users".into(),
+        }));
+        poll_query(&mut adapter).expect_err("the broken statement fails");
+
+        // The history file holds both, with their verdicts and timing.
+        let path = dir.join("query-history.json");
+        let raw = std::fs::read_to_string(&path).expect("the history file exists");
+        let entries: Vec<datazen::history::QueryHistoryEntry> =
+            serde_json::from_str(&raw).expect("the history parses");
+        assert_eq!(entries.len(), 2, "both statements are recorded");
+        assert!(entries.iter().all(|entry| entry.connection_id == "live"));
+        let good = entries.iter().find(|entry| entry.sql.contains("id = 0")).unwrap();
+        assert!(good.success, "the successful query is marked");
+        let bad = entries.iter().find(|entry| entry.sql.contains("no_such_column")).unwrap();
+        assert!(!bad.success, "the failed query is marked");
+        assert!(bad.error_message.is_some(), "the failure carries its sentence");
+        assert!(good.execution_time_ms > 0 || bad.execution_time_ms > 0, "the timing was measured");
+    }
 }
+
 /// Test-only helpers shared with the backend module's tests.
 #[cfg(test)]
 pub(crate) mod test_support {

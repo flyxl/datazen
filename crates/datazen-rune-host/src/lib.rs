@@ -6,10 +6,12 @@
 //! store; the data paths follow on the same seam.
 
 pub mod backend;
-pub mod settings;
+pub mod history;
 pub mod live;
+pub mod settings;
 pub mod store;
 
+pub use history::{FileMigrationRuns, FileQueryHistory};
 pub use live::LiveAdapter;
 pub use settings::FileSettingsRepository;
 pub use store::FileConnectionRepository;
