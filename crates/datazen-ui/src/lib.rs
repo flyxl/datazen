@@ -146,6 +146,10 @@ struct AppState {
     /// The compare tool's endpoints.
     compare_source: String,
     compare_target: String,
+    /// The compare plan's apply job and its last snapshot.
+    compare_job: Option<u64>,
+    compare_snapshot: Option<ProgressSnapshot>,
+    compare_error: Option<String>,
 }
 
 impl Default for AppState {
@@ -205,6 +209,9 @@ impl Default for AppState {
             sync_snapshot: None,
             compare_source: "local".into(),
             compare_target: "replica".into(),
+            compare_job: None,
+            compare_snapshot: None,
+            compare_error: None,
         }
     }
 }
@@ -417,6 +424,35 @@ impl AppState {
 
     fn cycle_compare_target(&mut self) {
         self.compare_target = next_connection(&self.workspace, &self.compare_target);
+    }
+
+    /// D8: apply the plan through the port. A failure keeps the plan (the
+    /// difference is still there), and so does the error.
+    fn apply_compare_plan(&mut self) {
+        let plan = match self.workspace.compare_plan(&self.compare_source, &self.compare_target) {
+            Ok(plan) => plan,
+            Err(error) => {
+                self.compare_error = Some(error);
+                return;
+            }
+        };
+        match self.workspace.run_compare_plan(&plan) {
+            Ok(job) => {
+                self.compare_job = Some(job);
+                self.compare_snapshot = self.workspace.job_progress(job);
+                self.compare_error = None;
+            }
+            Err(error) => {
+                self.compare_job = None;
+                self.compare_error = Some(error);
+            }
+        }
+    }
+
+    fn refresh_compare_progress(&mut self) {
+        if let Some(job) = self.compare_job {
+            self.compare_snapshot = self.workspace.job_progress(job);
+        }
     }
 
     /// Cycle the sync source through the connections.
@@ -1052,6 +1088,53 @@ fn compare_tool(state: &AppState, theme: tok::Theme) -> El {
                 ),
         ),
         Err(_) => {}
+    }
+    // D8: apply the plan; the progress reuses the snapshot panel.
+    section = section.child(
+        row()
+            .key("compare-apply-controls")
+            .w_full()
+            .h(28.0)
+            .gap(8.0)
+            .center_y()
+            .child(
+                row()
+                    .key("compare-apply")
+                    .h(24.0)
+                    .px(8.0)
+                    .center_y()
+                    .radius(6.0)
+                    .fill(theme.control_off)
+                    .child(text("Apply plan").font(type_::LABEL).color(theme.text))
+                    .on_press(|state: &mut AppState| state.apply_compare_plan()),
+            )
+            .child(
+                row()
+                    .key("compare-refresh")
+                    .h(24.0)
+                    .px(8.0)
+                    .center_y()
+                    .radius(6.0)
+                    .fill(theme.control_off)
+                    .child(text("Refresh").font(type_::LABEL).color(theme.text))
+                    .on_press(|state: &mut AppState| state.refresh_compare_progress()),
+            ),
+    );
+    if let Some(error) = &state.compare_error {
+        section = section.child(
+            row()
+                .key("compare-error")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+        );
+    }
+    if let Some(snapshot) = &state.compare_snapshot {
+        section = section.child(progress_panel(snapshot, "compare", theme));
     }
     section.child(list)
 }
@@ -4511,6 +4594,62 @@ mod tests {
         assert_eq!(runtime.state.compare_target, "local");
         assert!(runtime.find("compare-plan").is_none(), "an empty plan draws no lines");
         assert!(runtime.find("compare-plan-empty").is_some(), "the empty state shows");
+    }
+
+    #[test]
+    fn a_failed_plan_apply_keeps_the_plan_visible() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-tools").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        let (x, y) = runtime.find("tool-compare").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.find("compare-plan").is_some());
+
+        let (x, y) = runtime.find("compare-apply").expect("apply button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.state.compare_job.is_some());
+        assert_eq!(runtime.state.compare_snapshot.as_ref().unwrap().status, "running");
+
+        let (x, y) = runtime.find("compare-refresh").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        runtime.frame(1.0);
+        let (x, y) = runtime.find("compare-refresh").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+
+        let snapshot = runtime.state.compare_snapshot.clone().unwrap();
+        assert_eq!(snapshot.status, "failed");
+        assert_eq!(
+            snapshot.log.last().map(String::as_str),
+            Some("the replica cannot create analytics tables")
+        );
+        assert!(
+            runtime.find("compare-plan").is_some(),
+            "the failed apply did not clear the plan"
+        );
+        assert!(runtime.find("compare-progress").is_some());
+
+        // An empty plan (same endpoints) refuses with an error and no job.
+        let (x, y) = runtime.find("compare-target").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("compare-apply").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.state.compare_job.is_none());
+        assert!(runtime.find("compare-error").is_some(), "nothing to apply is visible");
     }
 
     #[test]

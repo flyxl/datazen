@@ -142,6 +142,8 @@ struct MemoryJob {
     reads: u32,
     stopped: bool,
     log: Vec<String>,
+    /// The error line a failing job reports; None means the job succeeds.
+    fail_line: Option<String>,
 }
 
 /// One object of a structure comparison: its name and whether the target
@@ -228,6 +230,10 @@ pub trait WorkspaceApi {
     /// D7: the plan as text — one statement per object the target lacks.
     /// An empty string means no differences.
     fn compare_plan(&self, source: &str, target: &str) -> Result<String, String>;
+    /// D8: run the plan as a job. An empty plan has nothing to apply; the
+    /// replica cannot create analytics tables, so that plan's job fails and
+    /// the difference stays.
+    fn run_compare_plan(&mut self, plan: &str) -> Result<u64, String>;
     /// Stop a running job. A stopped job reports "stopped" from then on.
     fn stop_job(&mut self, job: u64) -> Result<(), String>;
     /// Apply a DDL script to the table. The port records what it applied; a
@@ -633,6 +639,7 @@ impl WorkspaceApi for MemoryWorkspace {
                 "queued".to_owned(),
                 format!("exporting {format} of {range}"),
             ],
+            fail_line: None,
         });
         Ok(job)
     }
@@ -656,22 +663,22 @@ impl WorkspaceApi for MemoryWorkspace {
                 Some(snapshot("running", 50, entry))
             }
             _ => {
+                let failed = entry.format == "broken"
+                    || entry.range == "no-such-table"
+                    || entry.fail_line.is_some();
                 if entry.reads == 3 {
                     // The terminal line lands once, on the transition.
                     if entry.format == "broken" {
                         entry.log.push("the port cannot write broken files".into());
                     } else if entry.range == "no-such-table" {
                         entry.log.push("no such table no-such-table".into());
+                    } else if let Some(line) = &entry.fail_line {
+                        entry.log.push(line.clone());
                     } else {
                         entry.log.push("done".into());
                     }
                 }
-                let status = if entry.format == "broken" || entry.range == "no-such-table" {
-                    "failed"
-                } else {
-                    "completed"
-                };
-                Some(snapshot(status, 100, entry))
+                Some(snapshot(if failed { "failed" } else { "completed" }, 100, entry))
             }
         }
     }
@@ -722,6 +729,7 @@ impl WorkspaceApi for MemoryWorkspace {
                 "queued".to_owned(),
                 format!("syncing {source} into {target}"),
             ],
+            fail_line: None,
         });
         Ok(job)
     }
@@ -741,6 +749,24 @@ impl WorkspaceApi for MemoryWorkspace {
                 name,
             })
             .collect())
+    }
+
+    fn run_compare_plan(&mut self, plan: &str) -> Result<u64, String> {
+        if plan.trim().is_empty() {
+            return Err("nothing to apply".into());
+        }
+        let job = self.jobs.last().map(|job| job.job + 1).unwrap_or(1);
+        let fails = plan.contains("CREATE TABLE catalog");
+        self.jobs.push(MemoryJob {
+            job,
+            format: "compare".into(),
+            range: "the compare plan".into(),
+            reads: 0,
+            stopped: false,
+            log: vec!["queued".to_owned(), "applying the plan".into()],
+            fail_line: fails.then(|| "the replica cannot create analytics tables".to_owned()),
+        });
+        Ok(job)
     }
 
     fn compare_plan(&self, source: &str, target: &str) -> Result<String, String> {
@@ -776,6 +802,7 @@ impl WorkspaceApi for MemoryWorkspace {
                 "queued".to_owned(),
                 "backing up the database".into(),
             ],
+            fail_line: None,
         });
         Ok(job)
     }
@@ -1594,6 +1621,33 @@ mod tests {
             "the same endpoint twice: no differences, an empty plan"
         );
         assert!(workspace.compare_plan("local", "missing").is_err());
+    }
+
+    #[test]
+    fn a_failed_plan_apply_keeps_the_plan() {
+        let mut workspace = MemoryWorkspace::new();
+        assert!(workspace.run_compare_plan("").is_err(), "an empty plan has nothing to apply");
+        assert!(workspace.run_compare_plan("   ").is_err());
+
+        let plan = workspace.compare_plan("local", "replica").unwrap();
+        let job = workspace.run_compare_plan(&plan).unwrap();
+        workspace.job_progress(job).unwrap();
+        workspace.job_progress(job).unwrap();
+        let failed = workspace.job_progress(job).unwrap();
+        assert_eq!(failed.status, "failed");
+        assert!(
+            failed.log.last() == Some(&"the replica cannot create analytics tables".to_owned()),
+            "the failure says why"
+        );
+        // The difference is still there: the plan survives the failure.
+        assert_eq!(workspace.compare_plan("local", "replica").unwrap(), plan);
+
+        // A plan the port can apply finishes.
+        let job = workspace.run_compare_plan("CREATE TABLE other (...);").unwrap();
+        workspace.job_progress(job).unwrap();
+        workspace.job_progress(job).unwrap();
+        let done = workspace.job_progress(job).unwrap();
+        assert_eq!(done.status, "completed");
     }
 
     #[test]
