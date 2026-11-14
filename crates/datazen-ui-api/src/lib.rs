@@ -27,6 +27,14 @@ pub struct IndexSpec {
     pub unique: bool,
 }
 
+/// One pending column change: add a column, or retype one. Drafts only —
+/// nothing touches the table until the port applies the SQL.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ColumnDraft {
+    AddColumn { name: String, sql_type: String },
+    ChangeType { column: String, sql_type: String },
+}
+
 /// One column of a table: name, type, nullability. For lists, not editors.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ColumnSpec {
@@ -789,6 +797,19 @@ mod tests {
         assert_eq!(schemas[1].name, "analytics");
         assert_eq!(schemas[1].tables, vec!["catalog"]);
         assert_eq!(workspace.catalog(), catalog, "the order is stable across calls");
+    }
+
+    #[test]
+    fn column_drafts_are_data_not_state_changes() {
+        let add = ColumnDraft::AddColumn { name: "score".into(), sql_type: "int".into() };
+        let retype = ColumnDraft::ChangeType { column: "name".into(), sql_type: "varchar(80)".into() };
+        let mut workspace = MemoryWorkspace::new();
+        workspace.connect("local").unwrap();
+        let before = workspace.table_columns("customers").unwrap();
+        let drafts = vec![add, retype];
+        let after = workspace.table_columns("customers").unwrap();
+        assert_eq!(before, after, "drafts alone change no columns");
+        assert_eq!(drafts.len(), 2);
     }
 
     #[test]

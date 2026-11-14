@@ -7,9 +7,9 @@ mod data_grid;
 mod sql_editor;
 
 use data_grid::DataGrid;
-use datazen_ui_api::{ColumnFilter, ColumnSort, MemoryWorkspace, QueryApi, TabKind, Tabs, TablePage, WorkspaceApi};
+use datazen_ui_api::{ColumnDraft, ColumnFilter, ColumnSort, MemoryWorkspace, QueryApi, TabKind, Tabs, TablePage, WorkspaceApi};
 use rune::tok::{self, type_};
-use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, TextEdit, Tx, col, oklch, row, text};
+use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, TextEdit, Tx, col, oklch, row, text, text_input};
 use sql_editor::SqlEditor;
 
 /// Rows asked from the workspace for one table page.
@@ -84,6 +84,10 @@ struct AppState {
     er_positions: std::collections::BTreeMap<String, (f32, f32)>,
     /// The box being dragged: its table and where the gesture started.
     er_drag: Option<(String, (f32, f32))>,
+    /// Column-change drafts per table, kept until applied. UI state.
+    column_drafts: std::collections::BTreeMap<String, Vec<ColumnDraft>>,
+    draft_name: TextEdit,
+    draft_type: TextEdit,
 }
 
 impl Default for AppState {
@@ -106,6 +110,9 @@ impl Default for AppState {
             er_schema: None,
             er_positions: std::collections::BTreeMap::new(),
             er_drag: None,
+            column_drafts: std::collections::BTreeMap::new(),
+            draft_name: TextEdit::new(String::new()),
+            draft_type: TextEdit::new(String::new()),
         }
     }
 }
@@ -158,6 +165,49 @@ impl AppState {
 
     fn close_er(&mut self) {
         self.er_schema = None;
+    }
+
+    /// The selected table tab's title, if any.
+    fn selected_table(&self) -> Option<String> {
+        let tab = self.tabs.selected()?;
+        (tab.kind == TabKind::Table).then(|| tab.title.clone())
+    }
+
+    /// Queue an add-column draft from the draft inputs.
+    fn add_column_draft(&mut self) {
+        let Some(table) = self.selected_table() else { return };
+        let name = self.draft_name.text.trim().to_owned();
+        if name.is_empty() {
+            return;
+        }
+        let sql_type = if self.draft_type.text.trim().is_empty() {
+            "text".to_owned()
+        } else {
+            self.draft_type.text.trim().to_owned()
+        };
+        self.column_drafts.entry(table).or_default().push(ColumnDraft::AddColumn { name, sql_type });
+        self.draft_name = TextEdit::new(String::new());
+        self.draft_type = TextEdit::new(String::new());
+    }
+
+    /// Queue a retype draft for the column named in the draft inputs.
+    fn add_retype_draft(&mut self) {
+        let Some(table) = self.selected_table() else { return };
+        let column = self.draft_name.text.trim().to_owned();
+        if column.is_empty() {
+            return;
+        }
+        let sql_type = if self.draft_type.text.trim().is_empty() {
+            "text".to_owned()
+        } else {
+            self.draft_type.text.trim().to_owned()
+        };
+        self.column_drafts
+            .entry(table)
+            .or_default()
+            .push(ColumnDraft::ChangeType { column, sql_type });
+        self.draft_name = TextEdit::new(String::new());
+        self.draft_type = TextEdit::new(String::new());
     }
 
     fn open_connection(&mut self, id: &str) {
@@ -572,10 +622,11 @@ fn er_box(
 /// A table tab shows the view switcher above either the data grid or the DDL.
 fn table_workspace(state: &AppState, theme: tok::Theme) -> El {
     let title = state.tabs.selected().map(|tab| tab.title.clone()).unwrap_or_default();
+    let _ = &title;
     let body = match state.table_view {
         TableView::Data => data_grid::panel(state, theme.text, theme.text_secondary, theme.control_off),
         TableView::Ddl => ddl_view(&state.workspace, &title, theme),
-        TableView::Columns => columns_view(&state.workspace, &title, theme),
+        TableView::Columns => columns_view(state, &title, theme),
         TableView::Indexes => indexes_view(&state.workspace, &title, theme),
         TableView::ForeignKeys => foreign_keys_view(&state.workspace, &title, theme),
     };
@@ -612,10 +663,10 @@ fn view_switcher(state: &AppState, theme: tok::Theme) -> El {
         .child(entry("view-ddl", "DDL", TableView::Ddl, state.table_view == TableView::Ddl))
 }
 
-/// The column list: name, type, nullability — one row per column. A list, not
-/// a structure editor.
-fn columns_view(workspace: &MemoryWorkspace, title: &str, theme: tok::Theme) -> El {
-    let columns = workspace.table_columns(title).unwrap_or_default();
+/// The column list: name, type, nullability — one row per column, plus the
+/// drafts section. The official list is read-only; drafts are separate.
+fn columns_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
+    let columns = state.workspace.table_columns(title).unwrap_or_default();
     let header = |label: &str, width: f32| {
         row()
             .w(width)
@@ -657,7 +708,80 @@ fn columns_view(workspace: &MemoryWorkspace, title: &str, theme: tok::Theme) -> 
                 .child(cell(if column.nullable { "yes" } else { "no" }, 100.0)),
         );
     }
+    let mut list = list.child(column_drafts_section(state, title, theme));
     list
+}
+
+/// The drafts area under the column list: inputs, the queued drafts, separate
+/// from the official columns.
+fn column_drafts_section(state: &AppState, title: &str, theme: tok::Theme) -> El {
+    let drafts = state.column_drafts.get(title).cloned().unwrap_or_default();
+    let mut section = col()
+        .key("column-drafts")
+        .w_full()
+        .gap(6.0)
+        .child(
+            row()
+                .key("draft-inputs")
+                .w_full()
+                .h(28.0)
+                .gap(8.0)
+                .center_y()
+                .child(
+                    text_input(&state.draft_name, type_::LABEL)
+                        .key("draft-name-input")
+                        .w(140.0)
+                        .h(24.0)
+                        .on_edit(|state: &mut AppState| &mut state.draft_name),
+                )
+                .child(
+                    text_input(&state.draft_type, type_::LABEL)
+                        .key("draft-type-input")
+                        .w(110.0)
+                        .h(24.0)
+                        .on_edit(|state: &mut AppState| &mut state.draft_type),
+                )
+                .child(
+                    row()
+                        .key("draft-add")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("+ Column").font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.add_column_draft()),
+                )
+                .child(
+                    row()
+                        .key("draft-retype")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Retype").font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.add_retype_draft()),
+                ),
+        );
+    for (index, draft) in drafts.iter().enumerate() {
+        let label = match draft {
+            ColumnDraft::AddColumn { name, sql_type } => format!("add {name} {sql_type}"),
+            ColumnDraft::ChangeType { column, sql_type } => format!("retype {column} → {sql_type}"),
+        };
+        section = section.child(
+            row()
+                .key(format!("draft-row-{index}"))
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(label).font(type_::LABEL).color(theme.text_secondary)),
+        );
+    }
+    section
 }
 
 /// The index list: name, columns in index order, uniqueness.
@@ -2182,6 +2306,45 @@ mod tests {
         let kept = runtime.presented("er-box-customers").unwrap().0;
         assert!((kept[0] - after[0]).abs() < 1.0 && (kept[1] - after[1]).abs() < 1.0, "kept {kept:?}");
         assert!(runtime.state.er_drag.is_none(), "the gesture ended");
+    }
+
+    #[test]
+    fn column_drafts_stay_separate_from_the_official_columns() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("view-columns").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.find("column-drafts").is_some());
+        assert!(runtime.find("column-row-8").is_none(), "8 official columns only");
+
+        runtime.state.draft_name = rune::TextEdit::new("score");
+        runtime.state.draft_type = rune::TextEdit::new("int");
+        let (x, y) = runtime.find("draft-add").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+
+        assert!(runtime.find("draft-row-0").is_some(), "the draft is queued");
+        assert!(runtime.find("column-row-8").is_none(), "the official list is untouched");
+        assert_eq!(
+            runtime.state.workspace.table_columns("customers").unwrap().len(),
+            8,
+            "the port's columns are unchanged"
+        );
+
+        runtime.state.draft_name = rune::TextEdit::new("name");
+        runtime.state.draft_type = rune::TextEdit::new("varchar(80)");
+        let (x, y) = runtime.find("draft-retype").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("draft-row-1").is_some(), "the retype draft is queued too");
     }
 
     #[test]
