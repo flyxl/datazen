@@ -40,8 +40,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | Q6 | 已完成 | fbfef17 | testing/Q6-cancel.md |
 | Q7 | 已完成 | b204b3e | testing/Q7-run-wiring.md |
 | Q8 | 已完成 | 457148d | testing/Q8-completion.md |
-| O1 | 进行中 | | |
-| O2 | 未开始 | | |
+| O1 | 已完成 | 525d8d9 | testing/O1-catalog.md |
+| O2 | 进行中 | | |
 | O3 | 未开始 | | |
 | O4 | 未开始 | | |
 | O5 | 未开始 | | |
