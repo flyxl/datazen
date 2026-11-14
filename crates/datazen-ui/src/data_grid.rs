@@ -355,28 +355,73 @@ pub fn on_key(grid: &mut DataGrid, ev: &KeyEvent, tx: &mut Tx) -> bool {
     true
 }
 
-pub fn panel(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well: rune::Color) -> El {
-    let grid = &state.grid;
-    let status = status_line(grid);
+/// Which grid a render call targets: the table page's or the query result's.
+/// The result keys are prefixed so both can be mounted in one frame.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GridSlot {
+    Table,
+    Result,
+}
+
+impl GridSlot {
+    fn key(self, base: &str) -> String {
+        match self {
+            Self::Table => base.to_owned(),
+            Self::Result => format!("result-{base}"),
+        }
+    }
+}
+
+pub(crate) fn grid_of<'a>(state: &'a crate::AppState, slot: GridSlot) -> &'a DataGrid {
+    match slot {
+        GridSlot::Table => &state.grid,
+        GridSlot::Result => state.result_grid.as_ref().expect("the result grid is mounted"),
+    }
+}
+
+/// The scrolling sheet the table page and the query result share: a sticky header
+/// over a window of virtual rows.
+fn sheet(grid: &DataGrid, slot: GridSlot, ink: rune::Color, well: rune::Color, height: f32) -> El {
     let scroll_x = grid.scroll_x();
     let width = COL_W * grid.cols as f32;
     let sheet = col()
-        .key("data-grid-sheet")
+        .key(slot.key("data-grid-sheet"))
         .w(width)
-        .child(header_row(grid, ink).sticky_top(0.0))
+        .child(header_row(grid, slot, ink).sticky_top(0.0))
         .child(
             col()
-                .key("data-grid-rows")
+                .key(slot.key("data-grid-rows"))
                 .w(width)
                 .growth(GrowthSpec::default())
                 .virtual_rows(
                     grid.rows as usize,
                     ROW_H,
-                    |_state: &crate::AppState, index| Cow::Owned(format!("grid-row-{index}")),
-                    move |state: &crate::AppState, index| data_row(&state.grid, index as u32, ink),
+                    move |_state: &crate::AppState, index| Cow::Owned(slot.key(&format!("grid-row-{index}"))),
+                    move |state: &crate::AppState, index| data_row(grid_of(state, slot), slot, index as u32, ink),
                 )
                 .virtual_rows_version(1u32),
         );
+    let scroll = col()
+        .key(slot.key("data-grid-scroll"))
+        .w_full()
+        .h(height)
+        .fill(well)
+        .radius(8.0)
+        .scroll_xy()
+        .on_scroll_offset(move |at: ScrollPos| {
+            scroll_x.set(at.offset[0]);
+        })
+        .child(sheet);
+    if slot == GridSlot::Table {
+        scroll.on_paste(|state: &mut crate::AppState, text, _| state.grid.paste_tsv(text))
+    } else {
+        scroll
+    }
+}
+
+pub fn panel(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well: rune::Color) -> El {
+    let grid = &state.grid;
+    let status = status_line(grid);
     let mut panel = col()
         .key("data-grid")
         .w_full()
@@ -398,21 +443,24 @@ pub fn panel(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well
     }
     panel
         .child(filter_bar(state, ink, muted, well))
-        .child(
-            col()
-                .key("data-grid-scroll")
-                .w_full()
-                .h(380.0)
-                .fill(well)
-                .radius(8.0)
-                .scroll_xy()
-                .on_scroll_offset(move |at: ScrollPos| {
-                    scroll_x.set(at.offset[0]);
-                })
-                .on_paste(|state: &mut crate::AppState, text, _| state.grid.paste_tsv(text))
-                .child(sheet),
-        )
+        .child(sheet(grid, GridSlot::Table, ink, well, 380.0))
         .child(footer(grid, ink, muted))
+}
+
+/// The query result area: the same sheet as the table page, without the filter
+/// bar and the footer, and not editable.
+pub fn result_panel(grid: &DataGrid, ink: rune::Color, muted: rune::Color, well: rune::Color) -> El {
+    col()
+        .key("result-grid")
+        .w_full()
+        .gap(8.0)
+        .child(
+            text(format!("Query result · {} rows × {} cols", grid.rows, grid.cols))
+                .font(label_style())
+                .color(muted)
+                .key("result-grid-status"),
+        )
+        .child(sheet(grid, GridSlot::Result, ink, well, 200.0))
 }
 
 /// The status line above the grid: page shape, column window, selection, dirty cells.
@@ -527,14 +575,14 @@ fn footer(grid: &DataGrid, ink: rune::Color, muted: rune::Color) -> El {
         )
 }
 
-fn header_row(grid: &DataGrid, ink: rune::Color) -> El {
-    let mut line = row().key("data-grid-header").h(ROW_H).fill(oklch(0.22, 0.02, 250.0));
+fn header_row(grid: &DataGrid, slot: GridSlot, ink: rune::Color) -> El {
+    let mut line = row().key(slot.key("data-grid-header")).h(ROW_H).fill(oklch(0.22, 0.02, 250.0));
     let mut cursor = 0u32;
     for col_index in grid.built_columns() {
         if col_index > cursor {
             line = line.child(el().w((col_index - cursor) as f32 * COL_W).h(ROW_H));
         }
-        line = line.child(header_cell(grid, col_index, ink));
+        line = line.child(header_cell(grid, slot, col_index, ink));
         cursor = col_index + 1;
     }
     if cursor < grid.cols {
@@ -543,11 +591,11 @@ fn header_row(grid: &DataGrid, ink: rune::Color) -> El {
     line
 }
 
-fn data_row(grid: &DataGrid, row_index: u32, ink: rune::Color) -> El {
-    paint_row(grid, row_index, ink)
+fn data_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color) -> El {
+    paint_row(grid, slot, row_index, ink)
 }
 
-fn paint_row(grid: &DataGrid, row_index: u32, ink: rune::Color) -> El {
+fn paint_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color) -> El {
     let cols = grid.built_columns();
     let mut line = row().h(ROW_H);
     let mut cursor = 0u32;
@@ -555,7 +603,7 @@ fn paint_row(grid: &DataGrid, row_index: u32, ink: rune::Color) -> El {
         if col_index > cursor {
             line = line.child(el().w((col_index - cursor) as f32 * COL_W).h(ROW_H));
         }
-        line = line.child(cell(grid, row_index, col_index, ink));
+        line = line.child(cell(grid, slot, row_index, col_index, ink));
         cursor = col_index + 1;
     }
     if cursor < grid.cols {
@@ -564,7 +612,7 @@ fn paint_row(grid: &DataGrid, row_index: u32, ink: rune::Color) -> El {
     line
 }
 
-fn header_cell(grid: &DataGrid, col_index: u32, ink: rune::Color) -> El {
+fn header_cell(grid: &DataGrid, slot: GridSlot, col_index: u32, ink: rune::Color) -> El {
     let label = grid
         .column_name(col_index)
         .map(str::to_owned)
@@ -575,20 +623,22 @@ fn header_cell(grid: &DataGrid, col_index: u32, ink: rune::Color) -> El {
         _ => label,
     };
     let mut cell = row()
-        .key(format!("head-{col_index}"))
+        .key(slot.key(&format!("head-{col_index}")))
         .w(COL_W)
         .h(ROW_H)
         .px(8.0)
         .center_y()
-        .child(text(label).font(label_style()).color(ink))
-        .on_press(move |state: &mut crate::AppState| state.cycle_sort(col_index));
+        .child(text(label).font(label_style()).color(ink));
+    if slot == GridSlot::Table {
+        cell = cell.on_press(move |state: &mut crate::AppState| state.cycle_sort(col_index));
+    }
     if col_index == 0 {
         cell = cell.sticky_left(0.0).fill(oklch(0.24, 0.03, 250.0));
     }
     cell
 }
 
-fn cell(grid: &DataGrid, row_index: u32, col_index: u32, ink: rune::Color) -> El {
+fn cell(grid: &DataGrid, slot: GridSlot, row_index: u32, col_index: u32, ink: rune::Color) -> El {
     let selected = grid.covers(row_index, col_index);
     let active = grid.focus == (row_index, col_index);
     let frozen = col_index == 0;
@@ -604,20 +654,22 @@ fn cell(grid: &DataGrid, row_index: u32, col_index: u32, ink: rune::Color) -> El
         oklch(0.16, 0.01, 250.0)
     };
     let mut box_el = row()
-        .key(format!("cell-{row_index}-{col_index}"))
+        .key(slot.key(&format!("cell-{row_index}-{col_index}")))
         .w(COL_W)
         .h(ROW_H)
         .px(8.0)
         .center_y()
-        .fill(fill)
-        .on_press(move |state: &mut crate::AppState| state.grid.select(row_index, col_index));
+        .fill(fill);
+    if slot == GridSlot::Table {
+        box_el = box_el.on_press(move |state: &mut crate::AppState| state.grid.select(row_index, col_index));
+    }
     if frozen {
         box_el = box_el.sticky_left(0.0);
     }
     if active && grid.editing {
         box_el.child(
             text_input(&grid.editor, editor_font())
-                .key("grid-editor")
+                .key(slot.key("grid-editor"))
                 .w(COL_W - 16.0)
                 .h(ROW_H - 4.0)
                 .on_edit(|state: &mut crate::AppState| &mut state.grid.editor)

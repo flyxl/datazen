@@ -67,6 +67,8 @@ pub trait WorkspaceApi {
         filter: Option<&ColumnFilter>,
     ) -> Result<TablePage, String>;
     fn stage_cell(&mut self, row: u32, column: &str, value: String) -> Result<(), String>;
+    /// Open a read-only query result page. While it is open, staging is rejected.
+    fn open_result(&mut self, columns: Vec<String>, rows: Vec<Vec<String>>) -> TablePage;
     /// Apply every staged edit to the stored rows and report how many landed.
     fn commit_staged(&mut self) -> Result<u32, String>;
     /// Drop every staged edit; the stored rows keep their values.
@@ -98,6 +100,8 @@ pub struct MemoryWorkspace {
     session: Option<Session>,
     tables: Vec<(String, StoredTable)>,
     open: Option<OpenTable>,
+    /// A query result is showing: the port rejects staging until a table reopens.
+    result_open: bool,
 }
 
 impl Default for MemoryWorkspace {
@@ -150,6 +154,7 @@ impl MemoryWorkspace {
                 ),
             ],
             open: None,
+            result_open: false,
         }
     }
 }
@@ -177,6 +182,7 @@ impl WorkspaceApi for MemoryWorkspace {
     fn disconnect(&mut self) {
         self.session = None;
         self.open = None;
+        self.result_open = false;
         for (_, stored) in self.tables.iter_mut() {
             stored.staged.clear();
         }
@@ -228,6 +234,7 @@ impl WorkspaceApi for MemoryWorkspace {
         let total = order.len() as u32;
         let page_size = page_size.max(1);
         let page = page.min(total / page_size);
+        self.result_open = false;
         let window =
             (page * page_size) as usize..(((page + 1) * page_size) as usize).min(total as usize);
         let mut rows: Vec<Vec<String>> = order[window.clone()]
@@ -257,7 +264,26 @@ impl WorkspaceApi for MemoryWorkspace {
         })
     }
 
+    fn open_result(&mut self, columns: Vec<String>, rows: Vec<Vec<String>>) -> TablePage {
+        self.result_open = true;
+        let total = rows.len() as u32;
+        TablePage {
+            table: "result".into(),
+            columns,
+            rows,
+            page: 0,
+            page_size: total.max(1),
+            total_rows: total,
+            sort: None,
+            filter: None,
+            read_only: Some("query result".into()),
+        }
+    }
+
     fn stage_cell(&mut self, row: u32, column: &str, value: String) -> Result<(), String> {
+        if self.result_open {
+            return Err("a query result is open: results are read-only".into());
+        }
         let open = self.open.as_ref().ok_or("no open table")?;
         let stored_row = open.page * open.page_size + row;
         let stored = self
@@ -445,6 +471,32 @@ mod tests {
         let sort = ColumnSort { column: "name".into(), descending: false };
         let page = workspace.open_table("customers", 0, 25, Some(&sort), None).unwrap();
         assert_eq!(page.rows[0][1], "aaa-first", "the staged name sorts with its row");
+    }
+
+    #[test]
+    fn open_result_is_read_only_and_blocks_staging() {
+        let mut workspace = MemoryWorkspace::new();
+        workspace.connect("local").unwrap();
+        workspace.open_table("customers", 0, 25, None, None).unwrap();
+        let page = workspace.open_result(
+            vec!["a".into(), "b".into()],
+            vec![vec!["1".into(), "2".into()], vec!["3".into(), "4".into()]],
+        );
+        assert_eq!(page.table, "result");
+        assert_eq!(page.total_rows, 2);
+        assert_eq!(page.read_only.as_deref(), Some("query result"));
+        assert!(
+            workspace.stage_cell(0, "name", "x".into()).is_err(),
+            "staging while a result is open is rejected"
+        );
+
+        workspace.open_table("customers", 0, 25, None, None).unwrap();
+        workspace.stage_cell(0, "name", "x".into()).unwrap();
+        assert_eq!(
+            workspace.open_table("customers", 0, 25, None, None).unwrap().rows[0][1],
+            "x",
+            "reopening a table releases the result lock"
+        );
     }
 
     #[test]

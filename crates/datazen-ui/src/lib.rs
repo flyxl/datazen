@@ -58,6 +58,8 @@ struct AppState {
     /// The column the filter bar targets, as an index into the loaded page.
     filter_column: u32,
     filter_editor: TextEdit,
+    /// The read-only query result grid of the selected query tab.
+    result_grid: Option<DataGrid>,
 }
 
 impl Default for AppState {
@@ -73,6 +75,7 @@ impl Default for AppState {
             filter: None,
             filter_column: 0,
             filter_editor: TextEdit::new(String::new()),
+            result_grid: None,
         }
     }
 }
@@ -107,6 +110,7 @@ impl AppState {
         self.filter = None;
         self.filter_column = 0;
         self.filter_editor = TextEdit::new(String::new());
+        self.result_grid = None;
     }
 
     fn open_table_tab(&mut self, title: &str) -> Option<u32> {
@@ -223,6 +227,15 @@ impl AppState {
     fn rollback_staged_edits(&mut self) {
         self.workspace.rollback_staged();
         self.reload_table_page();
+    }
+
+    /// Load a query result into the shared grid, read-only, below the editor.
+    fn load_result_page(&mut self, columns: Vec<String>, rows: Vec<Vec<String>>) {
+        let page = self.workspace.open_result(columns, rows);
+        let mut grid = DataGrid::new();
+        grid.load_page(&page);
+        grid.set_editable(false);
+        self.result_grid = Some(grid);
     }
 
     /// Any tab event lands in the workspace: the selected tab decides what the
@@ -414,22 +427,24 @@ fn object_tree(state: &AppState, theme: tok::Theme) -> El {
 }
 
 fn query_workspace(state: &AppState, theme: tok::Theme) -> El {
+    let results = match &state.result_grid {
+        Some(grid) => data_grid::result_panel(grid, theme.text, theme.text_secondary, theme.control_off),
+        None => col()
+            .key("query-results")
+            .w_full()
+            .h(120.0)
+            .px(12.0)
+            .py(8.0)
+            .radius(8.0)
+            .fill(theme.control_off)
+            .child(text("No results").font(type_::LABEL).color(theme.text_secondary)),
+    };
     col()
         .key("query-tab")
         .w_full()
         .gap(8.0)
         .child(sql_editor::panel(&state.sql, theme.text, theme.text_secondary))
-        .child(
-            col()
-                .key("query-results")
-                .w_full()
-                .h(120.0)
-                .px(12.0)
-                .py(8.0)
-                .radius(8.0)
-                .fill(theme.control_off)
-                .child(text("No results").font(type_::LABEL).color(theme.text_secondary)),
-        )
+        .child(results)
 }
 
 fn open_query_button(theme: tok::Theme) -> El {
@@ -606,10 +621,13 @@ fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
 }
 
 fn app_poll(state: &mut AppState, _: f64, _: &mut Tx) -> bool {
-    state.active == Section::Workspace
-        && !query_selected(state)
-        && state.grid.has_page()
-        && state.grid.sync_scroll()
+    if state.active != Section::Workspace {
+        return false;
+    }
+    if query_selected(state) {
+        return state.result_grid.as_mut().is_some_and(|grid| grid.sync_scroll());
+    }
+    state.grid.has_page() && state.grid.sync_scroll()
 }
 
 fn app_ime(state: &mut AppState, ev: &Ime, _: &mut Tx) -> bool {
@@ -1067,6 +1085,48 @@ mod tests {
         runtime.frame(0.0);
         assert!(runtime.state.grid.is_editable());
         assert!(runtime.find("grid-readonly").is_none(), "the banner leaves with the read-only page");
+    }
+
+    #[test]
+    fn a_query_result_renders_in_the_shared_grid_and_cannot_stage() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_query_tab("Query").unwrap();
+        runtime.frame(0.0);
+        assert!(runtime.find("query-results").is_some(), "no result yet");
+
+        runtime.state.load_result_page(
+            vec!["id".into(), "label".into()],
+            vec![
+                vec!["1".into(), "one".into()],
+                vec!["2".into(), "two".into()],
+                vec!["3".into(), "three".into()],
+            ],
+        );
+        runtime.settle_all();
+        runtime.frame(0.0);
+
+        assert!(runtime.find("result-grid").is_some());
+        assert!(runtime.find("result-cell-0-0").is_some());
+        assert!(runtime.find("result-cell-2-1").is_some());
+        assert!(runtime.find("query-results").is_none(), "the placeholder leaves");
+        assert_eq!(runtime.state.result_grid.as_ref().unwrap().cell(0, 1), "one");
+        assert!(!runtime.state.result_grid.as_ref().unwrap().is_editable());
+        assert!(
+            runtime.state.workspace.stage_cell(0, "name", "x".into()).is_err(),
+            "the port rejects staging while the result is open"
+        );
+
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.settle_all();
+        runtime.frame(0.0);
+        assert!(runtime.find("cell-0-1").is_some(), "the table grid keeps its own keys");
+        assert!(
+            runtime.state.workspace.stage_cell(0, "name", "ok".into()).is_ok(),
+            "reopening a table releases the result lock"
+        );
     }
 
     #[test]
