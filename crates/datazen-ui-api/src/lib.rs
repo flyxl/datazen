@@ -121,6 +121,13 @@ pub struct TablePage {
     pub read_only: Option<String>,
 }
 
+/// One saved SQL snippet.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Snippet {
+    pub name: String,
+    pub sql: String,
+}
+
 /// One typed settings entry. A write validates a single entry; a failure
 /// leaves every entry at its old value.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -160,6 +167,14 @@ pub trait WorkspaceApi {
     /// Save a connection from the form: name, engine, address. It goes into
     /// the port only, never the system keychain. A missing address is refused.
     fn save_connection(&mut self, name: &str, engine: &str, address: &str) -> Result<(), String>;
+    /// The saved SQL snippets.
+    fn snippets(&self) -> Vec<Snippet>;
+    /// Create a snippet; an existing name is refused.
+    fn save_snippet(&mut self, name: &str, sql: &str) -> Result<(), String>;
+    /// Change a snippet's SQL; an unknown name is refused.
+    fn update_snippet(&mut self, name: &str, sql: &str) -> Result<(), String>;
+    /// Delete a snippet; an unknown name is refused.
+    fn delete_snippet(&mut self, name: &str) -> Result<(), String>;
     /// Apply a DDL script to the table. The port records what it applied; a
     /// failure changes nothing.
     fn apply_ddl(&mut self, table: &str, sql: &str) -> Result<(), String>;
@@ -219,6 +234,8 @@ pub struct MemoryWorkspace {
     applied_ddl: Vec<String>,
     /// The settings store, one entry per kind.
     settings: Vec<Setting>,
+    /// The saved SQL snippets.
+    snippets: Vec<Snippet>,
 }
 
 impl Default for MemoryWorkspace {
@@ -299,6 +316,7 @@ impl MemoryWorkspace {
                 Setting::TablePageSize { rows: 25 },
                 Setting::QueryMaxRows { rows: 100 },
             ],
+            snippets: Vec::new(),
         }
     }
 }
@@ -496,6 +514,40 @@ impl WorkspaceApi for MemoryWorkspace {
             }],
             _ => Vec::new(),
         })
+    }
+
+    fn snippets(&self) -> Vec<Snippet> {
+        self.snippets.clone()
+    }
+
+    fn save_snippet(&mut self, name: &str, sql: &str) -> Result<(), String> {
+        if name.trim().is_empty() {
+            return Err("snippet name is required".into());
+        }
+        if self.snippets.iter().any(|snippet| snippet.name == name) {
+            return Err(format!("a snippet named {name} already exists"));
+        }
+        self.snippets.push(Snippet { name: name.to_owned(), sql: sql.to_owned() });
+        Ok(())
+    }
+
+    fn update_snippet(&mut self, name: &str, sql: &str) -> Result<(), String> {
+        match self.snippets.iter_mut().find(|snippet| snippet.name == name) {
+            Some(snippet) => {
+                snippet.sql = sql.to_owned();
+                Ok(())
+            }
+            None => Err(format!("no snippet named {name}")),
+        }
+    }
+
+    fn delete_snippet(&mut self, name: &str) -> Result<(), String> {
+        let before = self.snippets.len();
+        self.snippets.retain(|snippet| snippet.name != name);
+        if self.snippets.len() == before {
+            return Err(format!("no snippet named {name}"));
+        }
+        Ok(())
     }
 
     fn save_connection(&mut self, name: &str, engine: &str, address: &str) -> Result<(), String> {
@@ -1119,6 +1171,33 @@ mod tests {
         // A duplicate name gets its own id; both are in the port, not the keychain.
         workspace.save_connection("Remote Postgres", "mysql", "db2.example.com:3306").unwrap();
         assert_eq!(workspace.connections().last().unwrap().id, "remote-postgres-2");
+    }
+
+    #[test]
+    fn snippets_add_update_delete_and_refuse_duplicates() {
+        let mut workspace = MemoryWorkspace::new();
+        assert!(workspace.snippets().is_empty());
+        workspace.save_snippet("top", "SELECT * FROM customers LIMIT 10").unwrap();
+        assert_eq!(workspace.snippets().len(), 1);
+
+        assert!(
+            workspace.save_snippet("top", "SELECT 1").is_err(),
+            "a duplicate name is refused"
+        );
+        assert_eq!(
+            workspace.snippets()[0].sql,
+            "SELECT * FROM customers LIMIT 10",
+            "the refused save changed nothing"
+        );
+
+        workspace.update_snippet("top", "SELECT 1").unwrap();
+        assert_eq!(workspace.snippets()[0].sql, "SELECT 1", "update changes the sql");
+        assert!(workspace.update_snippet("missing", "SELECT 1").is_err());
+        assert!(workspace.save_snippet("  ", "SELECT 1").is_err(), "a name is required");
+
+        workspace.delete_snippet("top").unwrap();
+        assert!(workspace.snippets().is_empty());
+        assert!(workspace.delete_snippet("top").is_err());
     }
 
     #[test]

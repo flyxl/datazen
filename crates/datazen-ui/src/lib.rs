@@ -97,6 +97,10 @@ struct AppState {
     connection_engine: TextEdit,
     connection_address: TextEdit,
     connection_error: Option<String>,
+    /// The snippet form's fields and its last rejected write.
+    snippet_name: TextEdit,
+    snippet_sql: TextEdit,
+    snippet_error: Option<String>,
 }
 
 impl Default for AppState {
@@ -129,6 +133,9 @@ impl Default for AppState {
             connection_engine: TextEdit::new(String::new()),
             connection_address: TextEdit::new(String::new()),
             connection_error: None,
+            snippet_name: TextEdit::new(String::new()),
+            snippet_sql: TextEdit::new(String::new()),
+            snippet_error: None,
         }
     }
 }
@@ -206,6 +213,38 @@ impl AppState {
                 self.connection_address = TextEdit::new(String::new());
             }
             Err(error) => self.connection_error = Some(error),
+        }
+    }
+
+    fn save_snippet_form(&mut self) {
+        let name = self.snippet_name.text.trim().to_owned();
+        let sql = self.snippet_sql.text.trim().to_owned();
+        match self.workspace.save_snippet(&name, &sql) {
+            Ok(()) => {
+                self.snippet_error = None;
+                self.snippet_name = TextEdit::new(String::new());
+                self.snippet_sql = TextEdit::new(String::new());
+            }
+            Err(error) => self.snippet_error = Some(error),
+        }
+    }
+
+    fn update_snippet_form(&mut self) {
+        let name = self.snippet_name.text.trim().to_owned();
+        let sql = self.snippet_sql.text.trim().to_owned();
+        match self.workspace.update_snippet(&name, &sql) {
+            Ok(()) => {
+                self.snippet_error = None;
+                self.snippet_name = TextEdit::new(String::new());
+                self.snippet_sql = TextEdit::new(String::new());
+            }
+            Err(error) => self.snippet_error = Some(error),
+        }
+    }
+
+    fn delete_snippet(&mut self, name: &str) {
+        if let Err(error) = self.workspace.delete_snippet(name) {
+            self.snippet_error = Some(error);
         }
     }
 
@@ -1196,7 +1235,98 @@ fn settings_page(state: &AppState, theme: tok::Theme) -> El {
                 .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
         );
     }
-    page
+
+    // SQL snippets: add, update, delete.
+    let mut snippets = col()
+        .key("settings-snippets")
+        .w_full()
+        .gap(6.0)
+        .child(text("SQL snippets".to_owned()).font(type_::TITLE).color(theme.text))
+        .child(
+            row()
+                .key("snippet-form")
+                .w_full()
+                .h(28.0)
+                .gap(8.0)
+                .center_y()
+                .child(
+                    text_input(&state.snippet_name, type_::LABEL)
+                        .key("snippet-name-input")
+                        .w(140.0)
+                        .h(24.0)
+                        .on_edit(|state: &mut AppState| &mut state.snippet_name),
+                )
+                .child(
+                    text_input(&state.snippet_sql, type_::LABEL)
+                        .key("snippet-sql-input")
+                        .w(280.0)
+                        .h(24.0)
+                        .on_edit(|state: &mut AppState| &mut state.snippet_sql),
+                )
+                .child(
+                    row()
+                        .key("snippet-save")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Save").font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.save_snippet_form()),
+                )
+                .child(
+                    row()
+                        .key("snippet-update")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Update").font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.update_snippet_form()),
+                ),
+        );
+    for (index, snippet) in state.workspace.snippets().iter().enumerate() {
+        let name = snippet.name.clone();
+        snippets = snippets.child(
+            row()
+                .key(format!("snippet-row-{index}"))
+                .w_full()
+                .h(24.0)
+                .gap(8.0)
+                .center_y()
+                .px(8.0)
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(snippet.name.clone()).font(type_::LABEL).color(theme.text))
+                .child(text(snippet.sql.clone()).font(type_::LABEL).color(theme.text_secondary))
+                .child(
+                    row()
+                        .key(format!("snippet-delete-{index}"))
+                        .h(20.0)
+                        .px(6.0)
+                        .center_y()
+                        .radius(4.0)
+                        .fill(theme.control_off)
+                        .child(text("Delete").font(type_::LABEL).color(theme.text_secondary))
+                        .on_press(move |state: &mut AppState| state.delete_snippet(&name)),
+                ),
+        );
+    }
+    if let Some(error) = &state.snippet_error {
+        snippets = snippets.child(
+            row()
+                .key("snippet-error")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+        );
+    }
+    page.child(snippets)
 }
 
 fn tab_strip(state: &AppState, theme: tok::Theme) -> El {
@@ -2883,6 +3013,56 @@ mod tests {
             "the saved connection joins the list"
         );
         assert!(runtime.find("connection-form-error").is_none(), "the error clears");
+    }
+
+    #[test]
+    fn snippets_add_update_delete_and_duplicate_names_are_refused() {
+        use datazen_ui_api::{SettingsApi, WorkspaceApi};
+
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("nav-settings").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.find("settings-snippets").is_some());
+
+        runtime.state.snippet_name = rune::TextEdit::new("top");
+        runtime.state.snippet_sql = rune::TextEdit::new("SELECT * FROM customers LIMIT 10");
+        let (x, y) = runtime.find("snippet-save").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("snippet-row-0").is_some(), "the snippet is listed");
+
+        runtime.state.snippet_name = rune::TextEdit::new("top");
+        runtime.state.snippet_sql = rune::TextEdit::new("SELECT 1");
+        let (x, y) = runtime.find("snippet-save").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("snippet-error").is_some(), "the duplicate name is refused");
+        assert!(runtime.find("snippet-row-1").is_none(), "still one snippet");
+
+        runtime.state.snippet_name = rune::TextEdit::new("top");
+        runtime.state.snippet_sql = rune::TextEdit::new("SELECT 1");
+        let (x, y) = runtime.find("snippet-update").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(
+            runtime.state.workspace.snippets()[0].sql,
+            "SELECT 1",
+            "update changed the sql"
+        );
+
+        runtime.frame(1.0);
+        let (x, y) = runtime.find("snippet-delete-0").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("snippet-row-0").is_none(), "the snippet is gone");
+        assert!(runtime.state.workspace.snippets().is_empty());
     }
 
     #[test]
