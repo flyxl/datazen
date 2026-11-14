@@ -3786,6 +3786,53 @@ mod tests {
     }
 
     #[test]
+    fn page_home_and_end_move_the_focus_and_it_stays_in_the_model() {
+        use super::app_key;
+        use datazen_ui_api::WorkspaceApi;
+        use rune::{Key, KeyEvent, Mods};
+
+        let mut runtime = runtime();
+        runtime.on_key = Some(app_key);
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.grid.focus(), (0, 0));
+
+        let key = |runtime: &mut rune::Runtime<AppState>, key: Key| {
+            runtime.key(KeyEvent { key, mods: Mods::default() });
+            runtime.frame(0.0);
+        };
+
+        // PageDown jumps a loaded page of rows, clamped to the boundary.
+        key(&mut runtime, Key::PageDown);
+        assert_eq!(runtime.state.grid.focus(), (24, 0), "one page down lands on the last row");
+        key(&mut runtime, Key::PageDown);
+        assert_eq!(runtime.state.grid.focus(), (24, 0), "the clamp keeps the focus inside the model");
+
+        // PageUp goes back a page.
+        key(&mut runtime, Key::PageUp);
+        assert_eq!(runtime.state.grid.focus(), (0, 0));
+
+        // End is the row's last column; Home is the first again.
+        key(&mut runtime, Key::End);
+        let (_, cols) = {
+            let grid = &runtime.state.grid;
+            (grid.rows, grid.cols)
+        };
+        assert_eq!(runtime.state.grid.focus(), (0, cols - 1), "End is the last column");
+        key(&mut runtime, Key::Home);
+        assert_eq!(runtime.state.grid.focus(), (0, 0), "Home is the first column");
+
+        // After every move the focus is still inside the grid's model.
+        let (rows, cols) = {
+            let grid = &runtime.state.grid;
+            (grid.rows, grid.cols)
+        };
+        let (r, c) = runtime.state.grid.focus();
+        assert!(r < rows && c < cols, "the focus stays in the model");
+    }
+
+    #[test]
     fn a_chinese_grid_cell_is_not_a_box_under_the_apps_fonts() {
         // The grid runs under the app's font pool; a Chinese cell value
         // renders with the glyphs the pool shaped above, not fallback boxes.
