@@ -33,8 +33,8 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | B7 | 已完成 | bcfc0a8 | testing/B7-read-only.md |
 | B8 | 已完成 | f4b5d2e | testing/B8-result-grid.md |
 | Q1 | 已完成 | 9f73f2f | testing/Q1-undo-redo.md |
-| Q2 | 进行中 | | |
-| Q3 | 未开始 | | |
+| Q2 | 已完成 | df65321 | testing/Q2-find-replace.md |
+| Q3 | 进行中 | | |
 | Q4 | 未开始 | | |
 | Q5 | 未开始 | | |
 | Q6 | 未开始 | | |
