@@ -292,6 +292,8 @@ export const config: WebdriverIO.Config = {
     ],
     // Manual screenshot / demo capture — legacy combined suite
     screenshots: ['./specs/zz-screenshots.ts', './specs/demo-recording.ts'],
+    // Data-browsing release screenshots (output: e2e/screenshots/data-browsing). Use with --capture.
+    'data-browsing-shots': ['./specs/data-browsing-screenshots.ts'],
     // Site/marketing screenshot captures (output: e2e/screenshots/site). Use with --capture.
     'site-shots': [
       './specs/zz-screenshots.ts',

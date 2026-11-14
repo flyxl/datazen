@@ -102,6 +102,10 @@ const pack = {
     'Un ensemble de {count} requêtes est en cours dans cet onglet. Le fermer quand même ?',
   'query.resultEditRequiresRefresh':
     'Réexécutez la requête avant de modifier ce résultat conservé.',
+  'query.resultEditCommitted':
+    'Modifications validées. Vous pouvez continuer à modifier ce résultat.',
+  'query.resultEditCommitRetryHint':
+    'Échec de la validation. Consultez l’erreur ; si les lignes cibles ont changé ou si la session n’est plus valide, réexécutez la requête puis réessayez.',
   'query.session.openNew': 'Ouvrir une nouvelle session',
   'query.session.disconnected': 'La connexion a été perdue. Rouvrez une session pour continuer.',
   'query.session.executionFailed': 'La requête a échoué : {message}',

@@ -190,6 +190,12 @@ interface PanelActions {
     value: unknown,
     paneId?: string,
   ) => Promise<void>;
+  updateResultCells: (
+    panelId: string,
+    resultIdx: number,
+    edits: Array<{ row: number; col: string; value: unknown }>,
+    paneId?: string,
+  ) => Promise<void>;
   setChartConfig: (panelId: string, config: ChartConfig, paneId?: string) => void;
   setResultViewMode: (panelId: string, mode: 'table' | 'chart', paneId?: string) => void;
 
@@ -597,32 +603,65 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
 
   /** The **narrow** channel's write path — see `panelResultEdit` for the channels. */
   updateResultCell: async (panelId, resultIdx, row, col, value, paneId) => {
+    await get().updateResultCells(panelId, resultIdx, [{ row, col, value }], paneId);
+  },
+
+  updateResultCells: async (panelId, resultIdx, edits, paneId) => {
     const key = paneKey(panelId, paneId);
     const exec = get().queryExec.get(key);
     if (!exec) return;
     const original = exec.results[resultIdx];
+    if (!edits.length) return;
     if (resultWriteInflight.has(key)) throw new Error('A result edit is already in progress');
     resultWriteInflight.add(key);
     try {
-      // Refusals go through the error handler below, so they reach the user.
       if (!original?.runtimeBinding || original.source?.writableMapping !== 'verified')
         throw new Error('Result is read-only; execute the query again');
-      const columnIndex = original.columns.findIndex((column) => column.name === col);
-      if (columnIndex < 0 || !original.rows[row]) throw new Error('Result cell unavailable');
-      if (JSON.stringify(original.rows[row][columnIndex]) === JSON.stringify(value)) return;
-      // The write goes through the bound `BackendClient` so the desktop and a
-      // browser build take the same command path. The binding travels with the
-      // request: the backend refuses a result whose runtime resource is gone
-      // instead of writing through some other handle.
-      const cellValue = toTableValue(value);
-      if (cellValue === undefined) throw new Error('Result cell value is not sendable');
-      await useBackendClient().commitQueryResultCell({
-        binding: original.runtimeBinding,
-        statementIndex: original.source.statementIndex,
-        rowIndex: row,
-        column: col,
-        value: cellValue,
-      });
+      // Commit staged edits sequentially against the same immutable execution
+      // binding, but invalidate the binding only once at the end so the whole
+      // explicit-commit action can succeed.
+      for (const edit of edits) {
+        const currentExec = get().queryExec.get(key);
+        const currentResult = currentExec?.results[resultIdx];
+        if (!currentResult || currentResult.runtimeBinding !== original.runtimeBinding) {
+          throw new Error('Result is read-only; execute the query again');
+        }
+        const columnIndex = currentResult.columns.findIndex((column) => column.name === edit.col);
+        if (columnIndex < 0 || !currentResult.rows[edit.row]) {
+          throw new Error('Result cell unavailable');
+        }
+        if (
+          JSON.stringify(currentResult.rows[edit.row][columnIndex]) === JSON.stringify(edit.value)
+        ) {
+          continue;
+        }
+        const cellValue = toTableValue(edit.value);
+        if (cellValue === undefined) throw new Error('Result cell value is not sendable');
+        await useBackendClient().commitQueryResultCell({
+          binding: original.runtimeBinding,
+          statementIndex: original.source.statementIndex,
+          rowIndex: edit.row,
+          column: edit.col,
+          value: cellValue,
+        });
+        // Reflect committed value locally but keep binding valid for the rest of
+        // this batch; the binding is invalidated once after the batch.
+        const after = get().queryExec.get(key);
+        if (!after) throw new Error('Result is read-only; execute the query again');
+        const results = after.results.map((r, ri) => {
+          if (ri !== resultIdx) return r;
+          const colIdx = r.columns.findIndex((c) => c.name === edit.col);
+          if (colIdx === -1) return r;
+          const rows = r.rows.map((rowArr, rowI) => {
+            if (rowI !== edit.row) return rowArr;
+            const next = [...rowArr];
+            next[colIdx] = edit.value as Value;
+            return next;
+          });
+          return { ...r, rows, runtimeBinding: original.runtimeBinding };
+        });
+        set((s) => ({ queryExec: patchExec(s.queryExec, key, { results }) }));
+      }
     } catch (error) {
       set((state) => ({
         queryExec: patchExec(state.queryExec, key, {
@@ -633,23 +672,11 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     } finally {
       resultWriteInflight.delete(key);
     }
-    // Retained artifacts are immutable. This edited snapshot requires a fresh
-    // explicit query before another edit; never replay arbitrary original SQL.
+    // Keep the runtime binding so the same live result can be edited again
+    // (Navicat-like). Subsequent writes are still guarded by backend binding/
+    // session/context checks and will fail if the session or target changes.
     const current = get().queryExec.get(key);
     if (!current || current.results[resultIdx]?.runtimeBinding !== original.runtimeBinding) return;
-    const results = current.results.map((r, ri) => {
-      if (ri !== resultIdx) return r;
-      const colIdx = r.columns.findIndex((c) => c.name === col);
-      if (colIdx === -1) return r;
-      const rows = r.rows.map((rowArr, rowI) => {
-        if (rowI !== row) return rowArr;
-        const next = [...rowArr];
-        next[colIdx] = value as Value;
-        return next;
-      });
-      return { ...r, rows, runtimeBinding: null };
-    });
-    set((s) => ({ queryExec: patchExec(s.queryExec, key, { results }) }));
   },
 
   setChartConfig: (panelId, config, paneId) => {

@@ -101,6 +101,10 @@ const pack = {
     'Esta aba tem {count} consultas em execução. Fechar mesmo assim?',
   'query.resultEditRequiresRefresh':
     'Execute a consulta novamente antes de editar este resultado retido.',
+  'query.resultEditCommitted':
+    'Alterações confirmadas. Você pode continuar editando este resultado.',
+  'query.resultEditCommitRetryHint':
+    'Falha ao confirmar. Verifique o erro; se as linhas de destino foram alteradas ou a sessão não for mais válida, execute a consulta novamente e tente de novo.',
   'query.session.openNew': 'Abrir nova sessão',
   'query.session.disconnected': 'A conexão foi perdida. Reabra uma sessão para continuar.',
   'query.session.executionFailed': 'A consulta falhou: {message}',

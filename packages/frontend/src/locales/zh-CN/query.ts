@@ -98,6 +98,9 @@ const pack = {
   'query.session.closeTabActiveExecutionConfirm': '停止并关闭',
   'query.session.closeTabActiveExecutionMany': '此标签页有 {count} 个查询正在运行。仍要关闭吗？',
   'query.resultEditRequiresRefresh': '请先重新执行查询，再编辑这个保留的结果。',
+  'query.resultEditCommitted': '更改已提交，仍可继续编辑此结果。',
+  'query.resultEditCommitRetryHint':
+    '提交失败。请查看错误信息；如果目标数据已变化或会话已失效，请重新执行查询后再试。',
   'query.session.openNew': '打开新会话',
   'query.session.disconnected': '连接已断开。请重新打开会话以继续。',
   'query.session.executionFailed': '查询失败：{message}',

@@ -152,8 +152,8 @@ describe('the result find bar wiring (DB-14)', () => {
   });
 
   it('replaces the next matching cell through the write path, in the statement coordinates', async () => {
-    const onCellEdit = vi.fn().mockResolvedValue(undefined);
-    render(<ResultTableView result={writableResult()} onCellEdit={onCellEdit} />);
+    const onCommitResultCells = vi.fn().mockResolvedValue(undefined);
+    render(<ResultTableView result={writableResult()} onCommitResultCells={onCommitResultCells} />);
     openBar();
     typeNeedle('acme');
     fireEvent.change(screen.getByTestId('result-find-replacement'), {
@@ -161,14 +161,18 @@ describe('the result find bar wiring (DB-14)', () => {
     });
 
     fireEvent.click(screen.getByTestId('result-find-replace-next'));
+    expect(screen.getByTestId('pending-changes-bar')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('pending-commit'));
 
-    await waitFor(() => expect(onCellEdit).toHaveBeenCalled());
-    expect(onCellEdit).toHaveBeenCalledWith(0, 'name', 'acorp corp');
+    await waitFor(() => expect(onCommitResultCells).toHaveBeenCalled());
+    expect(onCommitResultCells).toHaveBeenCalledWith([
+      { row: 0, column: 'name', value: 'acorp corp' },
+    ]);
   });
 
   it('replaces every matching cell, one write each, in row order', async () => {
-    const onCellEdit = vi.fn().mockResolvedValue(undefined);
-    render(<ResultTableView result={writableResult()} onCellEdit={onCellEdit} />);
+    const onCommitResultCells = vi.fn().mockResolvedValue(undefined);
+    render(<ResultTableView result={writableResult()} onCommitResultCells={onCommitResultCells} />);
     openBar();
     typeNeedle('acme');
     fireEvent.change(screen.getByTestId('result-find-replacement'), {
@@ -176,31 +180,41 @@ describe('the result find bar wiring (DB-14)', () => {
     });
 
     fireEvent.click(screen.getByTestId('result-find-replace-all'));
+    expect(screen.getByTestId('pending-changes-bar')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId('pending-changes-bar').textContent).toContain('"count":2'),
+    );
+    fireEvent.click(screen.getByTestId('pending-commit'));
 
-    // Two cells hold the needle: row 0 and row 2, both in `name`.
-    await waitFor(() => expect(onCellEdit).toHaveBeenCalledTimes(2));
-    expect(onCellEdit).toHaveBeenNthCalledWith(1, 0, 'name', 'acorp corp');
-    expect(onCellEdit).toHaveBeenNthCalledWith(2, 2, 'name', 'acorp and acorp again');
-    // Row 1 holds no match and stays untouched.
-    expect(onCellEdit).not.toHaveBeenCalledWith(1, expect.anything(), expect.anything());
+    // Two cells hold the needle: row 0 and row 2, both in `name`, committed in one action.
+    await waitFor(() => expect(onCommitResultCells).toHaveBeenCalledTimes(1));
+    expect(onCommitResultCells).toHaveBeenCalledWith([
+      { row: 0, column: 'name', value: 'acorp corp' },
+      { row: 2, column: 'name', value: 'acorp and acorp again' },
+    ]);
   });
 
-  it('translates the grid write back to the statement row under a filter', () => {
-    const onCellEdit = vi.fn().mockResolvedValue(undefined);
-    render(<ResultTableView result={writableResult()} onCellEdit={onCellEdit} />);
+  it('translates the grid write back to the statement row under a filter', async () => {
+    const onCommitResultCells = vi.fn().mockResolvedValue(undefined);
+    render(<ResultTableView result={writableResult()} onCommitResultCells={onCommitResultCells} />);
     openBar();
     // Only row 3 (`acme and acme again`) matches 'again', so the grid's
     // first visible row IS the statement's third row.
     typeNeedle('again');
 
     fireEvent.click(screen.getByTestId('mock-commit'));
+    expect(screen.getByTestId('pending-changes-bar')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('pending-commit'));
 
-    expect(onCellEdit).toHaveBeenCalledWith(2, 'name', 'written');
+    await waitFor(() => expect(onCommitResultCells).toHaveBeenCalled());
+    expect(onCommitResultCells).toHaveBeenCalledWith([
+      { row: 2, column: 'name', value: 'written' },
+    ]);
   });
 
   it('hides the replace row in Safe Mode and says why', () => {
     settingsState.safeMode = true;
-    render(<ResultTableView result={writableResult()} onCellEdit={vi.fn()} />);
+    render(<ResultTableView result={writableResult()} onCommitResultCells={vi.fn()} />);
     openBar();
 
     expect(screen.queryByTestId('result-find-replacement')).toBeNull();

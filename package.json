@@ -117,6 +117,7 @@
     "e2e:serial": "node e2e/run.mjs --serial",
     "e2e:serial:skip-build": "node e2e/run.mjs --skip-build --serial",
     "e2e:shots:pro": "node e2e/run.mjs --pro --skip-build --capture -- --suite pro-screenshots",
+    "e2e:shots:data-browsing": "node e2e/run.mjs --skip-build --capture -- --suite data-browsing-shots",
     "e2e:demo:build": "bash e2e/record-demo.sh",
     "e2e:assets:sync": "node scripts/sync-e2e-assets.mjs --all",
     "e2e:shots:sync": "node scripts/sync-e2e-assets.mjs --shots",

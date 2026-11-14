@@ -325,9 +325,12 @@ export function FavoriteNameDialog({
 
 export interface QueryResultsPaneProps {
   publishedArtifacts?: QueryResultArtifacts;
-  onCellEdit?: (row: number, column: string, value: unknown) => Promise<void>;
+  onCommitResultCells?: (
+    edits: Array<{ row: number; column: string; value: unknown }>,
+  ) => Promise<void>;
   dbSessionId: string;
   databaseType?: string;
+  connectionId?: string;
   sql: string;
   running: boolean;
   error: string | null | undefined;
@@ -339,6 +342,7 @@ export interface QueryResultsPaneProps {
   resultDetailRowIndex: number | null | undefined;
   queryResultExportCapability: DataExportCapability;
   selectedDatabase?: string | null;
+  selectedSchema?: string | null;
   showExplain: boolean;
   explainLoading: boolean;
   explainError: string | null;
@@ -360,15 +364,15 @@ export interface QueryResultsPaneProps {
   onDiagnosisVisible: (visible: boolean) => void;
   onAddToDashboardOpen: (open: boolean) => void;
   onAddToDashboardConfirm: (dashboardId: string, newName?: string) => void;
-  /** S6-A: Send sanitized error context to AI Chat as a draft. */
   onAskInChat?: () => void;
 }
 
 export function QueryResultsPane({
   publishedArtifacts,
-  onCellEdit,
+  onCommitResultCells,
   dbSessionId,
   databaseType,
+  connectionId,
   sql,
   running,
   error,
@@ -380,6 +384,7 @@ export function QueryResultsPane({
   resultDetailRowIndex,
   queryResultExportCapability,
   selectedDatabase,
+  selectedSchema,
   showExplain,
   explainLoading,
   explainError,
@@ -592,11 +597,15 @@ export function QueryResultsPane({
                   cellTypeHints={
                     databaseType ? DB_REGISTRY[databaseType as DatabaseType]?.cellTypes : undefined
                   }
-                  onCellEdit={running ? undefined : onCellEdit}
+                  onCommitResultCells={running ? undefined : onCommitResultCells}
                   view={running ? 'table' : resultViewMode}
                   chartConfig={chartConfig}
                   rowDetailIndex={resultDetailRowIndex}
                   dataExportCapability={queryResultExportCapability}
+                  connectionId={connectionId}
+                  driverType={databaseType}
+                  database={selectedDatabase ?? null}
+                  schema={selectedSchema ?? null}
                   headerActions={
                     <>
                       {resultViewMode === 'chart' && chartConfig && (

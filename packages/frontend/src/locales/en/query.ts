@@ -108,6 +108,9 @@ const pack = {
   'query.session.closeTabActiveExecutionMany':
     'This tab has {count} running queries. Close it anyway?',
   'query.resultEditRequiresRefresh': 'Execute the query again before editing this retained result.',
+  'query.resultEditCommitted': 'Changes committed. You can continue editing this result.',
+  'query.resultEditCommitRetryHint':
+    'Commit failed. Review the error; if the target rows changed or the session is no longer valid, re-run the query and try again.',
   'query.session.openNew': 'Open new session',
   'query.session.disconnected': 'The connection was lost. Re-open a session to continue.',
   'query.session.executionFailed': 'The query failed: {message}',

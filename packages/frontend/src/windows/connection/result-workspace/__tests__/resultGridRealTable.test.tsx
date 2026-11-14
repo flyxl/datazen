@@ -110,7 +110,11 @@ function verifiedResult(): StatementResult {
 
 /** The editors the grid body rendered. */
 function editors(container: HTMLElement): HTMLElement[] {
-  return Array.from(container.querySelectorAll('[data-testid="data-table-cell"] input, [data-testid="data-table-cell"] textarea'));
+  return Array.from(
+    container.querySelectorAll(
+      '[data-testid="data-table-cell"] input, [data-testid="data-table-cell"] textarea',
+    ),
+  );
 }
 
 function readOnlyReason(container: HTMLElement): string | null {
@@ -184,7 +188,7 @@ describe('the real result grid', () => {
       <ResultTableView
         result={verifiedResult()}
         writeBackKey="session-1#0"
-        onCellEdit={onCellEdit}
+        onCommitResultCells={onCellEdit}
       />,
     );
 
@@ -205,7 +209,7 @@ describe('the real result grid', () => {
       <ResultTableView
         result={result()}
         writeBackKey="session-1#0"
-        onCellEdit={onCellEdit}
+        onCommitResultCells={onCellEdit}
       />,
     );
 
@@ -235,7 +239,7 @@ describe('the real result grid', () => {
       <ResultTableView
         result={nullableKeyResult()}
         writeBackKey="session-1#0"
-        onCellEdit={onCellEdit}
+        onCommitResultCells={onCellEdit}
       />,
     );
 
@@ -248,7 +252,9 @@ describe('the real result grid', () => {
     expect(editors(container)).toHaveLength(0);
     // And the reason is not swallowed.
     expect(
-      container.querySelector('[data-dt-grid-row-refusal]')?.getAttribute('data-dt-grid-row-refusal'),
+      container
+        .querySelector('[data-dt-grid-row-refusal]')
+        ?.getAttribute('data-dt-grid-row-refusal'),
     ).toBe('keyValueNull');
     expect(onCellEdit).not.toHaveBeenCalled();
   });
@@ -259,7 +265,7 @@ describe('the real result grid', () => {
       <ResultTableView
         result={result()}
         writeBackKey="session-1#0"
-        onCellEdit={onCellEdit}
+        onCommitResultCells={onCellEdit}
       />,
     );
 

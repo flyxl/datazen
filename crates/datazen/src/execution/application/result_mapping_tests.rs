@@ -64,8 +64,6 @@ fn accepts_quoted_and_multi_part_names() {
 #[test]
 fn rejects_non_wildcard_or_extra_select_forms() {
     rejects("UPDATE users SET id = 1");
-    rejects("SELECT id FROM users");
-    rejects("SELECT a, b FROM users");
     rejects("SELECT * FROM users u JOIN orders o ON u.id = o.user_id");
     rejects("SELECT * FROM users WHERE id = 1");
     rejects("SELECT * FROM a.b.c.d");
@@ -74,6 +72,11 @@ fn rejects_non_wildcard_or_extra_select_forms() {
     rejects("INSERT INTO users VALUES (1)");
     rejects("");
     rejects("* FROM users");
+    // 表达式/别名/限定列名等非直接列投影仍拒绝（需更强来源证明）。
+    rejects("SELECT id AS user_id FROM users");
+    rejects("SELECT users.id FROM users");
+    rejects("SELECT count(*) FROM users");
+    rejects("SELECT id, FROM users");
 }
 
 #[test]
@@ -170,18 +173,10 @@ fn verify_accepts_null_schema_as_unnamed_namespace() {
 
 #[test]
 fn verify_rejects_column_shape_mismatch() {
-    // 列名不一致。
+    // 列名不一致（非基表列）。
     assert!(verify_result_mapping(
         ConnectionId::new("c"),
         &columns(&["id", "other"]),
-        &pk_schema(),
-        &resolved()
-    )
-    .is_none());
-    // 列数不一致。
-    assert!(verify_result_mapping(
-        ConnectionId::new("c"),
-        &columns(&["id"]),
         &pk_schema(),
         &resolved()
     )
@@ -198,6 +193,36 @@ fn verify_rejects_column_shape_mismatch() {
     assert!(verify_result_mapping(
         ConnectionId::new("c"),
         &columns(&["id", "id"]),
+        &pk_schema(),
+        &resolved()
+    )
+    .is_none());
+}
+
+#[test]
+fn verify_accepts_direct_projection_subset_when_primary_key_present() {
+    // 显式投影子集：只要都是基表直列且包含主键，即可定位并写回非主键列。
+    let target = verify_result_mapping(
+        ConnectionId::new("conn-1"),
+        &columns(&["name", "id"]),
+        &pk_schema(),
+        &resolved(),
+    )
+    .expect("mapping verified for projected subset");
+    assert_eq!(
+        target
+            .object
+            .as_ref()
+            .map(|o| (o.kind.as_str(), o.name.as_str())),
+        Some(("relation", "users"))
+    );
+}
+
+#[test]
+fn verify_rejects_projection_missing_primary_key_column() {
+    assert!(verify_result_mapping(
+        ConnectionId::new("c"),
+        &columns(&["name"]),
         &pk_schema(),
         &resolved()
     )

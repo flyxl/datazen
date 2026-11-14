@@ -94,6 +94,9 @@ const pack = {
   'query.session.closeTabActiveExecutionConfirm': '停止並關閉',
   'query.session.closeTabActiveExecutionMany': '此分頁有 {count} 個查詢正在執行。仍要關閉嗎？',
   'query.resultEditRequiresRefresh': '請先重新執行查詢，再編輯這個保留的結果。',
+  'query.resultEditCommitted': '變更已提交，仍可繼續編輯此結果。',
+  'query.resultEditCommitRetryHint':
+    '提交失敗。請檢視錯誤訊息；如果目標資料已變更或工作階段已失效，請重新執行查詢後再試。',
   'query.session.openNew': '開啟新的工作階段',
   'query.session.disconnected': '連線已中斷。請重新開啟工作階段以繼續。',
   'query.session.executionFailed': '查詢失敗：{message}',

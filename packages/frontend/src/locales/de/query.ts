@@ -183,6 +183,10 @@ const pack = {
     'In diesem Tab laufen {count} Abfragen. Trotzdem schließen?',
   'query.resultEditRequiresRefresh':
     'Führen Sie die Abfrage erneut aus, bevor Sie dieses beibehaltene Ergebnis bearbeiten.',
+  'query.resultEditCommitted':
+    'Änderungen übernommen. Sie können dieses Ergebnis weiter bearbeiten.',
+  'query.resultEditCommitRetryHint':
+    'Commit fehlgeschlagen. Prüfen Sie den Fehler; wenn sich Zieldaten geändert haben oder die Sitzung ungültig ist, führen Sie die Abfrage erneut aus und versuchen Sie es noch einmal.',
   'query.session.openNew': 'Neue Sitzung öffnen',
   'query.session.disconnected':
     'Die Verbindung wurde unterbrochen. Öffnen Sie erneut eine Sitzung, um fortzufahren.',

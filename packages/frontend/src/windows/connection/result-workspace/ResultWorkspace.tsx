@@ -13,9 +13,10 @@ import { ResultTableView } from './ResultTableView';
 import { resolveResultWorkspaceView, type ResultWorkspaceView } from './resultWorkspaceHelpers';
 
 export interface ResultWorkspaceProps {
-  /** The active statement only; selecting a statement remains a caller concern. */
   result?: StatementResult | null;
-  onCellEdit?: (row: number, column: string, value: unknown) => Promise<void>;
+  onCommitResultCells?: (
+    edits: Array<{ row: number; column: string; value: unknown }>,
+  ) => Promise<void>;
   view: ResultWorkspaceView;
   chartConfig?: ChartConfig | null;
   rowDetailIndex?: number | null;
@@ -23,24 +24,13 @@ export interface ResultWorkspaceProps {
   onViewChange?: (view: ResultWorkspaceView) => void;
   onChartConfigChange?: (config: ChartConfig) => void;
   onRowDetail?: (rowIndex: number) => void;
-  /** Driver export capability; query results hide export when `none`. */
   dataExportCapability?: DataExportCapability;
-  /**
-   * The key the write-back verdict of this result is stored under. The grid
-   * reads the verdict through it; the drawer fetches it.
-   */
   writeBackKey?: string | null;
-  /**
-   * The driver's own column-type declaration, read from the same source as the
-   * table panel and the row-detail drawer: `DB_REGISTRY[databaseType]
-   * ?.cellTypes`.
-   */
   cellTypeHints?: CellTypeHints;
-  /**
-   * Optional action button(s) rendered on the right side of the view-toggle
-   * toolbar row (e.g. export). Placed here so the button shares vertical space
-   * with the "表格 / 图表" tabs instead of occupying its own row.
-   */
+  connectionId?: string;
+  driverType?: string;
+  database?: string | null;
+  schema?: string | null;
   headerActions?: React.ReactNode;
   className?: string;
 }
@@ -55,7 +45,7 @@ export interface ResultWorkspaceProps {
  */
 export function ResultWorkspace({
   result,
-  onCellEdit,
+  onCommitResultCells,
   view,
   chartConfig,
   rowDetailIndex = null,
@@ -66,6 +56,10 @@ export function ResultWorkspace({
   dataExportCapability,
   writeBackKey,
   cellTypeHints,
+  connectionId,
+  driverType,
+  database,
+  schema,
   headerActions,
   className,
 }: ResultWorkspaceProps) {
@@ -167,12 +161,16 @@ export function ResultWorkspace({
       {resolution.view === 'table' ? (
         <ResultTableView
           result={result}
-          onCellEdit={onCellEdit}
+          onCommitResultCells={onCommitResultCells}
           rowDetailIndex={rowDetailIndex}
           onRowDetail={handleRowDetail}
           dataExportCapability={dataExportCapability}
           writeBackKey={writeBackKey}
           cellTypeHints={cellTypeHints}
+          connectionId={connectionId}
+          driverType={driverType}
+          database={database}
+          schema={schema}
         />
       ) : (
         <ChartView

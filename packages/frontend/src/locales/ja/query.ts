@@ -101,6 +101,9 @@ const pack = {
     'このタブには {count} 件の実行中のクエリがあります。それでも閉じますか？',
   'query.resultEditRequiresRefresh':
     'この保持された結果を編集する前に、もう一度クエリを実行してください。',
+  'query.resultEditCommitted': '変更をコミットしました。この結果を引き続き編集できます。',
+  'query.resultEditCommitRetryHint':
+    'コミットに失敗しました。エラーを確認してください。対象データが変更されたかセッションが無効な場合は、クエリを再実行してから再試行してください。',
   'query.session.openNew': '新しいセッションを開く',
   'query.session.disconnected': '接続が失われました。続行するにはセッションを開き直してください。',
   'query.session.executionFailed': 'クエリが失敗しました: {message}',

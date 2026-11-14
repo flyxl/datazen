@@ -282,10 +282,13 @@ export function TableHeader({
                 type="button"
                 data-sort-menu
                 data-sort-state={sorted}
+                draggable={false}
                 className={cn(
                   'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm transition-colors hover:bg-surface-raised',
                   sorted === 'none' ? 'text-fg-muted' : 'text-accent',
                 )}
+                onPointerDown={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => openSortMenu(e, col.name, sorted)}
                 aria-label={t('dataTable.sortMenuLabel')}
                 title={t('dataTable.sortMenuLabel')}

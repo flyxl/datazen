@@ -36,14 +36,12 @@ import {
   planResultReplacements,
   type ResultFindQuery,
 } from '../../../lib/resultFindReplace';
+import type { DirtyRowEntry } from '../../../stores/tableData/dirtyIndex';
+import { TablePendingChangesBar } from '../TablePendingChangesBar';
+import { PendingPlanDialog } from '../PendingPlanDialog';
+import { queryCommands } from '../../../commands/query';
+import type { ResultCellChangeRequest, RowChangePlan } from '@datazen/backend-client';
 
-/**
- * The verdict of a result nobody has judged yet.
- *
- * "Not judged" is read-only: a permission that has not been granted is not a
- * permission. The reason is "the origin is unknown", which is what the user
- * is told until the back end answers.
- */
 const UNJUDGED: ServerEditability = {
   writable: false,
   identityColumns: [],
@@ -52,55 +50,45 @@ const UNJUDGED: ServerEditability = {
   reason: 'unknownOrigin',
 };
 
+type PendingEdit = { row: number; column: string; original: unknown; value: unknown };
+const editKey = (row: number, column: string) => `${row}\u0000${column}`;
+
 export interface ResultTableViewProps {
   result: StatementResult;
-  onCellEdit?: (row: number, column: string, value: unknown) => Promise<void>;
+  /** Commit staged cell edits in one explicit action. */
+  onCommitResultCells?: (
+    edits: Array<{ row: number; column: string; value: unknown }>,
+  ) => Promise<void>;
   rowDetailIndex?: number | null;
   onRowDetail?: (rowIndex: number) => void;
   dataExportCapability?: DataExportCapability;
-  /**
-   * The key the write-back verdict of this result is stored under.
-   *
-   * The grid does not fetch the verdict itself: the row-detail drawer does,
-   * and both surfaces share one key so the answer is fetched once. Without the
-   * key the grid falls back to the narrow verdict it always had.
-   */
   writeBackKey?: string | null;
-  /**
-   * The driver's own column-type declaration.
-   *
-   * The **same** declaration the table panel and the row-detail drawer read:
-   * `DB_REGISTRY[databaseType]?.cellTypes`. A MySQL `tinyint(1)` column is a
-   * boolean in the grid's header and cells, in the drawer and in the table
-   * panel — one declaration, one answer, three surfaces.
-   */
   cellTypeHints?: CellTypeHints;
+  /** Context for preview/commit planning of result-cell changes. */
+  connectionId?: string;
+  driverType?: string;
+  database?: string | null;
+  schema?: string | null;
 }
 
-/** Read-only DataTable adapter for query results.
- *
- * This intentionally does not use TableView: TableView owns database-backed
- * table loading and would create a second query path for an already available
- * StatementResult.
- */
+/** Query-result grid with staged (preview/commit/rollback) cell edits. */
 export function ResultTableView({
   result,
-  onCellEdit,
+  onCommitResultCells,
   rowDetailIndex = null,
   onRowDetail,
   dataExportCapability,
   writeBackKey = null,
   cellTypeHints,
+  connectionId,
+  driverType,
+  database,
+  schema,
 }: ResultTableViewProps) {
   const { t } = useI18n();
   const queryResultLimit = useSettingsStore((s) => s.settings.queryResultLimit);
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
-  // Value presentation (issue-32 T06): query results have no table source,
-  // so no column overrides apply — the snapshot only carries the global
-  // renderer config, same as the table grid.
   const presentationSnapshot = useValuePresentationSnapshot();
-  /* ── Grid appearance (DB-17), same four as the table grid. The result grid's
-     own default is 32px — the density shifts it, `standard` leaves it be. ── */
   const gridDensity = useSettingsStore((s) => s.settings.gridDensity ?? DEFAULT_GRID_DENSITY);
   const gridAlternatingRows = useSettingsStore(
     (s) => s.settings.gridAlternatingRows ?? DEFAULT_GRID_ALTERNATING_ROWS,
@@ -111,53 +99,36 @@ export function ResultTableView({
   const gridAutoHideScrollbar = useSettingsStore(
     (s) => s.settings.gridAutoHideScrollbar ?? DEFAULT_GRID_AUTO_HIDE_SCROLLBAR,
   );
-  /** The result grid's row height under the density setting: 32 + delta. */
   const gridRowHeight = rowHeightForDensity(32, gridDensity);
   const [editError, setEditError] = useState<string | null>(null);
+  const [editErrorHint, setEditErrorHint] = useState<string | null>(null);
+  const [commitNotice, setCommitNotice] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
-  /* ── The in-result find and replace (DB-14). The bar filters the loaded
-     rows; a replacement writes through the result's own per-cell path. ── */
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState<ResultFindQuery>(EMPTY_RESULT_FIND_QUERY);
   const [findReplacement, setFindReplacement] = useState('');
-  /**
-   * Why the last clicked row refused to open an editor.
-   *
-   * A row-level refusal is not a silent one: the grid says which row could
-   * not be addressed and why (its locating key is NULL, or its identity is
-   * not unique on the page).
-   */
   const [rowRefusal, setRowRefusal] = useState<GridReadOnlyReason | null>(null);
+  const [pendingEdits, setPendingEdits] = useState<Map<string, PendingEdit>>(new Map());
+  const [pendingBusy, setPendingBusy] = useState(false);
+  const [previewPlan, setPreviewPlan] = useState<RowChangePlan | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const { verdict } = useResultVerdict(writeBackKey);
   const serverVerdict = verdict ?? UNJUDGED;
-  // The narrow host-side mapping verdict: it recognises `SELECT * FROM
-  // <relation>` and the write path re-verifies it against the live catalog.
   const legacyVerified = result.source?.writableMapping === 'verified' && !!result.runtimeBinding;
-  // The grid is editable when **either** verdict says so. The origin verdict
-  // may only grant write-back while the release channel is open — see
-  // `resolveResultWriteBack`.
-  // Whether the **result** may be written back at all. Safe Mode is a
-  // setting the user chose, not a fact about the result, so it does not
-  // decide the reason.
   const resultWritable = resolveResultWriteBack(legacyVerified, serverVerdict);
-  const canEdit = !safeMode && !!onCellEdit && resultWritable;
-  /**
-   * Why the grid cannot be edited, when the **result** cannot be written
-   * back.
-   *
-   * A read-only grid always says why: a grid that is simply grey is the
-   * "unresponsive cell" the contract forbids.
-   */
+  const canEdit = !safeMode && !!onCommitResultCells && resultWritable;
   const readOnlyReason = resultWritable ? null : (verdict?.reason ?? 'unknownOrigin');
-  // A visible result outlives its physical session. Do not keep an input alive
-  // across retirement/replacement, or revive it for a newly queried result.
+
   useEffect(() => {
     setEditingCell(null);
     setEditError(null);
-    // The find is a view over loaded rows: a new result is new rows, so the
-    // query resets rather than silently filtering data it never saw.
+    setEditErrorHint(null);
+    setCommitNotice(null);
     setFindQuery(EMPTY_RESULT_FIND_QUERY);
+    setPendingEdits(new Map());
+    setPreviewPlan(null);
+    setPreviewOpen(false);
   }, [
     canEdit,
     result.runtimeBinding?.executionId,
@@ -177,21 +148,26 @@ export function ResultTableView({
     [result.columns],
   );
 
-  /**
-   * The find bar's view of the loaded rows (DB-14): the rows the filter
-   * keeps, in the statement's own order — and the map back to the
-   * statement's coordinates, because a write always names the row it means,
-   * never the filtered view's.
-   */
   const columnNames = useMemo(() => result.columns.map((column) => column.name), [result.columns]);
   const originalIndexes = useMemo(
     () => filterResultRows(result.rows, columnNames, findQuery),
     [columnNames, findQuery, result.rows],
   );
   const findFiltering = findOpen && findQuery.needle !== '';
+  const baseRows = result.rows;
+  const effectiveRows = useMemo(() => {
+    if (pendingEdits.size === 0) return baseRows;
+    const out = baseRows.map((r) => [...r]);
+    for (const edit of pendingEdits.values()) {
+      const colIdx = columnNames.indexOf(edit.column);
+      if (colIdx >= 0 && out[edit.row]) out[edit.row][colIdx] = edit.value as never;
+    }
+    return out;
+  }, [baseRows, pendingEdits, columnNames]);
+
   const viewRows = useMemo(
-    () => (findFiltering ? originalIndexes.map((index) => result.rows[index]) : result.rows),
-    [findFiltering, originalIndexes, result.rows],
+    () => (findFiltering ? originalIndexes.map((index) => effectiveRows[index]) : effectiveRows),
+    [findFiltering, originalIndexes, effectiveRows],
   );
   const toOriginal = useCallback(
     (viewIndex: number) => (findFiltering ? (originalIndexes[viewIndex] ?? viewIndex) : viewIndex),
@@ -206,12 +182,39 @@ export function ResultTableView({
     },
     [findFiltering, originalIndexes],
   );
-  /** The cells a replace-all would write; empty when the result cannot write. */
+
   const replacePlan = useMemo(
     () =>
-      canEdit ? planResultReplacements(result.rows, columnNames, findQuery, findReplacement) : [],
-    [canEdit, columnNames, findQuery, findReplacement, result.rows],
+      canEdit ? planResultReplacements(effectiveRows, columnNames, findQuery, findReplacement) : [],
+    [canEdit, columnNames, findQuery, findReplacement, effectiveRows],
   );
+
+  const dirtyByRow = useMemo(() => {
+    if (pendingEdits.size === 0) return null;
+    const map = new Map<number, DirtyRowEntry>();
+    for (const edit of pendingEdits.values()) {
+      const existing = map.get(edit.row);
+      const cell = {
+        columnName: edit.column,
+        original: edit.original as any,
+        next: edit.value as any,
+      };
+      if (existing) {
+        existing.changedColumns = [...existing.changedColumns, edit.column];
+        existing.cells = [...existing.cells, cell];
+      } else {
+        map.set(edit.row, {
+          identityKey: String(edit.row),
+          state: 'dirty',
+          changedColumns: [edit.column],
+          cells: [cell],
+        });
+      }
+    }
+    return map;
+  }, [pendingEdits]);
+
+  const pendingCount = pendingEdits.size;
 
   const statusBar = useMemo(
     () => (
@@ -262,22 +265,16 @@ export function ResultTableView({
 
   const handleCellDoubleClick = useCallback(
     (row: number, col: string) => {
-      // Safe Mode blocks in-place edit of query results. The row detail panel
-      // still opens on double-click so the user can inspect the record.
       onRowDetail?.(row);
       if (!canEdit) {
         setEditingCell(null);
         return;
       }
-      // The grid's row is the filtered view's row; every decision below
-      // names the statement's own row.
       const originalRow = toOriginal(row);
-      // The page-level guards are decided for **the row being clicked**: a
-      // NULL key value or a duplicate identity makes that row unaddressable.
       const editability = resolveResultEditability(
         legacyVerified,
         serverVerdict,
-        result.rows,
+        baseRows,
         result.columns,
         originalRow,
       );
@@ -286,29 +283,167 @@ export function ResultTableView({
         setRowRefusal(
           resolveRowAddressability(
             serverVerdict.identityColumns ?? [],
-            result.rows,
+            baseRows,
             result.columns,
-            row,
+            originalRow,
           ),
         );
         return;
       }
       setRowRefusal(null);
-      // A column that is not a straight copy of a base column has no source
-      // to write back to — the back end refuses it with
-      // `grid.result.writeDenied`.
-      //
-      // §1.3 §5 has **no executor on the narrow channel today**: the origin
-      // channel is closed, so no column list exists to check against. The
-      // guard is in place and starts to bite the moment the channel opens.
       if (originChannelWritable(serverVerdict) && !isColumnEditable(serverVerdict, col)) {
         setEditingCell(null);
         return;
       }
       setEditingCell({ row: originalRow, col });
     },
-    [onRowDetail, canEdit, legacyVerified, serverVerdict, result, toOriginal],
+    [onRowDetail, canEdit, legacyVerified, serverVerdict, result, toOriginal, baseRows],
   );
+
+  const stageCellEdit = useCallback(
+    (row: number, column: string, value: unknown) => {
+      const colIdx = columnNames.indexOf(column);
+      if (colIdx < 0) return;
+      const original = baseRows[row]?.[colIdx];
+      const same = JSON.stringify(original) === JSON.stringify(value);
+      setCommitNotice(null);
+      setEditError(null);
+      setEditErrorHint(null);
+      setPendingEdits((prev) => {
+        const next = new Map(prev);
+        const key = editKey(row, column);
+        if (same) next.delete(key);
+        else next.set(key, { row, column, original, value });
+        return next;
+      });
+      setEditingCell(null);
+    },
+    [baseRows, columnNames],
+  );
+
+  const buildPreviewRequest = useCallback(
+    (edit: PendingEdit): ResultCellChangeRequest | null => {
+      const dbSessionId = result.runtimeBinding?.handle.dbSessionId;
+      const relation = result.source?.relation;
+      const tableName = relation?.object?.name ?? verdict?.table?.name;
+      const connId = connectionId ?? relation?.connectionId;
+      const dType = driverType;
+      if (!dbSessionId || !tableName || !connId || !dType) return null;
+      const identityColumns = serverVerdict.identityColumns ?? [];
+      if (identityColumns.length === 0) return null;
+      const rowValues = baseRows[edit.row];
+      if (!rowValues) return null;
+      const rowIdentity: Record<string, any> = {};
+      for (const idCol of identityColumns) {
+        const idx = columnNames.indexOf(idCol.column);
+        if (idx < 0) return null;
+        const v = rowValues[idx];
+        if (v == null) return null;
+        rowIdentity[idCol.sourceColumn] = v;
+      }
+      const editable = (serverVerdict.editableColumns ?? []).find((c) => c.column === edit.column);
+      const sourceColumn = editable?.sourceColumn ?? edit.column;
+      const db = database ?? relation?.namespace?.database ?? null;
+      const sch = schema ?? relation?.namespace?.schema ?? null;
+      return {
+        connectionId: connId,
+        dbSessionId,
+        driverType: dType,
+        database: db,
+        schema: sch,
+        table: tableName,
+        sql: result.sql,
+        resultColumns: columnNames,
+        identityColumns,
+        rowIdentity,
+        column: edit.column,
+        sourceColumn,
+        originalValue: (edit.original as any) ?? null,
+        value: (edit.value as any) ?? null,
+        rowCount: 1,
+      };
+    },
+    [
+      result,
+      verdict,
+      serverVerdict,
+      baseRows,
+      columnNames,
+      connectionId,
+      driverType,
+      database,
+      schema,
+    ],
+  );
+
+  const handlePreview = useCallback(async () => {
+    const edits = [...pendingEdits.values()];
+    if (edits.length === 0) return;
+    setPendingBusy(true);
+    setEditError(null);
+    setEditErrorHint(null);
+    setCommitNotice(null);
+    try {
+      const plans: RowChangePlan[] = [];
+      for (const edit of edits) {
+        const req = buildPreviewRequest(edit);
+        if (!req) throw new Error(t('resultFind.notWritable'));
+        plans.push(await queryCommands.previewResultCellChange(req));
+      }
+      if (plans.length === 1) {
+        setPreviewPlan(plans[0]);
+      } else {
+        const first = plans[0]!;
+        setPreviewPlan({
+          ...first,
+          planId: first.planId,
+          fingerprint: `${first.fingerprint} (+${plans.length - 1})`,
+          updates: plans.flatMap((p) => p.updates ?? []),
+          deletes: plans.flatMap((p) => p.deletes ?? []),
+          inserts: plans.flatMap((p) => p.inserts ?? []),
+          warnings: plans.flatMap((p) => p.warnings ?? []),
+        } as RowChangePlan);
+      }
+      setPreviewOpen(true);
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : String(e));
+      setEditErrorHint(null);
+    } finally {
+      setPendingBusy(false);
+    }
+  }, [pendingEdits, buildPreviewRequest, t]);
+
+  const handleCommit = useCallback(async () => {
+    if (pendingEdits.size === 0 || !onCommitResultCells) return;
+    setPendingBusy(true);
+    setEditError(null);
+    setEditErrorHint(null);
+    setCommitNotice(null);
+    try {
+      const edits = [...pendingEdits.values()].map((e) => ({
+        row: e.row,
+        column: e.column,
+        value: e.value,
+      }));
+      await onCommitResultCells(edits);
+      setPendingEdits(new Map());
+      setPreviewPlan(null);
+      setCommitNotice(t('query.resultEditCommitted'));
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : String(e));
+      setEditErrorHint(t('query.resultEditCommitRetryHint'));
+    } finally {
+      setPendingBusy(false);
+    }
+  }, [pendingEdits, onCommitResultCells, t]);
+
+  const handleRollback = useCallback(() => {
+    setPendingEdits(new Map());
+    setPreviewPlan(null);
+    setEditError(null);
+    setEditErrorHint(null);
+    setCommitNotice(null);
+  }, []);
 
   if (isMutationExecution(result)) {
     return (
@@ -320,13 +455,23 @@ export function ResultTableView({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col" {...tid('result-workspace-table')}>
-      {/* The notices above the grid are chrome the pane's height estimate does
-          not know about: it measures the header, one row and the status bar,
-          so a result that grows a banner squeezes the grid's scroll container
-          to zero and the virtualizer renders no rows at all — the data is on
-          screen nowhere while the status bar says "1 row". The grid therefore
-          keeps a floor and the column scrolls when the pane is too short: a
-          notice may cost the user a scroll, never the rows. */}
+      {pendingCount > 0 && (
+        <TablePendingChangesBar
+          pendingCount={pendingCount}
+          updateCount={pendingCount}
+          deleteCount={0}
+          insertCount={0}
+          busy={pendingBusy}
+          onPreview={() => void handlePreview()}
+          onCommit={() => void handleCommit()}
+          onRollback={handleRollback}
+        />
+      )}
+      <PendingPlanDialog
+        plan={previewPlan}
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+      />
       {findOpen && (
         <ResultFindBar
           columns={columnNames}
@@ -338,8 +483,8 @@ export function ResultTableView({
           totalRows={result.rows.length}
           plan={replacePlan}
           onApplyReplacement={(item) => {
-            if (!onCellEdit) return Promise.reject(new Error(t('resultFind.notWritable')));
-            return onCellEdit(item.row, item.column, item.value);
+            stageCellEdit(item.row, item.column, item.value);
+            return Promise.resolve();
           }}
           canReplace={canEdit}
           replaceReason={safeMode ? t('resultFind.safeMode') : t('resultFind.notWritable')}
@@ -353,8 +498,6 @@ export function ResultTableView({
         className="flex min-h-0 flex-1 flex-col overflow-y-auto"
         data-testid="result-grid-scroll"
         onKeyDown={(event) => {
-          // ⌘/Ctrl+F opens the bar from the grid: the find is a view over the
-          // loaded rows, and the hands should not leave the grid to start it.
           if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
             event.preventDefault();
             setFindOpen(true);
@@ -373,26 +516,30 @@ export function ResultTableView({
             {t(gridReadOnlyMessageKey(rowRefusal))}
           </div>
         )}
+        {commitNotice && (
+          <div data-testid="result-edit-notice" className="p-2 text-sm text-green-500">
+            {commitNotice}
+          </div>
+        )}
         {editError && (
           <div role="alert" className="p-2 text-sm text-red-400">
-            {editError}
+            <div>{editError}</div>
+            {editErrorHint && <div className="mt-1 text-xs text-fg-muted">{editErrorHint}</div>}
           </div>
         )}
         <DataTable
           columns={columnDefs}
           rows={viewRows}
+          dirtyByRow={dirtyByRow as any}
           cellTypeHints={cellTypeHints}
           statusBar={statusBar}
           rowHeight={gridRowHeight}
-          // The grid-appearance settings (DB-17): density above, the rest here.
           alternatingRows={gridAlternatingRows}
           showRowNumbers={gridRowNumbers}
           scrollbarAutoHide={gridAutoHideScrollbar}
           editingCell={
             canEdit && editingCell
-              ? // The stored row is the statement's own; the grid shows the
-                // filtered view, so the cell travels back as the view's row.
-                { row: fromOriginal(editingCell.row) ?? editingCell.row, col: editingCell.col }
+              ? { row: fromOriginal(editingCell.row) ?? editingCell.row, col: editingCell.col }
               : null
           }
           onCellDoubleClick={handleCellDoubleClick}
@@ -402,22 +549,13 @@ export function ResultTableView({
               return;
             }
             setEditError(null);
-            void onCellEdit?.(toOriginal(row), column, value)
-              .then(() => setEditingCell(null))
-              .catch((error: unknown) => {
-                setEditingCell(null);
-                setEditError(error instanceof Error ? error.message : String(error));
-              });
+            stageCellEdit(toOriginal(row), column, value);
           }}
           onCellEditCancel={() => setEditingCell(null)}
           enableSetNull={false}
           onRowClick={(row) => onRowDetail?.(toOriginal(row))}
           highlightedRow={fromOriginal(rowDetailIndex)}
           exportTableName="query_result"
-          // Task 4: only the entire/filtered scopes route through the Rust
-          // batch exporter and need the live session that produced these
-          // rows; current-page / selected rows export provided-only with
-          // no session at all.
           dbSessionId={result.runtimeBinding?.handle.dbSessionId}
           dataExportCapability={dataExportCapability}
           presentationSnapshot={presentationSnapshot}
