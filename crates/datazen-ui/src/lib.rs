@@ -781,6 +781,28 @@ fn column_drafts_section(state: &AppState, title: &str, theme: tok::Theme) -> El
                 .child(text(label).font(type_::LABEL).color(theme.text_secondary)),
         );
     }
+    if !drafts.is_empty() {
+        let preview = drafts
+            .iter()
+            .map(|draft| draft.sql(title))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut sql_block = col()
+            .key("draft-sql")
+            .w_full()
+            .px(12.0)
+            .py(8.0)
+            .radius(8.0)
+            .fill(theme.control_off);
+        for line in preview.lines() {
+            sql_block = sql_block.child(
+                text(line.to_owned())
+                    .font(sql_editor::editor_font())
+                    .color(theme.text),
+            );
+        }
+        section = section.child(sql_block);
+    }
     section
 }
 
@@ -2345,6 +2367,41 @@ mod tests {
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
         assert!(runtime.find("draft-row-1").is_some(), "the retype draft is queued too");
+    }
+
+    #[test]
+    fn the_drafts_preview_as_sql_without_executing() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("view-columns").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.find("draft-sql").is_none(), "no drafts, no preview");
+
+        runtime.state.draft_name = rune::TextEdit::new("name");
+        runtime.state.draft_type = rune::TextEdit::new("varchar(80)");
+        let (x, y) = runtime.find("draft-retype").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+
+        assert!(runtime.find("draft-sql").is_some(), "the preview appears");
+        let drafts = runtime.state.column_drafts.get("customers").unwrap();
+        assert_eq!(
+            drafts[0].sql("customers"),
+            "ALTER TABLE customers ALTER COLUMN name TYPE varchar(80);",
+            "a retype draft shows its SQL"
+        );
+        assert_eq!(
+            runtime.state.workspace.table_columns("customers").unwrap().len(),
+            8,
+            "the preview executed nothing"
+        );
     }
 
     #[test]

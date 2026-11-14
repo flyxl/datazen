@@ -35,6 +35,21 @@ pub enum ColumnDraft {
     ChangeType { column: String, sql_type: String },
 }
 
+impl ColumnDraft {
+    /// The ALTER TABLE statement this draft stands for. The preview shows it;
+    /// nothing executes it but the port's apply.
+    pub fn sql(&self, table: &str) -> String {
+        match self {
+            Self::AddColumn { name, sql_type } => {
+                format!("ALTER TABLE {table} ADD COLUMN {name} {sql_type};")
+            }
+            Self::ChangeType { column, sql_type } => {
+                format!("ALTER TABLE {table} ALTER COLUMN {column} TYPE {sql_type};")
+            }
+        }
+    }
+}
+
 /// One column of a table: name, type, nullability. For lists, not editors.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ColumnSpec {
@@ -810,6 +825,18 @@ mod tests {
         let after = workspace.table_columns("customers").unwrap();
         assert_eq!(before, after, "drafts alone change no columns");
         assert_eq!(drafts.len(), 2);
+    }
+
+    #[test]
+    fn drafts_preview_as_alter_statements() {
+        let add = ColumnDraft::AddColumn { name: "score".into(), sql_type: "int".into() };
+        assert_eq!(add.sql("customers"), "ALTER TABLE customers ADD COLUMN score int;");
+        let retype = ColumnDraft::ChangeType { column: "name".into(), sql_type: "varchar(80)".into() };
+        assert_eq!(
+            retype.sql("customers"),
+            "ALTER TABLE customers ALTER COLUMN name TYPE varchar(80);",
+            "a retype draft shows its ALTER COLUMN ... TYPE SQL"
+        );
     }
 
     #[test]
