@@ -88,6 +88,7 @@ E2E 必须使用 `pnpm tauri:build:webdriver` 或 `pnpm e2e` 的构建流程，�
 ## 文档与实现纪律
 
 - 长期文档只维护 `docs/features/`、`docs/architecture/`、`docs/development/`，以及公开 `docs/blogs/` 和明确不修的 `docs/bugs/`；过程文档（PRD、设计稿、台账、worklog、评审）交付后移入 `docs/archive/`，不留在活跃目录。
+- `docs/features/README.md` 是面向用户的功能文档索引；产品级总览与操作手册以 [`docs/features/product-features.zh-CN.md`](docs/features/product-features.zh-CN.md)、[`docs/features/user-manual.zh-CN.md`](docs/features/user-manual.zh-CN.md) 为准，领域指南按主题补充。`docs/architecture/README.md` 是架构文档入口。
 - 不新增 PRD、方案评审、Bug List、进度报告类长期文件；已实现结论改写进对应架构文档。
 - 修改路径、IPC、命令、驱动数量或测试事实前先核对代码；文档链接必须人工检查可达。
 - CodeGraph 存在时优先 `codegraph explore`；否则使用专用搜索/读取工具，编辑前先读当前文件。

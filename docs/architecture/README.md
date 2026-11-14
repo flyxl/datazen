@@ -249,3 +249,11 @@ React 前端使用 Zustand。主要 Store 位于 `src/stores/`：
 
 详细测试策略见 [testing.md](testing.md)。
 
+## 12. 相关文档
+
+- **用户视角（功能与操作）**：[docs/features/README.md](../features/README.md)（索引）、[产品功能总览](../features/product-features.zh-CN.md)、[操作手册](../features/user-manual.zh-CN.md)；领域指南见 `docs/features/`。
+- **架构系列文章（叙事与演进）**：[docs/blogs/README.md](../blogs/README.md)。
+- **开发与交付**：[docs/development/](../development/)；服务端运维见 [team-service-operations.md](../development/team-service-operations.md)。
+
+本文档体系的维护原则：`docs/architecture/` 只记录已落地实现与明确标注的演进设计；功能事实以代码为准，用户可见能力的权威描述以 `docs/features/` 为准。
+
