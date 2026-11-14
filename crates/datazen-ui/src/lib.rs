@@ -23,6 +23,7 @@ enum TableView {
     Ddl,
     Columns,
     Indexes,
+    ForeignKeys,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -413,6 +414,7 @@ fn table_workspace(state: &AppState, theme: tok::Theme) -> El {
         TableView::Ddl => ddl_view(&state.workspace, &title, theme),
         TableView::Columns => columns_view(&state.workspace, &title, theme),
         TableView::Indexes => indexes_view(&state.workspace, &title, theme),
+        TableView::ForeignKeys => foreign_keys_view(&state.workspace, &title, theme),
     };
     col()
         .key("table-workspace")
@@ -443,6 +445,7 @@ fn view_switcher(state: &AppState, theme: tok::Theme) -> El {
         .child(entry("view-data", "Data", TableView::Data, state.table_view == TableView::Data))
         .child(entry("view-columns", "Columns", TableView::Columns, state.table_view == TableView::Columns))
         .child(entry("view-indexes", "Indexes", TableView::Indexes, state.table_view == TableView::Indexes))
+        .child(entry("view-fks", "Foreign keys", TableView::ForeignKeys, state.table_view == TableView::ForeignKeys))
         .child(entry("view-ddl", "DDL", TableView::Ddl, state.table_view == TableView::Ddl))
 }
 
@@ -536,6 +539,58 @@ fn indexes_view(workspace: &MemoryWorkspace, title: &str, theme: tok::Theme) -> 
                 .child(cell(&spec.name, 260.0))
                 .child(cell(&spec.columns.join(", "), 320.0))
                 .child(cell(if spec.unique { "yes" } else { "no" }, 100.0)),
+        );
+    }
+    list
+}
+
+/// The foreign key list: this table's columns, the target table, its columns.
+fn foreign_keys_view(workspace: &MemoryWorkspace, title: &str, theme: tok::Theme) -> El {
+    let keys = workspace.table_foreign_keys(title).unwrap_or_default();
+    let header = |label: &str, width: f32| {
+        row()
+            .w(width)
+            .h(24.0)
+            .px(8.0)
+            .center_y()
+            .child(text(label).font(type_::LABEL).color(theme.text_secondary))
+    };
+    let mut list = col()
+        .key("fks-list")
+        .w_full()
+        .radius(8.0)
+        .fill(theme.control_off)
+        .child(
+            row()
+                .key("fks-header")
+                .w_full()
+                .h(24.0)
+                .child(header("Name", 260.0))
+                .child(header("Columns", 240.0))
+                .child(header("References", 320.0)),
+        );
+    for (index, key) in keys.iter().enumerate() {
+        let cell = |value: &str, width: f32| {
+            row()
+                .w(width)
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .child(text(value.to_owned()).font(type_::LABEL).color(theme.text))
+        };
+        let references = format!(
+            "{} ({})",
+            key.target_table,
+            key.target_columns.join(", ")
+        );
+        list = list.child(
+            row()
+                .key(format!("fk-row-{index}"))
+                .w_full()
+                .h(24.0)
+                .child(cell(&key.name, 260.0))
+                .child(cell(&key.columns.join(", "), 240.0))
+                .child(cell(&references, 320.0)),
         );
     }
     list
@@ -1846,6 +1901,29 @@ mod tests {
         assert!(runtime.find("index-row-2").is_none(), "customers has two indexes");
         let indexes = runtime.state.workspace.table_indexes("customers").unwrap();
         assert_eq!(indexes[1].columns, vec!["name", "city"], "the compound order is in the row");
+    }
+
+    #[test]
+    fn the_foreign_keys_view_keeps_compound_keys_together() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("orders").unwrap();
+        runtime.frame(0.0);
+
+        let (x, y) = runtime.find("view-fks").expect("foreign keys button");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+
+        assert!(runtime.find("fks-list").is_some());
+        assert!(runtime.find("fks-header").is_some());
+        assert!(runtime.find("fk-row-0").is_some(), "orders has one foreign key");
+        assert!(runtime.find("fk-row-1").is_none());
+        let keys = runtime.state.workspace.table_foreign_keys("orders").unwrap();
+        assert_eq!(keys[0].columns, vec!["id", "name"]);
+        assert_eq!(keys[0].target_columns, vec!["id", "name"]);
     }
 
     #[test]

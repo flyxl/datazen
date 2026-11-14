@@ -9,6 +9,16 @@ use std::collections::HashMap;
 
 pub use tabs::{Tab, TabKind, Tabs};
 
+/// One foreign key: this table's columns (a compound key stays together), the
+/// target table and its columns.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ForeignKeySpec {
+    pub name: String,
+    pub columns: Vec<String>,
+    pub target_table: String,
+    pub target_columns: Vec<String>,
+}
+
 /// One index of a table: its name, its columns in index order, uniqueness.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IndexSpec {
@@ -105,6 +115,8 @@ pub trait WorkspaceApi {
     fn table_columns(&self, table: &str) -> Result<Vec<ColumnSpec>, String>;
     /// The table's indexes; a compound index keeps its column order.
     fn table_indexes(&self, table: &str) -> Result<Vec<IndexSpec>, String>;
+    /// The table's foreign keys; a compound key is not split.
+    fn table_foreign_keys(&self, table: &str) -> Result<Vec<ForeignKeySpec>, String>;
     fn connect(&mut self, id: &str) -> Result<(), String>;
     fn disconnect(&mut self);
     fn open_table(
@@ -352,6 +364,30 @@ impl WorkspaceApi for MemoryWorkspace {
                 name: "catalog_c0_c1_idx".into(),
                 columns: vec!["c0".into(), "c1".into()],
                 unique: false,
+            }],
+            _ => Vec::new(),
+        })
+    }
+
+    fn table_foreign_keys(&self, table: &str) -> Result<Vec<ForeignKeySpec>, String> {
+        let stored = self
+            .tables
+            .iter()
+            .find(|(name, _)| name == table)
+            .ok_or_else(|| format!("unknown table {table}"))?;
+        let _ = stored;
+        Ok(match table {
+            "orders" => vec![ForeignKeySpec {
+                name: "orders_customer_fk".into(),
+                columns: vec!["id".into(), "name".into()],
+                target_table: "customers".into(),
+                target_columns: vec!["id".into(), "name".into()],
+            }],
+            "customers" => vec![ForeignKeySpec {
+                name: "customers_orders_fk".into(),
+                columns: vec!["orders".into()],
+                target_table: "orders".into(),
+                target_columns: vec!["id".into()],
             }],
             _ => Vec::new(),
         })
@@ -802,6 +838,20 @@ mod tests {
         );
         assert!(!indexes[1].unique);
         assert!(workspace.table_indexes("missing").is_err());
+    }
+
+    #[test]
+    fn a_compound_foreign_key_is_not_split() {
+        let mut workspace = MemoryWorkspace::new();
+        workspace.connect("local").unwrap();
+        let keys = workspace.table_foreign_keys("orders").unwrap();
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].name, "orders_customer_fk");
+        assert_eq!(keys[0].columns, vec!["id", "name"], "this side stays together");
+        assert_eq!(keys[0].target_table, "customers");
+        assert_eq!(keys[0].target_columns, vec!["id", "name"], "the target side too");
+        assert!(workspace.table_foreign_keys("catalog").unwrap().is_empty());
+        assert!(workspace.table_foreign_keys("missing").is_err());
     }
 
     #[test]
