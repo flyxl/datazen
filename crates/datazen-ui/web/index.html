@@ -1,0 +1,25 @@
+<!doctype html>
+<!-- DataZen's standalone Rune page (issue-rune H7). It loads the same
+     datazen-ui wasm package the desktop process runs and is served by any
+     static file server; the React host's index and routes are untouched.
+     The generated glue lands in gen/ by build.sh. -->
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>DataZen (Rune)</title>
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; overscroll-behavior: none; touch-action: none; }
+  #status { font: 16px system-ui; padding: 24px; }
+</style>
+<div id="status">Loading…</div>
+<script type="module">
+  import init from './gen/datazen_ui.js';
+  try {
+    if (!navigator.gpu) throw new Error('WebGPU requires a supported browser and HTTPS (or localhost).');
+    await init();
+    document.querySelector('#status').remove();
+  } catch (error) {
+    document.getElementById('status').textContent = String(error);
+  }
+</script>

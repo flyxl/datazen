@@ -48,9 +48,19 @@ The artifact is `target/wasm32-unknown-unknown/debug/datazen_ui.wasm`
 web host is WebGPU-only: the optional WebGL backend is NOT compiled in —
 wgpu's WebGL backend makes its hal instance `!Sync` on wasm32, which rune's
 process-wide instance cache requires, so that feature breaks the wasm
-build (rune's own web app ships WebGPU-only the same way). A standalone
-static page that mounts the wasm is the next slice (H7); the React host's
-index and routes stay untouched.
+build (rune's own web app ships WebGPU-only the same way).
+
+The standalone static page that mounts the wasm (H7) is `web/`:
+
+~~~sh
+crates/datazen-ui/web/build.sh
+python3 -m http.server -d crates/datazen-ui/web 8137
+~~~
+
+`build.sh` regenerates the wasm-bindgen glue into `web/gen/` (gitignored);
+the page boots the same wasm the desktop runs, and the React host's index
+and routes stay untouched. A browser without WebGPU shows rune's own
+"WebGPU adapter unavailable" panel.
 
 ## Next slice
 
