@@ -7,7 +7,7 @@ mod data_grid;
 mod sql_editor;
 
 use data_grid::DataGrid;
-use datazen_ui_api::{ColumnFilter, ColumnSort, MemoryWorkspace, TabKind, Tabs, WorkspaceApi};
+use datazen_ui_api::{ColumnFilter, ColumnSort, MemoryWorkspace, QueryApi, TabKind, Tabs, TablePage, WorkspaceApi};
 use rune::tok::{self, type_};
 use rune::{App, AppSpec, Cx, El, Ime, KeyEvent, TextEdit, Tx, col, row, text};
 use sql_editor::SqlEditor;
@@ -60,6 +60,9 @@ struct AppState {
     filter_editor: TextEdit,
     /// The read-only query result grid of the selected query tab.
     result_grid: Option<DataGrid>,
+    /// The query generation: bumped by every run and every cancel. A result page
+    /// from a generation that is not the current one is dropped.
+    query_generation: u32,
 }
 
 impl Default for AppState {
@@ -76,6 +79,7 @@ impl Default for AppState {
             filter_column: 0,
             filter_editor: TextEdit::new(String::new()),
             result_grid: None,
+            query_generation: 0,
         }
     }
 }
@@ -236,6 +240,22 @@ impl AppState {
         grid.load_page(&page);
         grid.set_editable(false);
         self.result_grid = Some(grid);
+    }
+
+    /// Bump and return the next query generation. Every run and every cancel
+    /// starts one.
+    fn next_query_generation(&mut self) -> u32 {
+        self.query_generation += 1;
+        self.query_generation
+    }
+
+    /// A result page arrives for a generation. Stale generations — superseded by
+    /// a newer run or invalidated by a cancel — are dropped on the floor.
+    fn deliver_query_result(&mut self, generation: u32, page: TablePage) {
+        if generation != self.query_generation {
+            return;
+        }
+        self.load_result_page(page.columns, page.rows);
     }
 
     /// Any tab event lands in the workspace: the selected tab decides what the
@@ -1152,6 +1172,35 @@ mod tests {
         runtime.key(KeyEvent { key: Key::Command('z'), mods: Mods { shift: true, ..Mods::default() } });
         runtime.frame(0.0);
         assert!(runtime.state.sql.doc().starts_with('Q'), "shift-command-z redoes");
+    }
+
+    #[test]
+    fn a_result_from_an_old_generation_is_dropped() {
+        use datazen_ui_api::{QueryApi, WorkspaceApi};
+
+        let mut runtime = runtime();
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_query_tab("Query").unwrap();
+        runtime.frame(0.0);
+
+        let first = runtime.state.next_query_generation();
+        let second = runtime.state.next_query_generation();
+        let stale = runtime.state.workspace.execute("SELECT * FROM CUSTOMERS").unwrap();
+        runtime.state.deliver_query_result(first, stale);
+        runtime.settle_all();
+        runtime.frame(0.0);
+        assert!(
+            runtime.state.result_grid.is_none(),
+            "generation 1 arriving after generation 2 is ignored"
+        );
+
+        let fresh = runtime.state.workspace.execute("select 1").unwrap();
+        runtime.state.deliver_query_result(second, fresh);
+        runtime.settle_all();
+        runtime.frame(0.0);
+        let grid = runtime.state.result_grid.as_ref().expect("the current generation lands");
+        assert_eq!(grid.cell(0, 0), "1");
+        assert!(runtime.find("result-grid").is_some());
     }
 
     #[test]
