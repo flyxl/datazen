@@ -30,9 +30,10 @@ use datazen_driver_api::filters::{FilterCondition, FilterOperator, SortCondition
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver, Value as Cell};
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnFilter, ColumnSort, ConnectionProfile,
-    DatabaseNode, DesktopAdapter, SchemaNode, TablePage, DESKTOP_NOT_IMPLEMENTED,
+    DatabaseNode, DesktopAdapter, ProgressSnapshot, SchemaNode, TablePage,
+    DESKTOP_NOT_IMPLEMENTED,
 };
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -130,6 +131,10 @@ pub struct LiveAdapter {
     sync_runtime: tokio::runtime::Runtime,
     /// The static driver registry, for the sync session's driver resolution.
     registry: Arc<DriverRegistry>,
+    /// The export/backup jobs (N11), behind the UI's job vocabulary.
+    host_jobs: crate::jobs::HostJobs,
+    /// The data directory exports and backups land under (N11).
+    data_dir: PathBuf,
     /// The sync reads' own connection: the live session's pool is single and
     /// belongs to the worker's runtime, so the sync runtime opens its own —
     /// created lazily per connection id and reused while the id holds.
@@ -179,6 +184,8 @@ impl LiveAdapter {
             data_dir,
         );
         let adapter_registry = Arc::clone(&registry);
+        let jobs = crate::jobs::HostJobs::new();
+        let adapter_data_dir = data_dir.to_path_buf();
         // The use case is stateless over the repository: the adapter and the
         // worker each hold their own service over the one store.
         let service = ConnectionService::new(Arc::clone(&repository));
@@ -348,12 +355,22 @@ impl LiveAdapter {
             sync_runtime,
             registry: adapter_registry,
             sync_handle: Mutex::new(None),
+            host_jobs: jobs,
+            data_dir: adapter_data_dir,
         }
     }
 
     /// The live session, for the hosts that follow (N4 reads, N5 commits).
     pub(crate) fn session(&self) -> &Arc<Mutex<LiveSession>> {
         &self.session
+    }
+
+    /// The connection's plaintext config from the file store.
+    fn plain_config(&self, connection: &str) -> Result<datazen_driver_api::ConnectionConfig, String> {
+        let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
+        futures_executor::block_on(self.service.get(&scope, connection))
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| format!("no connection '{connection}' in the store"))
     }
 
     /// The sync reads' session over the live connection: the live session's
@@ -381,10 +398,7 @@ impl LiveAdapter {
                 });
             }
         }
-        let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
-        let config = futures_executor::block_on(self.service.get(&scope, &connection))
-            .map_err(|error| error.to_string())?
-            .ok_or_else(|| format!("no connection '{connection}' in the store"))?;
+        let config = self.plain_config(&connection)?;
         let driver = self
             .sync_runtime
             .block_on(self.registry.get(&config.database_type))
@@ -1215,6 +1229,49 @@ impl DesktopAdapter for LiveAdapter {
             })
             .collect())
     }
+
+    fn start_export(&mut self, table: &str, format: &str, range: &str) -> Result<u64, String> {
+        let connection = {
+            let session = self.session.lock().expect("the live session lock");
+            if !session.is_open() {
+                return Err("the live session is not open".into());
+            }
+            session.connection.clone().unwrap_or_default()
+        };
+        let config = self.plain_config(&connection)?;
+        Ok(self.host_jobs.spawn_export(
+            Arc::clone(&self.registry),
+            config,
+            table.to_owned(),
+            format.to_owned(),
+            range.to_owned(),
+            self.data_dir.join("exports"),
+        ))
+    }
+
+    fn start_backup(&mut self) -> Result<u64, String> {
+        let connection = {
+            let session = self.session.lock().expect("the live session lock");
+            if !session.is_open() {
+                return Err("the live session is not open".into());
+            }
+            session.connection.clone().unwrap_or_default()
+        };
+        let config = self.plain_config(&connection)?;
+        Ok(self.host_jobs.spawn_backup(
+            Arc::clone(&self.registry),
+            config,
+            self.data_dir.join("backups"),
+        ))
+    }
+
+    fn host_job_progress(&self, job: u64) -> Option<ProgressSnapshot> {
+        self.host_jobs.progress(job)
+    }
+
+    fn stop_host_job(&self, job: u64) -> Result<(), String> {
+        self.host_jobs.stop(job)
+    }
 }
 
 #[cfg(test)]
@@ -1804,6 +1861,74 @@ mod tests {
         // A table the catalog does not know is a failure sentence.
         let error = adapter.table_columns("nope").unwrap_err();
         assert!(!error.is_empty(), "the failure carries a sentence: {error}");
+    }
+
+    /// Wait for a host job to reach a terminal status.
+    fn wait_job(adapter: &LiveAdapter, job: u64) -> datazen_ui_api::ProgressSnapshot {
+        for _ in 0..300 {
+            if let Some(snapshot) = adapter.host_job_progress(job) {
+                if snapshot.status != "running" {
+                    return snapshot;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("the job never finished");
+    }
+
+    #[test]
+    fn export_jobs_write_real_csv_and_json() {
+        let dir = temp_dir("export");
+        let mut adapter = opened_adapter(&dir);
+
+        // CSV: the whole table, header and every row, quoted where needed.
+        let job = adapter.start_export("users", "csv", "").expect("the export starts");
+        let snapshot = wait_job(&adapter, job);
+        assert_eq!(snapshot.status, "completed", "log: {:?}", snapshot.log);
+        let exports = std::fs::read_dir(dir.join("exports")).expect("the exports dir exists");
+        let csv = exports
+            .filter_map(|entry| entry.ok())
+            .find(|entry| entry.path().extension().is_some_and(|ext| ext == "csv"))
+            .expect("a csv file was written");
+        let body = std::fs::read_to_string(csv.path()).unwrap();
+        let lines: Vec<&str> = body.lines().collect();
+        assert_eq!(lines[0], "id,name", "the header names the columns");
+        assert_eq!(lines.len(), 61, "60 rows plus the header");
+        assert_eq!(lines[1], "0,user-00", "the first row");
+        assert_eq!(lines[60], "59,user-59", "the last row");
+
+        // A range the host cannot serve is refused honestly.
+        let job = adapter.start_export("users", "csv", "rows 1-5").expect("the job starts");
+        let snapshot = wait_job(&adapter, job);
+        assert_eq!(snapshot.status, "failed", "an unsupported range fails: {:?}", snapshot.log);
+
+        // A format the host has not wired is refused honestly.
+        let job = adapter.start_export("users", "sql", "").expect("the job starts");
+        let snapshot = wait_job(&adapter, job);
+        assert_eq!(snapshot.status, "failed", "sql export is not wired: {:?}", snapshot.log);
+    }
+
+    #[test]
+    fn backup_jobs_write_the_dump() {
+        let dir = temp_dir("backup");
+        let mut adapter = opened_adapter(&dir);
+
+        let job = adapter.start_backup().expect("the backup starts");
+        let snapshot = wait_job(&adapter, job);
+        assert_eq!(snapshot.status, "completed", "log: {:?}", snapshot.log);
+        let backups = std::fs::read_dir(dir.join("backups")).expect("the backups dir exists");
+        let dump = backups
+            .filter_map(|entry| entry.ok())
+            .find(|entry| entry.path().extension().is_some_and(|ext| ext == "sql"))
+            .expect("a backup file was written");
+        let body = std::fs::read_to_string(dump.path()).unwrap();
+        assert!(!body.is_empty(), "the backup is not empty");
+        assert!(
+            body.to_lowercase().contains("create table"),
+            "the dump carries the schema: {} bytes",
+            body.len()
+        );
+        assert!(body.contains("users"), "the dump names the table");
     }
 }
 

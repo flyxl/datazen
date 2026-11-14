@@ -294,6 +294,28 @@ pub trait DesktopAdapter {
     fn table_foreign_keys(&self, _table: &str) -> Result<Vec<ForeignKeySpec>, String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
+
+    /// Start an export of one table through the host (N11). The default
+    /// answers the fixed error; the UI falls back to the memory port.
+    fn start_export(&mut self, _table: &str, _format: &str, _range: &str) -> Result<u64, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// Start a backup of the live database through the host (N11).
+    fn start_backup(&mut self) -> Result<u64, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// One host job's progress snapshot (N11), if the job exists.
+    fn host_job_progress(&self, _job: u64) -> Option<ProgressSnapshot> {
+        None
+    }
+
+    /// Ask a host job to stop (N11). A finished job answers Ok; the memory
+    /// port's stop stays the fallback path's.
+    fn stop_host_job(&self, _job: u64) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
 }
 
 /// One unit of host work that can take real time — a live driver IO. The job

@@ -7,11 +7,13 @@
 
 pub mod backend;
 pub mod history;
+pub mod jobs;
 pub mod live;
 pub mod settings;
 pub mod store;
 
 pub use history::{FileMigrationRuns, FileQueryHistory};
+pub use jobs::HostJobs;
 pub use live::LiveAdapter;
 pub use settings::FileSettingsRepository;
 pub use store::FileConnectionRepository;

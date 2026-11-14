@@ -541,27 +541,46 @@ impl AppState {
             (self.export_format_index + 1) % Self::EXPORT_FORMATS.len() as u32;
     }
 
-    /// Ask the port for an export job id. A missing range gets no job.
+    /// Ask for an export job id (N11): the host's export first, the memory
+    /// port's when the host has none. A missing range gets no job.
     fn start_export_form(&mut self) {
+        let table = self.grid.table_label().to_owned();
         let format = self.export_format().to_owned();
         let range = self.export_range.text.trim().to_owned();
-        match self.workspace.start_export(&format, &range) {
-            Ok(job) => {
+        let started = self.desktop.start_export(&table, &format, &range);
+        let job = match started {
+            Ok(job) => Some(job),
+            Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
+                self.workspace.start_export(&format, &range).ok()
+            }
+            Err(_) => None,
+        };
+        match job {
+            Some(job) => {
                 self.export_job = Some(job);
                 self.export_error = None;
-                self.export_snapshot = self.workspace.job_progress(job);
+                self.export_snapshot = self.job_progress(job);
             }
-            Err(error) => {
+            None => {
                 self.export_job = None;
-                self.export_error = Some(error);
+                self.export_error = Some("the export was not accepted".into());
             }
         }
     }
 
-    /// Pull one progress snapshot from the port. No streaming, no polling.
+    /// One job's progress: the host's if it owns the job, the port's
+    /// otherwise (N11).
+    fn job_progress(&mut self, job: u64) -> Option<ProgressSnapshot> {
+        if let Some(snapshot) = self.desktop.host_job_progress(job) {
+            return Some(snapshot);
+        }
+        self.workspace.job_progress(job)
+    }
+
+    /// Pull one progress snapshot. No streaming, no polling.
     fn refresh_export_progress(&mut self) {
         if let Some(job) = self.export_job {
-            self.export_snapshot = self.workspace.job_progress(job);
+            self.export_snapshot = self.job_progress(job);
         }
     }
 
@@ -591,23 +610,37 @@ impl AppState {
     }
 
     fn start_backup_form(&mut self) {
-        match self.workspace.start_backup() {
-            Ok(job) => {
+        let started = self.desktop.start_backup();
+        let job = match started {
+            Ok(job) => Some(job),
+            Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
+                self.workspace.start_backup().ok()
+            }
+            Err(_) => None,
+        };
+        match job {
+            Some(job) => {
                 self.backup_job = Some(job);
                 self.backup_error = None;
-                self.backup_snapshot = self.workspace.job_progress(job);
+                self.backup_snapshot = self.job_progress(job);
             }
-            Err(error) => self.backup_error = Some(error),
+            None => self.backup_error = Some("the backup was not accepted".into()),
         }
     }
 
-    /// Stop the backup and pull the stopped snapshot.
+    /// Stop the backup and pull the stopped snapshot. The host's job first
+    /// (N11); the memory port's stop stays the fallback's.
     fn stop_backup(&mut self) {
         let Some(job) = self.backup_job else { return };
-        match self.workspace.stop_job(job) {
+        let stopped = match self.desktop.stop_host_job(job) {
+            Ok(()) => Ok(()),
+            Err(error) if error == DESKTOP_NOT_IMPLEMENTED => self.workspace.stop_job(job),
+            Err(error) => Err(error),
+        };
+        match stopped {
             Ok(()) => {
                 self.backup_error = None;
-                self.backup_snapshot = self.workspace.job_progress(job);
+                self.backup_snapshot = self.job_progress(job);
             }
             Err(error) => self.backup_error = Some(error),
         }
@@ -615,7 +648,7 @@ impl AppState {
 
     fn refresh_backup_progress(&mut self) {
         if let Some(job) = self.backup_job {
-            self.backup_snapshot = self.workspace.job_progress(job);
+            self.backup_snapshot = self.job_progress(job);
         }
     }
 
