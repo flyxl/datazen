@@ -35,6 +35,8 @@ pub struct DataGrid {
     page: u32,
     page_size: u32,
     total_rows: u32,
+    /// The sort the loaded page was opened with, as a column index.
+    sort: Option<(u32, bool)>,
     pub(crate) editor: TextEdit,
     /// Horizontal scroll, in points. `on_scroll_offset` writes it; it cannot touch this struct.
     scroll_x: rune::Live<f32>,
@@ -62,6 +64,7 @@ impl DataGrid {
             page: 0,
             page_size: 0,
             total_rows: 0,
+            sort: None,
             editor: TextEdit::new(String::new()),
             scroll_x: rune::Live::new(0.0),
             origin_col: 0,
@@ -87,6 +90,11 @@ impl DataGrid {
             return 1;
         }
         self.total_rows.div_ceil(self.page_size)
+    }
+
+    /// The sort column the loaded page carries, as (column index, descending).
+    pub fn sort(&self) -> Option<(u32, bool)> {
+        self.sort
     }
 
     pub fn origin_col(&self) -> u32 {
@@ -153,6 +161,12 @@ impl DataGrid {
         self.page = page.page;
         self.page_size = page.page_size;
         self.total_rows = page.total_rows;
+        self.sort = page.sort.as_ref().and_then(|sort| {
+            page.columns
+                .iter()
+                .position(|name| name == &sort.column)
+                .map(|index| (index as u32, sort.descending))
+        });
         self.edits.clear();
         self.anchor = (0, 0);
         self.focus = (0, 0);
@@ -448,13 +462,19 @@ fn header_cell(grid: &DataGrid, col_index: u32, ink: rune::Color) -> El {
         .column_name(col_index)
         .map(str::to_owned)
         .unwrap_or_else(|| format!("c{col_index}"));
+    let label = match grid.sort() {
+        Some((col, true)) if col == col_index => format!("{label} ↓"),
+        Some((col, false)) if col == col_index => format!("{label} ↑"),
+        _ => label,
+    };
     let mut cell = row()
         .key(format!("head-{col_index}"))
         .w(COL_W)
         .h(ROW_H)
         .px(8.0)
         .center_y()
-        .child(text(label).font(label_style()).color(ink));
+        .child(text(label).font(label_style()).color(ink))
+        .on_press(move |state: &mut crate::AppState| state.cycle_sort(col_index));
     if col_index == 0 {
         cell = cell.sticky_left(0.0).fill(oklch(0.24, 0.03, 250.0));
     }
@@ -565,6 +585,7 @@ mod tests {
             page,
             page_size: 25,
             total_rows: 50,
+            sort: None,
         };
         let mut grid = DataGrid::new();
         grid.load_page(&page(rows[..25].to_vec(), 0));

@@ -7,7 +7,7 @@ mod data_grid;
 mod sql_editor;
 
 use data_grid::DataGrid;
-use datazen_ui_api::{MemoryWorkspace, TabKind, Tabs, WorkspaceApi};
+use datazen_ui_api::{ColumnSort, MemoryWorkspace, TabKind, Tabs, WorkspaceApi};
 use rune::tok::{self, type_};
 use rune::{App, AppSpec, Cx, El, Ime, KeyEvent, Tx, col, row, text};
 use sql_editor::SqlEditor;
@@ -51,6 +51,8 @@ struct AppState {
     tabs: Tabs,
     /// The page the workspace last opened for the selected table tab.
     table_page: u32,
+    /// The sort the table page is opened with.
+    sort: Option<ColumnSort>,
 }
 
 impl Default for AppState {
@@ -62,6 +64,7 @@ impl Default for AppState {
             workspace: MemoryWorkspace::new(),
             tabs: Tabs::new(),
             table_page: 0,
+            sort: None,
         }
     }
 }
@@ -76,7 +79,8 @@ impl AppState {
             return;
         }
         self.table_page = 0;
-        if let Ok(page) = self.workspace.open_table("customers", 0, TABLE_PAGE_SIZE) {
+        self.sort = None;
+        if let Ok(page) = self.workspace.open_table("customers", 0, TABLE_PAGE_SIZE, None) {
             self.grid.load_page(&page);
             self.grid.set_editable(true);
             self.active = Section::Workspace;
@@ -87,6 +91,8 @@ impl AppState {
         self.workspace.disconnect();
         self.tabs = Tabs::new();
         self.grid.set_editable(false);
+        self.table_page = 0;
+        self.sort = None;
     }
 
     fn open_table_tab(&mut self, title: &str) -> Option<u32> {
@@ -110,7 +116,7 @@ impl AppState {
     }
 
     fn show_table(&mut self, title: &str) -> bool {
-        match self.workspace.open_table(title, self.table_page, TABLE_PAGE_SIZE) {
+        match self.workspace.open_table(title, self.table_page, TABLE_PAGE_SIZE, self.sort.as_ref()) {
             Ok(page) => {
                 self.table_page = page.page;
                 self.grid.load_page(&page);
@@ -144,6 +150,23 @@ impl AppState {
             return;
         }
         self.table_page = self.table_page.saturating_sub(1);
+        self.reload_table_page();
+    }
+
+    /// A header click cycles its column: none, ascending, descending, back to none.
+    fn cycle_sort(&mut self, column: u32) {
+        let Some(name) = self.grid.column_name(column).map(str::to_owned) else {
+            return;
+        };
+        let next = match &self.sort {
+            Some(sort) if sort.column == name && !sort.descending => {
+                Some(ColumnSort { column: name, descending: true })
+            }
+            Some(sort) if sort.column == name => None,
+            _ => Some(ColumnSort { column: name, descending: false }),
+        };
+        self.sort = next;
+        self.table_page = 0;
         self.reload_table_page();
     }
 
@@ -673,6 +696,7 @@ mod tests {
             page: 0,
             page_size: 6000,
             total_rows: 6000,
+            sort: None,
         });
         runtime.state.active = Section::Workspace;
         runtime.frame(0.0);
@@ -757,7 +781,7 @@ mod tests {
         runtime.state.grid.editor.insert("-edited");
         runtime.state.commit_grid_edit();
         assert_eq!(
-            runtime.state.workspace.open_table("customers", 0, TABLE_PAGE_SIZE).unwrap().rows[0][1],
+            runtime.state.workspace.open_table("customers", 0, TABLE_PAGE_SIZE, None).unwrap().rows[0][1],
             "customer-0-edited"
         );
     }
@@ -820,6 +844,45 @@ mod tests {
         assert_eq!(runtime.state.grid.page(), 0);
         assert_eq!(runtime.state.grid.cell(0, 1), "customer-0");
         assert!(runtime.find("cell-0-1").is_some(), "the frozen column is still built");
+    }
+
+    #[test]
+    fn clicking_a_header_cycles_none_ascending_descending() {
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.frame(0.0);
+
+        // Page to the second page first: a sort must return to the first page.
+        runtime.state.next_table_page();
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.grid.page(), 1);
+
+        let (x, y) = runtime.find("head-1").expect("name header");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.grid.page(), 0, "sorting returns to the first page");
+        assert_eq!(runtime.state.grid.sort(), Some((1, false)));
+        assert_eq!(runtime.state.grid.cell(0, 1), "customer-0");
+        assert_eq!(runtime.state.grid.cell(2, 1), "customer-10", "lexicographic ascending order");
+
+        let (x, y) = runtime.find("head-1").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.grid.sort(), Some((1, true)));
+        assert_eq!(runtime.state.grid.cell(0, 1), "customer-9", "descending starts at the max");
+        assert_eq!(runtime.state.grid.cell(6, 1), "customer-39");
+
+        let (x, y) = runtime.find("head-1").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.grid.sort(), None);
+        assert_eq!(runtime.state.grid.cell(2, 1), "customer-2", "storage order returns");
     }
 
     #[test]

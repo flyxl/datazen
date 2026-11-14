@@ -20,6 +20,13 @@ pub struct Session {
     pub tables: Vec<String>,
 }
 
+/// One sort column: ascending first, `descending` flips it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ColumnSort {
+    pub column: String,
+    pub descending: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TablePage {
     pub table: String,
@@ -29,6 +36,8 @@ pub struct TablePage {
     pub page_size: u32,
     /// Rows in the whole table, not only this page. Footers page over it.
     pub total_rows: u32,
+    /// The sort this page was opened with, echoed back for display.
+    pub sort: Option<ColumnSort>,
 }
 
 pub trait WorkspaceApi {
@@ -36,7 +45,13 @@ pub trait WorkspaceApi {
     fn session(&self) -> Option<&Session>;
     fn connect(&mut self, id: &str) -> Result<(), String>;
     fn disconnect(&mut self);
-    fn open_table(&mut self, table: &str, page: u32, page_size: u32) -> Result<TablePage, String>;
+    fn open_table(
+        &mut self,
+        table: &str,
+        page: u32,
+        page_size: u32,
+        sort: Option<&ColumnSort>,
+    ) -> Result<TablePage, String>;
     fn stage_cell(&mut self, row: u32, column: &str, value: String) -> Result<(), String>;
 }
 
@@ -131,7 +146,13 @@ impl WorkspaceApi for MemoryWorkspace {
         self.open = None;
     }
 
-    fn open_table(&mut self, table: &str, page: u32, page_size: u32) -> Result<TablePage, String> {
+    fn open_table(
+        &mut self,
+        table: &str,
+        page: u32,
+        page_size: u32,
+        sort: Option<&ColumnSort>,
+    ) -> Result<TablePage, String> {
         if self.session.is_none() {
             return Err("not connected".into());
         }
@@ -141,11 +162,29 @@ impl WorkspaceApi for MemoryWorkspace {
             .find(|(name, _)| name == table)
             .ok_or_else(|| format!("unknown table {table}"))?;
         let total = stored.1.rows.len() as u32;
+        let mut order: Vec<u32> = (0..total).collect();
+        if let Some(sort) = sort {
+            let index = stored
+                .1
+                .columns
+                .iter()
+                .position(|name| name == &sort.column)
+                .ok_or_else(|| format!("unknown column {}", sort.column))?;
+            let descending = sort.descending;
+            order.sort_by(|a, b| {
+                stored.1.rows[*a as usize][index].cmp(&stored.1.rows[*b as usize][index])
+            });
+            if descending {
+                order.reverse();
+            }
+        }
         let page_size = page_size.max(1);
         let page = page.min(total / page_size);
-        let rows = stored.1.rows
+        let rows = order
             [(page * page_size) as usize..(((page + 1) * page_size) as usize).min(total as usize)]
-            .to_vec();
+            .iter()
+            .map(|index| stored.1.rows[*index as usize].clone())
+            .collect();
         self.open = Some(OpenTable { name: table.to_owned(), page, page_size });
         Ok(TablePage {
             table: table.to_owned(),
@@ -154,6 +193,7 @@ impl WorkspaceApi for MemoryWorkspace {
             page,
             page_size,
             total_rows: total,
+            sort: sort.cloned(),
         })
     }
 
@@ -190,11 +230,11 @@ mod tests {
         let mut workspace = MemoryWorkspace::new();
         assert!(workspace.connect("missing").is_err());
         workspace.connect("local").unwrap();
-        let page = workspace.open_table("customers", 0, 25).unwrap();
+        let page = workspace.open_table("customers", 0, 25, None).unwrap();
         assert_eq!(page.columns[1], "name");
         assert_eq!(page.rows[0][1], "customer-0");
         workspace.stage_cell(0, "name", "alice".into()).unwrap();
-        let again = workspace.open_table("customers", 0, 25).unwrap();
+        let again = workspace.open_table("customers", 0, 25, None).unwrap();
         assert_eq!(again.rows[0][1], "alice");
     }
 
@@ -202,8 +242,8 @@ mod tests {
     fn the_second_page_is_not_the_first_page() {
         let mut workspace = MemoryWorkspace::new();
         workspace.connect("local").unwrap();
-        let first = workspace.open_table("customers", 0, 25).unwrap();
-        let second = workspace.open_table("customers", 1, 25).unwrap();
+        let first = workspace.open_table("customers", 0, 25, None).unwrap();
+        let second = workspace.open_table("customers", 1, 25, None).unwrap();
         assert_eq!(first.rows.len(), 25);
         assert_eq!(second.rows.len(), 15);
         assert_eq!(first.rows[0][0], "0");
@@ -218,20 +258,45 @@ mod tests {
     fn an_out_of_range_page_clamps_to_the_last_page() {
         let mut workspace = MemoryWorkspace::new();
         workspace.connect("local").unwrap();
-        let page = workspace.open_table("customers", 99, 25).unwrap();
+        let page = workspace.open_table("customers", 99, 25, None).unwrap();
         assert_eq!(page.page, 1);
         assert_eq!(page.rows.len(), 15);
+    }
+
+    #[test]
+    fn sorting_orders_the_page_over_the_whole_table() {
+        let mut workspace = MemoryWorkspace::new();
+        workspace.connect("local").unwrap();
+        let ascending = ColumnSort { column: "name".into(), descending: false };
+        let page = workspace.open_table("customers", 0, 25, Some(&ascending)).unwrap();
+        assert_eq!(page.rows[0][1], "customer-0");
+        assert_eq!(page.rows[2][1], "customer-10", "lexicographic ascending order");
+        assert_eq!(page.sort, Some(ascending.clone()));
+
+        let descending = ColumnSort { column: "name".into(), descending: true };
+        let page = workspace.open_table("customers", 0, 25, Some(&descending)).unwrap();
+        assert_eq!(page.rows[0][1], "customer-9", "descending starts at the lexicographic max");
+        assert_eq!(page.rows[6][1], "customer-39");
+        assert_eq!(page.rows.len(), 25);
+    }
+
+    #[test]
+    fn sorting_by_an_unknown_column_is_an_error() {
+        let mut workspace = MemoryWorkspace::new();
+        workspace.connect("local").unwrap();
+        let sort = ColumnSort { column: "missing".into(), descending: false };
+        assert!(workspace.open_table("customers", 0, 25, Some(&sort)).is_err());
     }
 
     #[test]
     fn staging_addresses_the_row_behind_the_open_page() {
         let mut workspace = MemoryWorkspace::new();
         workspace.connect("local").unwrap();
-        workspace.open_table("customers", 1, 25).unwrap();
+        workspace.open_table("customers", 1, 25, None).unwrap();
         workspace.stage_cell(0, "name", "staged".into()).unwrap();
-        let again = workspace.open_table("customers", 1, 25).unwrap();
+        let again = workspace.open_table("customers", 1, 25, None).unwrap();
         assert_eq!(again.rows[0][1], "staged", "page 2 row 0 is stored row 25");
-        let first = workspace.open_table("customers", 0, 25).unwrap();
+        let first = workspace.open_table("customers", 0, 25, None).unwrap();
         assert_eq!(first.rows[0][1], "customer-0");
         assert_eq!(first.rows[24][1], "customer-24");
     }
