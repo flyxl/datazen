@@ -3,7 +3,7 @@
 ## 范围
 
 - 分支：`feat/rune-native-ui-migration`
-- 被测提交见 git log（本任务单提交）：`feat(rune): the sync options step with three toggles (issue-rune D3)`
+- 被测提交：`7625a19` `feat(rune): the sync options step with three toggles (issue-rune D3)`
 - 一个文件：`crates/datazen-ui/src/lib.rs`（`SYNC_OPTION_LABELS`、`toggle_sync_option`、第 3 步三个 on/off 芯片渲染 + 1 条运行时测试）。没有 `packages/frontend`、`packages/web`。React 未改
 
 ## 门禁

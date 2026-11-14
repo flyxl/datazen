@@ -62,7 +62,7 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | P9 | 已完成 | 3ecc608 | testing/P9-backup.md |
 | D1 | 已完成 | b45490f | testing/D1-sync-endpoints.md |
 | D2 | 已完成 | 59aff4a | testing/D2-sync-tables.md |
-| D3 | 已完成 | 见提交 | testing/D3-sync-options.md |
+| D3 | 已完成 | 7625a19 | testing/D3-sync-options.md |
 | D4 | 进行中 | | |
 | D5 | 未开始 | | |
 | D6 | 未开始 | | |
