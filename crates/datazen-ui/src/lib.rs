@@ -100,6 +100,7 @@ enum Tool {
     Sync,
     Compare,
     Transfer,
+    ValueSearch,
 }
 
 struct AppState {
@@ -179,6 +180,17 @@ struct AppState {
     snippet_name: TextEdit,
     snippet_sql: TextEdit,
     snippet_error: Option<String>,
+    /// T4: the value search's form and state. The value and its mode ride
+    /// the job; the hits list is the scan's answer.
+    value_search_value: TextEdit,
+    value_search_mode: u32,
+    value_search_generation: u32,
+    value_search_loading: Option<u32>,
+    value_search_error: Option<String>,
+    value_search_hits: Vec<datazen_ui_api::ValueSearchHit>,
+    /// The value the loaded hits answered, so a locate filters by what was
+    /// searched, not by whatever the input holds since.
+    value_search_query: String,
     /// The export dialog's format, range and its job.
     export_format_index: u32,
     export_range: TextEdit,
@@ -283,6 +295,13 @@ impl Default for AppState {
             snippet_name: TextEdit::new(String::new()),
             snippet_sql: TextEdit::new(String::new()),
             snippet_error: None,
+            value_search_value: TextEdit::new(String::new()),
+            value_search_mode: 0,
+            value_search_generation: 0,
+            value_search_loading: None,
+            value_search_error: None,
+            value_search_hits: Vec::new(),
+            value_search_query: String::new(),
             export_format_index: 0,
             export_range: TextEdit::new(String::new()),
             export_job: None,
@@ -592,6 +611,83 @@ impl AppState {
         if let Err(error) = deleted {
             self.snippet_error = Some(error);
         }
+    }
+
+    /// The value search's five match modes, in cycle order (T4). The ids
+    /// are the React vocabulary's (`ValueSearchMode`).
+    const VALUE_SEARCH_MODES: [&'static str; 5] =
+        ["contains", "notContains", "exact", "prefix", "suffix"];
+
+    fn value_search_mode(&self) -> &'static str {
+        Self::VALUE_SEARCH_MODES
+            [(self.value_search_mode as usize) % Self::VALUE_SEARCH_MODES.len()]
+    }
+
+    fn cycle_value_search_mode(&mut self) {
+        self.value_search_mode =
+            (self.value_search_mode + 1) % Self::VALUE_SEARCH_MODES.len() as u32;
+    }
+
+    /// Start a value search over the live session (T4): one job for the
+    /// whole scan. The demo process has no live session and the memory port
+    /// has no scan — the honest refusal names both.
+    fn begin_value_search(&mut self) {
+        let value = self.value_search_value.text.trim().to_owned();
+        if value.is_empty() {
+            self.value_search_error = Some("a value is required".into());
+            return;
+        }
+        if !self.session_open() {
+            self.value_search_error =
+                Some("value search needs an open connection".into());
+            return;
+        }
+        let generation = self.next_value_search_generation();
+        let job = AdapterJob::ValueSearch {
+            generation,
+            value,
+            mode: self.value_search_mode().to_owned(),
+        };
+        if self.desktop.begin_job(job) {
+            self.value_search_loading = Some(generation);
+            self.value_search_error = None;
+            self.value_search_hits.clear();
+            self.value_search_query = self.value_search_value.text.trim().to_owned();
+        } else {
+            self.value_search_error =
+                Some("value search needs the live host".into());
+        }
+    }
+
+    /// Cancel the running search: the generation moves past it, so the
+    /// scan's delivery lands nowhere.
+    fn cancel_value_search(&mut self) {
+        if self.value_search_loading.is_some() {
+            let _ = self.next_value_search_generation();
+            self.value_search_loading = None;
+            self.value_search_error = Some("the search was cancelled".into());
+        }
+    }
+
+    fn next_value_search_generation(&mut self) -> u32 {
+        self.value_search_generation += 1;
+        self.value_search_generation
+    }
+
+    /// Open the hit's table with a filter on the hit's column (T4): the
+    /// locate intent the React dialog answers with.
+    fn locate_value_search_hit(&mut self, index: usize) {
+        let Some(hit) = self.value_search_hits.get(index).cloned() else { return };
+        let value = self.value_search_query.clone();
+        // The tab's own open resets the filter (its lifecycle, S3); the
+        // locate sets it back and re-reads, so the page that lands is the
+        // filtered one.
+        self.active = Section::Workspace;
+        self.open_table_tab(&hit.table);
+        self.filter = Some(ColumnFilter { column: hit.column.clone(), contains: value });
+        self.sort = None;
+        self.table_page = 0;
+        self.reload_table_page();
     }
 
     /// The export formats the dialog collects, in cycle order.
@@ -1547,6 +1643,24 @@ impl AppState {
                     }
                 }
             }
+            AdapterDelivery::ValueSearched { generation, hits } => {
+                if self.value_search_loading == Some(generation) {
+                    self.value_search_loading = None;
+                }
+                if generation != self.value_search_generation {
+                    return;
+                }
+                match hits {
+                    Ok(hits) => {
+                        self.value_search_hits = hits;
+                        self.value_search_error = None;
+                    }
+                    Err(error) => {
+                        self.value_search_hits.clear();
+                        self.value_search_error = Some(error);
+                    }
+                }
+            }
             AdapterDelivery::TablePage { generation, page } => {
                 if self.table_loading == Some(generation) {
                     self.table_loading = None;
@@ -2058,13 +2172,144 @@ fn tools_page(state: &AppState, theme: tok::Theme) -> El {
                 .child(text("Data tools".to_owned()).font(type_::TITLE).color(theme.text))
                 .child(entry("tool-sync", "Sync", Tool::Sync, state.tool == Tool::Sync))
                 .child(entry("tool-compare", "Compare", Tool::Compare, state.tool == Tool::Compare))
-                .child(entry("tool-transfer", "Transfer", Tool::Transfer, state.tool == Tool::Transfer)),
+                .child(entry("tool-transfer", "Transfer", Tool::Transfer, state.tool == Tool::Transfer))
+                .child(entry("tool-search", "Search values", Tool::ValueSearch, state.tool == Tool::ValueSearch)),
         )
         .child(match state.tool {
             Tool::Sync => sync_tool(state, theme),
             Tool::Compare => compare_tool(state, theme),
             Tool::Transfer => transfer_tool(state, theme),
+            Tool::ValueSearch => value_search_tool(state, theme),
         })
+}
+
+/// The value search tool (T4): one value and its match mode, one job for
+/// the whole scan over the live session's tables, and the hits — one row
+/// per (table, column) — each locating the table with a filter on the hit.
+fn value_search_tool(state: &AppState, theme: tok::Theme) -> El {
+    let mut section = col()
+        .key("value-search-tool")
+        .w_full()
+        .gap(8.0)
+        .child(text("Value search".to_owned()).font(type_::TITLE).color(theme.text))
+        .child(
+            row()
+                .key("value-search-form")
+                .w_full()
+                .h(28.0)
+                .gap(8.0)
+                .center_y()
+                .child(
+                    text_input(&state.value_search_value, type_::LABEL)
+                        .key("value-search-input")
+                        .w(220.0)
+                        .h(24.0)
+                        .on_edit(|state: &mut AppState| &mut state.value_search_value),
+                )
+                .child(
+                    row()
+                        .key("value-search-mode")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(
+                            text(format!("mode: {}", state.value_search_mode()))
+                                .font(type_::LABEL)
+                                .color(theme.text),
+                        )
+                        .on_press(|state: &mut AppState| state.cycle_value_search_mode()),
+                )
+                .child(
+                    row()
+                        .key("value-search-start")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Search".to_owned()).font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.begin_value_search()),
+                )
+                .child(
+                    row()
+                        .key("value-search-cancel")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Cancel".to_owned()).font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.cancel_value_search()),
+                ),
+        );
+    if state.value_search_loading.is_some() {
+        section = section.child(
+            row()
+                .key("value-search-loading")
+                .w_full()
+                .h(20.0)
+                .center_y()
+                .child(text("Searching…".to_owned()).font(type_::LABEL).color(theme.text_secondary)),
+        );
+    }
+    if let Some(error) = &state.value_search_error {
+        section = section.child(
+            row()
+                .key("value-search-error")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+        );
+    }
+    if !state.value_search_hits.is_empty() {
+        let mut list = col().key("value-search-hits").w_full().gap(4.0);
+        for (index, hit) in state.value_search_hits.iter().enumerate() {
+            let index_for_press = index;
+            list = list.child(
+                row()
+                    .key(format!("value-hit-{index}"))
+                    .w_full()
+                    .h(24.0)
+                    .px(8.0)
+                    .center_y()
+                    .radius(6.0)
+                    .fill(theme.control_off)
+                    .child(
+                        text(format!(
+                            "{} · {} · {} rows",
+                            hit.table, hit.column, hit.matches
+                        ))
+                        .font(type_::LABEL)
+                        .color(theme.text),
+                    )
+                    .on_press(move |state: &mut AppState| {
+                        state.locate_value_search_hit(index_for_press);
+                    }),
+            );
+        }
+        section = section.child(list);
+    } else if state.value_search_loading.is_none() && state.value_search_error.is_none() {
+        section = section.child(
+            row()
+                .key("value-search-empty")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .child(
+                    text("No hits yet".to_owned())
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
+        );
+    }
+    section
 }
 
 /// The transfer tool: pair the two tables' columns; unmapped columns are
@@ -3524,7 +3769,7 @@ fn import_section(state: &AppState, theme: tok::Theme) -> El {
                         .radius(6.0)
                         .fill(theme.control_off)
                         .child(text("Browse…").font(type_::LABEL).color(theme.text))
-                        .on_press_tx(|state: &mut AppState, tx: &mut Tx| {
+                        .on_press_tx(|_state: &mut AppState, tx: &mut Tx| {
                             // T2: an Open dialog fills the source input; a
                             // dialog that cannot show says so honestly.
                             let options = FileDialogOptions {
@@ -6566,6 +6811,97 @@ mod tests {
     }
 
     #[test]
+    fn a_value_search_lists_hits_and_a_hit_locates_the_table_with_a_filter() {
+        use super::app_poll;
+
+        let mut runtime = runtime();
+        runtime.poll = Some(app_poll);
+        runtime.state.desktop = Box::new(JobAdapter::new());
+        runtime.frame(0.0);
+
+        // A live session: the adapter's catalog delivery is what the search
+        // gates on (the JobAdapter lists no connections to press).
+        let generation = runtime.state.next_read_generation();
+        runtime.state.deliver_host_job(AdapterDelivery::ConnectionOpened {
+            generation,
+            id: "live".into(),
+            catalog: Ok(datazen_ui_api::Catalog {
+                databases: vec![datazen_ui_api::DatabaseNode {
+                    name: "main".into(),
+                    schemas: vec![datazen_ui_api::SchemaNode {
+                        name: "main".into(),
+                        tables: vec!["events".into(), "users".into()],
+                    }],
+                }],
+            }),
+        });
+
+        // Tools page, the search tab.
+        let (x, y) = runtime.find("nav-tools").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        let (x, y) = runtime.find("tool-search").expect("the search tab");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert!(runtime.find("value-search-tool").is_some());
+
+        // No value: the honest refusal.
+        let (x, y) = runtime.find("value-search-start").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.find("value-search-error").is_some(), "a value is required");
+
+        runtime.state.value_search_value = rune::TextEdit::new("hello");
+        let (x, y) = runtime.find("value-search-start").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.state.value_search_loading.is_some(), "the job is in flight");
+        runtime.frame(1.0);
+        runtime.frame(1.0);
+        assert!(runtime.state.value_search_loading.is_none(), "the delivery landed");
+        assert!(runtime.find("value-hit-0").is_some(), "the first hit is listed");
+        assert!(runtime.find("value-hit-1").is_some(), "the second hit is listed");
+
+        // A hit locates: the workspace opens the table with the filter.
+        let (x, y) = runtime.find("value-hit-1").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        assert_eq!(runtime.state.active, Section::Workspace, "locate leaves the tools page");
+        let filter = runtime.state.filter.clone().expect("the locate set a filter");
+        assert_eq!(filter.column, "name");
+        assert_eq!(filter.contains, "hello", "the filter carries the searched value");
+
+        // Cancel while in flight: the delivery lands nowhere.
+        runtime.state.value_search_value = rune::TextEdit::new("again");
+        let (x, y) = runtime.find("nav-tools").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
+        let (x, y) = runtime.find("value-search-start").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.state.value_search_loading.is_some(), "the second search runs");
+        let (x, y) = runtime.find("value-search-cancel").unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+        assert!(runtime.state.value_search_loading.is_none(), "the cancel cleared the marker");
+        assert!(runtime.find("value-search-error").is_some(), "the cancel says so");
+        runtime.frame(1.0);
+        runtime.frame(1.0);
+        assert!(
+            runtime.find("value-search-hits").is_none(),
+            "the cancelled scan's delivery landed nowhere"
+        );
+    }
+
+    #[test]
     fn the_sync_wizard_refuses_the_same_endpoint_twice() {
         let mut runtime = runtime();
         runtime.frame(0.0);
@@ -7965,6 +8301,23 @@ mod tests {
             std::mem::take(&mut self.accepted)
                 .into_iter()
                 .map(|job| match job {
+                    AdapterJob::ValueSearch { generation, .. } => {
+                        AdapterDelivery::ValueSearched {
+                            generation,
+                            hits: Ok(vec![
+                                datazen_ui_api::ValueSearchHit {
+                                    table: "events".into(),
+                                    column: "label".into(),
+                                    matches: 2,
+                                },
+                                datazen_ui_api::ValueSearchHit {
+                                    table: "users".into(),
+                                    column: "name".into(),
+                                    matches: 1,
+                                },
+                            ]),
+                        }
+                    }
                     AdapterJob::OpenConnection { generation, id } => {
                         AdapterDelivery::ConnectionOpened {
                             generation,

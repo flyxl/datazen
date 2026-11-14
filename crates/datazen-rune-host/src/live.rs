@@ -37,7 +37,7 @@ use datazen_driver_api::{ConnectionHandle, DatabaseDriver, Value as Cell};
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnFilter, ColumnSort, ConnectionProfile,
     DashboardWidget, DatabaseNode, DesktopAdapter, ProgressSnapshot, SchemaNode, Snippet,
-    TablePage, Workflow, WorkflowStepResult, DESKTOP_NOT_IMPLEMENTED,
+    TablePage, ValueSearchHit, Workflow, WorkflowStepResult, DESKTOP_NOT_IMPLEMENTED,
 };
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -57,6 +57,7 @@ pub(crate) fn host_registry() -> DriverRegistry {
 /// A job on the worker's channel, with the generation the UI expects back.
 enum HostJob {
     OpenConnection { generation: u32, id: String },
+    ValueSearch { generation: u32, value: String, mode: String },
     ReadTable {
         generation: u32,
         table: String,
@@ -78,6 +79,7 @@ enum HostJob {
 /// A finished job on the answer channel.
 enum HostAnswer {
     Connection { generation: u32, id: String, catalog: Result<Catalog, String> },
+    ValueSearched { generation: u32, hits: Result<Vec<ValueSearchHit>, String> },
     TablePage { generation: u32, page: Result<TablePage, String> },
     CommitCount { generation: u32, count: Result<u32, String> },
     QueryPage { generation: u32, page: Result<TablePage, String> },
@@ -288,6 +290,14 @@ impl LiveAdapter {
                                     generation,
                                     page: Err(format!("the job runtime did not start: {error}")),
                                 },
+                                HostJob::ValueSearch { generation, .. } => {
+                                    HostAnswer::ValueSearched {
+                                        generation,
+                                        hits: Err(format!(
+                                            "the job runtime did not start: {error}"
+                                        )),
+                                    }
+                                }
                             };
                             if answer_tx.send(answer).is_err() {
                                 break;
@@ -308,6 +318,14 @@ impl LiveAdapter {
                                 &id,
                             ));
                             HostAnswer::Connection { generation, id: id_for_answer, catalog }
+                        }
+                        HostJob::ValueSearch { generation, value, mode } => {
+                            let hits = runtime.block_on(value_search_scan(
+                                &worker_session,
+                                &value,
+                                &mode,
+                            ));
+                            HostAnswer::ValueSearched { generation, hits }
                         }
                         HostJob::ReadTable { generation, table, page, page_size, sort, filter } => {
                             let page_result = runtime.block_on(read_table(
@@ -1210,6 +1228,79 @@ async fn commit_edits(
 /// its error sentence. Cancellation is the UI's generation semantics (Q5/Q6):
 /// a stale delivery is dropped on arrival, and the runtime's idle policy reaps
 /// the session behind it.
+/// The value search's scan (T4): every table of the live session's
+/// database, every column of the table, one `search_table_values` per
+/// column — the hit list is the columns with matching rows, the same
+/// per-column answers the React dialog's scan gives the front end.
+async fn value_search_scan(
+    session: &Arc<Mutex<LiveSession>>,
+    value: &str,
+    mode: &str,
+) -> Result<Vec<ValueSearchHit>, String> {
+    use datazen::services::value_search::{
+        search_table_values, SearchMode, SearchTableValuesRequest,
+    };
+    let (driver, handle, database) = {
+        let session = session.lock().expect("the live session lock");
+        if !session.is_open() {
+            return Err("the live session is not open".into());
+        }
+        let database = session.database.clone().unwrap_or_else(|| "main".into());
+        (
+            session.driver.clone().expect("the session driver"),
+            session.handle.clone().expect("the session handle"),
+            database,
+        )
+    };
+    let mode = match mode {
+        "contains" => SearchMode::Contains,
+        "notContains" => SearchMode::NotContains,
+        "exact" => SearchMode::Exact,
+        "prefix" => SearchMode::Prefix,
+        "suffix" => SearchMode::Suffix,
+        other => return Err(format!("unknown value search mode '{other}'")),
+    };
+    let tables = driver
+        .get_tables(&handle, &database, None)
+        .await
+        .map_err(|error| error.to_string())?;
+    let mut hits = Vec::new();
+    for table in &tables {
+        let schema = driver
+            .get_table_schema(&handle, &table.name, &database, None)
+            .await
+            .map_err(|error| error.to_string())?;
+        for column in &schema.columns {
+            let request = SearchTableValuesRequest {
+                db_session_id: String::new(),
+                table: table.name.clone(),
+                columns: vec![column.name.clone()],
+                value: value.to_owned(),
+                mode: mode.clone(),
+                database: Some(database.clone()),
+                schema: table.schema.clone(),
+            };
+            let result = search_table_values(
+                driver.as_ref(),
+                &handle,
+                &database,
+                table.schema.as_deref(),
+                &request,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+            if result.matches > 0 {
+                hits.push(ValueSearchHit {
+                    table: table.name.clone(),
+                    column: column.name.clone(),
+                    matches: result.matches,
+                });
+            }
+        }
+    }
+    Ok(hits)
+}
+
 async fn run_query(
     runtime: &Arc<RuntimeConnectionUseCases>,
     profiles: &Arc<crate::backend::HostProfiles>,
@@ -1379,6 +1470,9 @@ impl DesktopAdapter for LiveAdapter {
                 HostJob::CommitCells { generation, batch }
             }
             AdapterJob::RunQuery { generation, sql } => HostJob::RunQuery { generation, sql },
+            AdapterJob::ValueSearch { generation, value, mode } => {
+                HostJob::ValueSearch { generation, value, mode }
+            }
         };
         self.jobs.lock().expect("the job channel").send(job).is_ok()
     }
@@ -1390,6 +1484,9 @@ impl DesktopAdapter for LiveAdapter {
             match answer {
                 HostAnswer::Connection { generation, id, catalog } => {
                     deliveries.push(AdapterDelivery::ConnectionOpened { generation, id, catalog });
+                }
+                HostAnswer::ValueSearched { generation, hits } => {
+                    deliveries.push(AdapterDelivery::ValueSearched { generation, hits });
                 }
                 HostAnswer::TablePage { generation, page } => {
                     deliveries.push(AdapterDelivery::TablePage { generation, page });
@@ -2422,6 +2519,21 @@ mod tests {
         assert!(!error.is_empty(), "the failure carries a sentence: {error}");
     }
 
+    /// Wait for a value search job's delivery (T4).
+    fn poll_value_search(adapter: &mut LiveAdapter, generation: u32) -> Option<Vec<ValueSearchHit>> {
+        for _ in 0..300 {
+            for delivery in adapter.poll_jobs() {
+                if let AdapterDelivery::ValueSearched { generation: g, hits } = delivery {
+                    if g == generation {
+                        return Some(hits.expect("the scan succeeded"));
+                    }
+                }
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        None
+    }
+
     /// Wait for a host job to reach a terminal status.
     fn wait_job(adapter: &LiveAdapter, job: u64) -> datazen_ui_api::ProgressSnapshot {
         for _ in 0..300 {
@@ -2508,6 +2620,63 @@ mod tests {
         assert_eq!(snapshot.status, "completed", "log: {:?}", snapshot.log);
         let picked_body = std::fs::read_to_string(&picked).expect("the picked file was written");
         assert!(!picked_body.is_empty(), "the dump lands at the picked path");
+    }
+
+    #[test]
+    fn a_value_search_finds_the_columns_that_match() {
+        let dir = temp_dir("value-search");
+        let mut adapter = opened_adapter(&dir);
+
+        // contains "user-4": the users.name column has ten matching rows
+        // (user-40..user-49); events.label has none.
+        assert!(adapter.begin_job(AdapterJob::ValueSearch {
+            generation: 1,
+            value: "user-4".into(),
+            mode: "contains".into(),
+        }));
+        let hits = poll_value_search(&mut adapter, 1).expect("the scan answers");
+        let users_name = hits
+            .iter()
+            .find(|hit| hit.table == "users" && hit.column == "name")
+            .expect("users.name is a hit");
+        assert_eq!(users_name.matches, 10, "user-40 through user-49: {:?}", hits);
+        assert!(
+            !hits.iter().any(|hit| hit.table == "events"),
+            "events carries no matching value: {:?}",
+            hits
+        );
+
+        // suffix "2": the names ending in 2 — user-02, 12, …, 52.
+        assert!(adapter.begin_job(AdapterJob::ValueSearch {
+            generation: 2,
+            value: "2".into(),
+            mode: "suffix".into(),
+        }));
+        let hits = poll_value_search(&mut adapter, 2).expect("the scan answers");
+        let users_name = hits
+            .iter()
+            .find(|hit| hit.table == "users" && hit.column == "name")
+            .expect("users.name is a hit");
+        assert_eq!(users_name.matches, 6, "six names end in 2: {:?}", hits);
+
+        // exact: one row.
+        assert!(adapter.begin_job(AdapterJob::ValueSearch {
+            generation: 3,
+            value: "user-42".into(),
+            mode: "exact".into(),
+        }));
+        let hits = poll_value_search(&mut adapter, 3).expect("the scan answers");
+        assert_eq!(hits.len(), 1, "one column matches exactly: {:?}", hits);
+        assert_eq!(hits[0].matches, 1);
+
+        // A value nothing holds: the honest empty list.
+        assert!(adapter.begin_job(AdapterJob::ValueSearch {
+            generation: 4,
+            value: "no such value".into(),
+            mode: "contains".into(),
+        }));
+        let hits = poll_value_search(&mut adapter, 4).expect("the scan answers");
+        assert!(hits.is_empty(), "no column matches: {:?}", hits);
     }
 
     #[test]

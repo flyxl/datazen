@@ -407,6 +407,13 @@ pub enum AdapterJob {
         generation: u32,
         id: String,
     },
+    /// Scan the live session's tables for a value (T4): one job for the
+    /// whole scan, one hit per (table, column) with rows matching.
+    ValueSearch {
+        generation: u32,
+        value: String,
+        mode: String,
+    },
     /// Read one page of a table, the job twin of `read_table_page`.
     ReadTable {
         generation: u32,
@@ -437,12 +444,23 @@ pub enum AdapterDelivery {
     /// rides along so the UI can name the live session — the refresh path
     /// re-opens it.
     ConnectionOpened { generation: u32, id: String, catalog: Result<Catalog, String> },
+    /// A value search's hits (or its failure sentence) (T4).
+    ValueSearched { generation: u32, hits: Result<Vec<ValueSearchHit>, String> },
     /// A read job's page (or its failure sentence).
     TablePage { generation: u32, page: Result<TablePage, String> },
     /// A commit job's landed edit count (or its failure sentence).
     CommitCount { generation: u32, count: Result<u32, String> },
     /// A query job's result page (or its failure sentence).
     QueryPage { generation: u32, page: Result<TablePage, String> },
+}
+
+/// One (table, column) a value search found the value in (T4): how many
+/// rows of the column match.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ValueSearchHit {
+    pub table: String,
+    pub column: String,
+    pub matches: u64,
 }
 
 /// The grid's staged edits as one commit batch (N6): the rows the page
