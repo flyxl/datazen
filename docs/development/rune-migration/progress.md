@@ -1,10 +1,12 @@
 ## Current Task
-- **任务**: A3/A5 逐页对齐并整合（plan-native-5）— A2、A4、A6 已合流主轨；A3（查询面板）与 A5（结果工作区）在并行 worktree 推进中，完成后合流并解决冲突
+- **任务**: A5 结果工作区对齐并整合（plan-native-5）— A2、A3、A4、A6 已合流主轨；A5 在并行 worktree 已完成，待合流并解决冲突后统一验证
 - **负责人**: Coder Agent
-- **状态**: L1–L7 已完成；A1 进行中（首页与导航器 Recent/All/过滤已落地，pinned/用户分组受契约限制）。A2 连接表单对话框化、A4 表浏览对齐、A6 设置导航分组已合流主轨。第五阶段计划见 [plan-native-5.md](plan-native-5.md)。
+- **状态**: L1–L7 已完成；A1 进行中（首页与导航器 Recent/All/过滤已落地，pinned/用户分组受契约限制）。A2 连接表单对话框化、A3 查询面板对齐、A4 表浏览对齐、A6 设置导航分组已合流/在途合流。第五阶段计划见 [plan-native-5.md](plan-native-5.md)。
 
 ## Completed Work (recent)
+- [x] A3 查询面板对齐（`3630c95f7`；见 [testing/A3-query-panel.md](testing/A3-query-panel.md)）
 - [x] A2 连接表单对话框化（`1e383c421`, `7e06bf48e`，合流主轨；见 [testing/A2-connection-form-dialog.md](testing/A2-connection-form-dialog.md)）
+- [x] A4 表浏览对齐（`e041fc463`, `5ae657365`, `f8879f36c`，合流主轨；见 [testing/A4-table-browse.md](testing/A4-table-browse.md)）
 - [x] A6 设置导航分组（`27c5f2292`, `95b4a4c30`，合流主轨；见 [testing/A6-settings-nav.md](testing/A6-settings-nav.md)）
 
 ## N5 组装配方（调查结论，fc160ec 时点）
@@ -33,8 +35,9 @@ React 页面和组件保留。不删除、不改成空壳、不把现有入口�
 - [x] A4 表浏览对齐：行号 gutter、按表列宽持久化与回填、FK 面包屑、状态横幅、待提交条（`e041fc463`, `5ae657365`；测试报告 `testing/A4-table-browse.md`）
 
 ## Verification
-- A4（2026-11-16，本 worktree `feature/a4-table-browse`）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui --offline --lib -- --test-threads=1` → **164 passed, 0 failed**；`CARGO_TARGET_DIR="$PWD/target" cargo check -p datazen-rune-host --offline` → exit 0（既有 warnings）。报告：`testing/A4-table-browse.md`；提交：`e041fc463`（feat）、`5ae657365`（fix）。
-- 历史基线（C3 收尾）：`cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1`：datazen-ui 113 passed、datazen-ui-api 54 passed；GR2 `cargo check` exit 0。
+- 主轨集成（A2/A4/A6 合流后）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui --offline --lib -- --test-threads=1` → **168 passed, 0 failed**；`cargo check -p datazen-rune-host --offline` exit 0。
+- A3（`feature/a3-query-panel`，合流主轨）：分支 GR2 报告 **169 passed, 0 failed**（含 part_10）；合流后统一门禁见后续记录。
+- 历史基线（C3 收尾）：`cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1`：datazen-ui 113 passed、datazen-ui-api 54 passed。
 
 ## 收尾测量（C3）
 

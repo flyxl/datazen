@@ -8,6 +8,17 @@ pub(crate) const NAVIGATOR_WIDTH_MAX: u32 = 500;
 pub(crate) const SIDEBAR_RAIL_WIDTH_KEY: &str = "sidebar-rail-width";
 pub(crate) const NAVIGATOR_WIDTH_KEY: &str = "navigator-width";
 
+/// Query panel layout (A3): editor height and the in-query sidebar width,
+/// persisted through `Setting::Layout` like every other split.
+pub(crate) const QUERY_EDITOR_HEIGHT_KEY: &str = "query-editor-height";
+pub(crate) const QUERY_EDITOR_HEIGHT_DEFAULT: u32 = 320;
+pub(crate) const QUERY_EDITOR_HEIGHT_MIN: u32 = 120;
+pub(crate) const QUERY_EDITOR_HEIGHT_MAX: u32 = 900;
+pub(crate) const QUERY_SIDEBAR_WIDTH_KEY: &str = "query-sidebar-width";
+pub(crate) const QUERY_SIDEBAR_WIDTH_DEFAULT: u32 = 240;
+pub(crate) const QUERY_SIDEBAR_WIDTH_MIN: u32 = 160;
+pub(crate) const QUERY_SIDEBAR_WIDTH_MAX: u32 = 420;
+
 /// The app's font pool (H8): rune's own Inter faces keep the UI's Latin look
 /// and the web's sans fallback, IBM Plex Mono keeps the editor's mono slot,
 /// and Noto Sans SC covers Chinese in the interface and the grid — the sans

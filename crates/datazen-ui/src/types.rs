@@ -67,3 +67,28 @@ pub(crate) enum Tool {
     Transfer,
     ValueSearch,
 }
+
+/// A3: the panel shown in the query workspace's sidebar.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum QuerySidebarPanel {
+    #[default]
+    Favorites,
+    History,
+    Snippets,
+}
+
+impl QuerySidebarPanel {
+    pub(crate) const ALL: [QuerySidebarPanel; 3] = [
+        QuerySidebarPanel::Favorites,
+        QuerySidebarPanel::History,
+        QuerySidebarPanel::Snippets,
+    ];
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            QuerySidebarPanel::Favorites => "Favorites",
+            QuerySidebarPanel::History => "History",
+            QuerySidebarPanel::Snippets => "Snippets",
+        }
+    }
+}

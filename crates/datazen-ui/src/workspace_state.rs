@@ -166,14 +166,121 @@ impl AppState {
         self.reload_table_page();
     }
 
-    /// Load a query result into the shared grid, read-only, below the editor.
+    fn park_selected_query_result_grid(&mut self) {
+        let grid = self.result_grid.take();
+        if let Some(id) = self.selected_query_result {
+            if let Some(tab) = self.query_result_tabs.iter_mut().find(|t| t.id == id) {
+                tab.grid = grid;
+                return;
+            }
+        }
+        // No selected tab: keep legacy grid only (should be rare).
+        self.result_grid = grid;
+    }
+
+    fn restore_selected_query_result_grid(&mut self) {
+        self.result_grid = None;
+        if let Some(id) = self.selected_query_result {
+            if let Some(index) = self.query_result_tabs.iter().position(|t| t.id == id) {
+                self.result_grid = self.query_result_tabs[index].grid.take();
+            }
+        }
+    }
+
+    fn ensure_query_result_tab_for_generation(&mut self, generation: u32) -> u32 {
+        if let Some(id) = self
+            .query_result_tabs
+            .iter()
+            .find(|t| t.generation == Some(generation))
+            .map(|t| t.id)
+        {
+            return id;
+        }
+        let id = self.next_query_result_id;
+        self.next_query_result_id += 1;
+        let label = format!("Result {}", self.query_result_tabs.len() + 1);
+        self.query_result_tabs.push(QueryResultTab {
+            id,
+            label,
+            generation: Some(generation),
+            grid: None,
+            pinned: false,
+        });
+        id
+    }
+
+    /// A3: select a query result sub-tab by id.
+    pub(crate) fn select_query_result_tab(&mut self, id: u32) -> bool {
+        if !self.query_result_tabs.iter().any(|t| t.id == id) {
+            return false;
+        }
+        self.park_selected_query_result_grid();
+        self.selected_query_result = Some(id);
+        self.restore_selected_query_result_grid();
+        self.result_focused = false;
+        true
+    }
+
+    /// A3: toggle pin state for a result sub-tab.
+    pub(crate) fn toggle_pin_query_result_tab(&mut self, id: u32) {
+        if let Some(tab) = self.query_result_tabs.iter_mut().find(|t| t.id == id) {
+            tab.pinned = !tab.pinned;
+        }
+    }
+
+    /// A3: close a result sub-tab (pinned or not) if present.
+    pub(crate) fn close_query_result_tab(&mut self, id: u32) -> bool {
+        let Some(index) = self.query_result_tabs.iter().position(|t| t.id == id) else {
+            return false;
+        };
+        let was_selected = self.selected_query_result == Some(id);
+        if was_selected {
+            // drop active grid (it is not parked in the tab)
+            self.result_grid = None;
+            self.selected_query_result = None;
+        }
+        self.query_result_tabs.remove(index);
+        if was_selected {
+            self.selected_query_result = self.query_result_tabs.last().map(|t| t.id);
+            self.restore_selected_query_result_grid();
+            self.result_focused = false;
+        }
+        true
+    }
+
+    /// A3: honest toolbar affordances when no host capability exists.
+    pub(crate) fn query_action_notice(&mut self, notice: impl Into<String>) {
+        self.query_notice = Some(notice.into());
+    }
+
+    pub(crate) fn format_query(&mut self) {
+        // No formatter capability in the current Rune/editor contract; keep the
+        // document unchanged and report honestly.
+        self.query_action_notice("Format is not available in this host");
+    }
+
+    pub(crate) fn explain_query(&mut self) {
+        self.query_action_notice("Explain is not available in this host");
+    }
+
+    pub(crate) fn query_transaction(&mut self, action: &str) {
+        self.query_action_notice(format!("{action} is not available in this host"));
+    }
+
+    pub(crate) fn insert_snippet_sql(&mut self, sql: &str) {
+        if !sql.is_empty() {
+            self.sql.insert(sql);
+            self.result_focused = false;
+        }
+    }
+
+    /// Load a query result into the selected result tab's grid (and legacy mirror).
     pub(crate) fn load_result_page(&mut self, columns: Vec<String>, rows: Vec<Vec<String>>) {
         let page = self.workspace.open_result(columns, rows);
         let mut grid = DataGrid::new();
         grid.load_page(&page);
         grid.set_editable(false);
         self.result_grid = Some(grid);
-        // T1: a fresh result starts with the editor holding the keyboard.
         self.result_focused = false;
     }
 
@@ -186,11 +293,18 @@ impl AppState {
 
     /// A result page arrives for a generation. Stale generations — superseded by
     /// a newer run or invalidated by a cancel — are dropped on the floor.
+    /// A3: lands in the matching result tab and makes it selected.
     pub(crate) fn deliver_query_result(&mut self, generation: u32, page: TablePage) {
         if generation != self.query_generation {
             return;
         }
+        self.park_selected_query_result_grid();
+        let tab_id = self.ensure_query_result_tab_for_generation(generation);
+        self.selected_query_result = Some(tab_id);
+        self.restore_selected_query_result_grid();
         self.load_result_page(page.columns, page.rows);
+        self.park_selected_query_result_grid();
+        self.restore_selected_query_result_grid();
     }
 
     /// Cancel the in-flight query: bumping the generation invalidates every
@@ -204,11 +318,21 @@ impl AppState {
 
     /// Run the statement at the cursor. A failed execution changes nothing; a
     /// successful one lands in the result grid only if still current.
+    /// A3: creates a new result tab for this run and selects it (pinned tabs
+    /// remain; unpinned prior tabs are kept for switching). A synchronous
+    /// failure restores the previously selected result so the UI stays as it was.
     pub(crate) fn run_query(&mut self) {
+        let previous_selected = self.selected_query_result;
         let generation = self.next_query_generation();
         let Some(sql) = self.sql.statement_at_cursor() else {
             return;
         };
+        self.query_notice = None;
+        self.park_selected_query_result_grid();
+        let tab_id = self.ensure_query_result_tab_for_generation(generation);
+        self.selected_query_result = Some(tab_id);
+        self.restore_selected_query_result_grid();
+        self.result_focused = false;
         // N1: a live host runs the statement as a job; the editor keeps its
         // document and the result area says the query is in flight until the
         // delivery lands (dropped when its generation went stale, as in Q5).
@@ -219,7 +343,17 @@ impl AppState {
         }
         match self.workspace.execute(&sql) {
             Ok(page) => self.deliver_query_result(generation, page),
-            Err(_) => {}
+            Err(_) => {
+                // Synchronous failure: drop the empty pending tab and restore the
+                // previous result view.
+                self.query_loading = None;
+                let _ = self.close_query_result_tab(tab_id);
+                if self.selected_query_result != previous_selected {
+                    if let Some(prev) = previous_selected {
+                        let _ = self.select_query_result_tab(prev);
+                    }
+                }
+            }
         }
     }
 
