@@ -2,7 +2,18 @@
 
 use crate::data_grid::DataGrid;
 use crate::sql_editor::SqlEditor;
-use crate::types::{Section, TableView, Tool};
+use crate::types::{QuerySidebarPanel, Section, TableView, Tool};
+
+/// A3: one query result tab. Multiple executions produce multiple tabs; pinned
+/// tabs stay across later runs.
+#[derive(Debug)]
+pub(crate) struct QueryResultTab {
+    pub id: u32,
+    pub label: String,
+    pub generation: Option<u32>,
+    pub grid: Option<DataGrid>,
+    pub pinned: bool,
+}
 use crate::{icons, splitter};
 #[cfg(not(target_arch = "wasm32"))]
 use datazen_ui_api::UseCaseAdapter;
@@ -46,11 +57,20 @@ pub struct AppState {
     /// Session-only recently opened connections (most recent first). UI state
     /// for A1 tree hierarchy; not persisted and not part of any contract.
     pub(crate) recent_connection_ids: Vec<String>,
-    /// The read-only query result grid of the selected query tab.
+    /// The read-only query result grid of the selected query tab (mirrors the
+    /// selected result sub-tab for compatibility with existing view/focus paths).
     pub(crate) result_grid: Option<DataGrid>,
     /// T1: the result grid holds the keyboard after a result cell is pressed;
     /// typing, Escape or pressing the editor surface hands it back.
     pub(crate) result_focused: bool,
+    /// A3: result sub-tabs for query executions (including pinned tabs).
+    pub(crate) query_result_tabs: Vec<QueryResultTab>,
+    pub(crate) selected_query_result: Option<u32>,
+    pub(crate) next_query_result_id: u32,
+    /// A3: favorites/history/snippets sidebar inside the query workspace.
+    pub(crate) query_sidebar_panel: QuerySidebarPanel,
+    /// A3: last honest notice from a toolbar action without a host capability.
+    pub(crate) query_notice: Option<String>,
     /// The query generation: bumped by every run and every cancel. A result page
     /// from a generation that is not the current one is dropped.
     pub(crate) query_generation: u32,
@@ -246,6 +266,11 @@ impl Default for AppState {
             recent_connection_ids: Vec::new(),
             result_grid: None,
             result_focused: false,
+            query_result_tabs: Vec::new(),
+            selected_query_result: None,
+            next_query_result_id: 1,
+            query_sidebar_panel: QuerySidebarPanel::Favorites,
+            query_notice: None,
             query_generation: 0,
             read_generation: 0,
             table_loading: None,

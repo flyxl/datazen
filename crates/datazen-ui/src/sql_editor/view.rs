@@ -41,7 +41,8 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: boo
     col()
         .key("sql-editor")
         .w_full()
-        .h(456.0)
+        .h_full()
+        .min_h(120.0)
         .gap(8.0)
         .child(
             row()
@@ -124,7 +125,8 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: boo
             col()
                 .key("sql-editor-scroll")
                 .w_full()
-                .h(380.0)
+                .grow(1.0)
+                .min_h(60.0)
                 .scroll_xy()
                 .radius(8.0)
                 .on_press(|state: &mut crate::AppState| {

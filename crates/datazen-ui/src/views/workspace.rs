@@ -110,9 +110,27 @@ pub(crate) fn view_switcher(state: &AppState, theme: tok::Theme) -> El {
 /// its failure sentence, or the "not loaded" hint for an entry that never
 /// landed. None when the four segments are there to draw.
 pub(crate) fn query_workspace(state: &AppState, theme: tok::Theme, dark: bool) -> El {
-    // N1: a query job in flight says so above whatever the area shows —
-    // the placeholder before the first result, the stale grid of the run
-    // before it.
+    let sidebar_w = splitter::splitter_size(
+        state,
+        QUERY_SIDEBAR_WIDTH_KEY,
+        QUERY_SIDEBAR_WIDTH_DEFAULT,
+    ) as f32;
+    let editor_h = splitter::splitter_size(
+        state,
+        QUERY_EDITOR_HEIGHT_KEY,
+        QUERY_EDITOR_HEIGHT_DEFAULT,
+    ) as f32;
+
+    let sidebar = query_sidebar(state, theme);
+    let sidebar_split = splitter::splitter_handle(
+        state,
+        QUERY_SIDEBAR_WIDTH_KEY,
+        splitter::SplitAxis::Vertical,
+        QUERY_SIDEBAR_WIDTH_MIN,
+        QUERY_SIDEBAR_WIDTH_MAX,
+        QUERY_SIDEBAR_WIDTH_DEFAULT,
+    );
+
     let loading = state.query_loading.is_some().then(|| {
         row()
             .key("query-loading")
@@ -121,7 +139,18 @@ pub(crate) fn query_workspace(state: &AppState, theme: tok::Theme, dark: bool) -
             .center_y()
             .child(text("Running…".to_owned()).font(type_::LABEL).color(theme.text_secondary))
     });
-    let results = match &state.result_grid {
+
+    let notice = state.query_notice.as_ref().map(|msg| {
+        row()
+            .key("query-notice")
+            .w_full()
+            .h(20.0)
+            .center_y()
+            .child(text(msg.clone()).font(type_::LABEL).color(theme.text_secondary))
+    });
+
+    let result_tabs = query_result_tabs_bar(state, theme);
+    let result_body = match &state.result_grid {
         Some(grid) => crate::data_grid::result_panel(
             grid,
             crate::data_grid::GridSlot::Result,
@@ -140,48 +169,250 @@ pub(crate) fn query_workspace(state: &AppState, theme: tok::Theme, dark: bool) -
             .fill(theme.control_off)
             .child(text("No results").font(type_::LABEL).color(theme.text_secondary)),
     };
-    col()
+
+    let editor_split = splitter::splitter_handle(
+        state,
+        QUERY_EDITOR_HEIGHT_KEY,
+        splitter::SplitAxis::Horizontal,
+        QUERY_EDITOR_HEIGHT_MIN,
+        QUERY_EDITOR_HEIGHT_MAX,
+        QUERY_EDITOR_HEIGHT_DEFAULT,
+    );
+
+    let main = col()
+        .key("query-main")
+        .grow(1.0)
+        .min_w(0.0)
+        .gap(6.0)
+        .child(
+            col()
+                .key("query-editor-pane")
+                .w_full()
+                .min_w(0.0)
+                .h(editor_h)
+                .child(crate::sql_editor::panel(
+                    &state.sql,
+                    theme.text,
+                    theme.text_secondary,
+                    dark,
+                )),
+        )
+        .child(query_toolbar(state, theme))
+        .child(editor_split)
+        .children(notice)
+        .children(loading)
+        .child(result_tabs)
+        .child(result_body);
+
+    row()
         .key("query-tab")
         .w_full()
-        .gap(8.0)
-        .child(crate::sql_editor::panel(&state.sql, theme.text, theme.text_secondary, dark))
+        .h_full()
+        .gap(0.0)
+        .child(col().key("query-sidebar-pane").w(sidebar_w).h_full().child(sidebar))
+        .child(sidebar_split)
+        .child(main)
+}
+
+fn toolbar_button(key: &'static str, label: &str, theme: tok::Theme) -> El {
+    row()
+        .key(key)
+        .h(24.0)
+        .px(8.0)
+        .center_y()
+        .radius(6.0)
+        .fill(theme.control_off)
+        .child(text(label.to_owned()).font(type_::LABEL).color(theme.text))
+}
+
+pub(crate) fn query_toolbar(_state: &AppState, theme: tok::Theme) -> El {
+    row()
+        .key("query-toolbar")
+        .w_full()
+        .h(28.0)
+        .gap(6.0)
+        .center_y()
+        .child(toolbar_button("sql-run", "Run", theme).on_press(|s: &mut AppState| s.run_query()))
+        .child(toolbar_button("sql-cancel", "Cancel", theme).on_press(|s: &mut AppState| s.cancel_query()))
+        .child(toolbar_button("sql-format", "Format", theme).on_press(|s: &mut AppState| s.format_query()))
+        .child(toolbar_button("sql-explain", "Explain", theme).on_press(|s: &mut AppState| s.explain_query()))
+        .child(toolbar_button("sql-tx-begin", "Begin", theme).on_press(|s: &mut AppState| s.query_transaction("Begin transaction")))
+        .child(toolbar_button("sql-tx-commit", "Commit", theme).on_press(|s: &mut AppState| s.query_transaction("Commit")))
+        .child(toolbar_button("sql-tx-rollback", "Rollback", theme).on_press(|s: &mut AppState| s.query_transaction("Rollback")))
         .child(
-            row()
-                .key("query-toolbar")
-                .w_full()
-                .h(28.0)
-                .gap(8.0)
-                .center_y()
-                .child(
-                    row()
-                        .key("sql-run")
-                        .h(24.0)
-                        .px(8.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(theme.control_off)
-                        .child(text("Run").font(type_::LABEL).color(theme.text))
-                        .on_press(|state: &mut AppState| state.run_query()),
-                )
-                .child(
-                    row()
-                        .key("sql-cancel")
-                        .h(24.0)
-                        .px(8.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(theme.control_off)
-                        .child(text("Cancel").font(type_::LABEL).color(theme.text))
-                        .on_press(|state: &mut AppState| state.cancel_query()),
-                )
-                .child(
-                    text("Command+Enter runs the statement at the cursor")
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                ),
+            text("Command+Enter runs the statement at the cursor")
+                .font(type_::LABEL)
+                .color(theme.text_secondary),
         )
-        .children(loading)
-        .child(results)
+}
+
+fn query_result_tabs_bar(state: &AppState, theme: tok::Theme) -> El {
+    let mut bar = row()
+        .key("query-result-tabs")
+        .w_full()
+        .h(28.0)
+        .gap(4.0)
+        .center_y()
+        .px(4.0);
+    if state.query_result_tabs.is_empty() {
+        bar = bar.child(
+            text("Results")
+                .key("query-result-tabs-empty")
+                .font(type_::LABEL)
+                .color(theme.text_secondary),
+        );
+        return bar;
+    }
+    for tab in &state.query_result_tabs {
+        let id = tab.id;
+        let selected = state.selected_query_result == Some(id);
+        let label = if tab.pinned {
+            format!("📌 {}", tab.label)
+        } else {
+            tab.label.clone()
+        };
+        bar = bar.child(
+            row()
+                .key(format!("query-result-tab-{id}"))
+                .h(22.0)
+                .px(8.0)
+                .gap(6.0)
+                .center_y()
+                .radius(6.0)
+                .fill(if selected { theme.card } else { theme.control_off })
+                .child(text(label).font(type_::LABEL).color(theme.text))
+                .child(
+                    text(if tab.pinned { "Unpin" } else { "Pin" })
+                        .key(format!("query-result-pin-{id}"))
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary)
+                        .on_press(move |s: &mut AppState| s.toggle_pin_query_result_tab(id)),
+                )
+                .child(
+                    text("×")
+                        .key(format!("query-result-close-{id}"))
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary)
+                        .on_press(move |s: &mut AppState| {
+                            let _ = s.close_query_result_tab(id);
+                        }),
+                )
+                .on_press(move |s: &mut AppState| {
+                    let _ = s.select_query_result_tab(id);
+                }),
+        );
+    }
+    bar
+}
+
+fn query_sidebar(state: &AppState, theme: tok::Theme) -> El {
+    let mut tabs = row().key("query-sidebar-tabs").w_full().h(28.0).gap(4.0).center_y();
+    for panel in crate::types::QuerySidebarPanel::ALL {
+        let active = state.query_sidebar_panel == panel;
+        tabs = tabs.child(
+            row()
+                .key(format!("query-sidebar-tab-{}", panel.label().to_lowercase()))
+                .h(22.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(if active { theme.card } else { theme.control_off })
+                .child(text(panel.label().to_owned()).font(type_::LABEL).color(theme.text))
+                .on_press(move |s: &mut AppState| s.query_sidebar_panel = panel),
+        );
+    }
+
+    let content = match state.query_sidebar_panel {
+        crate::types::QuerySidebarPanel::Favorites => query_favorites_panel(state, theme),
+        crate::types::QuerySidebarPanel::History => query_history_panel(theme),
+        crate::types::QuerySidebarPanel::Snippets => query_snippets_panel(state, theme),
+    };
+
+    col()
+        .key("query-sidebar")
+        .w_full()
+        .h_full()
+        .gap(6.0)
+        .px(8.0)
+        .py(8.0)
+        .fill(theme.control_off)
+        .child(text("Query library").font(type_::TITLE).color(theme.text))
+        .child(tabs)
+        .child(content)
+}
+
+fn query_history_panel(theme: tok::Theme) -> El {
+    col()
+        .key("query-history-panel")
+        .w_full()
+        .gap(6.0)
+        .child(
+            text("Query history is not exposed to the Rune UI in this host.")
+                .font(type_::LABEL)
+                .color(theme.text_secondary)
+                .w_full(),
+        )
+}
+
+fn query_favorites_panel(state: &AppState, theme: tok::Theme) -> El {
+    let favorites = state.host_favorites();
+    let mut panel = col().key("query-favorites-panel").w_full().gap(4.0);
+    if favorites.is_empty() {
+        panel = panel.child(
+            text("No favorites yet")
+                .key("query-favorites-empty")
+                .font(type_::LABEL)
+                .color(theme.text_secondary),
+        );
+        return panel;
+    }
+    for (index, favorite) in favorites.iter().enumerate() {
+        let title = favorite.title.clone();
+        panel = panel.child(
+            row()
+                .key(format!("query-favorite-{index}"))
+                .w_full()
+                .h(24.0)
+                .px(6.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.bg)
+                .child(text(title).font(type_::LABEL).color(theme.text))
+                .on_press(move |s: &mut AppState| s.open_favorite(index)),
+        );
+    }
+    panel
+}
+
+fn query_snippets_panel(state: &AppState, theme: tok::Theme) -> El {
+    let snippets = state.host_snippets();
+    let mut panel = col().key("query-snippets-panel").w_full().gap(4.0);
+    if snippets.is_empty() {
+        panel = panel.child(
+            text("No snippets yet")
+                .key("query-snippets-empty")
+                .font(type_::LABEL)
+                .color(theme.text_secondary),
+        );
+        return panel;
+    }
+    for (index, snippet) in snippets.iter().enumerate() {
+        let sql = snippet.sql.clone();
+        let name = snippet.name.clone();
+        panel = panel.child(
+            row()
+                .key(format!("query-snippet-{index}"))
+                .w_full()
+                .h(24.0)
+                .px(6.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.bg)
+                .child(text(name).font(type_::LABEL).color(theme.text))
+                .on_press(move |s: &mut AppState| s.insert_snippet_sql(&sql)),
+        );
+    }
+    panel
 }
 pub(crate) fn query_selected(state: &AppState) -> bool {
     state.tabs.selected().is_some_and(|tab| tab.kind == TabKind::Query)
