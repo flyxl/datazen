@@ -121,7 +121,7 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | E1 | 已完成 | fc1c658 | testing/E1-structure-job.md |
 | E2 | 已完成 | e8a2337 | testing/E2-widget-bars-job.md |
 | E3 | 已完成 | ef116f8 | testing/E3-inbound-job.md |
-| E4 | 未开始 | | |
+| E4 | 已完成 | d4d59d1 | testing/E4-driver-factories.md |
 | E5 | 未开始 | | |
 | E6 | 未开始 | | |
 | E7 | 未开始 | | |

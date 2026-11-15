@@ -1,7 +1,7 @@
 ## Current Task
-- **任务**: E4（工厂导出与链接）——第四阶段（basic 驱动接入，[plan-native-4.md](plan-native-4.md)）。
+- **任务**: E5（连接表单接活宿主）——第四阶段（basic 驱动接入，[plan-native-4.md](plan-native-4.md)）。
 - **负责人**: Coder Agent
-- **状态**: E1（fc1c658）、E2（e8a2337）、E3（ef116f8）已完成，帧循环上无界 IO 清零；E4 进行中（postgres/mysql/redis 工厂导出与静态准入）。
+- **状态**: E1（fc1c658）、E2（e8a2337）、E3（ef116f8）、E4（d4d59d1）已完成——宿主静态准入 basic SKU 11 工厂 id，GR5 首跑全绿；E5 进行中。
 
 ## N5 组装配方（调查结论，fc160ec 时点）
 
