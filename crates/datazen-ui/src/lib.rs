@@ -4,6 +4,7 @@
 //! implementations. Platform adapters will be added behind typed UI ports.
 
 mod data_grid;
+mod splitter;
 mod sql_editor;
 
 use data_grid::DataGrid;
@@ -291,6 +292,10 @@ pub struct AppState {
     /// past is dropped.
     workflow_generation: u32,
     workflow_loading: Option<u32>,
+    /// Live size for the splitter being dragged (L2): (region key, points).
+    /// While `Some`, `splitter_size` returns this instead of the persisted
+    /// value; a cancelled or finished drag clears it.
+    splitter_preview: Option<(String, u32)>,
 }
 
 impl Default for AppState {
@@ -404,6 +409,7 @@ impl Default for AppState {
             workflow_results: Vec::new(),
             workflow_generation: 0,
             workflow_loading: None,
+            splitter_preview: None,
         }
     }
 }
