@@ -48,6 +48,27 @@ pub(crate) static ICON_CHEVRON_RIGHT: rune::Icon = rune::Icon {
     view: 16.0,
     body: r#"<path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>"#,
 };
+// A1: home-surface icons (lucide semantics, 24x24, currentColor).
+pub(crate) static ICON_SEARCH: rune::Icon = rune::Icon {
+    name: "search",
+    view: 24.0,
+    body: r#"<circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" fill="none"/><path d="M16.5 16.5L21 21" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>"#,
+};
+pub(crate) static ICON_DOWNLOAD: rune::Icon = rune::Icon {
+    name: "download",
+    view: 24.0,
+    body: r#"<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>"#,
+};
+pub(crate) static ICON_PLUS: rune::Icon = rune::Icon {
+    name: "plus",
+    view: 24.0,
+    body: r#"<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>"#,
+};
+pub(crate) static ICON_CLOCK: rune::Icon = rune::Icon {
+    name: "clock",
+    view: 24.0,
+    body: r#"<circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>"#,
+};
 
 pub(crate) fn section_icon(section: Section) -> &'static rune::Icon {
     match section {

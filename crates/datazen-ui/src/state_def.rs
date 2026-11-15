@@ -118,6 +118,10 @@ pub struct AppState {
     /// Selected settings section (A6): grouped navigation + deep-link within
     /// the settings page. Addressable by key so a specific section can be opened.
     pub(crate) settings_section: String,
+    /// A1: the connections home's filter input (name/engine/id search).
+    pub(crate) connection_search: TextEdit,
+    /// A1: the connections card list's expanded state (show all / show less).
+    pub(crate) connections_show_all: bool,
     /// The connection form's fields and its last rejected save.
     pub(crate) connection_dialog_open: bool,
     pub(crate) connection_name: TextEdit,
@@ -299,6 +303,8 @@ impl Default for AppState {
             max_rows_input: TextEdit::new(String::new()),
             settings_error: None,
             settings_section: "general".into(),
+            connection_search: TextEdit::new(String::new()),
+            connections_show_all: false,
             connection_dialog_open: false,
             connection_name: TextEdit::new(String::new()),
             connection_engine: TextEdit::new(String::new()),

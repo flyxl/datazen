@@ -76,6 +76,17 @@ impl AppState {
         self.workspace.session().is_some() || self.desktop_catalog.is_some()
     }
 
+    /// A1: whether a session is currently open for this connection id — the
+    /// live host's open session, or the memory port's. Drives the card
+    /// list's Connected pill and Open button.
+    pub(crate) fn connection_is_open(&self, id: &str) -> bool {
+        self.desktop_connection.as_deref() == Some(id)
+            || self
+                .workspace
+                .session()
+                .is_some_and(|session| session.connection_id == id)
+    }
+
     /// Re-take the catalog. Collapsed nodes stay collapsed: they live here,
     /// not in the port. A live session re-opens its connection through the
     /// same job path that opened it (N3); the memory port's catalog is the

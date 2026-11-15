@@ -1,209 +1,52 @@
-//! View functions for the DataZen Rune UI.
-#![allow(unused_imports)]
+//! The connections page's shell: the home body (`connections_home`), the
+//! form dialog (A2) and the import plumbing (T7: password, file pick,
+//! preview, confirm).
 
 use super::*;
 
-use crate::constants::*;
-use crate::icons::{self, ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, section_icon};
-use crate::state_def::{AppState, StructureState, WidgetBarsState};
-use crate::types::{Section, TableView, Tool};
-use crate::{splitter, sql_editor};
-use datazen_ui_api::{ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi};
-use rune::{FileDialogOptions, TextEdit, Tx};
+use crate::state_def::AppState;
 use rune::tok::{self, type_};
-use rune::{Color, Cx, El, col, oklch, row, text, text_input};
+use rune::{FileDialogOptions, Tx};
+use rune::{col, row, text, text_input, El};
 
-pub(crate) fn connection_list(state: &AppState, theme: tok::Theme) -> El {
-    let mut list = col().key("connection-list").w_full().gap(12.0);
-
-    let port_connections = state.workspace.connections();
-    let connections = state
-        .desktop_connections
-        .as_deref()
-        .unwrap_or(port_connections);
-
-    // A1: home hero — summary aligned toward React ConnectionWorkspaceHome.
-    let connection_count = connections.len();
-    let mut engines: Vec<String> = connections.iter().map(|c| c.engine.clone()).collect();
-    engines.sort();
-    engines.dedup();
-    let engine_count = engines.len();
-    let hero = row()
-        .key("connections-home-hero")
-        .w_full()
-        .gap(8.0)
-        .center_y()
-        .child(
-            col()
-                .grow(1.0)
-                .gap(6.0)
-                .child(
-                    text("Select a connection")
-                        .key("connections-home-title")
-                        .font(type_::TITLE)
-                        .color(theme.text),
-                )
-                .child(
-                    text(format!(
-                        "{connection_count} connections · {engine_count} engine types"
-                    ))
-                    .key("connections-home-subtitle")
-                    .font(type_::LABEL)
-                    .color(theme.text_secondary),
-                ),
-        )
-        .child(
-            row()
-                .key("connection-new")
-                .h(28.0)
-                .px(10.0)
-                .center_y()
-                .radius(8.0)
-                .fill(theme.control_off)
-                .child(text("New connection").font(type_::LABEL).color(theme.text))
-                .on_press(|state: &mut AppState| state.open_connection_dialog()),
-        );
-    list = list.child(hero);
-
-    // The desktop adapter's answer: its list once it is wired (H3), or its
-    // fixed error over the memory port's demo list until then (H2).
-    if let Some(message) = &state.desktop_error {
-        list = list.child(
-            row()
-                .w_full()
-                .h(28.0)
-                .px(10.0)
-                .center_y()
-                .radius(8.0)
-                .fill(theme.control_off)
-                .child(
-                    text(message.clone())
-                        .key("desktop-adapter-message")
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                ),
-        );
-    }
-    // N3: a live host's open job in flight.
-    if state.connect_loading.is_some() {
-        list = list.child(
-            row()
-                .w_full()
-                .h(28.0)
-                .px(10.0)
-                .center_y()
-                .radius(8.0)
-                .fill(theme.control_off)
-                .child(
-                    text("Connecting…")
-                        .key("connect-loading")
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                ),
-        );
-    }
-
-    let mut cards = col()
-        .key("connections-card-list")
-        .w_full()
-        .gap(6.0)
-        .child(
-            text("Your connections")
-                .key("connections-section-title")
-                .font(type_::LABEL)
-                .color(theme.text_secondary),
-        );
-    for profile in connections {
-        let id = profile.id.clone();
-        cards = cards.child(
-            row()
-                .key(format!("connection-{id}"))
-                .w_full()
-                .h(44.0)
-                .px(12.0)
-                .center_y()
-                .radius(8.0)
-                .fill(theme.control_off)
-                .gap(10.0)
-                .child(
-                    col()
-                        .grow(1.0)
-                        .gap(2.0)
-                        .child(text(profile.name.clone()).font(type_::LABEL).color(theme.text))
-                        .child(
-                            text(profile.engine.clone())
-                                .font(type_::LABEL)
-                                .color(theme.text_secondary),
-                        ),
-                )
-                .child(
-                    row()
-                        .h(24.0)
-                        .px(8.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(theme.bg)
-                        .child(text("Connect").font(type_::LABEL).color(theme.text)),
-                )
-                .on_press(move |state: &mut AppState| state.open_connection(&id)),
-        );
-    }
-    if connection_count == 0 {
-        cards = cards.child(
-            row()
-                .key("connections-empty")
-                .w_full()
-                .h(40.0)
-                .px(12.0)
-                .center_y()
-                .radius(8.0)
-                .fill(theme.control_off)
-                .child(
-                    text("No connections yet")
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                ),
-        );
-    }
-    list = list.child(cards);
-
-    // A1: recent queries section (structural; history source may be unavailable).
-    list = list.child(
-        col()
-            .key("connections-recent-queries")
-            .w_full()
-            .gap(6.0)
-            .child(
-                text("Recent queries")
-                    .key("connections-recent-title")
-                    .font(type_::LABEL)
-                    .color(theme.text_secondary),
-            )
-            .child(
-                row()
-                    .key("connections-recent-empty")
-                    .w_full()
-                    .h(36.0)
-                    .px(12.0)
-                    .center_y()
-                    .radius(8.0)
-                    .fill(theme.control_off)
-                    .child(
-                        text("No recent queries")
-                            .font(type_::LABEL)
-                            .color(theme.text_secondary),
-                    ),
-            ),
-    );
-
+/// The connections page: the home body with the form dialog over it.
+pub(crate) fn connection_list(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+    let mut page = connections_home(state, theme, dark);
     if state.connection_dialog_open {
-        list = list.child(connection_form_dialog(state, theme));
+        page = page.child(connection_form_dialog(state, theme));
     }
+    page
+}
 
-    let mut import = col().key("connection-import").w_full().gap(8.0).child(
+/// T7: an Open dialog picks the export file; the host reads and parses it.
+/// The password field serves the encrypted export formats.
+pub(crate) fn import_press(_state: &mut AppState, tx: &mut Tx) {
+    let options = FileDialogOptions {
+        title: "Choose a connection export".into(),
+        ..Default::default()
+    };
+    tx.open_file(options, |state: &mut AppState, result, _| match result {
+        Ok(Some(path)) => {
+            state.begin_connections_import(&path.display().to_string());
+        }
+        Ok(None) => {}
+        Err(error) => {
+            state.import_preview = None;
+            state.import_notice = Some(format!(
+                "the file picker is unavailable ({error}); the import needs a file"
+            ));
+        }
+    });
+}
+
+/// The import bar (T7): the password for encrypted exports, then the parsed
+/// preview and its confirm, then the outcome notice. Keys are the ones the
+/// import flows and tests press. The bar hugs its content; callers give it
+/// width (the landing's full-width column, the empty state's centered row).
+pub(crate) fn import_bar(state: &AppState, theme: tok::Theme) -> El {
+    let mut import = col().key("connection-import").gap(8.0).child(
         row()
             .key("connection-import-form")
-            .w_full()
             .h(28.0)
             .gap(8.0)
             .center_y()
@@ -212,41 +55,18 @@ pub(crate) fn connection_list(state: &AppState, theme: tok::Theme) -> El {
                     .key("import-password-input")
                     .w(160.0)
                     .h(24.0)
+                    .px(8.0)
+                    .radius(6.0)
+                    .fill(theme.card)
+                    .border(1.0, theme.card_border)
+                    .placeholder("Import password", theme.text_secondary)
                     .on_edit(|state: &mut AppState| &mut state.import_password),
             )
             .child(
-                row()
-                    .key("import-connections")
-                    .h(24.0)
-                    .px(8.0)
-                    .center_y()
-                    .radius(6.0)
-                    .fill(theme.control_off)
-                    .child(
-                        text("Import connections…".to_owned())
-                            .font(type_::LABEL)
-                            .color(theme.text),
-                    )
-                    .on_press_tx(|_state: &mut AppState, tx: &mut Tx| {
-                        // T7: an Open dialog picks the export file; the host
-                        // reads and parses it.
-                        let options = FileDialogOptions {
-                            title: "Choose a connection export".into(),
-                            ..Default::default()
-                        };
-                        tx.open_file(options, |state: &mut AppState, result, _| match result {
-                            Ok(Some(path)) => {
-                                state.begin_connections_import(&path.display().to_string());
-                            }
-                            Ok(None) => {}
-                            Err(error) => {
-                                state.import_preview = None;
-                                state.import_notice = Some(format!(
-                                    "the file picker is unavailable ({error}); the import needs a file"
-                                ));
-                            }
-                        });
-                    }),
+                text("Password for encrypted exports")
+                    .key("import-password-hint")
+                    .font(type_::LABEL)
+                    .color(theme.text_secondary),
             ),
     );
     if let Some(preview) = &state.import_preview {
@@ -317,7 +137,7 @@ pub(crate) fn connection_list(state: &AppState, theme: tok::Theme) -> El {
                 .child(text(notice.clone()).font(type_::LABEL).color(theme.text_secondary)),
         );
     }
-    list.child(import)
+    import
 }
 
 fn connection_form_dialog(state: &AppState, theme: tok::Theme) -> El {

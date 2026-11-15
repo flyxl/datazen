@@ -3,6 +3,7 @@
 mod chrome;
 mod navigation;
 mod connections;
+mod connections_home;
 mod workspace;
 mod structure;
 mod settings;
@@ -13,6 +14,7 @@ mod dashboards_workflows;
 pub(crate) use chrome::*;
 pub(crate) use navigation::*;
 pub(crate) use connections::*;
+pub(crate) use connections_home::*;
 pub(crate) use workspace::*;
 pub(crate) use structure::*;
 pub(crate) use settings::*;

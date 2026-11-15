@@ -15,7 +15,7 @@ use rune::{Color, Cx, El, col, oklch, row, text, text_input};
 
 pub(crate) fn page_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     match state.active {
-        Section::Connections => connection_list(state, theme),
+        Section::Connections => connection_list(state, theme, dark),
         Section::Workspace => workspace_body(state, theme, dark),
         Section::Settings => settings_page(state, theme),
         Section::Tools => tools_page(state, theme, dark),

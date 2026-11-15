@@ -374,6 +374,138 @@ use rune::{Env, Runtime};
     }
 
     #[test]
+    fn connections_home_without_connections_centers_the_empty_state() {
+        // A1: zero connections renders the centered empty state with the
+        // import and create-first actions (React State 1).
+        let mut rt = runtime();
+        rt.frame(0.0);
+        rt.state.desktop_connections = Some(Vec::new());
+        rt.settle_all();
+        rt.frame(0.0);
+        assert!(
+            rt.find("connections-empty").is_some(),
+            "the empty state is on the page"
+        );
+        let texts: Vec<String> = rt.elements().iter().filter_map(|e| e.text.clone()).collect();
+        assert!(
+            texts.iter().any(|t| t.contains("No connections yet")),
+            "the empty state's title is present: {texts:?}"
+        );
+        assert!(
+            rt.find("import-connections").is_some(),
+            "the empty state keeps the import press"
+        );
+        assert!(
+            rt.find("connections-create-first").is_some(),
+            "the create-first press is present"
+        );
+        let (x, y) = rt.find("connections-create-first").expect("create first");
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        rt.frame(0.0);
+        assert!(
+            rt.find("connection-dialog").is_some(),
+            "the form dialog opens from the empty state"
+        );
+    }
+
+    #[test]
+    fn connections_home_filters_and_pages_the_card_list() {
+        // A1: the header filter narrows the cards, a miss renders the
+        // no-match state, and more than six connections page behind show all.
+        let mut rt = runtime();
+        rt.frame(0.0);
+
+        rt.state.connection_search = rune::TextEdit::new("replica");
+        rt.settle_all();
+        rt.frame(0.0);
+        assert!(
+            rt.find("connection-replica").is_some(),
+            "the matching card stays"
+        );
+        assert!(
+            rt.find("connection-local").is_none(),
+            "the filter drops non-matches"
+        );
+
+        rt.state.connection_search = rune::TextEdit::new("zzz");
+        rt.settle_all();
+        rt.frame(0.0);
+        assert!(
+            rt.find("connections-no-match").is_some(),
+            "a filter miss shows the no-match state"
+        );
+
+        let mut many: Vec<ConnectionProfile> = (0..7)
+            .map(|i| ConnectionProfile {
+                id: format!("page-{i}"),
+                name: format!("Conn {i}"),
+                engine: "sqlite".into(),
+            })
+            .collect();
+        many.push(ConnectionProfile { id: "local".into(), name: "Local Postgres".into(), engine: "postgres".into() });
+        rt.state.desktop_connections = Some(many);
+        rt.state.connection_search = rune::TextEdit::new(String::new());
+        rt.state.connections_show_all = false;
+        rt.settle_all();
+        rt.frame(0.0);
+        let cards = |rt: &Runtime<AppState>| {
+            // Card rows are `connection-{id}`; the page also carries the
+            // header/new/import keys that share the prefix.
+            const NOT_CARDS: [&str; 4] = [
+                "connection-list",
+                "connection-new",
+                "connection-import",
+                "connection-import-form",
+            ];
+            rt.elements()
+                .iter()
+                .filter(|e| {
+                    matches!(&e.key, Some(k) if k.starts_with("connection-")
+                        && !NOT_CARDS.contains(&k.as_str()))
+                })
+                .count()
+        };
+        assert_eq!(cards(&rt), 6, "six cards before show all");
+        let (x, y) = rt.find("connections-show-all").expect("the show-all row");
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        rt.frame(0.0);
+        assert_eq!(cards(&rt), 8, "every card after show all");
+    }
+
+    #[test]
+    fn connection_cards_show_the_status_pill_and_the_connected_open_button() {
+        // A1: rows render the status pill; an open session flips the row to
+        // the Connected pill with the Open button.
+        let mut rt = runtime();
+        rt.frame(0.0);
+        assert!(
+            rt.find("conn-status-local").is_some(),
+            "the status pill is on the row"
+        );
+        let texts: Vec<String> = rt.elements().iter().filter_map(|e| e.text.clone()).collect();
+        assert!(
+            texts.iter().any(|t| t == "Offline"),
+            "an unopened row reads offline: {texts:?}"
+        );
+
+        // The live host's open session marks the row connected.
+        rt.state.desktop_connection = Some("local".into());
+        rt.settle_all();
+        rt.frame(0.0);
+        let texts: Vec<String> = rt.elements().iter().filter_map(|e| e.text.clone()).collect();
+        assert!(
+            texts.iter().any(|t| t == "Connected"),
+            "the opened row reads connected: {texts:?}"
+        );
+        assert!(
+            texts.iter().any(|t| t == "Open"),
+            "the opened row's button says Open: {texts:?}"
+        );
+    }
+
+    #[test]
     fn the_sidebar_lists_only_connections_workspace_and_settings() {
         let mut runtime = runtime();
         runtime.frame(0.0);
