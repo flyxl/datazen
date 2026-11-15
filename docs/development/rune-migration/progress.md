@@ -1,9 +1,10 @@
 ## Current Task
-- **任务**: A3/A4/A5 逐页对齐（plan-native-5）— A2、A6 已合流主轨；A4 在并行 worktree 推进中，继续完成 A3 查询面板与 A5 结果工作区对齐并整合 A4
+- **任务**: A3 查询面板对齐（plan-native-5）— 本 worktree 已完成 A3；A4 在并行 worktree 推进中，A5 待后续对齐/整合
 - **负责人**: Coder Agent
-- **状态**: L1–L7 已完成；A1 进行中（首页与导航器 Recent/All/过滤已落地，pinned/用户分组受契约限制）。A2 连接表单对话框化（Basic/Connection 分组 + SSH 隧道 UI 占位，保存走既有 draft 路径）已合流；A6 设置导航分组（12 section × 2 组 + 深链 key）已合流。第五阶段计划见 [plan-native-5.md](plan-native-5.md)。
+- **状态**: L1–L7 已完成；A1 进行中（首页与导航器 Recent/All/过滤已落地，pinned/用户分组受契约限制）。A2/A6 已合流；A3 在本分支完成（编辑器高度可拖持久化、工具栏动作、收藏/历史/片段侧栏、结果多 tab 含 pin）。第五阶段计划见 [plan-native-5.md](plan-native-5.md)。
 
 ## Completed Work (recent)
+- [x] A3 查询面板对齐（`3630c95f7`；见 [testing/A3-query-panel.md](testing/A3-query-panel.md)）
 - [x] A2 连接表单对话框化（`1e383c421`, `7e06bf48e`，合流主轨；见 [testing/A2-connection-form-dialog.md](testing/A2-connection-form-dialog.md)）
 - [x] A6 设置导航分组（`27c5f2292`, `95b4a4c30`，合流主轨；见 [testing/A6-settings-nav.md](testing/A6-settings-nav.md)）
 
@@ -32,7 +33,7 @@ React 页面和组件保留。不删除、不改成空壳、不把现有入口�
 - [x] C4 未迁移区域提示（WAPPS/Onboarding 告知 React 页面还在，见 [testing/C4-unmigrated-notice.md](testing/C4-unmigrated-notice.md)）
 
 ## Verification
-`cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1`：datazen-ui 113 passed、datazen-ui-api 54 passed；GR2 `cargo check` exit 0。
+`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1`：datazen-ui 169 passed、datazen-ui-api 56 passed（含 A3 part_10）。`cargo check -p datazen-rune-host --offline` exit 0。
 
 ## 收尾测量（C3）
 
