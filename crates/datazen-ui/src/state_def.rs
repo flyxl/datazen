@@ -92,6 +92,7 @@ pub struct AppState {
     pub(crate) max_rows_input: TextEdit,
     pub(crate) settings_error: Option<String>,
     /// The connection form's fields and its last rejected save.
+    pub(crate) connection_dialog_open: bool,
     pub(crate) connection_name: TextEdit,
     pub(crate) connection_engine: TextEdit,
     pub(crate) connection_address: TextEdit,
@@ -101,6 +102,11 @@ pub struct AppState {
     pub(crate) connection_password: TextEdit,
     pub(crate) connection_database: TextEdit,
     pub(crate) connection_error: Option<String>,
+    /// UI-only SSH tunnel fields for A2 dialog alignment (not persisted; save uses draft only).
+    pub(crate) connection_ssh_enabled: bool,
+    pub(crate) connection_ssh_host: TextEdit,
+    pub(crate) connection_ssh_port: TextEdit,
+    pub(crate) connection_ssh_username: TextEdit,
     /// The snippet form's fields and its last rejected write.
     pub(crate) snippet_name: TextEdit,
     pub(crate) snippet_sql: TextEdit,
@@ -256,6 +262,7 @@ impl Default for AppState {
             page_size_input: TextEdit::new(String::new()),
             max_rows_input: TextEdit::new(String::new()),
             settings_error: None,
+            connection_dialog_open: false,
             connection_name: TextEdit::new(String::new()),
             connection_engine: TextEdit::new(String::new()),
             connection_address: TextEdit::new(String::new()),
@@ -263,6 +270,10 @@ impl Default for AppState {
             connection_password: TextEdit::new(String::new()),
             connection_database: TextEdit::new(String::new()),
             connection_error: None,
+            connection_ssh_enabled: false,
+            connection_ssh_host: TextEdit::new(String::new()),
+            connection_ssh_port: TextEdit::new(String::from("22")),
+            connection_ssh_username: TextEdit::new(String::new()),
             snippet_name: TextEdit::new(String::new()),
             snippet_sql: TextEdit::new(String::new()),
             snippet_error: None,

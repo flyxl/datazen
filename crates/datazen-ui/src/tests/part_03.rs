@@ -360,27 +360,67 @@ use rune::{Env, Runtime};
         let mut runtime = runtime();
         runtime.frame(0.0);
         assert!(runtime.find("connection-local").is_some());
-        assert!(runtime.find("connection-form").is_some());
+        assert!(runtime.find("connection-new").is_some(), "new connection action is present");
+        assert!(runtime.find("connection-form").is_none(), "form is dialogized, not inline");
 
-        let (x, y) = runtime.find("connection-save").expect("save button");
+        let (x, y) = runtime.find("connection-new").expect("new connection button");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
+        assert!(runtime.find("connection-dialog").is_some(), "dialog opens");
+        assert!(runtime.find("connection-form").is_some());
+
+        runtime.state.save_connection_form();
+        runtime.frame(0.0);
         assert!(runtime.find("connection-remote-postgres").is_none(), "nothing was saved");
         assert!(runtime.find("connection-form-error").is_some(), "the refusal is visible");
+        assert!(runtime.find("connection-dialog").is_some(), "dialog stays open on refusal");
 
         runtime.state.connection_name = rune::TextEdit::new("Remote Postgres");
         runtime.state.connection_engine = rune::TextEdit::new("postgres");
         runtime.state.connection_address = rune::TextEdit::new("db.example.com:5432");
-        let (x, y) = runtime.find("connection-save").unwrap();
+        runtime.state.save_connection_form();
+        runtime.frame(0.0);
+        assert!(
+            runtime
+                .state
+                .workspace
+                .connections()
+                .iter()
+                .any(|c| c.id == "remote-postgres"),
+            "the saved connection joins the list"
+        );
+        assert!(runtime.state.connection_error.is_none(), "the error clears");
+        assert!(!runtime.state.connection_dialog_open, "dialog closes on successful save");
+    }
+
+    #[test]
+    fn connection_dialog_renders_grouped_sections_and_ssh_ui() {
+        let mut runtime = runtime();
+        runtime.frame(0.0);
+        let (x, y) = runtime.find("connection-new").expect("new connection button");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
-        assert!(
-            runtime.find("connection-remote-postgres").is_some(),
-            "the saved connection joins the list"
-        );
-        assert!(runtime.find("connection-form-error").is_none(), "the error clears");
+
+        assert!(runtime.find("connection-dialog").is_some(), "dialog is open");
+        assert!(runtime.find("connection-section-basic").is_some(), "basic group rendered");
+        assert!(runtime.find("connection-section-connection").is_some(), "connection group rendered");
+        assert!(runtime.find("connection-section-ssh").is_some(), "ssh tunnel group rendered");
+        assert!(runtime.find("connection-name-input").is_some());
+        assert!(runtime.find("connection-engine-input").is_some());
+        assert!(runtime.find("connection-address-input").is_some());
+        assert!(runtime.find("connection-database-input").is_some());
+        assert!(runtime.find("connection-username-input").is_some());
+        assert!(runtime.find("connection-password-input").is_some());
+        assert!(runtime.find("connection-ssh-toggle").is_some(), "ssh toggle present (UI-only)");
+        assert!(runtime.find("connection-ssh-host-input").is_some());
+
+        runtime.state.close_connection_dialog();
+        runtime.frame(0.0);
+        assert!(!runtime.state.connection_dialog_open, "dialog closes");
+        // form lives inside the dialog; closed means dialog not open and no inline form.
+        assert!(runtime.find("connection-new").is_some(), "new connection action remains available");
     }
 
     #[test]

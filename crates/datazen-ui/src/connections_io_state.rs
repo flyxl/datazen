@@ -26,6 +26,26 @@ impl AppState {
     /// The export formats the dialog collects, in cycle order.
     pub(crate) const EXPORT_FORMATS: [&'static str; 3] = ["csv", "json", "sql"];
 
+    pub(crate) fn open_connection_dialog(&mut self) {
+        self.connection_dialog_open = true;
+        self.connection_error = None;
+        self.connection_name = TextEdit::new(String::new());
+        self.connection_engine = TextEdit::new(String::new());
+        self.connection_address = TextEdit::new(String::new());
+        self.connection_username = TextEdit::new(String::new());
+        self.connection_password = TextEdit::new(String::new());
+        self.connection_database = TextEdit::new(String::new());
+        self.connection_ssh_enabled = false;
+        self.connection_ssh_host = TextEdit::new(String::new());
+        self.connection_ssh_port = TextEdit::new(String::from("22"));
+        self.connection_ssh_username = TextEdit::new(String::new());
+    }
+
+    pub(crate) fn close_connection_dialog(&mut self) {
+        self.connection_dialog_open = false;
+        self.connection_error = None;
+    }
+
     pub(crate) fn save_connection_form(&mut self) {
         // E5: the engines the host links are the form's whitelist — the
         // registry's own admission ("linked means offered"). A host that
@@ -71,12 +91,17 @@ impl AppState {
         match saved {
             Ok(()) => {
                 self.connection_error = None;
+                self.connection_dialog_open = false;
                 self.connection_name = TextEdit::new(String::new());
                 self.connection_engine = TextEdit::new(String::new());
                 self.connection_address = TextEdit::new(String::new());
                 self.connection_username = TextEdit::new(String::new());
                 self.connection_password = TextEdit::new(String::new());
                 self.connection_database = TextEdit::new(String::new());
+                self.connection_ssh_enabled = false;
+                self.connection_ssh_host = TextEdit::new(String::new());
+                self.connection_ssh_port = TextEdit::new(String::from("22"));
+                self.connection_ssh_username = TextEdit::new(String::new());
             }
             Err(error) => self.connection_error = Some(error),
         }
