@@ -1,12 +1,13 @@
 ## Current Task
-- **任务**: A5 结果工作区对齐并整合（plan-native-5）— A2、A3、A4、A6 已合流主轨；A5 在并行 worktree 已完成，待合流并解决冲突后统一验证
+- **任务**: A1 收口与全局视觉/交互对齐验证（plan-native-5）— A2–A6 已合流主轨，待统一门禁、契约内收尾与逐页视觉一致性校验
 - **负责人**: Coder Agent
-- **状态**: L1–L7 已完成；A1 进行中（首页与导航器 Recent/All/过滤已落地，pinned/用户分组受契约限制）。A2 连接表单对话框化、A3 查询面板对齐、A4 表浏览对齐、A6 设置导航分组已合流/在途合流。第五阶段计划见 [plan-native-5.md](plan-native-5.md)。
+- **状态**: L1–L7 已完成；A1 进行中（首页与导航器 Recent/All/过滤已落地，pinned/用户分组受契约限制）。A2 连接表单对话框化、A3 查询面板对齐、A4 表浏览对齐、A5 结果工作区对齐、A6 设置导航分组已合流主轨。第五阶段计划见 [plan-native-5.md](plan-native-5.md)。
 
 ## Completed Work (recent)
-- [x] A3 查询面板对齐（`3630c95f7`；见 [testing/A3-query-panel.md](testing/A3-query-panel.md)）
 - [x] A2 连接表单对话框化（`1e383c421`, `7e06bf48e`，合流主轨；见 [testing/A2-connection-form-dialog.md](testing/A2-connection-form-dialog.md)）
+- [x] A3 查询面板对齐（`3630c95f7`, `020a62b22`，合流主轨；见 [testing/A3-query-panel.md](testing/A3-query-panel.md)）
 - [x] A4 表浏览对齐（`e041fc463`, `5ae657365`, `f8879f36c`，合流主轨；见 [testing/A4-table-browse.md](testing/A4-table-browse.md)）
+- [x] A5 结果工作区对齐（`b7b25b518`, `ef38e1069`，合流主轨；见 [testing/A5-result-workspace.md](testing/A5-result-workspace.md)）
 - [x] A6 设置导航分组（`27c5f2292`, `95b4a4c30`，合流主轨；见 [testing/A6-settings-nav.md](testing/A6-settings-nav.md)）
 
 ## N5 组装配方（调查结论，fc160ec 时点）

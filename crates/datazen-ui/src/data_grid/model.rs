@@ -39,6 +39,11 @@ pub struct DataGrid {
     /// Horizontal scroll, in points. `on_scroll_offset` writes it; it cannot touch this struct.
     scroll_x: rune::Live<f32>,
     origin_col: u32,
+    /// Result/find state (A5): the active needle, every matching cell in
+    /// row-major order, and the current hit's index in that list.
+    find_needle: String,
+    find_hits: Vec<(u32, u32)>,
+    find_index: Option<usize>,
 }
 
 impl std::fmt::Debug for DataGrid {
@@ -85,6 +90,9 @@ impl DataGrid {
             editor: TextEdit::new(String::new()),
             scroll_x: rune::Live::new(0.0),
             origin_col: 0,
+            find_needle: String::new(),
+            find_hits: Vec::new(),
+            find_index: None,
         }
     }
 
@@ -281,6 +289,7 @@ impl DataGrid {
         self.focus = (0, 0);
         self.origin_col = 0;
         self.scroll_x.set(0.0);
+        self.clear_find();
     }
 
     pub fn select(&mut self, row: u32, col: u32) {
@@ -522,5 +531,122 @@ impl DataGrid {
             }
         }
         cols
+    }
+
+    /// A5: clear the active find — no hits, no highlight.
+    pub fn clear_find(&mut self) {
+        self.find_needle.clear();
+        self.find_hits.clear();
+        self.find_index = None;
+    }
+
+    /// A5: the search needle currently applied to this grid.
+    pub fn find_needle(&self) -> &str {
+        &self.find_needle
+    }
+
+    /// A5: total number of matching cells.
+    pub fn find_hit_count(&self) -> usize {
+        self.find_hits.len()
+    }
+
+    /// A5: 1-based index of the current hit, or 0 when there are no hits.
+    pub fn find_current_index(&self) -> usize {
+        self.find_index.map(|i| i + 1).unwrap_or(0)
+    }
+
+    /// A5: the current hit's cell, if any.
+    pub fn current_find_hit(&self) -> Option<(u32, u32)> {
+        self.find_index.and_then(|i| self.find_hits.get(i).copied())
+    }
+
+    /// A5: true when the cell is any match of the active find.
+    pub fn is_find_hit(&self, row: u32, col: u32) -> bool {
+        !self.find_hits.is_empty() && self.find_hits.contains(&(row, col))
+    }
+
+    /// A5: true when the cell is the current (navigated) match.
+    pub fn is_current_find_hit(&self, row: u32, col: u32) -> bool {
+        self.current_find_hit() == Some((row, col))
+    }
+
+    /// A5: recompute find hits for `needle` across the whole grid in row-major
+    /// order. An empty needle clears the find. The current hit becomes the first
+    /// hit at or after the focused cell (wrapping to the first hit) so navigation
+    /// continues from the user's position; focus moves to that hit.
+    pub fn set_find_needle(&mut self, needle: &str) {
+        let needle = needle.to_owned();
+        self.find_needle = needle;
+        self.recompute_find_hits(true);
+    }
+
+    fn recompute_find_hits(&mut self, move_focus: bool) {
+        self.find_hits.clear();
+        self.find_index = None;
+        let needle = self.find_needle.trim().to_owned();
+        if needle.is_empty() {
+            return;
+        }
+        let needle_lc = needle.to_lowercase();
+        for r in 0..self.rows {
+            for c in 0..self.cols {
+                if self.cell(r, c).to_lowercase().contains(&needle_lc) {
+                    self.find_hits.push((r, c));
+                }
+            }
+        }
+        if self.find_hits.is_empty() {
+            return;
+        }
+        // Pick the first hit at/after focus so search feels anchored.
+        let start = self.focus;
+        let idx = self
+            .find_hits
+            .iter()
+            .position(|&(r, c)| (r, c) >= start)
+            .unwrap_or(0);
+        self.find_index = Some(idx);
+        if move_focus {
+            self.focus_find_hit();
+        }
+    }
+
+    fn focus_find_hit(&mut self) {
+        if let Some((r, c)) = self.current_find_hit() {
+            self.anchor = (r, c);
+            self.focus = (r, c);
+            self.reveal_focus();
+        }
+    }
+
+    /// A5: advance to the next hit, wrapping around. Returns true when a hit
+    /// was selected.
+    pub fn find_next(&mut self) -> bool {
+        if self.find_hits.is_empty() {
+            return false;
+        }
+        let next = match self.find_index {
+            Some(i) => (i + 1) % self.find_hits.len(),
+            None => 0,
+        };
+        self.find_index = Some(next);
+        self.focus_find_hit();
+        true
+    }
+
+    /// A5: move to the previous hit, wrapping around. Returns true when a hit
+    /// was selected.
+    pub fn find_prev(&mut self) -> bool {
+        if self.find_hits.is_empty() {
+            return false;
+        }
+        let len = self.find_hits.len();
+        let prev = match self.find_index {
+            Some(0) | None => len - 1,
+            Some(i) => i - 1,
+        };
+        self.find_index = Some(prev);
+        self.focus_find_hit();
+        true
     }
 }

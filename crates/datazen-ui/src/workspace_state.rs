@@ -282,6 +282,9 @@ impl AppState {
         grid.set_editable(false);
         self.result_grid = Some(grid);
         self.result_focused = false;
+        // A5: a fresh result starts in table view with no active find.
+        self.result_view = crate::types::ResultView::Table;
+        self.result_find = rune::TextEdit::new(String::new());
     }
 
     /// Bump and return the next query generation. Every run and every cancel
@@ -437,6 +440,33 @@ impl AppState {
         let ids: Vec<u64> = self.host_widgets().iter().map(|widget| widget.id).collect();
         for id in ids {
             self.begin_widget_bars_read(id);
+        }
+    }
+
+    /// A5: switch the query result presentation (table/chart).
+    pub(crate) fn set_result_view(&mut self, view: crate::types::ResultView) {
+        self.result_view = view;
+    }
+
+    /// A5: apply the current find-bar text to the result grid.
+    pub(crate) fn apply_result_find(&mut self) {
+        let needle = self.result_find.text.clone();
+        if let Some(grid) = self.result_grid.as_mut() {
+            grid.set_find_needle(&needle);
+        }
+    }
+
+    /// A5: move to the next find hit in the result grid.
+    pub(crate) fn result_find_next(&mut self) {
+        if let Some(grid) = self.result_grid.as_mut() {
+            grid.find_next();
+        }
+    }
+
+    /// A5: move to the previous find hit in the result grid.
+    pub(crate) fn result_find_prev(&mut self) {
+        if let Some(grid) = self.result_grid.as_mut() {
+            grid.find_prev();
         }
     }
 

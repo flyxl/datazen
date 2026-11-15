@@ -137,4 +137,5 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | A2 | 已完成 | 1e383c421, 7e06bf48e | testing/A2-connection-form-dialog.md |
 | A3 | 已完成 | 3630c95f7, 020a62b22 | testing/A3-query-panel.md |
 | A4 | 已完成 | e041fc463, 5ae657365, f8879f36c | testing/A4-table-browse.md |
+| A5 | 已完成 | b7b25b518, ef38e1069 | testing/A5-result-workspace.md |
 | A6 | 已完成 | 27c5f2292, 95b4a4c30 | testing/A6-settings-nav.md |
