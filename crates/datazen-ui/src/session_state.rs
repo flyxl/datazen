@@ -129,6 +129,7 @@ impl AppState {
         self.filter = None;
         self.filter_column = 0;
         self.filter_editor = TextEdit::new(String::new());
+        self.fk_breadcrumbs.clear();
         // H4: the initial page goes through the same read path as every
         // other one: the adapter's use case first, the port as the fallback.
         self.show_table("customers");
@@ -181,6 +182,7 @@ impl AppState {
         self.inbound_refs = None;
         self.inbound_loading = None;
         self.fk_error = None;
+        self.fk_breadcrumbs.clear();
     }
     pub(crate) fn open_table_tab(&mut self, title: &str) -> Option<u32> {
         let id = self.tabs.open(TabKind::Table, title)?;

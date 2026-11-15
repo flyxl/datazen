@@ -175,3 +175,67 @@ use rune::{Env, Runtime};
         assert!(rt.find("er-page").is_some(), "ER page renders in light mode");
         assert!(rt.find("er-canvas").is_some(), "ER canvas renders in light mode");
     }
+
+    #[test]
+    fn a4_row_number_gutter_renders_header_and_row_indices() {
+        // A4: the table grid shows a row-number gutter ("#" header + 1-based
+        // row numbers per visible row) as a leading column.
+        let mut rt = runtime();
+        rt.state.workspace.connect("local").unwrap();
+        rt.state.open_table_tab("customers").unwrap();
+        rt.frame(0.0);
+
+        assert!(rt.find("head-rownum").is_some(), "row-number gutter header present");
+        assert!(rt.find("rownum-0").is_some(), "first data row has a row number cell");
+        assert!(rt.find("rownum-1").is_some(), "second data row has a row number cell");
+
+        // Header text is "#" and first row shows global 1-based index 1.
+        let elements = rt.elements();
+        let header = elements
+            .iter()
+            .find(|e| e.key.as_deref() == Some("head-rownum"))
+            .expect("gutter header element");
+        // The gutter cell contains a text child; search elements for the label.
+        let texts: Vec<String> = elements.iter().filter_map(|e| e.text.clone()).collect();
+        assert!(texts.iter().any(|t| t == "#"), "gutter header renders #: {texts:?}");
+        assert!(texts.iter().any(|t| t == "1"), "first row renders number 1: {texts:?}");
+        assert!(texts.iter().any(|t| t == "2"), "second row renders number 2: {texts:?}");
+    }
+
+    #[test]
+    fn a4_column_width_persistence_round_trips_per_table() {
+        use datazen_ui_api::WorkspaceApi;
+
+        // A4: column widths persist per table via Setting::Layout keys and are
+        // reapplied when the table page is (re)loaded.
+        let mut rt = runtime();
+        rt.state.workspace.connect("local").unwrap();
+        rt.state.open_table_tab("customers").unwrap();
+        rt.frame(0.0);
+
+        let table = rt.state.grid.table_label().to_owned();
+        let col_name = rt.state.grid.column_name(0).expect("column 0").to_owned();
+        let default_w = rt.state.grid.col_w(0);
+        assert!(default_w > 0.0, "default width is positive");
+
+        // Set and persist a custom width for the first column.
+        rt.state
+            .set_table_column_width(&table, &col_name, 180)
+            .expect("persist column width");
+        assert_eq!(rt.state.grid.col_w(0) as u32, 180, "grid reflects updated width");
+
+        // Persisted in layout settings under a stable per-table key.
+        let key = rt.state.colw_key(&table, &col_name);
+        assert_eq!(rt.state.layout_size(&key), Some(180), "layout setting stored");
+
+        // Round-trip: reload the page and the persisted width is reapplied.
+        rt.state.grid.set_col_w(0, 120);
+        assert_eq!(rt.state.grid.col_w(0) as u32, 120, "width changed before reload");
+        rt.state.reload_table_page();
+        rt.frame(0.0);
+        assert_eq!(
+            rt.state.grid.col_w(0) as u32,
+            180,
+            "reloaded page reapplies persisted column width"
+        );
+    }

@@ -39,9 +39,7 @@ impl AppState {
     }
 
     /// Open the referenced table filtered on the focused cell's value (T5).
-    /// A composite key navigates by the focused column's own pairing, the
-    /// same single-column answer the filter bar gives. E1: a structure that
-    /// has not landed answers with an honest sentence, not a silent no-op.
+    /// A4: pushes an FK breadcrumb so the origin can be restored.
     pub(crate) fn go_to_referenced_row(&mut self) {
         let table = self.grid.table_label().to_owned();
         let not_ready = match self.structures.get(&table) {
@@ -59,13 +57,13 @@ impl AppState {
             self.fk_error = Some(sentence);
             return;
         }
-        // The structure landed: this key press clears the last FK sentence —
-        // a successful navigation leaves no stale error behind.
         self.fk_error = None;
         let Some((key, index)) = self.outbound_fk_of_focus() else { return };
         let Some(target_column) = key.target_columns.get(index).cloned() else { return };
         let value = self.grid.cell(self.grid.focus().0, self.grid.focus().1);
         let target_table = key.target_table.clone();
+        let label = format!("{table} → {target_table}");
+        self.push_fk_breadcrumb(label);
         self.open_table_with_filter(&target_table, &target_column, &value);
     }
 
@@ -113,7 +111,7 @@ impl AppState {
     }
 
     /// Open a referencing table filtered on the focused row's value of the
-    /// referenced column (T5).
+    /// referenced column (T5). A4: pushes an FK breadcrumb.
     pub(crate) fn locate_inbound_ref(&mut self, index: usize) {
         let Some(list) = self.inbound_refs.as_ref() else { return };
         let Some(reference) = list.get(index).cloned() else { return };
@@ -127,7 +125,40 @@ impl AppState {
             return;
         };
         let value = self.grid.cell(self.grid.focus().0, referenced_index);
+        let from = self.grid.table_label().to_owned();
+        let label = format!("{from} ← {}", reference.table);
+        self.push_fk_breadcrumb(label);
         self.open_table_with_filter(&reference.table, &reference.column, &value);
+    }
+
+    /// A4: capture the current table context as an FK breadcrumb step.
+    pub(crate) fn push_fk_breadcrumb(&mut self, label: String) {
+        if !self.grid.has_page() {
+            return;
+        }
+        let crumb = FkBreadcrumb {
+            label,
+            table: self.grid.table_label().to_owned(),
+            page: self.grid.page(),
+            sort: self.sort.clone(),
+            filter: self.filter.clone(),
+        };
+        self.fk_breadcrumbs.push(crumb);
+    }
+
+    /// A4: navigate back to a breadcrumb step, restoring its table/filter context.
+    pub(crate) fn navigate_fk_breadcrumb(&mut self, index: usize) {
+        if index >= self.fk_breadcrumbs.len() {
+            return;
+        }
+        let crumb = self.fk_breadcrumbs[index].clone();
+        self.fk_breadcrumbs.truncate(index);
+        self.active = Section::Workspace;
+        self.open_table_tab(&crumb.table);
+        self.filter = crumb.filter;
+        self.sort = crumb.sort;
+        self.table_page = crumb.page;
+        self.reload_table_page();
     }
 
     /// Open a table with a filter preset (T4/T5 share this): the tab's own

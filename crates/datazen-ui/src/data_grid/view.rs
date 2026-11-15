@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use rune::{El, GrowthSpec, ScrollPos, TextStyle, col, el, oklch, row, text, text_input};
 
-use super::{DataGrid, COL_W, ROW_H};
+use super::{DataGrid, GUTTER_W, ROW_H};
 
 /// Which grid a render call targets: the table page's or the query result's.
 /// The result keys are prefixed so both can be mounted in one frame.
@@ -46,7 +46,8 @@ fn sheet(
     dark: bool,
 ) -> El {
     let scroll_x = grid.scroll_x();
-    let width = COL_W * grid.cols as f32;
+    let data_width = grid.sheet_data_width();
+    let width = GUTTER_W + data_width;
     let sheet = col()
         .key(slot.key("data-grid-sheet"))
         .w(width)
@@ -68,11 +69,8 @@ fn sheet(
                 )
                 .virtual_rows_version(1u32),
         );
-    // C2: the grid reads its shape and the current cell to the a11y tree. The
-    // value carries the page's rows × columns; the descendant the focused
-    // cell points at, when that cell is mounted.
     let (focus_row, focus_col) = grid.focus();
-    let scroll = col()
+    col()
         .key(slot.key("data-grid-scroll"))
         .w_full()
         .h(height)
@@ -86,8 +84,7 @@ fn sheet(
         .on_scroll_offset(move |at: ScrollPos| {
             scroll_x.set(at.offset[0]);
         })
-        .child(sheet);
-    scroll
+        .child(sheet)
 }
 
 pub fn panel(
@@ -99,36 +96,121 @@ pub fn panel(
 ) -> El {
     let grid = &state.grid;
     let status = status_line(grid);
-    let mut panel = col()
+    col()
         .key("data-grid")
         .w_full()
-        .h(484.0)
+        .h(560.0)
         .gap(8.0)
-        .child(text(status).font(label_style()).color(muted).key("data-grid-status"));
-    if let Some(reason) = grid.read_only_reason() {
-        panel = panel.child(
-            row()
-                .key("grid-readonly")
-                .w_full()
-                .h(24.0)
-                .px(8.0)
-                .center_y()
-                .radius(6.0)
-                .fill(well)
-                .child(text(format!("Read-only: {reason}")).font(label_style()).color(muted)),
-        );
-    }
-    panel
+        .child(text(status).font(label_style()).color(muted).key("data-grid-status"))
+        .child(status_banner(state, muted, well))
+        .child(pending_changes_bar(state, ink, muted, well))
         .child(filter_bar(state, ink, muted, well))
         .child(fk_bar(state, ink, muted, well))
         .child(sheet(grid, GridSlot::Table, ink, well, 380.0, dark))
         .child(footer(state, ink, muted))
 }
 
-/// T5: the foreign-key navigation bar. The focused cell's column decides
-/// what shows: a "go to the referenced row" chip when the column carries an
-/// outbound key, and the "Referenced by" list of the tables pointing at
-/// this one.
+/// A4: status banner (状态横幅) surfacing load/save/read-only/filter and errors.
+fn status_banner(state: &crate::AppState, muted: rune::Color, well: rune::Color) -> El {
+    let grid = &state.grid;
+    let mut lines: Vec<(String, String)> = Vec::new();
+    if state.table_loading.is_some() {
+        lines.push(("table-loading-banner".into(), "Loading table page…".into()));
+    }
+    if state.commit_loading.is_some() {
+        lines.push(("commit-loading-banner".into(), "Saving staged changes…".into()));
+    }
+    if let Some(reason) = grid.read_only_reason() {
+        lines.push(("grid-readonly".into(), format!("Read-only: {reason}")));
+    }
+    if let Some(filter) = &state.filter {
+        lines.push((
+            "grid-filter-active".into(),
+            format!("Filter: {} contains \"{}\"", filter.column, filter.contains),
+        ));
+    }
+    if let Some(error) = &state.fk_error {
+        // "fk-error" kept for existing tests/consumers.
+        lines.push(("fk-error".into(), error.clone()));
+    }
+    let mut col_el = col().key("grid-status-banner").w_full().gap(4.0);
+    for (key, msg) in lines {
+        col_el = col_el.child(
+            row()
+                .key(key)
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(well)
+                .child(text(msg).font(label_style()).color(muted)),
+        );
+    }
+    col_el
+}
+
+/// A4: pending/staged changes bar (待提交条) with commit/rollback affordances.
+fn pending_changes_bar(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well: rune::Color) -> El {
+    let dirty = state.grid.dirty_cells();
+    if dirty == 0 || state.grid.read_only_reason().is_some() {
+        // Always present with handlers for test/runtime compatibility; visually hidden.
+        return row()
+            .key("pending-changes-bar")
+            .w_full()
+            .h(0.0)
+            .child(
+                row()
+                    .key("commit-staged")
+                    .w(0.0)
+                    .h(0.0)
+                    .on_press(|state: &mut crate::AppState| state.commit_staged_edits()),
+            )
+            .child(
+                row()
+                    .key("rollback-staged")
+                    .w(0.0)
+                    .h(0.0)
+                    .on_press(|state: &mut crate::AppState| state.rollback_staged_edits()),
+            );
+    }
+    row()
+        .key("pending-changes-bar")
+        .w_full()
+        .h(28.0)
+        .px(8.0)
+        .gap(8.0)
+        .center_y()
+        .radius(6.0)
+        .fill(well)
+        .child(
+            text(format!("{dirty} pending change{}", if dirty == 1 { "" } else { "s" }))
+                .font(label_style())
+                .color(muted),
+        )
+        .child(
+            row()
+                .key("commit-staged")
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .child(text("Commit").font(label_style()).color(ink))
+                .on_press(|state: &mut crate::AppState| state.commit_staged_edits()),
+        )
+        .child(
+            row()
+                .key("rollback-staged")
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .child(text("Rollback").font(label_style()).color(ink))
+                .on_press(|state: &mut crate::AppState| state.rollback_staged_edits()),
+        )
+}
+
+/// T5: foreign-key navigation bar with A4 breadcrumb trail.
 fn fk_bar(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well: rune::Color) -> El {
     let mut bar = row()
         .key("fk-navigation")
@@ -180,23 +262,40 @@ fn fk_bar(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well: r
                 }
             }),
     );
-    if let Some(error) = &state.fk_error {
-        bar = bar.child(
-            text(error.clone())
-                .key("fk-error")
-                .font(label_style())
-                .color(muted),
-        );
-    }
-    let mut column = col().key("fk-bar").w_full().gap(4.0).child(bar);
-    // E3: the scan runs as a job; the panel says so until its delivery.
     if state.inbound_loading.is_some() {
-        column = column.child(
+        bar = bar.child(
             text("scanning the references…".to_owned())
                 .key("fk-inbound-loading")
                 .font(label_style())
                 .color(muted),
         );
+    }
+    let mut column = col().key("fk-bar").w_full().gap(4.0).child(bar);
+    // A4: breadcrumb trail of FK navigation steps.
+    if !state.fk_breadcrumbs.is_empty() {
+        let mut crumbs = row().key("fk-breadcrumbs").w_full().h(24.0).gap(4.0).center_y();
+        for (i, crumb) in state.fk_breadcrumbs.iter().enumerate() {
+            crumbs = crumbs.child(
+                row()
+                    .key(format!("fk-crumb-{i}"))
+                    .h(22.0)
+                    .px(8.0)
+                    .center_y()
+                    .radius(6.0)
+                    .fill(well)
+                    .child(text(format!("{} ›", crumb.label)).font(label_style()).color(ink))
+                    .on_press(move |state: &mut crate::AppState| {
+                        state.navigate_fk_breadcrumb(i);
+                    }),
+            );
+        }
+        crumbs = crumbs.child(
+            text(state.grid.table_label().to_owned())
+                .key("fk-crumb-current")
+                .font(label_style())
+                .color(muted),
+        );
+        column = column.child(crumbs);
     }
     if let Some(refs) = &state.inbound_refs {
         let mut list = col().key("fk-inbound-list").w_full().gap(4.0);
@@ -313,10 +412,7 @@ fn filter_bar(state: &crate::AppState, ink: rune::Color, muted: rune::Color, wel
         )
 }
 
-/// Prev / next paging over the table behind the loaded page, and the host
-/// job markers (N1): a read in flight says "Loading…", a commit in flight
-/// says "Saving…". The markers live in the footer's fixed height, so the
-/// grid's layout does not shift while a job runs.
+/// Prev / next paging over the table behind the loaded page, and host job markers.
 fn footer(state: &crate::AppState, ink: rune::Color, muted: rune::Color) -> El {
     let grid = &state.grid;
     let mut footer = row()
@@ -346,7 +442,7 @@ fn footer(state: &crate::AppState, ink: rune::Color, muted: rune::Color) -> El {
                 .child(text("Loading…").font(label_style()).color(muted)),
         );
     }
-    footer
+    footer = footer
         .child(
             row()
                 .key("page-prev")
@@ -377,42 +473,35 @@ fn footer(state: &crate::AppState, ink: rune::Color, muted: rune::Color) -> El {
             text(format!("{} per page · {} rows", grid.page_size(), grid.total_rows()))
                 .font(label_style())
                 .color(muted),
-        )
-        .child(
-            row()
-                .key("commit-staged")
-                .h(24.0)
-                .px(8.0)
-                .center_y()
-                .radius(6.0)
-                .child(text("Commit").font(label_style()).color(ink))
-                .on_press(|state: &mut crate::AppState| state.commit_staged_edits()),
-        )
-        .child(
-            row()
-                .key("rollback-staged")
-                .h(24.0)
-                .px(8.0)
-                .center_y()
-                .radius(6.0)
-                .child(text("Rollback").font(label_style()).color(ink))
-                .on_press(|state: &mut crate::AppState| state.rollback_staged_edits()),
-        )
+        );
+    footer
 }
 
 fn header_row(grid: &DataGrid, slot: GridSlot, ink: rune::Color, dark: bool) -> El {
     let header_bg = if dark { oklch(0.22, 0.02, 250.0) } else { oklch(0.92, 0.01, 250.0) };
+    let gutter_bg = if dark { oklch(0.20, 0.02, 250.0) } else { oklch(0.90, 0.01, 250.0) };
     let mut line = row().key(slot.key("data-grid-header")).h(ROW_H).fill(header_bg);
+    // A4: row-number gutter header.
+    line = line.child(
+        row()
+            .key(slot.key("head-rownum"))
+            .w(GUTTER_W)
+            .h(ROW_H)
+            .px(6.0)
+            .center_y()
+            .fill(gutter_bg)
+            .child(text("#").font(label_style()).color(ink)),
+    );
     let mut cursor = 0u32;
     for col_index in grid.built_columns() {
         if col_index > cursor {
-            line = line.child(el().w((col_index - cursor) as f32 * COL_W).h(ROW_H));
+            line = line.child(el().w(grid.span_width(cursor, col_index)).h(ROW_H));
         }
         line = line.child(header_cell(grid, slot, col_index, ink, dark));
         cursor = col_index + 1;
     }
     if cursor < grid.cols {
-        line = line.child(el().w((grid.cols - cursor) as f32 * COL_W).h(ROW_H));
+        line = line.child(el().w(grid.span_width(cursor, grid.cols)).h(ROW_H));
     }
     line
 }
@@ -423,22 +512,38 @@ fn data_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color, d
 
 fn paint_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color, dark: bool) -> El {
     let cols = grid.built_columns();
-    // The key matches the virtual list's row key, so the row reads its place
-    // in the set from the list's index.
+    let gutter_bg = if dark { oklch(0.19, 0.02, 250.0) } else { oklch(0.93, 0.01, 250.0) };
     let mut line = row()
         .key(slot.key(&format!("grid-row-{row_index}")))
         .role("row")
         .h(ROW_H);
+    // A4: row-number gutter (global 1-based).
+    let num = if grid.page_size() > 0 {
+        grid.page().saturating_mul(grid.page_size()).saturating_add(row_index + 1)
+    } else {
+        row_index + 1
+    };
+    line = line.child(
+        row()
+            .key(slot.key(&format!("rownum-{row_index}")))
+            .role("rowheader")
+            .w(GUTTER_W)
+            .h(ROW_H)
+            .px(6.0)
+            .center_y()
+            .fill(gutter_bg)
+            .child(text(num.to_string()).font(label_style()).color(ink)),
+    );
     let mut cursor = 0u32;
     for col_index in cols {
         if col_index > cursor {
-            line = line.child(el().w((col_index - cursor) as f32 * COL_W).h(ROW_H));
+            line = line.child(el().w(grid.span_width(cursor, col_index)).h(ROW_H));
         }
         line = line.child(cell(grid, slot, row_index, col_index, ink, dark));
         cursor = col_index + 1;
     }
     if cursor < grid.cols {
-        line = line.child(el().w((grid.cols - cursor) as f32 * COL_W).h(ROW_H));
+        line = line.child(el().w(grid.span_width(cursor, grid.cols)).h(ROW_H));
     }
     line
 }
@@ -459,10 +564,11 @@ fn header_cell(
         Some((col, false)) if col == col_index => format!("{label} ↑"),
         _ => label,
     };
+    let w = grid.col_w(col_index);
     let mut cell = row()
         .key(slot.key(&format!("head-{col_index}")))
         .role("columnheader")
-        .w(COL_W)
+        .w(w)
         .h(ROW_H)
         .px(8.0)
         .center_y()
@@ -472,7 +578,7 @@ fn header_cell(
     }
     if col_index == 0 {
         let frozen_bg = if dark { oklch(0.24, 0.03, 250.0) } else { oklch(0.90, 0.01, 250.0) };
-        cell = cell.sticky_left(0.0).fill(frozen_bg);
+        cell = cell.sticky_left(GUTTER_W).fill(frozen_bg);
     }
     cell
 }
@@ -501,10 +607,11 @@ fn cell(
     } else {
         oklch(0.965, 0.005, 250.0)
     };
+    let w = grid.col_w(col_index);
     let mut box_el = row()
         .key(slot.key(&format!("cell-{row_index}-{col_index}")))
         .role("gridcell")
-        .w(COL_W)
+        .w(w)
         .h(ROW_H)
         .px(8.0)
         .center_y()
@@ -513,8 +620,6 @@ fn cell(
         box_el = box_el
             .on_press(move |state: &mut crate::AppState| state.grid.select(row_index, col_index));
     } else if slot == GridSlot::Result {
-        // T1: a pressed result cell takes the selection and the keyboard; the
-        // editor's surface and typing hand the keys back.
         box_el = box_el.on_press(move |state: &mut crate::AppState| {
             if let Some(grid) = state.result_grid.as_mut() {
                 grid.select(row_index, col_index);
@@ -523,13 +628,13 @@ fn cell(
         });
     }
     if frozen {
-        box_el = box_el.sticky_left(0.0);
+        box_el = box_el.sticky_left(GUTTER_W);
     }
     if active && grid.editing {
         box_el.child(
             text_input(&grid.editor, editor_font())
                 .key(slot.key("grid-editor"))
-                .w(COL_W - 16.0)
+                .w((w - 16.0).max(24.0))
                 .h(ROW_H - 4.0)
                 .on_edit(|state: &mut crate::AppState| &mut state.grid.editor)
                 .on_submit(|state: &mut crate::AppState, tx| {

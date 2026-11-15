@@ -61,6 +61,7 @@ impl AppState {
                 self.table_page = page.page;
                 self.grid.load_page(&page);
                 self.grid.set_editable(page.read_only.is_none());
+                self.apply_table_column_widths();
                 self.active = Section::Workspace;
                 true
             }
@@ -332,6 +333,7 @@ impl AppState {
                         self.inbound_refs = None;
                         self.inbound_loading = None;
                         self.fk_error = None;
+                        self.fk_breadcrumbs.clear();
                         self.collapsed.clear();
                         self.table_page = 0;
                         self.sort = None;
@@ -386,6 +388,7 @@ impl AppState {
                     self.table_page = page.page;
                     self.grid.load_page(&page);
                     self.grid.set_editable(page.read_only.is_none());
+                    self.apply_table_column_widths();
                 }
             }
             AdapterDelivery::StructureRead { generation, table, structure } => {
