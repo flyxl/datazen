@@ -119,7 +119,7 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | T10 | 已完成 | 3c518fc | testing/T10-keyring.md |
 | T11 | 已完成 | d5a1671 | testing/T11-packaging.md |
 | E1 | 已完成 | fc1c658 | testing/E1-structure-job.md |
-| E2 | 未开始 | | |
+| E2 | 已完成 | e8a2337 | testing/E2-widget-bars-job.md |
 | E3 | 未开始 | | |
 | E4 | 未开始 | | |
 | E5 | 未开始 | | |

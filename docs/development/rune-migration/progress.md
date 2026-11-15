@@ -1,7 +1,7 @@
 ## Current Task
-- **任务**: E2（部件条作业化）——第四阶段（basic 驱动接入，[plan-native-4.md](plan-native-4.md)）。
+- **任务**: E3（入站引用作业化 + 同步会话退场）——第四阶段（basic 驱动接入，[plan-native-4.md](plan-native-4.md)）。
 - **负责人**: Coder Agent
-- **状态**: E1 已完成（fc1c658，结构四读+ER+出站 FK 全部作业化，渲染零适配器调用）；E2 进行中。
+- **状态**: E1（fc1c658）、E2（e8a2337）已完成，帧循环上的结构读与部件查询均已作业化；E3 进行中。
 
 ## N5 组装配方（调查结论，fc160ec 时点）
 
