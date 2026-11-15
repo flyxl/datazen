@@ -5577,6 +5577,117 @@ fn connection_list(state: &AppState, theme: tok::Theme) -> El {
     list.child(form).child(import)
 }
 
+/// L6: 40pt content status bar — replaces the migration preview banner.
+/// Shows connection state, context counts (table/columns/rows) when available,
+/// and shortcut hints.
+fn content_status_bar(state: &AppState, theme: tok::Theme) -> El {
+    let connected = state.session_open();
+    let dot = if connected {
+        tok::accent(2, true)
+    } else {
+        theme.text_secondary
+    };
+
+    // Resolve connection label when a desktop session is known.
+    let connection_label = state.desktop_connection.as_ref().and_then(|id| {
+        state
+            .desktop_connections
+            .as_ref()
+            .and_then(|list| list.iter().find(|c| &c.id == id))
+            .map(|c| c.name.clone())
+    });
+
+    // Center context: database/table/columns/rows derived from current state.
+    let mut center_parts: Vec<String> = Vec::new();
+    if let Some(name) = connection_label {
+        if !name.is_empty() {
+            center_parts.push(name);
+        }
+    }
+    if let Some(tab) = state.tabs.selected() {
+        if tab.kind == datazen_ui_api::TabKind::Table {
+            if !tab.title.is_empty() {
+                center_parts.push(tab.title.clone());
+            }
+            if state.grid.has_page() {
+                if state.grid.cols > 0 {
+                    center_parts.push(format!("{} cols", state.grid.cols));
+                }
+                if state.grid.total_rows() > 0 {
+                    center_parts.push(format!("{} rows", state.grid.total_rows()));
+                }
+            }
+        } else if tab.kind == datazen_ui_api::TabKind::Query {
+            center_parts.push("Query".to_owned());
+            if let Some(result) = &state.result_grid {
+                if result.has_page() {
+                    if result.cols > 0 {
+                        center_parts.push(format!("{} cols", result.cols));
+                    }
+                    if result.total_rows() > 0 {
+                        center_parts.push(format!("{} rows", result.total_rows()));
+                    }
+                }
+            }
+        }
+    }
+    let center_text = if center_parts.is_empty() {
+        state.active.label().to_owned()
+    } else {
+        center_parts.join(" · ")
+    };
+
+    row()
+        .key("content-status-bar")
+        .w_full()
+        .h(40.0)
+        .px(12.0)
+        .center_y()
+        .fill(theme.control_off)
+        .child(
+            row()
+                .gap(8.0)
+                .center_y()
+                .child(
+                    col()
+                        .key("status-connection-dot")
+                        .w(8.0)
+                        .h(8.0)
+                        .radius(4.0)
+                        .fill(dot),
+                )
+                .child(
+                    text(if connected { "Connected" } else { "Disconnected" })
+                        .key("status-connection-label")
+                        .font(type_::LABEL)
+                        .color(theme.text),
+                ),
+        )
+        .child(
+            row()
+                .grow(1.0)
+                .center_y()
+                .justify_center()
+                .child(
+                    text(center_text)
+                        .key("status-context")
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
+        )
+        .child(
+            row()
+                .gap(8.0)
+                .center_y()
+                .child(
+                    text("⌘N New query · ⌘W Close")
+                        .key("status-shortcuts")
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
+        )
+}
+
 fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
     let dark = state
         .ui_settings()
@@ -5652,17 +5763,7 @@ fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
             row().key("tab-strip-absent").h(0.0)
         })
         .child(page_body(state, theme))
-        .child(
-            row()
-                .w_full()
-                .h(28.0)
-                .center_y()
-                .child(
-                    text("Migration preview · existing React and Tauri entrypoints are unchanged")
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                ),
-        );
+        .child(content_status_bar(state, theme));
 
     let body = row()
         .key("datazen-body")
@@ -11222,6 +11323,55 @@ mod tests {
                 .iter()
                 .any(|e| e.key.as_deref() == Some("toolbar-new-query")),
             "workspace content toolbar exposes new query action"
+        );
+    }
+
+    #[test]
+    fn content_status_bar_replaces_migration_preview_with_context() {
+        // L6: 40pt status bar shows connection state, context and shortcuts;
+        // the migration preview banner is removed.
+        let mut rt = runtime();
+        rt.frame(0.0);
+        let bar = rt
+            .elements()
+            .into_iter()
+            .find(|e| e.key.as_deref() == Some("content-status-bar"))
+            .expect("status bar present");
+        assert!(
+            (bar.rect[3] - 40.0).abs() < 1.0,
+            "status bar height {}, want 40",
+            bar.rect[3]
+        );
+        assert!(
+            rt.elements()
+                .iter()
+                .any(|e| e.key.as_deref() == Some("status-connection-label")),
+            "connection state label present"
+        );
+        assert!(
+            rt.elements()
+                .iter()
+                .any(|e| e.key.as_deref() == Some("status-context")),
+            "context cluster present"
+        );
+        assert!(
+            rt.elements()
+                .iter()
+                .any(|e| e.key.as_deref() == Some("status-shortcuts")),
+            "shortcut hints present"
+        );
+        let texts: Vec<String> = rt
+            .elements()
+            .iter()
+            .filter_map(|e| e.text.clone())
+            .collect();
+        assert!(
+            !texts.iter().any(|t| t.contains("Migration preview")),
+            "migration preview banner removed: {texts:?}"
+        );
+        assert!(
+            texts.iter().any(|t| t.contains("New query") && t.contains("Close")),
+            "shortcut hints rendered: {texts:?}"
         );
     }
 }
