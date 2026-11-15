@@ -44,6 +44,7 @@ deploy/                  服务端部署：Dockerfile / docker-compose 与 dev/ 
 - `@datazen/frontend` 只经公开入口消费：`.`（平台端口与能力位）、`./app`（startSharedApp 启动链）、`./shell`（壳层切片）、`./styles.css`；`./testing/*` 仅测试文件可用。禁止 `@datazen/frontend/src/` 深导入（`scripts/check-frontend-public-entry.mjs` 门禁）。
 - 数据库行为差异走 `DB_REGISTRY` / `DatabaseTypeMeta`；不要把某个数据库的判断散落到 Host。
 - 交互/补全必须测试完整连续旅程，优先软排序，不用不可逆硬过滤；点击选择通过 DOM `data-*` 标识而不是视口坐标。
+- **单文件规模与模块拆分**：严格限制单源码文件大小（推荐单文件不超过 800 行，严禁出现超大单文件）；大型模块必须按职责拆分为高内聚、低耦合的子组件与子模块。新增代码不要往已经很长的文件里继续堆。
 
 ## 驱动、扩展与生成文件
 
