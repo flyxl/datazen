@@ -1,7 +1,7 @@
 ## Current Task
-- **任务**: 无——第四阶段（basic 驱动接入，[plan-native-4.md](plan-native-4.md)）E1–E7 全部完成。
+- **任务**: L2 分割条组件（Drag → clamp → `Setting::Layout` 持久化，垂直/水平、`role="separator"`、双击复位、键盘微调）
 - **负责人**: Coder Agent
-- **状态**: 四阶段计划全部完成并推送：帧循环零无界 IO（E1–E3）、宿主静态准入 basic SKU 十一工厂（E4）、连接表单接活宿主（E5）、离线验证扫尾（E6）、文档矩阵分级收口（E7）。真机端到端冒烟为环境差距待验（native-host.md 如实分级）；后续扩展点见 plan-native-4.md 范围外清单与 native-host.md 的剩余差距。
+- **状态**: L1（布局尺寸端到端持久化，`Setting::Layout` + `ui.layout` 子对象 + 共享校验 + UI helper）已完成，GR1 56 / GR2 147 / GR3 59+3 基线绿；第五阶段计划见 [plan-native-5.md](plan-native-5.md)。L2 进行中。
 
 ## N5 组装配方（调查结论，fc160ec 时点）
 
