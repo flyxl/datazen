@@ -1,7 +1,7 @@
 ## Current Task
-- **任务**: L7 主题 token 修正：`crates/datazen-ui/src/data_grid.rs`、`crates/datazen-ui/src/sql_editor.rs`、ER 相关硬编码暗色/oklch 改为随 theme token（亮色正确）
+- **任务**: A1 连接首页/树逐页对齐（布局/样式/交互与 Tauri 版一致）
 - **负责人**: Coder Agent
-- **状态**: L1–L6 已完成（L6: 40pt ContentStatusBar 替换迁移横幅，GR2 158 / GR4 绿）；第五阶段计划见 [plan-native-5.md](plan-native-5.md)。L7 进行中。
+- **状态**: L1–L7 已完成（L7: grid/sql/ER 主题 token 适配亮暗，GR2 159 / GR4 绿）；第五阶段计划见 [plan-native-5.md](plan-native-5.md)。A1 进行中。
 
 ## N5 组装配方（调查结论，fc160ec 时点）
 
