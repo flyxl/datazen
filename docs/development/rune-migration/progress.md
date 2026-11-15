@@ -1,7 +1,7 @@
 ## Current Task
-- **任务**: E3（入站引用作业化 + 同步会话退场）——第四阶段（basic 驱动接入，[plan-native-4.md](plan-native-4.md)）。
+- **任务**: E4（工厂导出与链接）——第四阶段（basic 驱动接入，[plan-native-4.md](plan-native-4.md)）。
 - **负责人**: Coder Agent
-- **状态**: E1（fc1c658）、E2（e8a2337）已完成，帧循环上的结构读与部件查询均已作业化；E3 进行中。
+- **状态**: E1（fc1c658）、E2（e8a2337）、E3（ef116f8）已完成，帧循环上无界 IO 清零；E4 进行中（postgres/mysql/redis 工厂导出与静态准入）。
 
 ## N5 组装配方（调查结论，fc160ec 时点）
 
