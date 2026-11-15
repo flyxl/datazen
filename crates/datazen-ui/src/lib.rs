@@ -197,6 +197,9 @@ pub struct AppState {
     filter_editor: TextEdit,
     /// Navigator/object-tree filter text (A1: value search/filter).
     navigator_filter: TextEdit,
+    /// Session-only recently opened connections (most recent first). UI state
+    /// for A1 tree hierarchy; not persisted and not part of any contract.
+    recent_connection_ids: Vec<String>,
     /// The read-only query result grid of the selected query tab.
     result_grid: Option<DataGrid>,
     /// T1: the result grid holds the keyboard after a result cell is pressed;
@@ -385,6 +388,7 @@ impl Default for AppState {
             filter_column: 0,
             filter_editor: TextEdit::new(String::new()),
             navigator_filter: TextEdit::new(String::new()),
+            recent_connection_ids: Vec::new(),
             result_grid: None,
             result_focused: false,
             query_generation: 0,
@@ -1837,6 +1841,7 @@ impl AppState {
         // the frame loop. Until the catalog (or the failure sentence) lands
         // the page stays put and says the connect is in flight; the memory
         // port's instant path answers when the host declines.
+        self.record_recent_connection(id);
         let generation = self.next_read_generation();
         if self
             .desktop
@@ -1857,6 +1862,24 @@ impl AppState {
         // H4: the initial page goes through the same read path as every
         // other one: the adapter's use case first, the port as the fallback.
         self.show_table("customers");
+    }
+
+    /// Record a connection as recently opened in session UI state (A1). Not
+    /// persisted and no contract change; keeps the most recent entries first.
+    fn record_recent_connection(&mut self, id: &str) {
+        self.recent_connection_ids.retain(|existing| existing != id);
+        self.recent_connection_ids.insert(0, id.to_owned());
+        if self.recent_connection_ids.len() > 8 {
+            self.recent_connection_ids.truncate(8);
+        }
+    }
+
+    /// Connections visible to the UI: the desktop adapter's list when wired,
+    /// otherwise the memory port's demo list.
+    fn visible_connections(&self) -> Vec<ConnectionProfile> {
+        self.desktop_connections
+            .clone()
+            .unwrap_or_else(|| self.workspace.connections().to_vec())
     }
 
     fn disconnect(&mut self) {
@@ -2484,6 +2507,117 @@ fn rail_view(state: &AppState, dark: bool) -> El {
         .child(toggle)
 }
 
+fn navigator_connections_tree(state: &AppState, theme: tok::Theme) -> El {
+    let filter = state.navigator_filter.text.trim().to_lowercase();
+    let visible = state.visible_connections();
+    let matches = |c: &ConnectionProfile| {
+        filter.is_empty()
+            || c.name.to_lowercase().contains(&filter)
+            || c.engine.to_lowercase().contains(&filter)
+            || c.id.to_lowercase().contains(&filter)
+    };
+
+    let mut recent: Vec<ConnectionProfile> = Vec::new();
+    for id in &state.recent_connection_ids {
+        if let Some(c) = visible.iter().find(|c| &c.id == id) {
+            if matches(c) {
+                recent.push(c.clone());
+            }
+        }
+    }
+    let all: Vec<ConnectionProfile> = visible.into_iter().filter(matches).collect();
+
+    let mut tree = col().key("navigator-connections").w_full().gap(4.0);
+    tree = tree.child(
+        text("Connections")
+            .key("navigator-connections-title")
+            .font(type_::LABEL)
+            .color(theme.text_secondary),
+    );
+
+    tree = tree.child(
+        text("Recent")
+            .key("nav-group-recent")
+            .font(type_::LABEL)
+            .color(theme.text_secondary),
+    );
+    if recent.is_empty() {
+        tree = tree.child(
+            row()
+                .key("nav-group-recent-empty")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .child(
+                    text(if filter.is_empty() { "No recent connections" } else { "No matches" })
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
+        );
+    } else {
+        for c in recent {
+            let id = c.id.clone();
+            let label = format!("{} · {}", c.name, c.engine);
+            tree = tree.child(
+                row()
+                    .key(format!("nav-conn-recent-{}", c.id))
+                    .w_full()
+                    .h(28.0)
+                    .px(16.0)
+                    .center_y()
+                    .radius(6.0)
+                    .fill(theme.control_off)
+                    .label(label.clone())
+                    .child(text(label).font(type_::LABEL).color(theme.text))
+                    .on_press(move |state: &mut AppState| state.open_connection(&id)),
+            );
+        }
+    }
+
+    tree = tree.child(
+        text("All connections")
+            .key("nav-group-all")
+            .font(type_::LABEL)
+            .color(theme.text_secondary),
+    );
+    if all.is_empty() {
+        tree = tree.child(
+            row()
+                .key("nav-group-all-empty")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .child(
+                    text(if filter.is_empty() { "No connections" } else { "No matches" })
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
+        );
+    } else {
+        for c in all {
+            let id = c.id.clone();
+            let label = format!("{} · {}", c.name, c.engine);
+            tree = tree.child(
+                row()
+                    .key(format!("nav-conn-{}", c.id))
+                    .w_full()
+                    .h(28.0)
+                    .px(16.0)
+                    .center_y()
+                    .radius(6.0)
+                    .fill(theme.control_off)
+                    .label(label.clone())
+                    .child(text(label).font(type_::LABEL).color(theme.text))
+                    .on_press(move |state: &mut AppState| state.open_connection(&id)),
+            );
+        }
+    }
+
+    tree
+}
+
 fn navigator_panel(state: &AppState, theme: tok::Theme) -> El {
     let width = state.navigator_width() as f32;
     col()
@@ -2507,6 +2641,7 @@ fn navigator_panel(state: &AppState, theme: tok::Theme) -> El {
                 .h(28.0)
                 .on_edit(|state: &mut AppState| &mut state.navigator_filter),
         )
+        .child(navigator_connections_tree(state, theme))
         .child(object_tree(state, theme))
         .child(refresh_button(state, theme))
         .child(er_button(state, theme))
@@ -11515,6 +11650,59 @@ mod tests {
         assert!(
             rt.elements().iter().any(|e| e.key.as_deref() == Some("object-tree-empty")),
             "no-matches empty state shown"
+        );
+    }
+
+    #[test]
+    fn navigator_connections_tree_shows_recent_and_all_groups_and_filters() {
+        // A1 (tree): navigator shows a connections hierarchy with session-only
+        // Recent and All groups; filter applies to connection names and opening
+        // a connection records it as recent (UI state, no contract changes).
+        let mut rt = runtime();
+        rt.frame(0.0);
+        let keys: Vec<String> = rt.elements().iter().filter_map(|e| e.key.clone()).collect();
+        assert!(
+            keys.iter().any(|k| k == "navigator-connections"),
+            "connections tree present: {keys:?}"
+        );
+        assert!(keys.iter().any(|k| k == "nav-group-recent"), "recent group: {keys:?}");
+        assert!(keys.iter().any(|k| k == "nav-group-all"), "all group: {keys:?}");
+        assert!(
+            keys.iter().any(|k| k == "nav-group-recent-empty"),
+            "recent empty before opens: {keys:?}"
+        );
+
+        let visible = rt.state.visible_connections();
+        assert!(!visible.is_empty(), "default connections available");
+        let first = visible[0].clone();
+        assert!(
+            keys.iter().any(|k| k == &format!("nav-conn-{}", first.id)),
+            "all-connections entry present: {keys:?}"
+        );
+
+        // Opening records a session-only recent entry (UI state).
+        rt.state.open_connection(&first.id);
+        assert_eq!(
+            rt.state.recent_connection_ids.first().map(String::as_str),
+            Some(first.id.as_str()),
+            "recent connection recorded"
+        );
+        rt.invalidate();
+        rt.frame(0.0);
+        let keys: Vec<String> = rt.elements().iter().filter_map(|e| e.key.clone()).collect();
+        assert!(
+            keys.iter().any(|k| k == &format!("nav-conn-recent-{}", first.id)),
+            "recent entry rendered: {keys:?}"
+        );
+
+        // Filter applies to connections (value search in navigator).
+        rt.state.navigator_filter = rune::TextEdit::new("zzznomatch-conn".to_owned());
+        rt.invalidate();
+        rt.frame(0.0);
+        let keys: Vec<String> = rt.elements().iter().filter_map(|e| e.key.clone()).collect();
+        assert!(
+            keys.iter().any(|k| k == "nav-group-all-empty"),
+            "all-connections filtered empty: {keys:?}"
         );
     }
 
