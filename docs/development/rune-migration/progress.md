@@ -36,8 +36,8 @@ React 页面和组件保留。不删除、不改成空壳、不把现有入口�
 - [x] A4 表浏览对齐：行号 gutter、按表列宽持久化与回填、FK 面包屑、状态横幅、待提交条（`e041fc463`, `5ae657365`；测试报告 `testing/A4-table-browse.md`）
 
 ## Verification
-- 主轨集成（A2/A4/A6 合流后）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui --offline --lib -- --test-threads=1` → **168 passed, 0 failed**；`cargo check -p datazen-rune-host --offline` exit 0。
-- A3（`feature/a3-query-panel`，合流主轨）：分支 GR2 报告 **169 passed, 0 failed**（含 part_10）；合流后统一门禁见后续记录。
+- 主轨集成（A2–A6 合流，含冲突解决）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui --offline --lib -- --test-threads=1` → **176 passed, 0 failed**；`CARGO_TARGET_DIR="$PWD/target" cargo check -p datazen-rune-host --offline` → exit 0（既有 warnings）。
+- 分支/轨道门禁（合流前）：A2 163 passed；A4 164 passed（含回归修复）；A3 169 passed（含 part_10）；A5 171 passed（含 data_grid find 命中测试）；A6 165 passed。
 - 历史基线（C3 收尾）：`cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1`：datazen-ui 113 passed、datazen-ui-api 54 passed。
 
 ## 收尾测量（C3）
