@@ -546,6 +546,13 @@ pub enum AdapterJob {
         generation: u32,
         table: String,
     },
+    /// Read one widget's chart bars (E2): the widget's query runs as a job
+    /// over the live session — the bar chart renders the cached answer
+    /// only, never a live query on the frame loop.
+    WidgetBars {
+        generation: u32,
+        id: u64,
+    },
     /// Apply one batch of cell edits, the job twin of `commit_cells`. The
     /// rows are the page's, addressed by the table's primary key.
     CommitCells {
@@ -584,6 +591,14 @@ pub enum AdapterDelivery {
         generation: u32,
         table: String,
         structure: Result<TableStructure, String>,
+    },
+    /// A widget's chart bars (or its failure sentence) (E2). The widget id
+    /// rides along: the cache is per widget, and a delivery for an entry
+    /// that moved to a newer generation is dropped.
+    WidgetBarsRead {
+        generation: u32,
+        id: u64,
+        bars: Result<Vec<(String, u32)>, String>,
     },
     /// A commit job's landed edit count (or its failure sentence).
     CommitCount { generation: u32, count: Result<u32, String> },

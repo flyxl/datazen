@@ -77,6 +77,12 @@ enum HostJob {
         generation: u32,
         table: String,
     },
+    /// One widget's chart bars (E2): the widget's query runs over the live
+    /// session the worker owns.
+    WidgetBars {
+        generation: u32,
+        id: u64,
+    },
     CommitCells {
         generation: u32,
         batch: datazen_ui_api::CellEditBatch,
@@ -98,6 +104,8 @@ enum HostAnswer {
     TablePage { generation: u32, page: Result<TablePage, String> },
     /// One table's four-part structure (or its failure sentence) (E1).
     Structure { generation: u32, table: String, structure: Result<TableStructure, String> },
+    /// One widget's chart bars (or its failure sentence) (E2).
+    WidgetBars { generation: u32, id: u64, bars: Result<Vec<(String, u32)>, String> },
     CommitCount { generation: u32, count: Result<u32, String> },
     QueryPage { generation: u32, page: Result<TablePage, String> },
 }
@@ -293,6 +301,7 @@ impl LiveAdapter {
         let worker_profiles = Arc::clone(&profiles);
         let worker_registry = Arc::clone(&registry);
         let worker_workflows = Arc::clone(&workflows);
+        let worker_dashboard_store = Arc::clone(&dashboard_store);
         thread::Builder::new()
             .name("datazen-live-jobs".into())
             .spawn(move || {
@@ -322,6 +331,11 @@ impl LiveAdapter {
                                     structure: Err(format!(
                                         "the job runtime did not start: {error}"
                                     )),
+                                },
+                                HostJob::WidgetBars { generation, .. } => HostAnswer::WidgetBars {
+                                    generation,
+                                    id: 0,
+                                    bars: Err(format!("the job runtime did not start: {error}")),
                                 },
                                 HostJob::CommitCells { generation, .. } => HostAnswer::CommitCount {
                                     generation,
@@ -404,6 +418,17 @@ impl LiveAdapter {
                                 &table,
                             ));
                             HostAnswer::Structure { generation, table, structure }
+                        }
+                        HostJob::WidgetBars { generation, id } => {
+                            let bars = runtime.block_on(widget_bars(
+                                &worker_runtime,
+                                &worker_profiles,
+                                &worker_session,
+                                &worker_workflows,
+                                &worker_dashboard_store,
+                                id,
+                            ));
+                            HostAnswer::WidgetBars { generation, id, bars }
                         }
                         HostJob::CommitCells { generation, batch } => {
                             let count = runtime.block_on(commit_edits(
@@ -1212,6 +1237,62 @@ async fn read_structure(
     })
 }
 
+/// One widget's chart bars (E2): the widget's hidden workflow carries its
+/// query; the query runs through the execution use case over the live
+/// session — the same path the editor's statements take — on the worker's
+/// runtime, and the first two columns are the chart's label and value.
+/// N13's synchronous form ran the same two reads on the adapter's runtime;
+/// a remote driver made them unbounded, so they moved onto the job
+/// channel whole.
+async fn widget_bars(
+    runtime: &Arc<RuntimeConnectionUseCases>,
+    profiles: &Arc<crate::backend::HostProfiles>,
+    session: &Arc<Mutex<LiveSession>>,
+    workflows: &Arc<WorkflowRegistry>,
+    dashboard_store: &Arc<crate::dashboards::FileDashboardStore>,
+    id: u64,
+) -> Result<Vec<(String, u32)>, String> {
+    let scope = crate::dashboards::host_scope();
+    let widget = dashboard_rules::get_dashboard(
+        &scope,
+        dashboard_store.as_ref(),
+        crate::dashboards::DEFAULT_DASHBOARD_ID,
+    )
+    .map_err(|error| error.to_string())?
+    .widgets
+    .into_iter()
+    .find(|widget| crate::dashboards::widget_ui_id(&widget.id) == id)
+    .ok_or_else(|| format!("no widget {id}"))?;
+    let definition = workflows
+        .get(&scope, &widget.workflow_id)
+        .await
+        .ok_or("the widget's workflow is missing")?;
+    let sql = definition
+        .steps
+        .iter()
+        .find_map(|step| match step {
+            WorkflowStep::Query { sql, .. } => Some(sql.clone()),
+            _ => None,
+        })
+        .ok_or("the widget's workflow has no query step")?;
+    let page = run_query(runtime, profiles, session, &sql).await?;
+    if page.columns.len() < 2 {
+        return Err("the widget's query needs two columns: label and value".into());
+    }
+    Ok(page
+        .rows
+        .iter()
+        .filter_map(|row| {
+            let label = row.first()?.clone();
+            let value = row
+                .get(1)
+                .and_then(|text| text.trim().parse().ok())
+                .unwrap_or(0);
+            Some((label, value))
+        })
+        .collect())
+}
+
 /// One driver cell as the grid's text: null is the empty string, bytes land
 /// as their lossy text, everything else its own display form.
 fn cell_to_text(cell: Option<Cell>) -> String {
@@ -1854,6 +1935,7 @@ impl DesktopAdapter for LiveAdapter {
             AdapterJob::ReadStructure { generation, table } => {
                 HostJob::ReadStructure { generation, table }
             }
+            AdapterJob::WidgetBars { generation, id } => HostJob::WidgetBars { generation, id },
             AdapterJob::CommitCells { generation, batch } => {
                 HostJob::CommitCells { generation, batch }
             }
@@ -1887,6 +1969,9 @@ impl DesktopAdapter for LiveAdapter {
                 }
                 HostAnswer::Structure { generation, table, structure } => {
                     deliveries.push(AdapterDelivery::StructureRead { generation, table, structure });
+                }
+                HostAnswer::WidgetBars { generation, id, bars } => {
+                    deliveries.push(AdapterDelivery::WidgetBarsRead { generation, id, bars });
                 }
                 HostAnswer::CommitCount { generation, count } => {
                     deliveries.push(AdapterDelivery::CommitCount { generation, count });
@@ -2148,55 +2233,16 @@ impl DesktopAdapter for LiveAdapter {
         Ok(crate::dashboards::widget_ui_id(&result.widget.id))
     }
 
-    fn widget_bars(&self, id: u64) -> Result<Vec<(String, u32)>, String> {
-        // N13: the widget's query runs live through the execution use case
-        // — the same path the editor's statements take — and the first two
-        // columns are the chart's label and value. A local sqlite query is
-        // the bounded local-IO class the adapter already serves
-        // synchronously (N10's precedent); a remote driver will need the
-        // job channel.
-        let scope = crate::dashboards::host_scope();
-        let widget = dashboard_rules::get_dashboard(
-            &scope,
-            self.dashboard_store.as_ref(),
-            crate::dashboards::DEFAULT_DASHBOARD_ID,
+    fn widget_bars(&self, _id: u64) -> Result<Vec<(String, u32)>, String> {
+        // E2: the widget's query runs as a job over the live session — a
+        // query is unbounded IO and never the frame loop's to wait for.
+        // The chart renders the cached answer the delivery fills; this
+        // synchronous path stays closed so no caller can block the loop
+        // by accident.
+        Err(
+            "the widget's data goes through the bars job — the chart renders its cached answer"
+                .into(),
         )
-        .map_err(|error| error.to_string())?
-        .widgets
-        .into_iter()
-        .find(|widget| crate::dashboards::widget_ui_id(&widget.id) == id)
-        .ok_or_else(|| format!("no widget {id}"))?;
-        let definition = futures_executor::block_on(self.workflows.get(&scope, &widget.workflow_id))
-            .ok_or("the widget's workflow is missing")?;
-        let sql = definition
-            .steps
-            .iter()
-            .find_map(|step| match step {
-                WorkflowStep::Query { sql, .. } => Some(sql.clone()),
-                _ => None,
-            })
-            .ok_or("the widget's workflow has no query step")?;
-        let page = self.sync_runtime.block_on(run_query(
-            &self.runtime,
-            &self.profiles,
-            &self.session,
-            &sql,
-        ))?;
-        if page.columns.len() < 2 {
-            return Err("the widget's query needs two columns: label and value".into());
-        }
-        Ok(page
-            .rows
-            .iter()
-            .filter_map(|row| {
-                let label = row.first()?.clone();
-                let value = row
-                    .get(1)
-                    .and_then(|text| text.trim().parse().ok())
-                    .unwrap_or(0);
-                Some((label, value))
-            })
-            .collect())
     }
 
     fn table_inbound_references(&self, table: &str) -> Result<Vec<InboundRef>, String> {
@@ -2726,6 +2772,48 @@ mod tests {
         }));
         let error = poll_structure(&mut adapter, "nope").expect_err("an unknown table is a failure");
         assert!(error.contains("no table"), "the sentence names it: {error}");
+    }
+
+    /// Poll the adapter until its bars job answers (E2).
+    fn poll_bars(adapter: &mut LiveAdapter, id: u64) -> Result<Vec<(String, u32)>, String> {
+        for _ in 0..300 {
+            for delivery in adapter.poll_jobs() {
+                if let AdapterDelivery::WidgetBarsRead { id: answered, bars, .. } = delivery {
+                    if answered == id {
+                        return bars;
+                    }
+                }
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("the bars job never answered");
+    }
+
+    #[test]
+    fn widget_bars_jobs_answer_from_sqlite() {
+        let dir = temp_dir("bars");
+        let mut adapter = opened_adapter(&dir);
+        let id = adapter
+            .save_dashboard_widget("Counts", "SELECT 'x' AS label, 42 AS value")
+            .expect("the widget saves");
+        assert!(adapter.begin_job(AdapterJob::WidgetBars { generation: 2, id }));
+        let bars = poll_bars(&mut adapter, id).expect("the bars read");
+        assert_eq!(bars, vec![("x".to_string(), 42)], "the query's two columns are the chart");
+
+        // E2: the synchronous bars path stays closed — the query is
+        // unbounded IO and never the frame loop's to wait for.
+        let refused = adapter.widget_bars(id).expect_err("the sync path refuses");
+        assert!(refused.contains("bars job"), "the sentence names the job path: {refused}");
+    }
+
+    #[test]
+    fn a_widget_whose_query_has_one_column_answers_a_sentence() {
+        let dir = temp_dir("bars-one-column");
+        let mut adapter = opened_adapter(&dir);
+        let id = adapter.save_dashboard_widget("Broken", "SELECT 1").expect("the widget saves");
+        assert!(adapter.begin_job(AdapterJob::WidgetBars { generation: 2, id }));
+        let error = poll_bars(&mut adapter, id).expect_err("a one-column query is not a chart");
+        assert!(error.contains("two columns"), "the sentence names it: {error}");
     }
 
     /// Open the fixture connection through the adapter (the N3 job path) and
@@ -3832,8 +3920,11 @@ mod tests {
         assert_eq!(widgets[0].kind, "bar");
 
         // The bars are the live query's rows: the first column is the
-        // label, the second the value.
-        let bars = adapter.widget_bars(id).unwrap();
+        // label, the second the value — through the bars job (E2); the
+        // synchronous path stays closed for good.
+        assert!(adapter.widget_bars(id).is_err(), "the sync bars path refuses (E2)");
+        assert!(adapter.begin_job(AdapterJob::WidgetBars { generation: 2, id }));
+        let bars = poll_bars(&mut adapter, id).unwrap();
         assert_eq!(
             bars,
             vec![
@@ -3855,7 +3946,8 @@ mod tests {
         let widgets = adapter.dashboard_widgets().unwrap();
         assert_eq!(widgets.len(), 1, "the widget survived the restart");
         assert_eq!(widgets[0].title, "First four");
-        let bars = adapter.widget_bars(widgets[0].id).unwrap();
+        assert!(adapter.begin_job(AdapterJob::WidgetBars { generation: 2, id: widgets[0].id }));
+        let bars = poll_bars(&mut adapter, widgets[0].id).unwrap();
         assert_eq!(bars.len(), 4, "the chart answers after the restart");
         assert_eq!(bars.first().map(|(label, _)| label.clone()), Some("user-00".into()));
     }

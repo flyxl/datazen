@@ -212,6 +212,12 @@ pub struct AppState {
     /// structure views and the outbound FK navigation read. Render
     /// functions read this map only, never the adapter.
     structures: std::collections::BTreeMap<String, StructureState>,
+    /// E2: the widget-bars generation — bumped by every bars request (a
+    /// dashboards open, a widget save, a manual refresh).
+    widget_bars_generation: u32,
+    /// E2: the loaded bars, per widget id — the bar chart's only read.
+    /// Render never queries the widget's data live.
+    widget_bars: std::collections::BTreeMap<u64, WidgetBarsState>,
     /// The export dialog's format, range and its job.
     export_format_index: u32,
     export_range: TextEdit,
@@ -337,6 +343,8 @@ impl Default for AppState {
             fk_error: None,
             structure_generation: 0,
             structures: std::collections::BTreeMap::new(),
+            widget_bars_generation: 0,
+            widget_bars: std::collections::BTreeMap::new(),
             export_format_index: 0,
             export_range: TextEdit::new(String::new()),
             export_job: None,
@@ -396,11 +404,25 @@ struct StructureState {
     data: Option<datazen_ui_api::TableStructure>,
 }
 
+/// One widget's bars read state (E2): the generation the entry waits on,
+/// its loading and error marks, and the chart's answer once it lands.
+struct WidgetBarsState {
+    generation: u32,
+    loading: bool,
+    error: Option<String>,
+    bars: Option<Vec<(String, u32)>>,
+}
+
 impl AppState {
     fn select(&mut self, section: Section) {
         self.active = section;
         if section == Section::Connections {
             self.sync_desktop_connections();
+        }
+        if section == Section::Dashboards {
+            // E2: entering the dashboards page asks for every widget's
+            // bars — the chart renders the cached answers only.
+            self.refresh_widget_bars();
         }
     }
 
@@ -1382,6 +1404,10 @@ impl AppState {
                 self.widget_error = None;
                 self.widget_title = TextEdit::new(String::new());
                 self.widget_query = TextEdit::new(String::new());
+                // E2: the new widget's bars ask for themselves — every
+                // widget's read restarts, the same refresh the page's
+                // button gives.
+                self.refresh_widget_bars();
             }
             Err(error) => self.widget_error = Some(error),
         }
@@ -1668,6 +1694,7 @@ impl AppState {
         self.desktop_catalog = None;
         self.desktop_connection = None;
         self.structures.clear();
+        self.widget_bars.clear();
     }
 
     fn open_table_tab(&mut self, title: &str) -> Option<u32> {
@@ -1939,6 +1966,45 @@ impl AppState {
         );
     }
 
+    /// Bump and return the next widget-bars generation (E2). Every bars
+    /// request — a dashboards open, a widget save, a manual refresh —
+    /// starts one, so a delivery from a read the widget's entry has moved
+    /// past is dropped.
+    fn next_widget_bars_generation(&mut self) -> u32 {
+        self.widget_bars_generation += 1;
+        self.widget_bars_generation
+    }
+
+    /// E2: ask for one widget's bars as a job — the widget's query runs
+    /// over the live session on the worker's runtime. A host that declines
+    /// the job keeps the synchronous bars read (the demo process's memory
+    /// port) and the same cache fills on the spot.
+    fn begin_widget_bars_read(&mut self, id: u64) {
+        let generation = self.next_widget_bars_generation();
+        let job = AdapterJob::WidgetBars { generation, id };
+        if self.desktop.begin_job(job) {
+            self.widget_bars.insert(
+                id,
+                WidgetBarsState { generation, loading: true, error: None, bars: None },
+            );
+            return;
+        }
+        let bars = self.host_widget_bars(id);
+        self.widget_bars.insert(
+            id,
+            WidgetBarsState { generation, loading: false, error: None, bars: Some(bars) },
+        );
+    }
+
+    /// E2: ask for every widget's bars — the page's open, a save and the
+    /// manual refresh button all restart the whole chart set.
+    fn refresh_widget_bars(&mut self) {
+        let ids: Vec<u64> = self.host_widgets().iter().map(|widget| widget.id).collect();
+        for id in ids {
+            self.begin_widget_bars_read(id);
+        }
+    }
+
     /// A host job's answer arrived on the poll path. The loading marker of
     /// the finished request always clears; the state itself is written only
     /// when the delivery's generation is still the current one.
@@ -1959,6 +2025,9 @@ impl AppState {
                         // E1: a new session is a new truth — the structure
                         // cache empties with it.
                         self.structures.clear();
+                        // E2: the widgets' queries bind the connection —
+                        // their bars reload with the new session.
+                        self.widget_bars.clear();
                         self.collapsed.clear();
                         self.table_page = 0;
                         self.sort = None;
@@ -2034,6 +2103,29 @@ impl AppState {
                     }
                     Err(error) => {
                         entry.data = None;
+                        entry.error = Some(error);
+                    }
+                }
+            }
+            AdapterDelivery::WidgetBarsRead { generation, id, bars } => {
+                // E2: the answer lands only on the entry still waiting for
+                // this generation — a newer request (a reopen, a save, the
+                // refresh button) replaced the entry and the late answer
+                // drops.
+                let Some(entry) = self.widget_bars.get_mut(&id) else {
+                    return;
+                };
+                if entry.generation != generation {
+                    return;
+                }
+                entry.loading = false;
+                match bars {
+                    Ok(bars) => {
+                        entry.bars = Some(bars);
+                        entry.error = None;
+                    }
+                    Err(error) => {
+                        entry.bars = None;
                         entry.error = Some(error);
                     }
                 }
@@ -2421,6 +2513,17 @@ fn dashboards_page(state: &AppState, theme: tok::Theme) -> El {
                         .fill(theme.control_off)
                         .child(text("Save widget").font(type_::LABEL).color(theme.text))
                         .on_press(|state: &mut AppState| state.save_widget_form()),
+                )
+                .child(
+                    row()
+                        .key("widget-refresh")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Refresh").font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.refresh_widget_bars()),
                 ),
         );
     if let Some(error) = &state.widget_error {
@@ -2483,9 +2586,36 @@ fn dashboards_page(state: &AppState, theme: tok::Theme) -> El {
 }
 
 /// A bar chart drawn with color blocks — the port's integers, no chart library.
-/// The zero bar keeps a visible sliver and its label.
+/// The zero bar keeps a visible sliver and its label. E2: the bars come
+/// from the widget's cache entry — the render never queries the widget's
+/// data; a read in flight, its failure sentence or the not-loaded hint
+/// each say themselves instead of a phantom empty chart.
 fn bar_chart(state: &AppState, id: u64, theme: tok::Theme) -> El {
-    let bars = state.host_widget_bars(id);
+    let notice = match state.widget_bars.get(&id) {
+        None => Some("the widget's data is not loaded — refresh the page".to_owned()),
+        Some(WidgetBarsState { loading: true, .. }) => {
+            Some("reading the widget's data…".to_owned())
+        }
+        Some(WidgetBarsState { error: Some(error), .. }) => Some(error.clone()),
+        Some(WidgetBarsState { bars: Some(_), .. }) => None,
+        Some(WidgetBarsState { bars: None, .. }) => {
+            Some("the widget's data is not loaded — refresh the page".to_owned())
+        }
+    };
+    if let Some(sentence) = notice {
+        return row()
+            .key(format!("widget-chart-notice-{id}"))
+            .w_full()
+            .h(120.0)
+            .px(8.0)
+            .center_y()
+            .child(text(sentence).font(type_::LABEL).color(theme.text_secondary));
+    }
+    let bars = state
+        .widget_bars
+        .get(&id)
+        .and_then(|entry| entry.bars.clone())
+        .unwrap_or_default();
     let max = bars.iter().map(|(_, value)| *value).max().unwrap_or(1).max(1);
     let mut chart = row()
         .key(format!("widget-chart-{id}"))
@@ -9379,7 +9509,8 @@ mod tests {
     /// from another's.
     use datazen_ui_api::{
         AdapterDelivery, AdapterJob, Catalog, ColumnFilter, ColumnSort, ConnectionProfile,
-        DatabaseNode, DESKTOP_NOT_IMPLEMENTED, DesktopAdapter, SchemaNode, TablePage,
+        DashboardWidget, DatabaseNode, DESKTOP_NOT_IMPLEMENTED, DesktopAdapter, SchemaNode,
+        TablePage,
     };
 
     struct JobAdapter {
@@ -9526,6 +9657,11 @@ mod tests {
                             }),
                         }
                     }
+                    AdapterJob::WidgetBars { generation, id } => AdapterDelivery::WidgetBarsRead {
+                        generation,
+                        id,
+                        bars: Ok(vec![("mon".into(), 1)]),
+                    },
                     AdapterJob::CommitCells { generation, .. } => AdapterDelivery::CommitCount {
                         generation,
                         count: if fail_commit {
@@ -9848,6 +9984,128 @@ mod tests {
             runtime.find("er-pending-customers").is_none(),
             "the box's structure landed, not the pending hint"
         );
+    }
+
+    /// E2: a host with one widget that takes bars jobs. The synchronous
+    /// bars read answers nothing — the chart's render must not need it —
+    /// and the bars answer on the second poll, so the in-flight state
+    /// renders a frame of its own.
+    struct DashboardsJobHost {
+        accepted: Vec<AdapterJob>,
+        polls: u32,
+    }
+
+    impl DashboardsJobHost {
+        fn new() -> Self {
+            Self { accepted: Vec::new(), polls: 0 }
+        }
+    }
+
+    impl DesktopAdapter for DashboardsJobHost {
+        fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String> {
+            Err(DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn read_table_page(
+            &mut self,
+            _: &str,
+            _: u32,
+            _: u32,
+            _: Option<&ColumnSort>,
+            _: Option<&ColumnFilter>,
+        ) -> Result<TablePage, String> {
+            Err(DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn commit_cells(&mut self, _: &str, _: &[(u32, String, String)]) -> Result<u32, String> {
+            Err(DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn dashboard_widgets(&self) -> Result<Vec<DashboardWidget>, String> {
+            Ok(vec![DashboardWidget { id: 7, title: "Counts".into(), kind: "bar".into() }])
+        }
+
+        fn widget_bars(&self, _: u64) -> Result<Vec<(String, u32)>, String> {
+            panic!("the bars read reached the adapter's synchronous path")
+        }
+
+        fn begin_job(&mut self, job: AdapterJob) -> bool {
+            self.accepted.push(job);
+            true
+        }
+
+        fn poll_jobs(&mut self) -> Vec<AdapterDelivery> {
+            self.polls += 1;
+            if self.polls < 2 {
+                return Vec::new();
+            }
+            self.polls = 0;
+            self.accepted
+                .drain(..)
+                .map(|job| match job {
+                    AdapterJob::WidgetBars { generation, id } => AdapterDelivery::WidgetBarsRead {
+                        generation,
+                        id,
+                        bars: Ok(vec![("mon".into(), 3)]),
+                    },
+                    _ => unreachable!("the test only sends bars jobs"),
+                })
+                .collect()
+        }
+    }
+
+    #[test]
+    fn entering_the_dashboards_page_sends_a_bars_job_and_the_chart_renders_the_answer() {
+        use super::app_poll;
+
+        let mut runtime = runtime();
+        runtime.poll = Some(app_poll);
+        runtime.state.desktop = Box::new(DashboardsJobHost::new());
+        runtime.state.select(Section::Dashboards);
+        // One widget, one bars job; the chart says the read is in flight.
+        assert_eq!(runtime.state.widget_bars.len(), 1, "one widget, one bars read");
+        assert!(
+            runtime.state.widget_bars.get(&7).is_some_and(|entry| entry.loading),
+            "the bars read is in flight"
+        );
+        runtime.frame(0.0);
+        assert!(
+            runtime.find("widget-chart-notice-7").is_some(),
+            "the in-flight read says so"
+        );
+
+        // The delivery lands and the bars draw.
+        runtime.frame(0.0);
+        let entry = runtime.state.widget_bars.get(&7).expect("the entry stays");
+        assert!(!entry.loading, "the marker leaves with the delivery");
+        assert_eq!(entry.bars.as_deref(), Some([("mon".to_string(), 3u32)].as_slice()));
+        runtime.frame(0.0);
+        assert!(runtime.find("widget-block-7-mon").is_some(), "the delivered bars draw");
+    }
+
+    #[test]
+    fn a_late_bars_delivery_for_a_superseded_generation_is_dropped() {
+        use super::app_poll;
+
+        let mut runtime = runtime();
+        runtime.poll = Some(app_poll);
+        runtime.state.desktop = Box::new(DashboardsJobHost::new());
+        runtime.state.select(Section::Dashboards);
+        // The refresh restarts the read: the entry moves to generation 2
+        // while the generation-1 answer is still in flight.
+        runtime.state.refresh_widget_bars();
+        assert_eq!(
+            runtime.state.widget_bars.get(&7).map(|entry| entry.generation),
+            Some(2),
+            "the refresh restarts the read"
+        );
+
+        // Both answers arrive on the same poll, the stale one first.
+        runtime.frame(0.0);
+        runtime.frame(0.0);
+        let entry = runtime.state.widget_bars.get(&7).expect("the entry stays");
+        assert_eq!(entry.generation, 2);
+        assert!(entry.bars.is_some(), "the stale answer did not overwrite it");
     }
 
     #[test]
