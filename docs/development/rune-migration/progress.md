@@ -1,7 +1,7 @@
 ## Current Task
-- **任务**: L3 自绘标题栏（`App::titlebar(Titlebar::new(40))` + `.window_drag()` + min_size 960×640 + `Cx::titlebar_inset` 让位红绿灯，demo/宿主两入口同改）
+- **任务**: L4 两级侧栏（40pt rail + 展开 112pt 文字 + 折叠持久化；对象树挪入内容区 navigator 面板 280pt 可拖拽 min 200/max 500，持久化）
 - **负责人**: Coder Agent
-- **状态**: L1（c6c370cc2，布局尺寸持久化，GR1 56 / GR2 147 / GR3 59+3 基线）与 L2（splitter 组件与纯函数/状态测试，GR2 153）已完成；第五阶段计划见 [plan-native-5.md](plan-native-5.md)。L3 进行中。
+- **状态**: L1（c6c370cc2）/ L2（992fa8b1a）/ L3（自绘标题栏 + min_size + inset 让位，GR2 154 / GR4 绿）已完成；第五阶段计划见 [plan-native-5.md](plan-native-5.md)。L4 进行中。
 
 ## N5 组装配方（调查结论，fc160ec 时点）
 

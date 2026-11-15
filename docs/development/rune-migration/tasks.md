@@ -128,3 +128,4 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | X1 | 已完成 | （本提交） | testing/X1-native-build-doc.md |
 | L1 | 已完成 | c6c370cc2 | testing/L1-layout-persistence.md |
 | L2 | 已完成 | 992fa8b1a | testing/L2-splitter.md |
+| L3 | 已完成 | d019d8f72 | testing/L3-titlebar.md |
