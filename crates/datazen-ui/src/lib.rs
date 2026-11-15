@@ -195,6 +195,8 @@ pub struct AppState {
     /// The column the filter bar targets, as an index into the loaded page.
     filter_column: u32,
     filter_editor: TextEdit,
+    /// Navigator/object-tree filter text (A1: value search/filter).
+    navigator_filter: TextEdit,
     /// The read-only query result grid of the selected query tab.
     result_grid: Option<DataGrid>,
     /// T1: the result grid holds the keyboard after a result cell is pressed;
@@ -382,6 +384,7 @@ impl Default for AppState {
             filter: None,
             filter_column: 0,
             filter_editor: TextEdit::new(String::new()),
+            navigator_filter: TextEdit::new(String::new()),
             result_grid: None,
             result_focused: false,
             query_generation: 0,
@@ -2496,6 +2499,13 @@ fn navigator_panel(state: &AppState, theme: tok::Theme) -> El {
                 .key("navigator-title")
                 .font(type_::LABEL)
                 .color(theme.text_secondary),
+        )
+        .child(
+            text_input(&state.navigator_filter, type_::LABEL)
+                .key("navigator-filter-input")
+                .w_full()
+                .h(28.0)
+                .on_edit(|state: &mut AppState| &mut state.navigator_filter),
         )
         .child(object_tree(state, theme))
         .child(refresh_button(state, theme))
@@ -5124,46 +5134,25 @@ fn content_toolbar(state: &AppState, theme: tok::Theme) -> El {
 /// catalog, with the tree's collapsed nodes kept in UI state.
 fn object_tree(state: &AppState, theme: tok::Theme) -> El {
     let catalog = state.catalog();
+    let filter = state.navigator_filter.text.trim().to_lowercase();
     let mut rows: Vec<El> = Vec::new();
     for database in &catalog.databases {
-        let db_path = database.name.clone();
-        rows.push(
-            row()
-                .key(format!("tree-db-{}", database.name))
-                .w_full()
-                .h(28.0)
-                .px(8.0)
-                .center_y()
-                .radius(6.0)
-                .fill(theme.control_off)
-                .child(text(format!("{} · database", database.name)).font(type_::LABEL).color(theme.text))
-                .on_press(move |state: &mut AppState| state.toggle_expand(&db_path)),
-        );
-        if state.collapsed.contains(&database.name) {
-            continue;
-        }
+        let db_match = filter.is_empty() || database.name.to_lowercase().contains(&filter);
+        let mut schema_rows: Vec<El> = Vec::new();
+        let mut db_has_match = db_match;
         for schema in &database.schemas {
-            let schema_path = format!("{}/{}", database.name, schema.name);
-            let schema_key = format!("tree-schema-{}-{}", database.name, schema.name);
-            let collapsed = state.collapsed.contains(&schema_path);
-            rows.push(
-                row()
-                    .key(schema_key)
-                    .w_full()
-                    .h(28.0)
-                    .px(20.0)
-                    .center_y()
-                    .radius(6.0)
-                    .fill(theme.control_off)
-                    .child(text(format!("{} · schema", schema.name)).font(type_::LABEL).color(theme.text_secondary))
-                    .on_press(move |state: &mut AppState| state.toggle_expand(&schema_path)),
-            );
-            if collapsed {
-                continue;
-            }
+            let schema_match = db_match || schema.name.to_lowercase().contains(&filter);
+            let mut table_rows: Vec<El> = Vec::new();
             for name in &schema.tables {
+                if !filter.is_empty()
+                    && !db_match
+                    && !schema_match
+                    && !name.to_lowercase().contains(&filter)
+                {
+                    continue;
+                }
                 let title = name.clone();
-                rows.push(
+                table_rows.push(
                     row()
                         .key(format!("tree-table-{name}"))
                         .w_full()
@@ -5178,7 +5167,73 @@ fn object_tree(state: &AppState, theme: tok::Theme) -> El {
                         }),
                 );
             }
+            if table_rows.is_empty() && !(filter.is_empty() || schema_match) {
+                continue;
+            }
+            db_has_match = true;
+            let schema_path = format!("{}/{}", database.name, schema.name);
+            let schema_key = format!("tree-schema-{}-{}", database.name, schema.name);
+            let collapsed = state.collapsed.contains(&schema_path) && filter.is_empty();
+            schema_rows.push(
+                row()
+                    .key(schema_key)
+                    .w_full()
+                    .h(28.0)
+                    .px(20.0)
+                    .center_y()
+                    .radius(6.0)
+                    .fill(theme.control_off)
+                    .child(
+                        text(format!("{} · schema", schema.name))
+                            .font(type_::LABEL)
+                            .color(theme.text_secondary),
+                    )
+                    .on_press(move |state: &mut AppState| state.toggle_expand(&schema_path)),
+            );
+            if !collapsed {
+                schema_rows.extend(table_rows);
+            }
         }
+        if !db_has_match && !filter.is_empty() {
+            continue;
+        }
+        let db_path = database.name.clone();
+        let db_collapsed = state.collapsed.contains(&database.name) && filter.is_empty();
+        rows.push(
+            row()
+                .key(format!("tree-db-{}", database.name))
+                .w_full()
+                .h(28.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(
+                    text(format!("{} · database", database.name))
+                        .font(type_::LABEL)
+                        .color(theme.text),
+                )
+                .on_press(move |state: &mut AppState| state.toggle_expand(&db_path)),
+        );
+        if !db_collapsed {
+            rows.extend(schema_rows);
+        }
+    }
+    if rows.is_empty() {
+        let msg = if filter.is_empty() {
+            "No objects"
+        } else {
+            "No matches"
+        };
+        rows.push(
+            row()
+                .key("object-tree-empty")
+                .w_full()
+                .h(28.0)
+                .px(8.0)
+                .center_y()
+                .child(text(msg).font(type_::LABEL).color(theme.text_secondary)),
+        );
     }
     let count = rows.len() as f32;
     let height = if count == 0.0 { 0.0 } else { count * 28.0 + (count - 1.0) * 4.0 };
@@ -11417,6 +11472,50 @@ mod tests {
         assert_eq!(rt.state.navigator_width(), NAVIGATOR_WIDTH_MIN);
         rt.state.set_layout_size(NAVIGATOR_WIDTH_KEY, 9000).unwrap();
         assert_eq!(rt.state.navigator_width(), NAVIGATOR_WIDTH_MAX);
+    }
+
+    #[test]
+    fn navigator_filter_filters_object_tree_nodes() {
+        // A1 (tree): navigator exposes a filter input and the object tree
+        // narrows to matching nodes while showing a clear empty state.
+        let mut rt = runtime();
+        rt.frame(0.0);
+        assert!(
+            rt.elements().iter().any(|e| e.key.as_deref() == Some("navigator-filter-input")),
+            "navigator filter input present"
+        );
+
+        // Seed a catalog so the tree has content to filter.
+        rt.state.desktop_catalog = Some(datazen_ui_api::Catalog {
+            databases: vec![datazen_ui_api::DatabaseNode {
+                name: "app".into(),
+                schemas: vec![datazen_ui_api::SchemaNode {
+                    name: "public".into(),
+                    tables: vec!["users".into(), "orders".into()],
+                }],
+            }],
+        });
+        rt.invalidate();
+        rt.frame(0.0);
+        assert!(rt.elements().iter().any(|e| e.key.as_deref() == Some("tree-table-users")));
+        assert!(rt.elements().iter().any(|e| e.key.as_deref() == Some("tree-table-orders")));
+
+        rt.state.navigator_filter = rune::TextEdit::new("users".to_owned());
+        rt.invalidate();
+        rt.frame(0.0);
+        assert!(rt.elements().iter().any(|e| e.key.as_deref() == Some("tree-table-users")));
+        assert!(
+            !rt.elements().iter().any(|e| e.key.as_deref() == Some("tree-table-orders")),
+            "non-matching table filtered out"
+        );
+
+        rt.state.navigator_filter = rune::TextEdit::new("zzznomatch".to_owned());
+        rt.invalidate();
+        rt.frame(0.0);
+        assert!(
+            rt.elements().iter().any(|e| e.key.as_deref() == Some("object-tree-empty")),
+            "no-matches empty state shown"
+        );
     }
 
     #[test]
