@@ -135,4 +135,5 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | L7 | 已完成 | a0c1bd9e3 | testing/L7-theme-tokens.md |
 | A1 | 进行中 | ca46d3638, 14d021f5e, 73261fa10 | testing/A1-connections-home.md |
 | A2 | 已完成 | 1e383c421, 7e06bf48e | testing/A2-connection-form-dialog.md |
+| A4 | 已完成 | e041fc463, 5ae657365, f8879f36c | testing/A4-table-browse.md |
 | A6 | 已完成 | 27c5f2292, 95b4a4c30 | testing/A6-settings-nav.md |
