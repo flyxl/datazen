@@ -5008,37 +5008,112 @@ fn progress_panel(snapshot: &ProgressSnapshot, prefix: &str, theme: tok::Theme) 
     panel
 }
 
+/// L5: workspace panel tab bar (48pt). A tablist with roving keyboard
+/// focus (Arrow/Home/End via focus_group), active underline, and a close
+/// control per tab. Keys `tab-strip` / `tab-{id}` / `tab-close-{id}` are
+/// kept for existing interactions and tests.
 fn tab_strip(state: &AppState, theme: tok::Theme) -> El {
-    let mut strip = row().key("tab-strip").w_full().h(32.0).gap(6.0).center_y();
+    let mut strip = row()
+        .key("tab-strip")
+        .role("tablist")
+        .focus_group()
+        .w_full()
+        .h(48.0)
+        .center_y()
+        .fill(theme.bg);
     for tab in state.tabs.tabs() {
         let id = tab.id;
         let selected = state.tabs.selected().is_some_and(|open| open.id == id);
-        strip = strip.child(
-            row()
-                .key(format!("tab-{id}"))
-                .h(28.0)
-                .px(8.0)
-                .center_y()
-                .radius(6.0)
-                .fill(if selected { tok::accent(0, true) } else { theme.control_off })
-                .child(text(tab.title.clone()).font(type_::LABEL).color(theme.text))
-                .on_press(move |state: &mut AppState| {
-                    state.select_tab(id);
-                }),
-        );
-        strip = strip.child(
-            row()
-                .key(format!("tab-close-{id}"))
-                .h(28.0)
-                .px(6.0)
-                .center_y()
-                .child(text("×").font(type_::LABEL).color(theme.text))
-                .on_press(move |state: &mut AppState| {
-                    state.close_tab(id);
-                }),
-        );
+        let underline = if selected { tok::accent(0, true) } else { Color::TRANSPARENT };
+        let tab_item = row()
+            .key(format!("tab-{id}"))
+            .role("tab")
+            .label(tab.title.clone())
+            .focusable(true)
+            .h(48.0)
+            .px(12.0)
+            .gap(8.0)
+            .center_y()
+            .fill(if selected { theme.control_off } else { theme.bg })
+            .on_press(move |state: &mut AppState| {
+                state.select_tab(id);
+            })
+            .child(text(tab.title.clone()).font(type_::LABEL).color(theme.text))
+            .child(
+                row()
+                    .key(format!("tab-close-{id}"))
+                    .w(20.0)
+                    .h(20.0)
+                    .center()
+                    .radius(4.0)
+                    .label(format!("Close {}", tab.title))
+                    .focusable(true)
+                    .child(text("×").font(type_::LABEL).color(theme.text_secondary))
+                    .on_press(move |state: &mut AppState| {
+                        state.close_tab(id);
+                    }),
+            )
+            .child(
+                col()
+                    .key(format!("tab-underline-{id}"))
+                    .absolute(0.0, 46.0)
+                    .w_full()
+                    .h(2.0)
+                    .fill(underline),
+            );
+        strip = strip.child(tab_item);
     }
     strip
+}
+
+/// L5: 48pt content toolbar per section (action row). Actions are those
+/// already wired in the Rune UI for the active section.
+fn content_toolbar(state: &AppState, theme: tok::Theme) -> El {
+    let mut bar = row()
+        .key("content-toolbar")
+        .w_full()
+        .h(48.0)
+        .px(12.0)
+        .gap(8.0)
+        .center_y()
+        .fill(theme.bg);
+
+    // Section title/context on the left.
+    bar = bar.child(
+        text(state.active.label())
+            .key("content-toolbar-title")
+            .font(type_::LABEL)
+            .color(theme.text_secondary),
+    );
+    bar = bar.child(col().grow(1.0));
+
+    // Section-specific actions (wired).
+    match state.active {
+        Section::Workspace => {
+            bar = bar.child(
+                row()
+                    .key("toolbar-new-query")
+                    .h(32.0)
+                    .px(10.0)
+                    .gap(6.0)
+                    .center_y()
+                    .radius(6.0)
+                    .fill(theme.control_off)
+                    .label("New query")
+                    .on_press(|state: &mut AppState| {
+                        state.open_query_tab("Query");
+                    })
+                    .child(text("New query").font(type_::LABEL).color(theme.text)),
+            );
+        }
+        Section::Connections => {}
+        Section::Settings => {}
+        Section::Tools => {}
+        Section::Dashboards => {}
+        Section::Workflows => {}
+        Section::Wapps => {}
+    }
+    bar
 }
 
 /// The session object tree: databases, schemas and tables from the port's
@@ -5570,6 +5645,7 @@ fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
         .py(24.0)
         .gap(16.0)
         .fill(theme.bg)
+        .child(content_toolbar(state, theme))
         .child(if state.active == Section::Workspace {
             tab_strip(state, theme)
         } else {
@@ -11076,5 +11152,76 @@ mod tests {
         assert_eq!(rt.state.navigator_width(), NAVIGATOR_WIDTH_MIN);
         rt.state.set_layout_size(NAVIGATOR_WIDTH_KEY, 9000).unwrap();
         assert_eq!(rt.state.navigator_width(), NAVIGATOR_WIDTH_MAX);
+    }
+
+    #[test]
+    fn content_toolbar_and_panel_tab_bar_render_at_forty_eight_points() {
+        // L5: a 48pt content toolbar per section and a 48pt tablist tab bar
+        // for workspace tabs (focusable tabs, active underline, close control).
+        let mut rt = runtime();
+        rt.frame(0.0);
+        let toolbar = rt
+            .elements()
+            .into_iter()
+            .find(|e| e.key.as_deref() == Some("content-toolbar"))
+            .expect("content toolbar present");
+        assert!(
+            (toolbar.rect[3] - 48.0).abs() < 1.0,
+            "toolbar height {}, want 48",
+            toolbar.rect[3]
+        );
+
+        // Workspace: tab strip becomes a 48pt tablist with focusable tab items.
+        rt.state.active = Section::Workspace;
+        let first = rt
+            .state
+            .tabs
+            .open(datazen_ui_api::TabKind::Table, "customers")
+            .expect("tab");
+        let _second = rt
+            .state
+            .tabs
+            .open(datazen_ui_api::TabKind::Table, "orders")
+            .expect("tab");
+        rt.invalidate();
+        rt.frame(0.0);
+
+        let strip = rt
+            .elements()
+            .into_iter()
+            .find(|e| e.key.as_deref() == Some("tab-strip"))
+            .expect("tab strip present");
+        assert_eq!(strip.role, "tablist");
+        assert!(
+            (strip.rect[3] - 48.0).abs() < 1.0,
+            "tab strip height {}, want 48",
+            strip.rect[3]
+        );
+
+        let tab = rt
+            .elements()
+            .into_iter()
+            .find(|e| e.key.as_deref() == Some(&format!("tab-{first}")))
+            .expect("first tab");
+        assert_eq!(tab.role, "tab");
+        assert!(tab.focusable, "tab is focusable for roving keyboard nav");
+        assert!(
+            rt.elements()
+                .iter()
+                .any(|e| e.key.as_deref() == Some(&format!("tab-close-{first}"))),
+            "close control present"
+        );
+        assert!(
+            rt.elements()
+                .iter()
+                .any(|e| e.key.as_deref() == Some(&format!("tab-underline-{first}"))),
+            "active underline element present"
+        );
+        assert!(
+            rt.elements()
+                .iter()
+                .any(|e| e.key.as_deref() == Some("toolbar-new-query")),
+            "workspace content toolbar exposes new query action"
+        );
     }
 }
