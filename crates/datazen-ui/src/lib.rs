@@ -14,8 +14,8 @@ use datazen_ui_api::{AdapterDelivery, AdapterJob, ColumnDraft, ColumnFilter, Col
 use datazen_ui_api::UseCaseAdapter;
 use rune::tok::{self, type_};
 use rune::{
-    App, AppSpec, Cx, El, FileDialogOptions, FileDialogResult, Ime, Key, KeyEvent, TextEdit, Tx,
-    col, oklch, row, text, text_input,
+    App, AppSpec, Cx, El, FileDialogOptions, FileDialogResult, Ime, Key, KeyEvent, TextEdit,
+    Titlebar, Tx, col, oklch, row, text, text_input,
 };
 use sql_editor::SqlEditor;
 
@@ -5408,22 +5408,41 @@ fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
                 .color(theme.text_secondary),
         );
 
-    let header = row()
-        .key("datazen-header")
+    // L3: self-drawn titlebar (40pt). The whole band moves the window; the
+    // leading inset keeps clear of the platform's window controls (macOS
+    // traffic lights). The theme toggle is a hit target inside the drag band
+    // and keeps its press.
+    let titlebar = row()
+        .key("datazen-titlebar")
+        .window_drag()
         .w_full()
-        .h(48.0)
+        .h(TITLEBAR_HEIGHT)
         .center_y()
+        .pl(cx.titlebar_inset() + 12.0)
+        .pr(12.0)
         .gap(12.0)
+        .fill(theme.bg)
         .child(
             text(state.active.label())
+                .key("datazen-titlebar-label")
                 .font(type_::TITLE)
                 .color(theme.text)
                 .w_full(),
         )
         .child(
-            text(if dark { "DARK" } else { "LIGHT" })
-                .font(type_::LABEL)
-                .color(theme.text_secondary),
+            row()
+                .key("datazen-theme-toggle")
+                .h(28.0)
+                .px(10.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .on_press(|state: &mut AppState| state.toggle_theme())
+                .child(
+                    text(if dark { "DARK" } else { "LIGHT" })
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
         );
 
     let page = col()
@@ -5434,7 +5453,6 @@ fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
         .py(24.0)
         .gap(16.0)
         .fill(theme.bg)
-        .child(header)
         .child(if state.active == Section::Workspace {
             tab_strip(state, theme)
         } else {
@@ -5453,7 +5471,14 @@ fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
                 ),
         );
 
-    row()
+    let body = row()
+        .key("datazen-body")
+        .w_full()
+        .h_full()
+        .child(sidebar)
+        .child(page);
+
+    col()
         .key("datazen-root")
         .w_full()
         .h_full()
@@ -5473,9 +5498,14 @@ fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
                 state.sql.insert(text);
             }
         })
-        .child(sidebar)
-        .child(page)
+        .child(titlebar)
+        .child(body)
 }
+
+/// The app's window chrome (L3): self-drawn 40pt titlebar and a minimum size
+/// aligned with the React/Tauri main window.
+const TITLEBAR_HEIGHT: f32 = 40.0;
+const WINDOW_MIN_SIZE: (f32, f32) = (960.0, 640.0);
 
 /// Launch the same Rune view on native desktop and WebAssembly.
 pub fn run() {
@@ -5484,8 +5514,10 @@ pub fn run() {
         poll: Some(app_poll),
         fonts: APP_FONTS,
         families: APP_FONT_FAMILIES,
+        min_size: Some(WINDOW_MIN_SIZE),
         ..AppSpec::new("DataZen", (1440.0, 900.0), init_state, view)
     })
+    .titlebar(Titlebar::new(TITLEBAR_HEIGHT))
     .on_ime(app_ime)
     .run();
 }
@@ -5509,8 +5541,10 @@ pub fn app_with_adapter(adapter: Box<dyn DesktopAdapter>) -> App<AppState> {
         poll: Some(app_poll),
         fonts: APP_FONTS,
         families: APP_FONT_FAMILIES,
+        min_size: Some(WINDOW_MIN_SIZE),
         ..AppSpec::new("DataZen", (1440.0, 900.0), init_state, view)
     })
+    .titlebar(Titlebar::new(TITLEBAR_HEIGHT))
     // The spec's `init` is a plain fn pointer; `App::init` takes the closure
     // that captured the host's adapter instead.
     .init(move || {
@@ -10812,6 +10846,26 @@ mod tests {
                 }),
             Some(25),
             "the memory port is the fallback, not a mirror"
+        );
+    }
+
+    #[test]
+    fn the_titlebar_renders_a_drag_band_label_and_theme_toggle() {
+        // L3: the self-drawn chrome sits at the top of the root with the
+        // section label and a theme toggle that flips through the settings
+        // port.
+        let mut rt = runtime();
+        rt.frame(0.0);
+        let elements = rt.elements();
+        let keys: Vec<_> = elements.iter().filter_map(|e| e.key.as_deref()).collect();
+        assert!(keys.contains(&"datazen-root"), "root present: {keys:?}");
+        assert!(keys.contains(&"datazen-titlebar"), "titlebar band: {keys:?}");
+        assert!(keys.contains(&"datazen-titlebar-label"), "section label in titlebar: {keys:?}");
+        assert!(keys.contains(&"datazen-theme-toggle"), "theme toggle in titlebar: {keys:?}");
+        assert!(!keys.contains(&"datazen-header"), "old in-page header is gone: {keys:?}");
+        assert!(
+            elements.iter().any(|e| e.key.as_deref() == Some("datazen-body")),
+            "sidebar+page live under the titlebar body row"
         );
     }
 }
