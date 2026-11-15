@@ -82,6 +82,15 @@ impl DatabaseDriverFactory for RedisFactory {
 }
 datazen_driver_api::register_driver!(&RedisFactory);
 
+/// The host's entry into this crate (E4): the one redis factory — the same
+/// factory `register_driver!` submits, in the list form a host chains with
+/// its other drivers for static registry assembly
+/// (`DriverRegistry::with_factories`) instead of inventory scanning at
+/// link time.
+pub fn factories() -> Vec<&'static dyn datazen_driver_api::DatabaseDriverFactory> {
+    vec![&RedisFactory]
+}
+
 /// The Redis Pub/Sub event outlet.
 ///
 /// Form-neutral by construction: the driver declares that it *has* an event

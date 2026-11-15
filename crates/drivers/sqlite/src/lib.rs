@@ -46,6 +46,13 @@ pub fn factory() -> &'static dyn datazen_driver_api::DatabaseDriverFactory {
     &SqliteFactory
 }
 
+/// The whole crate in the static form (E4): one factory, one id — the
+/// list a host chains with its other drivers when it assembles its
+/// registry statically, the same shape the protocol families export.
+pub fn factories() -> Vec<&'static dyn datazen_driver_api::DatabaseDriverFactory> {
+    vec![factory()]
+}
+
 /// The one driver every caller shares, and the one [`SQLITE_PROVIDER`] is bound to.
 static SQLITE_DRIVER: OnceLock<Arc<dyn DatabaseDriver>> = OnceLock::new();
 /// The one provider, bound to [`SQLITE_DRIVER`].

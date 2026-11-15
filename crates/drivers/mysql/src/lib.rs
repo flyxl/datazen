@@ -452,6 +452,23 @@ impl DatabaseDriverFactory for ObOracleFactory {
 }
 datazen_driver_api::register_driver!(&ObOracleFactory);
 
+/// The host's entry into this crate (E4): the six MySQL-protocol families —
+/// mysql, mariadb, doris, starrocks, manticore and ob_oracle — the same
+/// factories `register_driver!` submits, in the list form a host chains
+/// with its other drivers for static registry assembly
+/// (`DriverRegistry::with_factories`) instead of inventory scanning at
+/// link time.
+pub fn factories() -> Vec<&'static dyn datazen_driver_api::DatabaseDriverFactory> {
+    vec![
+        &MysqlFactory,
+        &MariadbFactory,
+        &DorisFactory,
+        &StarrocksFactory,
+        &ManticoreFactory,
+        &ObOracleFactory,
+    ]
+}
+
 #[cfg(test)]
 mod keyset_paging_tests;
 

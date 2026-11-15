@@ -177,6 +177,16 @@ postgres_alias_factory!(
     "cloudberry"
 );
 
+/// The host's entry into this crate (E4): the postgres factory and its
+/// protocol-compatibility aliases, questdb and cloudberry — the same
+/// factories `register_driver!` submits, in the list form a host chains
+/// with its other drivers for static registry assembly
+/// (`DriverRegistry::with_factories`) instead of inventory scanning at
+/// link time.
+pub fn factories() -> Vec<&'static dyn datazen_driver_api::DatabaseDriverFactory> {
+    vec![&POSTGRES_FACTORY, &QuestDbFactory, &CloudberryFactory]
+}
+
 #[cfg(test)]
 mod keyset_paging_tests;
 

@@ -50,11 +50,20 @@ use std::thread;
 /// is admitted at construction — the registry's own constructor, not a
 /// second registration — so a type is either here or a hard error, and no
 /// test-binary link can drop an inventory registration the lazy form
-/// would scan for. N3 links sqlite; other drivers join this list on the
-/// same one-line seam.
+/// would scan for. E4 links the basic SKU's whole set: sqlite, the
+/// postgres family (postgresql, questdb, cloudberry), the mysql family
+/// (mysql, mariadb, doris, starrocks, manticore, ob_oracle) and redis —
+/// eleven factory ids, the same set `scripts/resolve-drivers.mjs` names
+/// the basic preset.
 pub(crate) fn host_registry() -> DriverRegistry {
-    DriverRegistry::with_factories([datazen_driver_sqlite::factory()])
-        .expect("the sqlite factory admits at construction")
+    DriverRegistry::with_factories(
+        datazen_driver_sqlite::factories()
+            .into_iter()
+            .chain(datazen_driver_postgres::factories())
+            .chain(datazen_driver_mysql::factories())
+            .chain(datazen_driver_redis::factories()),
+    )
+    .expect("the basic driver factories admit at construction")
 }
 
 /// A job on the worker's channel, with the generation the UI expects back.
@@ -2580,6 +2589,31 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         panic!("the open job never answered");
+    }
+
+    /// E4: the host's registry admits the basic SKU's eleven factory ids —
+    /// the static list is the host's whole driver declaration, and
+    /// `available_types` answers exactly it.
+    #[test]
+    fn the_host_registry_admits_the_basic_sku_eleven_factories() {
+        let registry = host_registry();
+        assert_eq!(
+            registry.available_types(),
+            vec![
+                "cloudberry".to_string(),
+                "doris".to_string(),
+                "manticore".to_string(),
+                "mariadb".to_string(),
+                "mysql".to_string(),
+                "ob_oracle".to_string(),
+                "postgresql".to_string(),
+                "questdb".to_string(),
+                "redis".to_string(),
+                "sqlite".to_string(),
+                "starrocks".to_string(),
+            ],
+            "the declaration is the basic preset, sorted"
+        );
     }
 
     #[test]
