@@ -1,7 +1,7 @@
 ## Current Task
-- **任务**: L2 分割条组件（Drag → clamp → `Setting::Layout` 持久化，垂直/水平、`role="separator"`、双击复位、键盘微调）
+- **任务**: L3 自绘标题栏（`App::titlebar(Titlebar::new(40))` + `.window_drag()` + min_size 960×640 + `Cx::titlebar_inset` 让位红绿灯，demo/宿主两入口同改）
 - **负责人**: Coder Agent
-- **状态**: L1（布局尺寸端到端持久化，`Setting::Layout` + `ui.layout` 子对象 + 共享校验 + UI helper）已完成，GR1 56 / GR2 147 / GR3 59+3 基线绿；第五阶段计划见 [plan-native-5.md](plan-native-5.md)。L2 进行中。
+- **状态**: L1（c6c370cc2，布局尺寸持久化，GR1 56 / GR2 147 / GR3 59+3 基线）与 L2（splitter 组件与纯函数/状态测试，GR2 153）已完成；第五阶段计划见 [plan-native-5.md](plan-native-5.md)。L3 进行中。
 
 ## N5 组装配方（调查结论，fc160ec 时点）
 
