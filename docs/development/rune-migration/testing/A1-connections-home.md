@@ -38,3 +38,12 @@
 
 - A1 全量目标还包含连接树层级（pinned/最近/分组/值搜索）的逐页对齐，本报告记录首页部分；后续提交继续推进树侧对齐。
 - 仅改 Rune UI 与文档；React/内核契约未动。
+
+
+## 增量：导航器过滤（树侧，进行中）
+
+- **提交**：见 tasks.md（本增量 feat）
+- **改动**：`navigator_panel` 增加 `navigator-filter-input`；`object_tree` 支持按名称过滤数据库/模式/表并在无匹配时显示 `object-tree-empty`（“No objects”/“No matches”）。
+- **测试**：`navigator_filter_filters_object_tree_nodes`；GR2 **161 passed / 0 failed**。
+
+说明：A1 目标中的 pinned/最近/分组 依赖连接元数据（pin/group/recency）当前 `ConnectionProfile`/状态模型未承载，未在本增量臆造；后续在数据模型具备时继续对齐。
