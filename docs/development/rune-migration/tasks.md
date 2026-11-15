@@ -123,5 +123,5 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | E3 | 已完成 | ef116f8 | testing/E3-inbound-job.md |
 | E4 | 已完成 | d4d59d1 | testing/E4-driver-factories.md |
 | E5 | 已完成 | d221c3e | testing/E5-connection-form.md |
-| E6 | 未开始 | | |
+| E6 | 已完成 | a623e8a | testing/E6-refused-connections.md |
 | E7 | 未开始 | | |

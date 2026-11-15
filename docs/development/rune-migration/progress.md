@@ -1,7 +1,7 @@
 ## Current Task
-- **任务**: E6（离线验证扫尾）——第四阶段（basic 驱动接入，[plan-native-4.md](plan-native-4.md)）。
+- **任务**: E7（文档收尾）——第四阶段（basic 驱动接入，[plan-native-4.md](plan-native-4.md)）。
 - **负责人**: Coder Agent
-- **状态**: E1（fc1c658）、E2（e8a2337）、E3（ef116f8）、E4（d4d59d1）、E5（d221c3e）已完成；E6 进行中（连接不可达路径断言 + GR5 如实记录）。
+- **状态**: E1（fc1c658）、E2（e8a2337）、E3（ef116f8）、E4（d4d59d1）、E5（d221c3e）、E6（a623e8a）已完成；E7 进行中（native-host.md 驱动矩阵与验证程度分级、tasks/progress 收口）。
 
 ## N5 组装配方（调查结论，fc160ec 时点）
 
