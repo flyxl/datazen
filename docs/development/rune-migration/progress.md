@@ -1,7 +1,7 @@
 ## Current Task
-- **任务**: L4 两级侧栏（40pt rail + 展开 112pt 文字 + 折叠持久化；对象树挪入内容区 navigator 面板 280pt 可拖拽 min 200/max 500，持久化）
+- **任务**: L5 ContentToolbar 48pt（按 section 出动作行）+ PanelTabBar 48pt（tablist 键盘 Arrow/Home/End、active 下划线、关闭钮）
 - **负责人**: Coder Agent
-- **状态**: L1（c6c370cc2）/ L2（992fa8b1a）/ L3（自绘标题栏 + min_size + inset 让位，GR2 154 / GR4 绿）已完成；第五阶段计划见 [plan-native-5.md](plan-native-5.md)。L4 进行中。
+- **状态**: L1–L4 已完成（L4: rail 40/112 + 折叠持久化、navigator 280 可拖拽 min200/max500 持久化、树/动作迁入 navigator，GR2 156 / GR4 绿）；第五阶段计划见 [plan-native-5.md](plan-native-5.md)。L5 进行中。
 
 ## N5 组装配方（调查结论，fc160ec 时点）
 
