@@ -1,17 +1,14 @@
 //! View functions for the DataZen Rune UI.
+#![allow(unused_imports)]
 
 use super::*;
+
 use crate::constants::*;
 use crate::icons::{self, ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, section_icon};
-use crate::state_def::{StructureState, WidgetBarsState};
-use datazen_ui_api::{ColumnDraft, MemoryWorkspace};
-
-use crate::state_def::AppState;
+use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
-use crate::constants::*;
 use crate::{splitter, sql_editor};
-
-use datazen_ui_api::{ConnectionProfile, DashboardWidget, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi};
+use datazen_ui_api::{ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi};
 use rune::{FileDialogOptions, TextEdit, Tx};
 use rune::tok::{self, type_};
 use rune::{Color, Cx, El, col, oklch, row, text, text_input};
@@ -374,115 +371,4 @@ pub(crate) fn connection_list(state: &AppState, theme: tok::Theme) -> El {
         );
     }
     list.child(form).child(import)
-}
-
-/// L6: 40pt content status bar — replaces the migration preview banner.
-/// Shows connection state, context counts (table/columns/rows) when available,
-/// and shortcut hints.
-pub(crate) fn content_status_bar(state: &AppState, theme: tok::Theme) -> El {
-    let connected = state.session_open();
-    let dot = if connected {
-        tok::accent(2, true)
-    } else {
-        theme.text_secondary
-    };
-
-    // Resolve connection label when a desktop session is known.
-    let connection_label = state.desktop_connection.as_ref().and_then(|id| {
-        state
-            .desktop_connections
-            .as_ref()
-            .and_then(|list| list.iter().find(|c| &c.id == id))
-            .map(|c| c.name.clone())
-    });
-
-    // Center context: database/table/columns/rows derived from current state.
-    let mut center_parts: Vec<String> = Vec::new();
-    if let Some(name) = connection_label {
-        if !name.is_empty() {
-            center_parts.push(name);
-        }
-    }
-    if let Some(tab) = state.tabs.selected() {
-        if tab.kind == datazen_ui_api::TabKind::Table {
-            if !tab.title.is_empty() {
-                center_parts.push(tab.title.clone());
-            }
-            if state.grid.has_page() {
-                if state.grid.cols > 0 {
-                    center_parts.push(format!("{} cols", state.grid.cols));
-                }
-                if state.grid.total_rows() > 0 {
-                    center_parts.push(format!("{} rows", state.grid.total_rows()));
-                }
-            }
-        } else if tab.kind == datazen_ui_api::TabKind::Query {
-            center_parts.push("Query".to_owned());
-            if let Some(result) = &state.result_grid {
-                if result.has_page() {
-                    if result.cols > 0 {
-                        center_parts.push(format!("{} cols", result.cols));
-                    }
-                    if result.total_rows() > 0 {
-                        center_parts.push(format!("{} rows", result.total_rows()));
-                    }
-                }
-            }
-        }
-    }
-    let center_text = if center_parts.is_empty() {
-        state.active.label().to_owned()
-    } else {
-        center_parts.join(" · ")
-    };
-
-    row()
-        .key("content-status-bar")
-        .w_full()
-        .h(40.0)
-        .px(12.0)
-        .center_y()
-        .fill(theme.control_off)
-        .child(
-            row()
-                .gap(8.0)
-                .center_y()
-                .child(
-                    col()
-                        .key("status-connection-dot")
-                        .w(8.0)
-                        .h(8.0)
-                        .radius(4.0)
-                        .fill(dot),
-                )
-                .child(
-                    text(if connected { "Connected" } else { "Disconnected" })
-                        .key("status-connection-label")
-                        .font(type_::LABEL)
-                        .color(theme.text),
-                ),
-        )
-        .child(
-            row()
-                .grow(1.0)
-                .center_y()
-                .justify_center()
-                .child(
-                    text(center_text)
-                        .key("status-context")
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                ),
-        )
-        .child(
-            row()
-                .gap(8.0)
-                .center_y()
-                .child(
-                    text("⌘N New query · ⌘W Close")
-                        .key("status-shortcuts")
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                ),
-        )
 }

@@ -1,6 +1,9 @@
 //! AppState method implementations.
 
+#![allow(unused_imports)]
 use crate::state_def::*;
+use crate::views::{next_connection, workflow_yaml};
+use crate::constants::*;
 use crate::data_grid::DataGrid;
 use crate::sql_editor::SqlEditor;
 use crate::types::{Section, TableView, Tool};
@@ -73,7 +76,6 @@ impl AppState {
             }
         }
     }
-
     pub(crate) fn next_table_page(&mut self) {
         if !self.grid.has_page() || self.grid.page() + 1 >= self.grid.pages() {
             return;
@@ -81,7 +83,6 @@ impl AppState {
         self.table_page += 1;
         self.reload_table_page();
     }
-
     pub(crate) fn prev_table_page(&mut self) {
         if !self.grid.has_page() || self.grid.page() == 0 {
             return;
@@ -118,7 +119,6 @@ impl AppState {
         self.table_page = 0;
         self.reload_table_page();
     }
-
     pub(crate) fn cycle_filter_column(&mut self) {
         if self.grid.cols == 0 {
             return;
@@ -505,7 +505,6 @@ impl AppState {
             Some((TabKind::Query, _)) | None => {}
         }
     }
-
     pub(crate) fn close_tab(&mut self, id: u32) -> bool {
         let previous = self.tabs.selected().map(|tab| tab.id);
         if !self.tabs.close(id) {
@@ -516,7 +515,6 @@ impl AppState {
         }
         true
     }
-
     pub(crate) fn commit_grid_edit(&mut self) {
         if !self.grid.is_editable() {
             return;

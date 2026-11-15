@@ -1,15 +1,21 @@
 //! View modules.
 
-mod view_1;
-mod view_2;
-mod view_3;
-mod view_4;
-mod view_5;
-mod view_6;
+mod view_chrome;
+mod view_navigation;
+mod view_connections;
+mod view_workspace;
+mod view_structure;
+mod view_settings;
+mod view_tools_sync;
+mod view_tools_ops;
+mod view_dashboards_workflows;
 
-pub(crate) use view_1::*;
-pub(crate) use view_2::*;
-pub(crate) use view_3::*;
-pub(crate) use view_4::*;
-pub(crate) use view_5::*;
-pub(crate) use view_6::*;
+pub(crate) use view_chrome::*;
+pub(crate) use view_navigation::*;
+pub(crate) use view_connections::*;
+pub(crate) use view_workspace::*;
+pub(crate) use view_structure::*;
+pub(crate) use view_settings::*;
+pub(crate) use view_tools_sync::*;
+pub(crate) use view_tools_ops::*;
+pub(crate) use view_dashboards_workflows::*;

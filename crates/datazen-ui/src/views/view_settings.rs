@@ -1,153 +1,17 @@
 //! View functions for the DataZen Rune UI.
+#![allow(unused_imports)]
 
 use super::*;
+
 use crate::constants::*;
 use crate::icons::{self, ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, section_icon};
-use crate::state_def::{StructureState, WidgetBarsState};
-use datazen_ui_api::{ColumnDraft, MemoryWorkspace};
-
-use crate::state_def::AppState;
+use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
-use crate::constants::*;
 use crate::{splitter, sql_editor};
-
-use datazen_ui_api::{ConnectionProfile, DashboardWidget, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi};
+use datazen_ui_api::{ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi};
 use rune::{FileDialogOptions, TextEdit, Tx};
 use rune::tok::{self, type_};
 use rune::{Color, Cx, El, col, oklch, row, text, text_input};
-
-pub(crate) fn foreign_keys_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
-    // E1: the cache is the only read — the job's foreign-key segment
-    // renders.
-    let keys = state
-        .structures
-        .get(title)
-        .and_then(|entry| entry.data.as_ref())
-        .map(|data| data.foreign_keys.clone())
-        .unwrap_or_default();
-    let header = |label: &str, width: f32| {
-        row()
-            .w(width)
-            .h(24.0)
-            .px(8.0)
-            .center_y()
-            .child(text(label).font(type_::LABEL).color(theme.text_secondary))
-    };
-    let mut list = col()
-        .key("fks-list")
-        .w_full()
-        .radius(8.0)
-        .fill(theme.control_off)
-        .child(
-            row()
-                .key("fks-header")
-                .w_full()
-                .h(24.0)
-                .child(header("Name", 260.0))
-                .child(header("Columns", 240.0))
-                .child(header("References", 320.0)),
-        );
-    for (index, key) in keys.iter().enumerate() {
-        let cell = |value: &str, width: f32| {
-            row()
-                .w(width)
-                .h(24.0)
-                .px(8.0)
-                .center_y()
-                .child(text(value.to_owned()).font(type_::LABEL).color(theme.text))
-        };
-        let references = format!(
-            "{} ({})",
-            key.target_table,
-            key.target_columns.join(", ")
-        );
-        list = list.child(
-            row()
-                .key(format!("fk-row-{index}"))
-                .w_full()
-                .h(24.0)
-                .child(cell(&key.name, 260.0))
-                .child(cell(&key.columns.join(", "), 240.0))
-                .child(cell(&references, 320.0)),
-        );
-    }
-    if let Some(sentence) = structure_notice(state, title) {
-        list = list.child(notice_row("fks-structure-notice", &sentence, theme));
-    }
-    list
-}
-
-/// The DDL page: the port's string, verbatim, one line per row. An empty string
-/// is its own empty state.
-pub(crate) fn ddl_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
-    // E1: the cache is the only read — the job's DDL segment renders; a
-    // read that has not landed says so instead of an empty page.
-    if let Some(sentence) = structure_notice(state, title) {
-        return col()
-            .key("table-ddl-notice")
-            .w_full()
-            .h(160.0)
-            .px(12.0)
-            .py(8.0)
-            .radius(8.0)
-            .fill(theme.control_off)
-            .child(text(sentence).font(type_::LABEL).color(theme.text_secondary));
-    }
-    let ddl = state
-        .structures
-        .get(title)
-        .and_then(|entry| entry.data.as_ref())
-        .map(|data| data.ddl.clone())
-        .filter(|ddl| !ddl.is_empty());
-    match ddl {
-        Some(ddl) => {
-            let mut page = col()
-                .key("table-ddl")
-                .w_full()
-                .px(12.0)
-                .py(8.0)
-                .radius(8.0)
-                .fill(theme.control_off);
-            for line in ddl.lines() {
-                page = page.child(text(line.to_owned()).font(crate::sql_editor::editor_font()).color(theme.text));
-            }
-            page
-        }
-        None => col()
-            .key("table-ddl-empty")
-            .w_full()
-            .h(160.0)
-            .px(12.0)
-            .py(8.0)
-            .radius(8.0)
-            .fill(theme.control_off)
-            .child(text("No DDL available for this table").font(type_::TITLE).color(theme.text))
-            .child(
-                text("The port returned an empty DDL string")
-                    .font(type_::LABEL)
-                    .color(theme.text_secondary),
-            ),
-    }
-}
-
-pub(crate) fn workspace_empty(theme: tok::Theme) -> El {
-    col()
-        .key("workspace-empty")
-        .w_full()
-        .h(220.0)
-        .px(20.0)
-        .py(20.0)
-        .gap(12.0)
-        .radius(12.0)
-        .fill(theme.control_off)
-        .child(text("No tab open").font(type_::TITLE).color(theme.text))
-        .child(
-            text("Open a table from the session object tree, or start a new query from the sidebar.")
-                .font(type_::LABEL)
-                .color(theme.text_secondary)
-                .w_full(),
-        )
-}
 
 pub(crate) fn settings_page(state: &AppState, theme: tok::Theme) -> El {
     let settings = state.ui_settings();
@@ -707,4 +571,133 @@ pub(crate) fn import_section(state: &AppState, theme: tok::Theme) -> El {
         );
     }
     section
+}
+pub(crate) fn export_section(state: &AppState, theme: tok::Theme) -> El {
+    let mut section = col()
+        .key("export-section")
+        .w_full()
+        .gap(6.0)
+        .child(text("Export".to_owned()).font(type_::TITLE).color(theme.text))
+        .child(
+            row()
+                .key("export-form")
+                .w_full()
+                .h(28.0)
+                .gap(8.0)
+                .center_y()
+                .child(
+                    row()
+                        .key("export-format")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(
+                            text(format!("format: {}", state.export_format()))
+                                .font(type_::LABEL)
+                                .color(theme.text),
+                        )
+                        .on_press(|state: &mut AppState| state.cycle_export_format()),
+                )
+                .child(
+                    text_input(&state.export_range, type_::LABEL)
+                        .key("export-range-input")
+                        .w(220.0)
+                        .h(24.0)
+                        .on_edit(|state: &mut AppState| &mut state.export_range),
+                )
+                .child(
+                    row()
+                        .key("export-start")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .child(text("Export").font(type_::LABEL).color(theme.text))
+                        .on_press_tx(|state: &mut AppState, tx: &mut Tx| state.begin_export_form(tx)),
+                ),
+        );
+    if let Some(error) = &state.export_error {
+        section = section.child(
+            row()
+                .key("export-error")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+        );
+    }
+    if let Some(job) = state.export_job {
+        section = section.child(
+            row()
+                .key("export-job")
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(format!("job #{job}")).font(type_::LABEL).color(theme.text_secondary))
+                .child(
+                    row()
+                        .key("export-refresh")
+                        .h(20.0)
+                        .px(6.0)
+                        .center_y()
+                        .radius(4.0)
+                        .fill(theme.control_off)
+                        .child(text("Refresh").font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| state.refresh_export_progress()),
+                ),
+        );
+    }
+    if let Some(snapshot) = &state.export_snapshot {
+        section = section.child(progress_panel(snapshot, "export", theme));
+    }
+    section
+}
+
+/// One job's progress drawn from a single snapshot: status, percent, the log.
+/// Export and backup share this component.
+pub(crate) fn progress_panel(snapshot: &ProgressSnapshot, prefix: &str, theme: tok::Theme) -> El {
+    let mut panel = col()
+        .key(format!("{prefix}-progress"))
+        .w_full()
+        .gap(4.0)
+        .px(8.0)
+        .py(6.0)
+        .radius(8.0)
+        .fill(theme.control_off)
+        .child(
+            row()
+                .key(format!("{prefix}-status"))
+                .w_full()
+                .h(24.0)
+                .center_y()
+                .child(
+                    text(format!("{} · {}%", snapshot.status, snapshot.percent))
+                        .font(type_::LABEL)
+                        .color(theme.text),
+                ),
+        );
+    for (index, line) in snapshot.log.iter().enumerate() {
+        panel = panel.child(
+            row()
+                .key(format!("{prefix}-log-{index}"))
+                .w_full()
+                .h(18.0)
+                .center_y()
+                .child(
+                    text(line.clone())
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
+        );
+    }
+    panel
 }

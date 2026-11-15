@@ -1,257 +1,18 @@
 //! View functions for the DataZen Rune UI.
+#![allow(unused_imports)]
 
 use super::*;
+
 use crate::constants::*;
 use crate::icons::{self, ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, section_icon};
-use crate::state_def::{StructureState, WidgetBarsState};
-use datazen_ui_api::{ColumnDraft, MemoryWorkspace};
-
-use crate::state_def::AppState;
+use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
-use crate::constants::*;
 use crate::{splitter, sql_editor};
-
-use datazen_ui_api::{ConnectionProfile, DashboardWidget, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi};
+use datazen_ui_api::{ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi};
 use rune::{FileDialogOptions, TextEdit, Tx};
 use rune::tok::{self, type_};
 use rune::{Color, Cx, El, col, oklch, row, text, text_input};
 
-pub(crate) fn rail_item(state: &AppState, section: Section, expanded: bool, dark: bool) -> El {
-    let theme = tok::theme(dark);
-    let selected = state.active == section;
-    let bg = if selected { tok::accent(0, dark) } else { Color::TRANSPARENT };
-    let fg = if selected { theme.text } else { theme.text_secondary };
-    let mut item = row()
-        .key(format!("rail-{}", section.key()))
-        .w_full()
-        .h(40.0)
-        .px(if expanded { 12.0 } else { 0.0 })
-        .center_y()
-        .gap(if expanded { 10.0 } else { 0.0 })
-        .radius(8.0)
-        .fill(bg)
-        .role("tab")
-        .label(section.label())
-        .on_press(move |state: &mut AppState| state.select(section));
-    if expanded {
-        item = item
-            .child(rune::icon(section_icon(section), 18.0).color(fg))
-            .child(text(section.label()).font(type_::LABEL).color(fg));
-    } else {
-        item = item.justify_center().child(rune::icon(section_icon(section), 18.0).color(fg));
-    }
-    item
-}
-
-pub(crate) fn rail_view(state: &AppState, dark: bool) -> El {
-    let theme = tok::theme(dark);
-    let expanded = state.sidebar_expanded();
-    let width = state.sidebar_rail_width() as f32;
-    let mut items = col().w_full().gap(4.0);
-    for section in Section::ALL {
-        items = items.child(rail_item(state, section, expanded, dark));
-    }
-    let toggle_icon = if expanded { &ICON_CHEVRON_LEFT } else { &ICON_CHEVRON_RIGHT };
-    let toggle = row()
-        .key("rail-toggle")
-        .w_full()
-        .h(32.0)
-        .center()
-        .radius(8.0)
-        .fill(theme.control_off)
-        .label(if expanded { "Collapse sidebar" } else { "Expand sidebar" })
-        .on_press(|state: &mut AppState| state.toggle_sidebar_expanded())
-        .child(rune::icon(toggle_icon, 14.0).color(theme.text_secondary));
-    col()
-        .key("datazen-rail")
-        .w(width)
-        .h_full()
-        .px(4.0)
-        .py(8.0)
-        .gap(8.0)
-        .fill(theme.bg)
-        .child(items)
-        .child(col().w_full().grow(1.0))
-        .child(toggle)
-}
-
-pub(crate) fn navigator_connections_tree(state: &AppState, theme: tok::Theme) -> El {
-    let filter = state.navigator_filter.text.trim().to_lowercase();
-    let visible = state.visible_connections();
-    let matches = |c: &ConnectionProfile| {
-        filter.is_empty()
-            || c.name.to_lowercase().contains(&filter)
-            || c.engine.to_lowercase().contains(&filter)
-            || c.id.to_lowercase().contains(&filter)
-    };
-
-    let mut recent: Vec<ConnectionProfile> = Vec::new();
-    for id in &state.recent_connection_ids {
-        if let Some(c) = visible.iter().find(|c| &c.id == id) {
-            if matches(c) {
-                recent.push(c.clone());
-            }
-        }
-    }
-    let all: Vec<ConnectionProfile> = visible.into_iter().filter(matches).collect();
-
-    let mut tree = col().key("navigator-connections").w_full().gap(4.0);
-    tree = tree.child(
-        text("Connections")
-            .key("navigator-connections-title")
-            .font(type_::LABEL)
-            .color(theme.text_secondary),
-    );
-
-    tree = tree.child(
-        text("Recent")
-            .key("nav-group-recent")
-            .font(type_::LABEL)
-            .color(theme.text_secondary),
-    );
-    if recent.is_empty() {
-        tree = tree.child(
-            row()
-                .key("nav-group-recent-empty")
-                .w_full()
-                .h(24.0)
-                .px(8.0)
-                .center_y()
-                .child(
-                    text(if filter.is_empty() { "No recent connections" } else { "No matches" })
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                ),
-        );
-    } else {
-        for c in recent {
-            let id = c.id.clone();
-            let label = format!("{} · {}", c.name, c.engine);
-            tree = tree.child(
-                row()
-                    .key(format!("nav-conn-recent-{}", c.id))
-                    .w_full()
-                    .h(28.0)
-                    .px(16.0)
-                    .center_y()
-                    .radius(6.0)
-                    .fill(theme.control_off)
-                    .label(label.clone())
-                    .child(text(label).font(type_::LABEL).color(theme.text))
-                    .on_press(move |state: &mut AppState| state.open_connection(&id)),
-            );
-        }
-    }
-
-    tree = tree.child(
-        text("All connections")
-            .key("nav-group-all")
-            .font(type_::LABEL)
-            .color(theme.text_secondary),
-    );
-    if all.is_empty() {
-        tree = tree.child(
-            row()
-                .key("nav-group-all-empty")
-                .w_full()
-                .h(24.0)
-                .px(8.0)
-                .center_y()
-                .child(
-                    text(if filter.is_empty() { "No connections" } else { "No matches" })
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                ),
-        );
-    } else {
-        for c in all {
-            let id = c.id.clone();
-            let label = format!("{} · {}", c.name, c.engine);
-            tree = tree.child(
-                row()
-                    .key(format!("nav-conn-{}", c.id))
-                    .w_full()
-                    .h(28.0)
-                    .px(16.0)
-                    .center_y()
-                    .radius(6.0)
-                    .fill(theme.control_off)
-                    .label(label.clone())
-                    .child(text(label).font(type_::LABEL).color(theme.text))
-                    .on_press(move |state: &mut AppState| state.open_connection(&id)),
-            );
-        }
-    }
-
-    tree
-}
-
-pub(crate) fn navigator_panel(state: &AppState, theme: tok::Theme) -> El {
-    let width = state.navigator_width() as f32;
-    col()
-        .key("datazen-navigator")
-        .w(width)
-        .h_full()
-        .px(12.0)
-        .py(12.0)
-        .gap(8.0)
-        .fill(theme.bg)
-        .child(
-            text("Navigator")
-                .key("navigator-title")
-                .font(type_::LABEL)
-                .color(theme.text_secondary),
-        )
-        .child(
-            text_input(&state.navigator_filter, type_::LABEL)
-                .key("navigator-filter-input")
-                .w_full()
-                .h(28.0)
-                .on_edit(|state: &mut AppState| &mut state.navigator_filter),
-        )
-        .child(navigator_connections_tree(state, theme))
-        .child(object_tree(state, theme))
-        .child(refresh_button(state, theme))
-        .child(er_button(state, theme))
-        .child(open_query_button(theme))
-        .child(disconnect_button(state, theme))
-}
-/// The connection after `current` in the port's list, wrapping around.
-/// A workflow as YAML text.
-pub(crate) fn workflow_yaml(name: &str, steps: &[String]) -> String {
-    let mut out = format!("name: {name}\nsteps:\n");
-    for step in steps {
-        out.push_str(&format!("  - {step}\n"));
-    }
-    out
-}
-
-pub(crate) fn next_connection(workspace: &MemoryWorkspace, current: &str) -> String {
-    let ids: Vec<String> = workspace.connections().iter().map(|profile| profile.id.clone()).collect();
-    match ids.iter().position(|id| id == current) {
-        Some(index) => ids[(index + 1) % ids.len()].clone(),
-        None => ids.first().cloned().unwrap_or_else(|| current.to_owned()),
-    }
-}
-
-pub(crate) fn query_selected(state: &AppState) -> bool {
-    state.tabs.selected().is_some_and(|tab| tab.kind == TabKind::Query)
-}
-
-pub(crate) fn page_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
-    match state.active {
-        Section::Connections => connection_list(state, theme),
-        Section::Workspace => workspace_body(state, theme, dark),
-        Section::Settings => settings_page(state, theme),
-        Section::Tools => tools_page(state, theme, dark),
-        Section::Dashboards => dashboards_page(state, theme),
-        Section::Workflows => workflows_page(state, theme, dark),
-        Section::Wapps => wapps_page(theme),
-    }
-}
-
-/// The areas the migration has not reached. Each says so, and says where
-/// the product still serves it: the React interface, which stays.
 pub(crate) fn wapps_page(theme: tok::Theme) -> El {
     let entry = |key: &'static str, title: &'static str, body: &'static str| {
         col()
@@ -639,39 +400,17 @@ pub(crate) fn bar_chart(state: &AppState, id: u64, theme: tok::Theme) -> El {
 }
 
 /// The tools page: one switcher, three tools. Sync, compare, transfer.
-pub(crate) fn tools_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
-    let entry = |key: &str, label: &str, tool: Tool, active: bool| {
-        row()
-            .key(key)
-            .h(24.0)
-            .px(10.0)
-            .center_y()
-            .radius(6.0)
-            .fill(if active { tok::accent(0, true) } else { theme.control_off })
-            .child(text(label).font(type_::LABEL).color(theme.text))
-            .on_press(move |state: &mut AppState| state.set_tool(tool))
-    };
-    col()
-        .key("tools-page")
-        .w_full()
-        .gap(8.0)
-        .child(
-            row()
-                .key("tool-switcher")
-                .w_full()
-                .h(28.0)
-                .gap(6.0)
-                .center_y()
-                .child(text("Data tools".to_owned()).font(type_::TITLE).color(theme.text))
-                .child(entry("tool-sync", "Sync", Tool::Sync, state.tool == Tool::Sync))
-                .child(entry("tool-compare", "Compare", Tool::Compare, state.tool == Tool::Compare))
-                .child(entry("tool-transfer", "Transfer", Tool::Transfer, state.tool == Tool::Transfer))
-                .child(entry("tool-search", "Search values", Tool::ValueSearch, state.tool == Tool::ValueSearch)),
-        )
-        .child(match state.tool {
-            Tool::Sync => sync_tool(state, theme, dark),
-            Tool::Compare => compare_tool(state, theme),
-            Tool::Transfer => transfer_tool(state, theme),
-            Tool::ValueSearch => value_search_tool(state, theme),
-        })
+pub(crate) fn workflow_yaml(name: &str, steps: &[String]) -> String {
+    let mut out = format!("name: {name}\nsteps:\n");
+    for step in steps {
+        out.push_str(&format!("  - {step}\n"));
+    }
+    out
+}
+pub(crate) fn next_connection(workspace: &MemoryWorkspace, current: &str) -> String {
+    let ids: Vec<String> = workspace.connections().iter().map(|profile| profile.id.clone()).collect();
+    match ids.iter().position(|id| id == current) {
+        Some(index) => ids[(index + 1) % ids.len()].clone(),
+        None => ids.first().cloned().unwrap_or_else(|| current.to_owned()),
+    }
 }

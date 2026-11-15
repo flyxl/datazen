@@ -10,9 +10,14 @@ mod constants;
 mod icons;
 mod types;
 mod state_def;
-mod state_impl_1;
-mod state_impl_2;
-mod state_impl_3;
+mod state_session;
+mod state_settings;
+mod state_snippets;
+mod state_connections_io;
+mod state_search;
+mod state_schema_workflows;
+mod state_tools;
+mod state_workspace;
 mod views;
 mod app;
 

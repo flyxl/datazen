@@ -1,300 +1,18 @@
 //! View functions for the DataZen Rune UI.
+#![allow(unused_imports)]
 
 use super::*;
+
 use crate::constants::*;
 use crate::icons::{self, ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, section_icon};
-use crate::state_def::{StructureState, WidgetBarsState};
-use datazen_ui_api::{ColumnDraft, MemoryWorkspace};
-
-use crate::state_def::AppState;
+use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
-use crate::constants::*;
 use crate::{splitter, sql_editor};
-
-use datazen_ui_api::{ConnectionProfile, DashboardWidget, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi};
+use datazen_ui_api::{ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi};
 use rune::{FileDialogOptions, TextEdit, Tx};
 use rune::tok::{self, type_};
 use rune::{Color, Cx, El, col, oklch, row, text, text_input};
 
-pub(crate) fn sync_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
-    let mut section = col().key("sync-tool").w_full().gap(6.0);
-    match state.sync_step {
-        0 => section = section
-            .child(
-                row()
-                    .key("sync-step-1")
-                    .w_full()
-                    .h(28.0)
-                    .gap(8.0)
-                    .center_y()
-                    .child(
-                        row()
-                            .key("sync-source")
-                            .h(24.0)
-                            .px(8.0)
-                            .center_y()
-                            .radius(6.0)
-                            .fill(theme.control_off)
-                            .child(
-                                text(format!("source: {}", state.sync_source))
-                                    .font(type_::LABEL)
-                                    .color(theme.text),
-                            )
-                            .on_press(|state: &mut AppState| state.cycle_sync_source()),
-                    )
-                    .child(
-                        row()
-                            .key("sync-target")
-                            .h(24.0)
-                            .px(8.0)
-                            .center_y()
-                            .radius(6.0)
-                            .fill(theme.control_off)
-                            .child(
-                                text(format!("target: {}", state.sync_target))
-                                    .font(type_::LABEL)
-                                    .color(theme.text),
-                            )
-                            .on_press(|state: &mut AppState| state.cycle_sync_target()),
-                    )
-                    .child(
-                        row()
-                            .key("sync-endpoints-next")
-                            .h(24.0)
-                            .px(8.0)
-                            .center_y()
-                            .radius(6.0)
-                            .fill(theme.control_off)
-                            .child(text("Next").font(type_::LABEL).color(theme.text))
-                            .on_press(|state: &mut AppState| state.sync_next_endpoints()),
-                    ),
-            ),
-        1 => {
-            section = section.child(
-                row()
-                    .key("sync-step-1-done")
-                    .w_full()
-                    .h(24.0)
-                    .center_y()
-                    .child(
-                        text(format!("{} → {}", state.sync_source, state.sync_target))
-                            .font(type_::LABEL)
-                            .color(theme.text_secondary),
-                    ),
-            );
-            let mut tables = col().key("sync-step-2").w_full().gap(4.0);
-            for table in state.workspace.connection_tables(&state.sync_source) {
-                let selected = state.sync_tables.contains(&table);
-                tables = tables.child(
-                    row()
-                        .key(format!("sync-table-{table}"))
-                        .w(220.0)
-                        .h(24.0)
-                        .px(8.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(if selected { tok::accent(0, true) } else { theme.control_off })
-                        .child(text(table.clone()).font(type_::LABEL).color(theme.text))
-                        .on_press(move |state: &mut AppState| state.toggle_sync_table(&table)),
-                );
-            }
-            section = section
-                .child(tables)
-                .child(
-                    row()
-                        .key("sync-table-controls")
-                        .w_full()
-                        .h(28.0)
-                        .gap(8.0)
-                        .center_y()
-                        .child(
-                            row()
-                                .key("sync-select-all")
-                                .h(24.0)
-                                .px(8.0)
-                                .center_y()
-                                .radius(6.0)
-                                .fill(theme.control_off)
-                                .child(text("Select all").font(type_::LABEL).color(theme.text))
-                                .on_press(|state: &mut AppState| state.sync_select_all()),
-                        )
-                        .child(
-                            row()
-                                .key("sync-clear")
-                                .h(24.0)
-                                .px(8.0)
-                                .center_y()
-                                .radius(6.0)
-                                .fill(theme.control_off)
-                                .child(text("Clear").font(type_::LABEL).color(theme.text))
-                                .on_press(|state: &mut AppState| state.sync_clear_tables()),
-                        )
-                        .child(
-                            row()
-                                .key("sync-tables-next")
-                                .h(24.0)
-                                .px(8.0)
-                                .center_y()
-                                .radius(6.0)
-                                .fill(theme.control_off)
-                                .child(text("Next").font(type_::LABEL).color(theme.text))
-                                .on_press(|state: &mut AppState| state.sync_next_tables()),
-                        ),
-                );
-        }
-        2 => {
-            section = section.child(
-                row()
-                    .key("sync-step-1-done")
-                    .w_full()
-                    .h(24.0)
-                    .center_y()
-                    .child(
-                        text(format!("{} → {}", state.sync_source, state.sync_target))
-                            .font(type_::LABEL)
-                            .color(theme.text_secondary),
-                    ),
-            );
-            let mut options = col().key("sync-step-3").w_full().gap(4.0);
-            for (index, label) in AppState::SYNC_OPTION_LABELS.iter().enumerate() {
-                let on = state.sync_options[index];
-                options = options.child(
-                    row()
-                        .key(format!("sync-option-{index}"))
-                        .w(260.0)
-                        .h(24.0)
-                        .px(8.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(if on { tok::accent(0, true) } else { theme.control_off })
-                        .child(
-                            text(format!("{}: {}", if on { "on" } else { "off" }, label))
-                                .font(type_::LABEL)
-                                .color(theme.text),
-                        )
-                        .on_press(move |state: &mut AppState| state.toggle_sync_option(index)),
-                );
-            }
-            section = section
-                .child(options)
-                .child(
-                    row()
-                        .key("sync-preview-next")
-                        .w(120.0)
-                        .h(24.0)
-                        .px(8.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(theme.control_off)
-                        .child(text("Preview").font(type_::LABEL).color(theme.text))
-                        .on_press(|state: &mut AppState| state.sync_show_preview()),
-                );
-        }
-        3 => {
-            section = section.child(
-                row()
-                    .key("sync-step-1-done")
-                    .w_full()
-                    .h(24.0)
-                    .center_y()
-                    .child(
-                        text(format!("{} → {}", state.sync_source, state.sync_target))
-                            .font(type_::LABEL)
-                            .color(theme.text_secondary),
-                    ),
-            );
-            if let Some(grid) = &state.sync_preview_grid {
-                section = section.child(crate::data_grid::result_panel(
-                    grid,
-                    crate::data_grid::GridSlot::SyncPreview,
-                    theme.text,
-                    theme.text_secondary,
-                    theme.control_off,
-                    dark,
-                ));
-            }
-            section = section.child(
-                row()
-                    .key("sync-run-controls")
-                    .w_full()
-                    .h(28.0)
-                    .gap(8.0)
-                    .center_y()
-                    .child(
-                        row()
-                            .key("sync-run")
-                            .h(24.0)
-                            .px(8.0)
-                            .center_y()
-                            .radius(6.0)
-                            .fill(theme.control_off)
-                            .child(text("Run sync").font(type_::LABEL).color(theme.text))
-                            .on_press(|state: &mut AppState| state.sync_run()),
-                    )
-                    .child(
-                        row()
-                            .key("sync-refresh")
-                            .h(24.0)
-                            .px(8.0)
-                            .center_y()
-                            .radius(6.0)
-                            .fill(theme.control_off)
-                            .child(text("Refresh").font(type_::LABEL).color(theme.text))
-                            .on_press(|state: &mut AppState| state.refresh_sync_progress()),
-                    ),
-            );
-            if let Some(snapshot) = &state.sync_snapshot {
-                section = section.child(progress_panel(snapshot, "sync", theme));
-            }
-        }
-        _ => section = section.child(
-            row()
-                .key("sync-step-1-done")
-                .w_full()
-                .h(24.0)
-                .center_y()
-                .child(
-                    text(format!("{} → {}", state.sync_source, state.sync_target))
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                ),
-        ),
-    }
-    if let Some(error) = &state.sync_error {
-        section = section.child(
-            row()
-                .key("sync-error")
-                .w_full()
-                .h(24.0)
-                .px(8.0)
-                .center_y()
-                .radius(6.0)
-                .fill(theme.control_off)
-                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
-        );
-    }
-    section
-}
-
-/// The workspace is driven by the tabs: a query tab shows the SQL editor above the
-/// results, a loaded table page shows the grid, and anything else is an empty state.
-/// The old standalone editor and demo-grid sections are no longer product pages.
-pub(crate) fn workspace_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
-    if query_selected(state) {
-        return query_workspace(state, theme, dark);
-    }
-    if let Some((database, schema)) = &state.er_schema {
-        return er_view(state, database, schema, theme, dark);
-    }
-    if state.grid.has_page() {
-        return table_workspace(state, theme, dark);
-    }
-    workspace_empty(theme)
-}
-
-/// The ER page: one box per table of the open schema. Wide tables (more than 12
-/// columns) draw collapsed, showing the column count. Boxes drag; their
-/// positions live in UI state.
 pub(crate) fn er_view(state: &AppState, database: &str, schema: &str, theme: tok::Theme, dark: bool) -> El {
     let catalog = state.catalog();
     let tables: Vec<String> = catalog
@@ -430,52 +148,6 @@ pub(crate) fn er_box(
 }
 
 /// A table tab shows the view switcher above either the data grid or the DDL.
-pub(crate) fn table_workspace(state: &AppState, theme: tok::Theme, dark: bool) -> El {
-    let title = state.tabs.selected().map(|tab| tab.title.clone()).unwrap_or_default();
-    let _ = &title;
-    let body = match state.table_view {
-        TableView::Data => crate::data_grid::panel(state, theme.text, theme.text_secondary, theme.control_off, dark),
-        TableView::Ddl => ddl_view(state, &title, theme),
-        TableView::Columns => columns_view(state, &title, theme),
-        TableView::Indexes => indexes_view(state, &title, theme),
-        TableView::ForeignKeys => foreign_keys_view(state, &title, theme),
-    };
-    col()
-        .key("table-workspace")
-        .w_full()
-        .gap(8.0)
-        .child(view_switcher(state, theme))
-        .child(body)
-}
-
-pub(crate) fn view_switcher(state: &AppState, theme: tok::Theme) -> El {
-    let entry = |key: &str, label: &str, view: TableView, active: bool| {
-        row()
-            .key(key)
-            .h(24.0)
-            .px(10.0)
-            .center_y()
-            .radius(6.0)
-            .fill(if active { tok::accent(0, true) } else { theme.control_off })
-            .child(text(label).font(type_::LABEL).color(theme.text))
-            .on_press(move |state: &mut AppState| state.set_table_view(view))
-    };
-    row()
-        .key("table-view-switcher")
-        .w_full()
-        .h(28.0)
-        .gap(6.0)
-        .center_y()
-        .child(entry("view-data", "Data", TableView::Data, state.table_view == TableView::Data))
-        .child(entry("view-columns", "Columns", TableView::Columns, state.table_view == TableView::Columns))
-        .child(entry("view-indexes", "Indexes", TableView::Indexes, state.table_view == TableView::Indexes))
-        .child(entry("view-fks", "Foreign keys", TableView::ForeignKeys, state.table_view == TableView::ForeignKeys))
-        .child(entry("view-ddl", "DDL", TableView::Ddl, state.table_view == TableView::Ddl))
-}
-
-/// E1: the honest state of one table's structure read — a read in flight,
-/// its failure sentence, or the "not loaded" hint for an entry that never
-/// landed. None when the four segments are there to draw.
 pub(crate) fn structure_notice(state: &AppState, table: &str) -> Option<String> {
     match state.structures.get(table) {
         None => Some(
@@ -723,4 +395,117 @@ pub(crate) fn indexes_view(state: &AppState, title: &str, theme: tok::Theme) -> 
         list = list.child(notice_row("indexes-structure-notice", &sentence, theme));
     }
     list
+}
+pub(crate) fn foreign_keys_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
+    // E1: the cache is the only read — the job's foreign-key segment
+    // renders.
+    let keys = state
+        .structures
+        .get(title)
+        .and_then(|entry| entry.data.as_ref())
+        .map(|data| data.foreign_keys.clone())
+        .unwrap_or_default();
+    let header = |label: &str, width: f32| {
+        row()
+            .w(width)
+            .h(24.0)
+            .px(8.0)
+            .center_y()
+            .child(text(label).font(type_::LABEL).color(theme.text_secondary))
+    };
+    let mut list = col()
+        .key("fks-list")
+        .w_full()
+        .radius(8.0)
+        .fill(theme.control_off)
+        .child(
+            row()
+                .key("fks-header")
+                .w_full()
+                .h(24.0)
+                .child(header("Name", 260.0))
+                .child(header("Columns", 240.0))
+                .child(header("References", 320.0)),
+        );
+    for (index, key) in keys.iter().enumerate() {
+        let cell = |value: &str, width: f32| {
+            row()
+                .w(width)
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .child(text(value.to_owned()).font(type_::LABEL).color(theme.text))
+        };
+        let references = format!(
+            "{} ({})",
+            key.target_table,
+            key.target_columns.join(", ")
+        );
+        list = list.child(
+            row()
+                .key(format!("fk-row-{index}"))
+                .w_full()
+                .h(24.0)
+                .child(cell(&key.name, 260.0))
+                .child(cell(&key.columns.join(", "), 240.0))
+                .child(cell(&references, 320.0)),
+        );
+    }
+    if let Some(sentence) = structure_notice(state, title) {
+        list = list.child(notice_row("fks-structure-notice", &sentence, theme));
+    }
+    list
+}
+
+/// The DDL page: the port's string, verbatim, one line per row. An empty string
+/// is its own empty state.
+pub(crate) fn ddl_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
+    // E1: the cache is the only read — the job's DDL segment renders; a
+    // read that has not landed says so instead of an empty page.
+    if let Some(sentence) = structure_notice(state, title) {
+        return col()
+            .key("table-ddl-notice")
+            .w_full()
+            .h(160.0)
+            .px(12.0)
+            .py(8.0)
+            .radius(8.0)
+            .fill(theme.control_off)
+            .child(text(sentence).font(type_::LABEL).color(theme.text_secondary));
+    }
+    let ddl = state
+        .structures
+        .get(title)
+        .and_then(|entry| entry.data.as_ref())
+        .map(|data| data.ddl.clone())
+        .filter(|ddl| !ddl.is_empty());
+    match ddl {
+        Some(ddl) => {
+            let mut page = col()
+                .key("table-ddl")
+                .w_full()
+                .px(12.0)
+                .py(8.0)
+                .radius(8.0)
+                .fill(theme.control_off);
+            for line in ddl.lines() {
+                page = page.child(text(line.to_owned()).font(crate::sql_editor::editor_font()).color(theme.text));
+            }
+            page
+        }
+        None => col()
+            .key("table-ddl-empty")
+            .w_full()
+            .h(160.0)
+            .px(12.0)
+            .py(8.0)
+            .radius(8.0)
+            .fill(theme.control_off)
+            .child(text("No DDL available for this table").font(type_::TITLE).color(theme.text))
+            .child(
+                text("The port returned an empty DDL string")
+                    .font(type_::LABEL)
+                    .color(theme.text_secondary),
+            ),
+    }
 }

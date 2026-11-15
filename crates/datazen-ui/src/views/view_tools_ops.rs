@@ -1,17 +1,14 @@
 //! View functions for the DataZen Rune UI.
+#![allow(unused_imports)]
 
 use super::*;
+
 use crate::constants::*;
 use crate::icons::{self, ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, section_icon};
-use crate::state_def::{StructureState, WidgetBarsState};
-use datazen_ui_api::{ColumnDraft, MemoryWorkspace};
-
-use crate::state_def::AppState;
+use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
-use crate::constants::*;
 use crate::{splitter, sql_editor};
-
-use datazen_ui_api::{ConnectionProfile, DashboardWidget, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi};
+use datazen_ui_api::{ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi};
 use rune::{FileDialogOptions, TextEdit, Tx};
 use rune::tok::{self, type_};
 use rune::{Color, Cx, El, col, oklch, row, text, text_input};
