@@ -622,6 +622,15 @@ fn fk_bar(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well: r
         );
     }
     let mut column = col().key("fk-bar").w_full().gap(4.0).child(bar);
+    // E3: the scan runs as a job; the panel says so until its delivery.
+    if state.inbound_loading.is_some() {
+        column = column.child(
+            text("scanning the references…".to_owned())
+                .key("fk-inbound-loading")
+                .font(label_style())
+                .color(muted),
+        );
+    }
     if let Some(refs) = &state.inbound_refs {
         let mut list = col().key("fk-inbound-list").w_full().gap(4.0);
         if refs.is_empty() {

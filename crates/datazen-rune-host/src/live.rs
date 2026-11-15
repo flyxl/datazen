@@ -83,6 +83,12 @@ enum HostJob {
         generation: u32,
         id: u64,
     },
+    /// One table's inbound references (E3): the catalog scan that lists the
+    /// tables referencing it, over the live session the worker owns.
+    InboundRefs {
+        generation: u32,
+        table: String,
+    },
     CommitCells {
         generation: u32,
         batch: datazen_ui_api::CellEditBatch,
@@ -106,6 +112,8 @@ enum HostAnswer {
     Structure { generation: u32, table: String, structure: Result<TableStructure, String> },
     /// One widget's chart bars (or its failure sentence) (E2).
     WidgetBars { generation: u32, id: u64, bars: Result<Vec<(String, u32)>, String> },
+    /// One table's inbound references (or its failure sentence) (E3).
+    InboundRefs { generation: u32, table: String, refs: Result<Vec<InboundRef>, String> },
     CommitCount { generation: u32, count: Result<u32, String> },
     QueryPage { generation: u32, page: Result<TablePage, String> },
 }
@@ -150,28 +158,23 @@ pub struct LiveAdapter {
     /// The query history use case over the history files (N9): every executed
     /// statement lands in it, success or failure.
     history: datazen::history::HistoryService,
-    /// The live session's table schemas, keyed by table (N10): the structure
-    /// reads answer from here, warmed on first ask. A local sqlite schema
-    /// read is the same IO class as the settings file write the adapter
-    /// already performs synchronously; a remote driver will need the job
-    /// channel — honestly noted for the day one is wired.
+    /// The live session's table schemas, keyed by table (N10): the jobs
+    /// own the reads (E1's structure jobs, every page read) and warm this
+    /// cache; the adapter answers from it and a miss is an honest sentence
+    /// (E3 — the synchronous fetch went away with the sync session).
     schemas: Arc<Mutex<std::collections::HashMap<String, datazen_driver_api::TableSchema>>>,
-    /// A dedicated runtime for the adapter's synchronous driver calls (N10):
-    /// sqlx requires a Tokio context, and these reads (a local sqlite schema
-    /// read, a DDL render) are the bounded local-IO class the adapter already
-    /// performs synchronously. The worker's runtime stays the one real IO
-    /// runs on; this one only serves the cache misses.
+    /// E3: the one runtime the adapter's remaining synchronous block-on
+    /// needs — the workflow fallback's `run_query`. The UI's workflow run
+    /// goes through the job channel, so this path is unreachable from the
+    /// UI; every driver read the adapter used to make synchronously now
+    /// runs on the worker's runtime as a job.
     sync_runtime: tokio::runtime::Runtime,
-    /// The static driver registry, for the sync session's driver resolution.
+    /// The static driver registry, for the job flows' driver resolution.
     registry: Arc<DriverRegistry>,
     /// The export/backup jobs (N11), behind the UI's job vocabulary.
     host_jobs: crate::jobs::HostJobs,
     /// The data directory exports and backups land under (N11).
     data_dir: PathBuf,
-    /// The sync reads' own connection: the live session's pool is single and
-    /// belongs to the worker's runtime, so the sync runtime opens its own —
-    /// created lazily per connection id and reused while the id holds.
-    sync_handle: Mutex<Option<SyncSession>>,
     /// The workflow registry use case over the workflow file (N13).
     workflows: Arc<WorkflowRegistry>,
     /// The snippets' file store (T3): reads answer from the loaded file,
@@ -193,13 +196,10 @@ pub struct LiveAdapter {
     profiles: Arc<crate::backend::HostProfiles>,
 }
 
-/// The sync reads' own session over the live connection.
-struct SyncSession {
-    connection_id: String,
-    driver: Arc<dyn DatabaseDriver>,
-    handle: ConnectionHandle,
-    database: String,
-}
+// The sync reads' own session over the live connection — deleted with the
+// sync session itself (E3): the reads it served now run on the worker's
+// runtime as jobs (structure, DDL, inbound refs, widget bars), and the
+// adapter answers from the caches those jobs fill.
 
 impl LiveAdapter {
     /// The host's execution runtime (N5): open sessions, execute, read
@@ -337,6 +337,11 @@ impl LiveAdapter {
                                     id: 0,
                                     bars: Err(format!("the job runtime did not start: {error}")),
                                 },
+                                HostJob::InboundRefs { generation, .. } => HostAnswer::InboundRefs {
+                                    generation,
+                                    table: String::new(),
+                                    refs: Err(format!("the job runtime did not start: {error}")),
+                                },
                                 HostJob::CommitCells { generation, .. } => HostAnswer::CommitCount {
                                     generation,
                                     count: Err(format!("the job runtime did not start: {error}")),
@@ -430,6 +435,11 @@ impl LiveAdapter {
                             ));
                             HostAnswer::WidgetBars { generation, id, bars }
                         }
+                        HostJob::InboundRefs { generation, table } => {
+                            let refs =
+                                runtime.block_on(inbound_references(&worker_session, &table));
+                            HostAnswer::InboundRefs { generation, table, refs }
+                        }
                         HostJob::CommitCells { generation, batch } => {
                             let count = runtime.block_on(commit_edits(
                                 &worker_runtime,
@@ -498,7 +508,6 @@ impl LiveAdapter {
             schemas,
             sync_runtime,
             registry: adapter_registry,
-            sync_handle: Mutex::new(None),
             host_jobs: jobs,
             data_dir: adapter_data_dir,
             workflows,
@@ -746,86 +755,25 @@ impl LiveAdapter {
             .ok_or_else(|| format!("no connection '{connection}' in the store"))
     }
 
-    /// The sync reads' session over the live connection: the live session's
-    /// single-connection pool belongs to the worker's runtime, so the sync
-    /// runtime opens its own connection, lazily, reused while the connection
-    /// id holds.
-    fn sync_session(&self) -> Result<SyncSession, String> {
-        let (connection, database) = {
-            let session = self.session.lock().expect("the live session lock");
-            if !session.is_open() {
-                return Err("the live session is not open".into());
-            }
-            (
-                session.connection.clone().unwrap_or_default(),
-                session.database.clone().unwrap_or_default(),
-            )
-        };
-        if let Some(existing) = self.sync_handle.lock().expect("the sync lock").as_ref() {
-            if existing.connection_id == connection {
-                return Ok(SyncSession {
-                    connection_id: existing.connection_id.clone(),
-                    driver: Arc::clone(&existing.driver),
-                    handle: existing.handle.clone(),
-                    database: existing.database.clone(),
-                });
-            }
-        }
-        let config = self.plain_config(&connection)?;
-        let driver = self
-            .sync_runtime
-            .block_on(self.registry.get(&config.database_type))
-            .ok_or_else(|| format!("no driver for '{}'", config.database_type))?;
-        let handle = self
-            .sync_runtime
-            .block_on(driver.connect(&config))
-            .map_err(|error| error.to_string())?;
-        let session = SyncSession {
-            connection_id: connection,
-            driver,
-            handle,
-            database,
-        };
-        *self.sync_handle.lock().expect("the sync lock") = Some(SyncSession {
-            connection_id: session.connection_id.clone(),
-            driver: Arc::clone(&session.driver),
-            handle: session.handle.clone(),
-            database: session.database.clone(),
-        });
-        Ok(session)
-    }
-
-    /// The table's schema, from the cache, fetched on a miss (N10). A local
-    /// sqlite schema read is the same IO class as the settings file write;
-    /// the cache keeps repeats free.
-    fn cached_schema(
+    /// The table's schema from the worker-maintained cache (E3): the jobs
+    /// own the reads — every structure job and page read warms it — and a
+    /// miss is an honest sentence. The synchronous fetch that used to live
+    /// here went away with the sync session: a remote schema read is
+    /// unbounded IO and never the frame loop's to wait for.
+    fn cached(
         &self,
         table: &str,
     ) -> Result<datazen_driver_api::TableSchema, String> {
-        if let Some(schema) = self
-            .schemas
+        self.schemas
             .lock()
             .expect("the schema lock")
             .get(table)
             .cloned()
-        {
-            return Ok(schema);
-        }
-        let session = self.sync_session()?;
-        let schema = self
-            .sync_runtime
-            .block_on(session.driver.get_table_schema(&session.handle, table, &session.database, None))
-            .map_err(|error| error.to_string())?;
-        if schema.columns.is_empty() {
-            // A schema with no columns is a table the catalog does not have —
-            // the driver's honest answer for an unknown name.
-            return Err(format!("the catalog has no table '{table}'"));
-        }
-        self.schemas
-            .lock()
-            .expect("the schema lock")
-            .insert(table.to_owned(), schema.clone());
-        Ok(schema)
+            .ok_or_else(|| {
+                format!(
+                    "the structure of '{table}' is not loaded — open the table and the job reads it"
+                )
+            })
     }
 }
 
@@ -1291,6 +1239,81 @@ async fn widget_bars(
             Some((label, value))
         })
         .collect())
+}
+
+/// One table's inbound references (E3): the shared scan over the live
+/// session the worker owns — the same `list_inbound_foreign_keys` use case
+/// T5 ran on the adapter's own connection, now on the runtime that owns
+/// the session's pool, so the catalog walk never blocks the frame loop.
+async fn inbound_references(
+    session: &Arc<Mutex<LiveSession>>,
+    table: &str,
+) -> Result<Vec<InboundRef>, String> {
+    let (driver, handle, database) = {
+        let session = session.lock().expect("the live session lock");
+        if !session.is_open() {
+            return Err("the live session is not open".into());
+        }
+        (
+            session.driver.clone().expect("checked"),
+            session.handle.clone().expect("checked"),
+            session.database.clone().unwrap_or_default(),
+        )
+    };
+    struct LiveNavigationSource {
+        driver: Arc<dyn DatabaseDriver>,
+        handle: ConnectionHandle,
+        database: String,
+    }
+
+    #[async_trait::async_trait]
+    impl datazen::services::ports::ForeignKeyNavigationSource for LiveNavigationSource {
+        async fn bind_session(
+            &self,
+            _: &str,
+        ) -> Result<
+            datazen::services::ports::FkSessionBinding,
+            datazen::services::ports::FkSessionError,
+        > {
+            Ok(datazen::services::ports::FkSessionBinding {
+                driver: Arc::clone(&self.driver),
+                handle: self.handle.clone(),
+                database: Some(self.database.clone()),
+                schema: None,
+                // The worker's session holds for as long as the connection
+                // does; nothing to lease.
+                guard: Box::new(()),
+            })
+        }
+    }
+
+    let source = LiveNavigationSource { driver, handle, database };
+    let request = datazen::services::referenced_by::ListInboundForeignKeysRequest {
+        // The envelope requires a session label; the host's one session
+        // is the live one.
+        db_session_id: "live".into(),
+        database: None,
+        schema: None,
+        table: table.to_owned(),
+        qualified_table: None,
+    };
+    let catalog = datazen::services::referenced_by::list_inbound_foreign_keys(&source, &request)
+        .await
+        .map_err(|error| error.to_string())?;
+    // Flatten the pairings: one row per (referencing column, referenced
+    // column), the shape the UI's list and filters speak.
+    let mut refs = Vec::new();
+    for reference in &catalog.references {
+        for (column, referenced) in reference.columns.iter().zip(&reference.referenced_columns) {
+            refs.push(InboundRef {
+                table: reference.table.clone(),
+                column: column.clone(),
+                referenced_column: referenced.clone(),
+                constraint: reference.constraint_name.clone(),
+            });
+        }
+    }
+    Ok(refs)
 }
 
 /// One driver cell as the grid's text: null is the empty string, bytes land
@@ -1936,6 +1959,9 @@ impl DesktopAdapter for LiveAdapter {
                 HostJob::ReadStructure { generation, table }
             }
             AdapterJob::WidgetBars { generation, id } => HostJob::WidgetBars { generation, id },
+            AdapterJob::InboundRefs { generation, table } => {
+                HostJob::InboundRefs { generation, table }
+            }
             AdapterJob::CommitCells { generation, batch } => {
                 HostJob::CommitCells { generation, batch }
             }
@@ -1972,6 +1998,9 @@ impl DesktopAdapter for LiveAdapter {
                 }
                 HostAnswer::WidgetBars { generation, id, bars } => {
                     deliveries.push(AdapterDelivery::WidgetBarsRead { generation, id, bars });
+                }
+                HostAnswer::InboundRefs { generation, table, refs } => {
+                    deliveries.push(AdapterDelivery::InboundRefsRead { generation, table, refs });
                 }
                 HostAnswer::CommitCount { generation, count } => {
                     deliveries.push(AdapterDelivery::CommitCount { generation, count });
@@ -2055,31 +2084,17 @@ impl DesktopAdapter for LiveAdapter {
         Ok(())
     }
 
-    fn table_ddl(&self, table: &str) -> Result<String, String> {
-        let session = self.sync_session()?;
-        // The driver's own DDL command renders the object's definition.
-        let result = self
-            .sync_runtime
-            .block_on(session.driver.execute_command(
-                &session.handle,
-                "get_object_ddl",
-                serde_json::json!({
-                    "kind": "table",
-                    "name": table,
-                    "database": session.database,
-                }),
-            ))
-            .map_err(|error| error.to_string())?;
-        result
-            .data
-            .get("ddl")
-            .and_then(|ddl| ddl.as_str())
-            .map(str::to_owned)
-            .ok_or_else(|| "the driver returned no DDL".to_string())
+    fn table_ddl(&self, _table: &str) -> Result<String, String> {
+        // E3: the DDL read runs as part of the structure job (E1) — a
+        // remote DDL render is unbounded IO and never the frame loop's to
+        // wait for. The DDL view renders the job's cached answer; this
+        // synchronous path stays closed so no caller can block the loop
+        // by accident.
+        Err("the DDL read goes through the structure job — open the table and switch to the DDL view".into())
     }
 
     fn table_columns(&self, table: &str) -> Result<Vec<datazen_ui_api::ColumnSpec>, String> {
-        let schema = self.cached_schema(table)?;
+        let schema = self.cached(table)?;
         Ok(schema
             .columns
             .iter()
@@ -2092,7 +2107,7 @@ impl DesktopAdapter for LiveAdapter {
     }
 
     fn table_indexes(&self, table: &str) -> Result<Vec<datazen_ui_api::IndexSpec>, String> {
-        let schema = self.cached_schema(table)?;
+        let schema = self.cached(table)?;
         Ok(schema
             .indexes
             .iter()
@@ -2105,7 +2120,7 @@ impl DesktopAdapter for LiveAdapter {
     }
 
     fn table_foreign_keys(&self, table: &str) -> Result<Vec<datazen_ui_api::ForeignKeySpec>, String> {
-        let schema = self.cached_schema(table)?;
+        let schema = self.cached(table)?;
         Ok(schema
             .foreign_keys
             .iter()
@@ -2245,73 +2260,12 @@ impl DesktopAdapter for LiveAdapter {
         )
     }
 
-    fn table_inbound_references(&self, table: &str) -> Result<Vec<InboundRef>, String> {
-        // T5: the shared scan over the sync session — its own connection on
-        // the adapter's runtime, the same one the N10 structure reads use
-        // (the live session's pool belongs to the worker's runtime).
-        struct LiveNavigationSource {
-            driver: Arc<dyn DatabaseDriver>,
-            handle: ConnectionHandle,
-            database: String,
-        }
-
-        #[async_trait::async_trait]
-        impl datazen::services::ports::ForeignKeyNavigationSource for LiveNavigationSource {
-            async fn bind_session(
-                &self,
-                _: &str,
-            ) -> Result<
-                datazen::services::ports::FkSessionBinding,
-                datazen::services::ports::FkSessionError,
-            > {
-                Ok(datazen::services::ports::FkSessionBinding {
-                    driver: Arc::clone(&self.driver),
-                    handle: self.handle.clone(),
-                    database: Some(self.database.clone()),
-                    schema: None,
-                    // The sync session lives in the adapter for as long as
-                    // the connection holds; nothing to lease.
-                    guard: Box::new(()),
-                })
-            }
-        }
-
-        let sync = self.sync_session()?;
-        let source = LiveNavigationSource {
-            driver: Arc::clone(&sync.driver),
-            handle: sync.handle.clone(),
-            database: sync.database.clone(),
-        };
-        let request = datazen::services::referenced_by::ListInboundForeignKeysRequest {
-            // The envelope requires a session label; the host's one session
-            // is the live one.
-            db_session_id: "live".into(),
-            database: None,
-            schema: None,
-            table: table.to_owned(),
-            qualified_table: None,
-        };
-        let catalog = self
-            .sync_runtime
-            .block_on(datazen::services::referenced_by::list_inbound_foreign_keys(
-                &source,
-                &request,
-            ))
-            .map_err(|error| error.to_string())?;
-        // Flatten the pairings: one row per (referencing column, referenced
-        // column), the shape the UI's list and filters speak.
-        let mut refs = Vec::new();
-        for reference in &catalog.references {
-            for (column, referenced) in reference.columns.iter().zip(&reference.referenced_columns) {
-                refs.push(InboundRef {
-                    table: reference.table.clone(),
-                    column: column.clone(),
-                    referenced_column: referenced.clone(),
-                    constraint: reference.constraint_name.clone(),
-                });
-            }
-        }
-        Ok(refs)
+    fn table_inbound_references(&self, _table: &str) -> Result<Vec<InboundRef>, String> {
+        // E3: the inbound scan runs as a job over the live session — the
+        // walk of the whole catalog is unbounded IO and never the frame
+        // loop's to wait for. The references button sends the job and the
+        // list renders its delivery; this synchronous path stays closed.
+        Err("the inbound scan goes through the inbound job — the references button runs it".into())
     }
 
     fn snippets(&self) -> Result<Vec<Snippet>, String> {
@@ -2405,22 +2359,22 @@ impl DesktopAdapter for LiveAdapter {
             .remove(&handle)
             .ok_or_else(|| format!("no parsed import {handle}"))?;
         let scope = datazen::connection::ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
-        // The dedup needs names only; the sync runtime serves the two
-        // memory-speed repository calls (the store's file is loaded).
-        let existing: std::collections::HashSet<String> = self
-            .sync_runtime
-            .block_on(self.service.list_plain(&scope))
-            .map_err(|error| error.to_string())?
-            .into_iter()
-            .map(|config| config.name)
-            .collect();
+        // The dedup needs names only; the two repository calls are
+        // memory-speed (the store's file is loaded), so the blocking poll
+        // needs no runtime of its own (E3).
+        let existing: std::collections::HashSet<String> = futures_executor::block_on(
+            self.service.list_plain(&scope),
+        )
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(|config| config.name)
+        .collect();
         let mut landed = 0u32;
         for config in configs {
             if existing.contains(&config.name) {
                 continue;
             }
-            self.sync_runtime
-                .block_on(self.service.save(&scope, config))
+            futures_executor::block_on(self.service.save(&scope, config))
                 .map_err(|error| error.to_string())?;
             landed += 1;
         }
@@ -2498,6 +2452,11 @@ impl DesktopAdapter for LiveAdapter {
         // same path the editor's statements take. A step of another kind
         // reports itself as not wired; a step's failure does not stop the
         // steps that follow (the results list is the report).
+        //
+        // E3: the UI's workflow run goes through the job channel
+        // (`RunWorkflow`), so this synchronous form is the direct-call
+        // fallback only — unreachable from the UI — and the one reason
+        // `sync_runtime` still exists.
         let scope = crate::dashboards::host_scope();
         let definition = futures_executor::block_on(self.workflows.list_definitions(&scope))
             .into_iter()
@@ -3214,12 +3173,19 @@ mod tests {
         assert_eq!(fk.target_table, "users");
         assert_eq!(fk.target_columns, vec!["id".to_string()]);
 
-        // The DDL is the driver's own rendering of the definition.
-        let ddl = adapter.table_ddl("orders").expect("the DDL answers");
+        // The DDL travels with the structure job (E1); its synchronous
+        // path is closed (E3).
+        assert!(adapter.begin_job(AdapterJob::ReadStructure {
+            generation: 3,
+            table: "orders".into(),
+        }));
+        let structure = poll_structure(&mut adapter, "orders").expect("the structure answers");
+        let ddl = &structure.ddl;
         assert!(ddl.to_lowercase().contains("create table"), "the DDL names the object: {ddl}");
         assert!(ddl.contains("orders"), "the DDL is about this table: {ddl}");
 
-        // A table the catalog does not know is a failure sentence.
+        // A table the catalog does not know is a failure sentence — the
+        // cache-miss sentence now that the jobs own the reads (E3).
         let error = adapter.table_columns("nope").unwrap_err();
         assert!(!error.is_empty(), "the failure carries a sentence: {error}");
     }
@@ -3625,21 +3591,77 @@ mod tests {
         );
     }
 
+    /// Poll the adapter until its inbound job answers (E3).
+    fn poll_inbound(adapter: &mut LiveAdapter, table: &str) -> Result<Vec<InboundRef>, String> {
+        for _ in 0..300 {
+            for delivery in adapter.poll_jobs() {
+                if let AdapterDelivery::InboundRefsRead { table: answered, refs, .. } = delivery {
+                    if answered == table {
+                        return refs;
+                    }
+                }
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("the inbound job never answered");
+    }
+
     #[test]
     fn inbound_references_answer_the_scan_over_the_live_session() {
         let dir = temp_dir("inbound");
-        let adapter = opened_adapter(&dir);
+        let mut adapter = opened_adapter(&dir);
 
         // The fixture: orders.user_id REFERENCES users(id).
-        let refs = adapter.table_inbound_references("users").expect("the scan answers");
+        assert!(adapter.begin_job(AdapterJob::InboundRefs {
+            generation: 2,
+            table: "users".into(),
+        }));
+        let refs = poll_inbound(&mut adapter, "users").expect("the scan answers");
         assert_eq!(refs.len(), 1, "one referencing column: {refs:?}");
         assert_eq!(refs[0].table, "orders");
         assert_eq!(refs[0].column, "user_id");
         assert_eq!(refs[0].referenced_column, "id");
 
         // A table nothing references: the honest empty list.
-        let refs = adapter.table_inbound_references("events").expect("the scan answers");
+        assert!(adapter.begin_job(AdapterJob::InboundRefs {
+            generation: 3,
+            table: "events".into(),
+        }));
+        let refs = poll_inbound(&mut adapter, "events").expect("the scan answers");
         assert!(refs.is_empty(), "no table references events: {refs:?}");
+
+        // E3: the synchronous scan path stays closed — the catalog walk is
+        // unbounded IO and never the frame loop's to wait for.
+        let refused = adapter
+            .table_inbound_references("users")
+            .expect_err("the sync path refuses");
+        assert!(refused.contains("inbound job"), "the sentence names the job path: {refused}");
+    }
+
+    #[test]
+    fn the_sync_structure_reads_serve_the_job_filled_cache_and_refuse_the_rest() {
+        let dir = temp_dir("sync-teardown");
+        let mut adapter = opened_adapter(&dir);
+
+        // Before any job: a cache miss is an honest sentence, never a
+        // synchronous fetch.
+        let missing = adapter.table_columns("orders").expect_err("the cache is empty");
+        assert!(missing.contains("not loaded"), "the sentence names the cache: {missing}");
+
+        // One structure job fills the worker-maintained cache; the sync
+        // reads answer from it afterwards.
+        assert!(adapter.begin_job(AdapterJob::ReadStructure {
+            generation: 2,
+            table: "orders".into(),
+        }));
+        poll_structure(&mut adapter, "orders").expect("the structure reads");
+        let columns = adapter.table_columns("orders").expect("the cache serves the read");
+        assert_eq!(columns.len(), 3, "{columns:?}");
+        assert!(adapter.table_indexes("orders").is_ok(), "the same cache serves the indexes");
+
+        // The DDL read is part of the structure job; its sync path refuses.
+        let ddl = adapter.table_ddl("orders").expect_err("the sync DDL path refuses");
+        assert!(ddl.contains("structure job"), "the sentence names the job: {ddl}");
     }
 
     #[test]

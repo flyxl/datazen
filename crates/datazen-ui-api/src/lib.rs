@@ -553,6 +553,13 @@ pub enum AdapterJob {
         generation: u32,
         id: u64,
     },
+    /// Read one table's inbound references (E3): the scan that walks the
+    /// catalog for the tables referencing it — the job twin of
+    /// `table_inbound_references`.
+    InboundRefs {
+        generation: u32,
+        table: String,
+    },
     /// Apply one batch of cell edits, the job twin of `commit_cells`. The
     /// rows are the page's, addressed by the table's primary key.
     CommitCells {
@@ -599,6 +606,13 @@ pub enum AdapterDelivery {
         generation: u32,
         id: u64,
         bars: Result<Vec<(String, u32)>, String>,
+    },
+    /// An inbound-refs job's list (or its failure sentence) (E3). The table
+    /// rides along: the answer describes the loaded table or it drops.
+    InboundRefsRead {
+        generation: u32,
+        table: String,
+        refs: Result<Vec<InboundRef>, String>,
     },
     /// A commit job's landed edit count (or its failure sentence).
     CommitCount { generation: u32, count: Result<u32, String> },

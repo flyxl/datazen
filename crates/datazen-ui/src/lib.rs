@@ -204,6 +204,11 @@ pub struct AppState {
     /// T5: the loaded table's inbound references (None until asked for).
     inbound_refs: Option<Vec<datazen_ui_api::InboundRef>>,
     fk_error: Option<String>,
+    /// E3: the inbound generation — bumped by every ask. A delivery from a
+    /// scan the state has moved past is dropped.
+    inbound_generation: u32,
+    /// E3: an inbound job the host accepted and has not answered yet.
+    inbound_loading: Option<u32>,
     /// E1: the structure generation — bumped by every structure request (a
     /// table open, a view switch, an ER open). A structure delivery from a
     /// generation the table's entry has moved past is dropped.
@@ -341,6 +346,8 @@ impl Default for AppState {
             value_search_query: String::new(),
             inbound_refs: None,
             fk_error: None,
+            inbound_generation: 0,
+            inbound_loading: None,
             structure_generation: 0,
             structures: std::collections::BTreeMap::new(),
             widget_bars_generation: 0,
@@ -859,9 +866,20 @@ impl AppState {
         self.open_table_with_filter(&target_table, &target_column, &value);
     }
 
-    /// Ask the host for the loaded table's inbound references (T5).
+    /// Ask the host for the loaded table's inbound references (T5) as a job
+    /// (E3) — the scan walks the whole catalog and never belongs on the
+    /// frame loop. A host that declines keeps the synchronous read: the
+    /// demo process has none, and the honest refusal names the live host.
     fn load_inbound_refs(&mut self) {
         let table = self.grid.table_label().to_owned();
+        let generation = self.next_inbound_generation();
+        let job = AdapterJob::InboundRefs { generation, table: table.clone() };
+        if self.desktop.begin_job(job) {
+            self.inbound_loading = Some(generation);
+            self.inbound_refs = None;
+            self.fk_error = None;
+            return;
+        }
         match self.desktop.table_inbound_references(&table) {
             Ok(refs) => {
                 self.inbound_refs = Some(refs);
@@ -876,6 +894,13 @@ impl AppState {
                 self.fk_error = Some(error);
             }
         }
+    }
+
+    /// Bump and return the next inbound generation (E3). Every ask starts
+    /// one, so a delivery from a scan the state has moved past is dropped.
+    fn next_inbound_generation(&mut self) -> u32 {
+        self.inbound_generation += 1;
+        self.inbound_generation
     }
 
     /// Hide the inbound list.
@@ -1695,6 +1720,9 @@ impl AppState {
         self.desktop_connection = None;
         self.structures.clear();
         self.widget_bars.clear();
+        self.inbound_refs = None;
+        self.inbound_loading = None;
+        self.fk_error = None;
     }
 
     fn open_table_tab(&mut self, title: &str) -> Option<u32> {
@@ -2028,6 +2056,10 @@ impl AppState {
                         // E2: the widgets' queries bind the connection —
                         // their bars reload with the new session.
                         self.widget_bars.clear();
+                        // E3: the new session's catalog walks start clean.
+                        self.inbound_refs = None;
+                        self.inbound_loading = None;
+                        self.fk_error = None;
                         self.collapsed.clear();
                         self.table_page = 0;
                         self.sort = None;
@@ -2127,6 +2159,28 @@ impl AppState {
                     Err(error) => {
                         entry.bars = None;
                         entry.error = Some(error);
+                    }
+                }
+            }
+            AdapterDelivery::InboundRefsRead { generation, table, refs } => {
+                // E3: the scan's answer lands on the current generation and
+                // the loaded table only — a newer ask replaced the request,
+                // and a table the grid has moved past keeps its list to
+                // itself.
+                if self.inbound_loading == Some(generation) {
+                    self.inbound_loading = None;
+                }
+                if generation != self.inbound_generation || table != self.grid.table_label() {
+                    return;
+                }
+                match refs {
+                    Ok(refs) => {
+                        self.inbound_refs = Some(refs);
+                        self.fk_error = None;
+                    }
+                    Err(error) => {
+                        self.inbound_refs = None;
+                        self.fk_error = Some(error);
                     }
                 }
             }
@@ -9662,6 +9716,16 @@ mod tests {
                         id,
                         bars: Ok(vec![("mon".into(), 1)]),
                     },
+                    AdapterJob::InboundRefs { generation, table } => AdapterDelivery::InboundRefsRead {
+                        generation,
+                        table,
+                        refs: Ok(vec![datazen_ui_api::InboundRef {
+                            table: "orders".into(),
+                            column: "user_id".into(),
+                            referenced_column: "id".into(),
+                            constraint: "fk".into(),
+                        }]),
+                    },
                     AdapterJob::CommitCells { generation, .. } => AdapterDelivery::CommitCount {
                         generation,
                         count: if fail_commit {
@@ -10106,6 +10170,62 @@ mod tests {
         let entry = runtime.state.widget_bars.get(&7).expect("the entry stays");
         assert_eq!(entry.generation, 2);
         assert!(entry.bars.is_some(), "the stale answer did not overwrite it");
+    }
+
+    #[test]
+    fn the_inbound_list_arrives_as_a_job_and_only_for_the_loaded_table() {
+        use super::app_poll;
+
+        let mut runtime = runtime();
+        runtime.poll = Some(app_poll);
+        runtime.state.desktop = Box::new(JobAdapter::new());
+        runtime.state.open_table_tab("events").unwrap();
+        runtime.settle_all();
+        runtime.frame(0.0);
+        runtime.frame(0.0);
+        // The grid has its page; the ask goes out as a job (E3).
+        runtime.state.load_inbound_refs();
+        assert!(runtime.state.inbound_loading.is_some(), "the scan is in flight");
+        assert!(runtime.state.inbound_refs.is_none(), "nothing landed yet");
+
+        // The delivery lands: the list describes the loaded table.
+        runtime.frame(0.0);
+        runtime.frame(0.0);
+        assert!(runtime.state.inbound_loading.is_none(), "the marker leaves with the delivery");
+        let refs = runtime.state.inbound_refs.as_ref().expect("the list lands");
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].table, "orders");
+        runtime.frame(0.0);
+        assert!(runtime.find("fk-inbound-0").is_some(), "the delivered list renders");
+
+        // A delivery for another table drops: the grid moved on.
+        runtime.state.deliver_host_job(AdapterDelivery::InboundRefsRead {
+            generation: runtime.state.inbound_generation,
+            table: "elsewhere".into(),
+            refs: Ok(vec![datazen_ui_api::InboundRef {
+                table: "ghost".into(),
+                column: "c".into(),
+                referenced_column: "id".into(),
+                constraint: "fk".into(),
+            }]),
+        });
+        assert!(
+            runtime.state.inbound_refs.as_ref().is_some_and(|refs| refs[0].table == "orders"),
+            "a list for another table does not land"
+        );
+
+        // A stale generation drops too: a newer ask superseded the old one.
+        let stale = runtime.state.inbound_generation;
+        runtime.state.load_inbound_refs();
+        runtime.state.deliver_host_job(AdapterDelivery::InboundRefsRead {
+            generation: stale,
+            table: "events".into(),
+            refs: Ok(Vec::new()),
+        });
+        assert!(
+            runtime.state.inbound_loading.is_some(),
+            "the stale answer did not clear the newer ask's marker"
+        );
     }
 
     #[test]
