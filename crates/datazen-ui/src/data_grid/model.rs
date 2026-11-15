@@ -4,6 +4,8 @@ use rune::TextEdit;
 
 pub const ROW_H: f32 = 28.0;
 pub const COL_W: f32 = 120.0;
+/// Default width of the row-number gutter (A4).
+pub const GUTTER_W: f32 = 40.0;
 pub const ROW_COUNT: u32 = 20_000;
 pub const COL_COUNT: u32 = 200;
 /// Cells built for one mounted row, besides the frozen first column.
@@ -15,6 +17,8 @@ pub struct DataGrid {
     edits: HashMap<(u32, u32), String>,
     source: Option<Vec<Vec<String>>>,
     columns: Vec<String>,
+    /// Per-column widths in points (A4), persisted per table.
+    col_widths: Vec<u32>,
     pub(crate) anchor: (u32, u32),
     pub(crate) focus: (u32, u32),
     pub(crate) editing: bool,
@@ -51,6 +55,7 @@ impl DataGrid {
             edits: HashMap::new(),
             source: None,
             columns: Vec::new(),
+            col_widths: Vec::new(),
             anchor: (0, 0),
             focus: (0, 0),
             editing: false,
@@ -138,6 +143,67 @@ impl DataGrid {
         self.scroll_x.clone()
     }
 
+    /// A4: width of one data column in points (persisted per table).
+    pub fn col_w(&self, col: u32) -> f32 {
+        self.col_widths
+            .get(col as usize)
+            .copied()
+            .unwrap_or(COL_W as u32) as f32
+    }
+
+    /// A4: set one column width in points.
+    pub fn set_col_w(&mut self, col: u32, width: u32) {
+        let width = width.max(40);
+        if self.col_widths.len() < self.cols as usize {
+            self.col_widths.resize(self.cols as usize, COL_W as u32);
+        }
+        if let Some(slot) = self.col_widths.get_mut(col as usize) {
+            *slot = width;
+        }
+    }
+
+    /// A4: all column widths in order (length = cols).
+    pub fn column_widths(&self) -> Vec<u32> {
+        let mut widths = vec![COL_W as u32; self.cols as usize];
+        for (i, w) in self.col_widths.iter().enumerate() {
+            if i < widths.len() {
+                widths[i] = *w;
+            }
+        }
+        widths
+    }
+
+    /// A4: replace column widths (by index), clamped to cols.
+    pub fn set_column_widths(&mut self, widths: Vec<u32>) {
+        let mut normalized = vec![COL_W as u32; self.cols as usize];
+        for (i, w) in widths.into_iter().enumerate() {
+            if i < normalized.len() {
+                normalized[i] = w.max(40);
+            }
+        }
+        self.col_widths = normalized;
+    }
+
+    /// A4: x offset of a data column's left edge within the data sheet.
+    pub fn x_of_col(&self, col: u32) -> f32 {
+        let end = col.min(self.cols);
+        (0..end).map(|c| self.col_w(c)).sum()
+    }
+
+    /// A4: total width of all data columns.
+    pub fn sheet_data_width(&self) -> f32 {
+        self.x_of_col(self.cols)
+    }
+
+    /// A4: width of a contiguous span of data columns [from, to).
+    pub fn span_width(&self, from: u32, to: u32) -> f32 {
+        if to <= from {
+            return 0.0;
+        }
+        let to = to.min(self.cols);
+        (from.min(self.cols)..to).map(|c| self.col_w(c)).sum()
+    }
+
     pub fn cell(&self, row: u32, col: u32) -> String {
         if let Some(value) = self.edits.get(&(row, col)) {
             return value.clone();
@@ -194,6 +260,7 @@ impl DataGrid {
         });
         self.read_only = page.read_only.clone();
         self.table = Some(page.table.clone());
+        self.col_widths = vec![COL_W as u32; self.cols as usize];
         self.edits.clear();
         self.anchor = (0, 0);
         self.focus = (0, 0);
@@ -367,8 +434,21 @@ impl DataGrid {
     /// Move the column window to the horizontal scroll offset. True when the window changed,
     /// so the view has to build different cells.
     pub fn sync_scroll(&mut self) -> bool {
-        let raw = (self.scroll_x.get() / COL_W).floor();
-        let origin = if raw <= 0.0 { 0 } else { raw as u32 };
+        let x = self.scroll_x.get().max(0.0);
+        let mut origin = 0u32;
+        let mut acc = 0.0f32;
+        if self.cols == 0 {
+            return false;
+        }
+        for c in 0..self.cols {
+            let next = acc + self.col_w(c);
+            if next > x + 0.5 {
+                origin = c;
+                break;
+            }
+            acc = next;
+            origin = c.saturating_add(1).min(self.cols.saturating_sub(1));
+        }
         let origin = origin.min(self.cols.saturating_sub(1));
         if origin == self.origin_col {
             false
@@ -396,7 +476,7 @@ impl DataGrid {
         let end = self.origin_col.saturating_add(COL_WINDOW);
         if col < self.origin_col || col >= end {
             self.origin_col = col.saturating_sub(COL_WINDOW / 2);
-            self.scroll_x.set(self.origin_col as f32 * COL_W);
+            self.scroll_x.set(self.x_of_col(self.origin_col));
         }
     }
 

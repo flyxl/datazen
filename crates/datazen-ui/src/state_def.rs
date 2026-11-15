@@ -138,6 +138,8 @@ pub struct AppState {
     /// T5: the loaded table's inbound references (None until asked for).
     pub(crate) inbound_refs: Option<Vec<datazen_ui_api::InboundRef>>,
     pub(crate) fk_error: Option<String>,
+    /// A4: FK navigation breadcrumb trail (followed foreign-key jumps).
+    pub(crate) fk_breadcrumbs: Vec<FkBreadcrumb>,
     /// E3: the inbound generation — bumped by every ask. A delivery from a
     /// scan the state has moved past is dropped.
     pub(crate) inbound_generation: u32,
@@ -295,6 +297,7 @@ impl Default for AppState {
             value_search_query: String::new(),
             inbound_refs: None,
             fk_error: None,
+            fk_breadcrumbs: Vec::new(),
             inbound_generation: 0,
             inbound_loading: None,
             structure_generation: 0,
@@ -368,4 +371,14 @@ pub(crate) struct WidgetBarsState {
     pub(crate) loading: bool,
     pub(crate) error: Option<String>,
     pub(crate) bars: Option<Vec<(String, u32)>>,
+}
+
+/// A4: one step in the FK navigation breadcrumb trail.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct FkBreadcrumb {
+    pub(crate) label: String,
+    pub(crate) table: String,
+    pub(crate) page: u32,
+    pub(crate) sort: Option<datazen_ui_api::ColumnSort>,
+    pub(crate) filter: Option<datazen_ui_api::ColumnFilter>,
 }

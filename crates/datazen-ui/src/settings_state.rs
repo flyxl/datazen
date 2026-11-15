@@ -200,6 +200,60 @@ impl AppState {
             .unwrap_or(TABLE_PAGE_SIZE)
     }
 
+    /// A4: scope key for per-table column width persistence.
+    pub(crate) fn colw_scope(&self) -> String {
+        self.desktop_connection
+            .clone()
+            .unwrap_or_else(|| "local".into())
+    }
+
+    /// A4: stable layout key for one column width, persisted per table.
+    /// Uses a stable FNV-1a hash so the key stays within the Layout key
+    /// alphabet (lowercase letters, digits, hyphens) regardless of table or
+    /// column name characters.
+    pub(crate) fn colw_key(&self, table: &str, column: &str) -> String {
+        fn fnv1a64(s: &str) -> u64 {
+            let mut h: u64 = 0xcbf29ce484222325;
+            for b in s.as_bytes() {
+                h ^= *b as u64;
+                h = h.wrapping_mul(0x100000001b3);
+            }
+            h
+        }
+        let identity = format!("{}\0{}\0{}", self.colw_scope(), table, column);
+        format!("colw-{:016x}", fnv1a64(&identity))
+    }
+
+    /// A4: apply persisted column widths for the currently loaded table grid.
+    pub(crate) fn apply_table_column_widths(&mut self) {
+        if !self.grid.has_page() {
+            return;
+        }
+        let table = self.grid.table_label().to_owned();
+        let cols = self.grid.cols;
+        for col in 0..cols {
+            if let Some(name) = self.grid.column_name(col).map(str::to_owned) {
+                let key = self.colw_key(&table, &name);
+                if let Some(width) = self.layout_size(&key) {
+                    self.grid.set_col_w(col, width);
+                }
+            }
+        }
+    }
+
+    /// A4: set and persist one table column width (points).
+    pub(crate) fn set_table_column_width(&mut self, table: &str, column: &str, width: u32) -> Result<(), String> {
+        let key = self.colw_key(table, column);
+        let width = width.max(40);
+        self.set_layout_size(&key, width)?;
+        if self.grid.has_page() && self.grid.table_label() == table {
+            if let Some(col) = (0..self.grid.cols).find(|c| self.grid.column_name(*c) == Some(column)) {
+                self.grid.set_col_w(col, width);
+            }
+        }
+        Ok(())
+    }
+
     /// Set the table page size from the settings input; an invalid value keeps
     /// the old one and shows the port's error.
     pub(crate) fn set_table_page_size(&mut self) {
