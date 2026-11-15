@@ -54,3 +54,16 @@
 - **门禁**：GR2 **162 passed / 0 failed**（`--test-threads=1`）；GR4 `cargo check -p datazen-rune-host --offline` 通过。
 
 说明：A1 目标中的 pinned/用户分组仍依赖 `ConnectionProfile`/公开契约未承载的元数据，未在本增量臆造；已在契约允许范围内提供“最近（会话态）/全部”树层级与值过滤，并持续记录差距。
+
+## 增量：首页像素对齐（空态 + 落地页 + 壳层溢出修复）
+
+- **提交**：feat `729eae712`，docs 本次提交
+- **取证**：headless 截图对照（`datazen-native`/`datazen-rune` `--snap/--tree --size 1440x816`）。改版前首页为裸 hero；对照 React `ConnectionWorkspaceHome`/`HomeHero`/`ConnectionCardList`/`RecentQueriesList`/`ShortcutFooter` 重排后，`--tree` 逐元素核对 bounds。
+- **壳层修复（影响全部页）**：`app.rs` 的 `datazen-body` 原为 `h_full`（=整窗 816），叠在 40pt 自绘标题栏下整体越界 40pt（导航/内容列 bottom 856、状态栏文本 804.5..819.5 被 816 裁掉 descender）；改为 `grow(1.0)+min_h(0.0)` 后 `datazen-body` 40..816(776)，`content-status-bar` 752..792、文本 764.5..779.5 完整入窗。
+- **空态（React State 1）**：`connections-empty` 居中卡（图标 48 + "No connections yet" + 提示 + Import ghost + Create first primary），`import-connections`/`connections-create-first` 键保留；导入条（密码输入+提示）以 12pt 间距居中挂在卡片正下（`--tree`：卡片中心 x=918.5，导入条中心 x=918.5 完全对齐）。
+- **落地页（React State 3）**：`connections-home-hero`（"Select a connection" 17pt/700 + 加粗计数 rich 文本 + 右侧引擎徽章簇，引擎 hue 稳定映射 postgres=256/sqlite=152/mysql=58 等）、`connections-header`（"YOUR CONNECTIONS" 大写靠左 + 筛选输入 + Import + New connection 靠右，justify-between）、`connections-card-list` 边框圆角卡（引擎徽章 34、名称+小 chip、PostgreSQL mono 显示名、`conn-status-{id}` 状态 pill Connected/Connecting…/Offline、`conn-open-{id}` Connect/Open 按钮、>6 条 `connections-showing`+`connections-show-all` 分页、无匹配 `connections-no-match`）、`connections-recent-queries` 空态卡（⏱ No recent queries，诚实占位）、`connections-shortcut-footer`（⌘↩ Run query）。内容列居中 max-w 1008 + scroll。
+- **状态判定**：`connection_is_open`（desktop 连接 id 或 workspace 会话匹配）驱动 Connected/Open；Connecting… pill 仅在 `connect_loading` 且 recent 首位即该连接时显示。
+- **诚实占位**：Recent queries 数据源（host 未暴露 query history）与 shortcut footer 仅列出真实接线的 ⌘↩。
+- **测试**：新增 3 项——`connections_home_without_connections_centers_the_empty_state`、`connections_home_filters_and_pages_the_card_list`（筛选软过滤、no-match、6 条分页/Show all）、`connection_cards_show_the_status_pill_and_the_connected_open_button`；既有 176 项（导入、表单、适配器横幅、连接打开等）保持兼容。
+- **门禁**：GR2 **179 passed / 0 failed**（`--test-threads=1`）；GR4 `cargo check -p datazen-rune-host --offline` 通过（8 个既有 warnings）。
+- **截图**：改版后空态 `rune-home-empty-v2.png`、落地页 `rune-home-landing-v2.png`（1440x816）已与 React 基准逐块比对：居中/两端对齐/卡列表结构一致；差异保留项——Recent queries 无数据、footer 仅一项快捷键（契约限制，诚实展示）。
