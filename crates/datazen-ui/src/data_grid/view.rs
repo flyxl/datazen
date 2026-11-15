@@ -103,7 +103,7 @@ pub fn panel(
         .gap(8.0)
         .child(text(status).font(label_style()).color(muted).key("data-grid-status"))
         .child(status_banner(state, muted, well))
-        .child(pending_changes_bar(state, ink, muted, well))
+        .child(pending_changes_bar(state, muted, well))
         .child(filter_bar(state, ink, muted, well))
         .child(fk_bar(state, ink, muted, well))
         .child(sheet(grid, GridSlot::Table, ink, well, 380.0, dark))
@@ -150,29 +150,13 @@ fn status_banner(state: &crate::AppState, muted: rune::Color, well: rune::Color)
     col_el
 }
 
-/// A4: pending/staged changes bar (待提交条) with commit/rollback affordances.
-fn pending_changes_bar(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well: rune::Color) -> El {
+/// A4: pending/staged changes bar (待提交条) showing staged change count.
+/// Commit/Rollback buttons remain in the footer for stable hit-testing and
+/// compatibility with existing interactions.
+fn pending_changes_bar(state: &crate::AppState, muted: rune::Color, well: rune::Color) -> El {
     let dirty = state.grid.dirty_cells();
     if dirty == 0 || state.grid.read_only_reason().is_some() {
-        // Always present with handlers for test/runtime compatibility; visually hidden.
-        return row()
-            .key("pending-changes-bar")
-            .w_full()
-            .h(0.0)
-            .child(
-                row()
-                    .key("commit-staged")
-                    .w(0.0)
-                    .h(0.0)
-                    .on_press(|state: &mut crate::AppState| state.commit_staged_edits()),
-            )
-            .child(
-                row()
-                    .key("rollback-staged")
-                    .w(0.0)
-                    .h(0.0)
-                    .on_press(|state: &mut crate::AppState| state.rollback_staged_edits()),
-            );
+        return row().key("pending-changes-bar").w_full().h(0.0);
     }
     row()
         .key("pending-changes-bar")
@@ -184,29 +168,12 @@ fn pending_changes_bar(state: &crate::AppState, ink: rune::Color, muted: rune::C
         .radius(6.0)
         .fill(well)
         .child(
-            text(format!("{dirty} pending change{}", if dirty == 1 { "" } else { "s" }))
-                .font(label_style())
-                .color(muted),
-        )
-        .child(
-            row()
-                .key("commit-staged")
-                .h(24.0)
-                .px(8.0)
-                .center_y()
-                .radius(6.0)
-                .child(text("Commit").font(label_style()).color(ink))
-                .on_press(|state: &mut crate::AppState| state.commit_staged_edits()),
-        )
-        .child(
-            row()
-                .key("rollback-staged")
-                .h(24.0)
-                .px(8.0)
-                .center_y()
-                .radius(6.0)
-                .child(text("Rollback").font(label_style()).color(ink))
-                .on_press(|state: &mut crate::AppState| state.rollback_staged_edits()),
+            text(format!(
+                "{dirty} pending change{} — use Commit/Rollback",
+                if dirty == 1 { "" } else { "s" }
+            ))
+            .font(label_style())
+            .color(muted),
         )
 }
 
@@ -473,6 +440,26 @@ fn footer(state: &crate::AppState, ink: rune::Color, muted: rune::Color) -> El {
             text(format!("{} per page · {} rows", grid.page_size(), grid.total_rows()))
                 .font(label_style())
                 .color(muted),
+        )
+        .child(
+            row()
+                .key("commit-staged")
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .child(text("Commit").font(label_style()).color(ink))
+                .on_press(|state: &mut crate::AppState| state.commit_staged_edits()),
+        )
+        .child(
+            row()
+                .key("rollback-staged")
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .child(text("Rollback").font(label_style()).color(ink))
+                .on_press(|state: &mut crate::AppState| state.rollback_staged_edits()),
         );
     footer
 }
