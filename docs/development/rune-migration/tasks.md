@@ -4,7 +4,7 @@
 
 React 页面和组件不删不改。一个任务一个提交，不并行。
 
-第一阶段（S/B/Q/O/P/D/W/H/C）已全部完成。第二阶段（N 系列，原生宿主接线）的任务与门禁见 [plan-native.md](plan-native.md)。第三阶段（T 系列，宿主能力与分发）的任务与门禁见 [plan-native-3.md](plan-native-3.md)。第四阶段（E 系列，basic 驱动接入）的任务与门禁见 [plan-native-4.md](plan-native-4.md)。
+第一阶段（S/B/Q/O/P/D/W/H/C）已全部完成。第二阶段（N 系列，原生宿主接线）的任务与门禁见 [plan-native.md](plan-native.md)。第三阶段（T 系列，宿主能力与分发）的任务与门禁见 [plan-native-3.md](plan-native-3.md)。第四阶段（E 系列，basic 驱动接入）的任务与门禁见 [plan-native-4.md](plan-native-4.md)。X 系列是计划外的文档任务（X1：纯 native 包编译指南 building-native.md）。
 
 两个阶段共用的门禁（E 系列沿用，另见 [plan-native-4.md](plan-native-4.md) 的 GR5）：
 
@@ -124,4 +124,5 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | E4 | 已完成 | d4d59d1 | testing/E4-driver-factories.md |
 | E5 | 已完成 | d221c3e | testing/E5-connection-form.md |
 | E6 | 已完成 | a623e8a | testing/E6-refused-connections.md |
-| E7 | 已完成 | （本提交） | testing/E7-docs-closeout.md |
+| E7 | 已完成 | 89caf0c | testing/E7-docs-closeout.md |
+| X1 | 已完成 | （本提交） | testing/X1-native-build-doc.md |

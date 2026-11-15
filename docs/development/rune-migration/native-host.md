@@ -9,14 +9,12 @@ cargo build --release -p datazen-rune-host
 ./target/release/datazen-native
 ```
 
+工具链与系统依赖、驱动链接语义、体积剖面、`.deb` 打包与发布流水线的完整说明见**编译指南** [building-native.md](building-native.md)；本文件只保留宿主的运行面（配置目录、驱动矩阵、功能差距）。
+
 ### 打包（T11）
 
-- **`.deb`**：`packaging/native/build-deb.sh [release|dev]` —— release 二进制 + desktop 项 + 应用图标 + control（`Depends: libxkbcommon0`），`dpkg-deb --root-owner-group` 产出 `target/deb/datazen-native_<版本>_<架构>.deb`；版本取 git describe（tag→净版本）。
-- **发布流水线**：`.github/workflows/release-native.yml` —— 打 `v*` tag 或手动触发，Linux（.deb + 发布）/macOS（tar.gz）/Windows（zip）三平台构建 `datazen-native`，产物上传到该 tag 的草稿 release（与 Tauri 版 `release.yml` 同惯例：softprops v3、draft、单一 notes 写者、并发组）。React/Tauri 桌面仍走 `release.yml`，两条流水线互不触碰。
-
-- 工具链：Rust stable（CI 同款）。
-- Linux 依赖：`libxkbcommon`（winit 事件层）。无显示环境（无 X/Wayland）时窗口初始化会失败——这是图形应用的预期行为。
-- 产物裁剪：workspace release 剖面（`strip` + `lto` + `codegen-units=1` + `opt-level=z"`），x86_64 Linux 实测约 36 MB。
+- **`.deb`**：`packaging/native/build-deb.sh [release|dev]`，细节见编译指南第 6 节。
+- **发布流水线**：`.github/workflows/release-native.yml` —— 打 `v*` tag 或手动触发，Linux（.deb + 发布）/macOS（tar.gz）/Windows（zip）三平台构建，产物上传到该 tag 的草稿 release。React/Tauri 桌面仍走 `release.yml`，两条流水线互不触碰。
 
 ## 配置目录
 
