@@ -4,18 +4,18 @@ use crate::data_grid::DataGrid;
 use crate::sql_editor::SqlEditor;
 use crate::types::{Section, TableView, Tool};
 use crate::{icons, splitter};
-use datazen_ui_api::{
-    AdapterDelivery, AdapterJob, Catalog, ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile,
-    DashboardWidget, DESKTOP_NOT_IMPLEMENTED, DesktopAdapter, MemoryWorkspace, ProgressSnapshot,
-    QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, UnimplementedAdapter, Workflow,
-    WorkflowStepResult, WorkspaceApi,
-};
 #[cfg(not(target_arch = "wasm32"))]
 use datazen_ui_api::UseCaseAdapter;
+use datazen_ui_api::{
+    AdapterDelivery, AdapterJob, Catalog, ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile,
+    DashboardWidget, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting,
+    SettingsApi, TabKind, TablePage, Tabs, UnimplementedAdapter, Workflow, WorkflowStepResult,
+    WorkspaceApi, DESKTOP_NOT_IMPLEMENTED,
+};
 use rune::tok::{self, type_};
 use rune::{
-    App, AppSpec, Color, Cx, El, FileDialogOptions, FileDialogResult, Ime, Key, KeyEvent,
-    TextEdit, Titlebar, Tx, col, oklch, row, text, text_input,
+    col, oklch, row, text, text_input, App, AppSpec, Color, Cx, El, FileDialogOptions,
+    FileDialogResult, Ime, Key, KeyEvent, TextEdit, Titlebar, Tx,
 };
 
 pub struct AppState {
@@ -91,6 +91,9 @@ pub struct AppState {
     pub(crate) page_size_input: TextEdit,
     pub(crate) max_rows_input: TextEdit,
     pub(crate) settings_error: Option<String>,
+    /// Selected settings section (A6): grouped navigation + deep-link within
+    /// the settings page. Addressable by key so a specific section can be opened.
+    pub(crate) settings_section: String,
     /// The connection form's fields and its last rejected save.
     pub(crate) connection_dialog_open: bool,
     pub(crate) connection_name: TextEdit,
@@ -262,6 +265,7 @@ impl Default for AppState {
             page_size_input: TextEdit::new(String::new()),
             max_rows_input: TextEdit::new(String::new()),
             settings_error: None,
+            settings_section: "general".into(),
             connection_dialog_open: false,
             connection_name: TextEdit::new(String::new()),
             connection_engine: TextEdit::new(String::new()),

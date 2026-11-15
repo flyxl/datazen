@@ -4,16 +4,141 @@
 use super::*;
 
 use crate::constants::*;
-use crate::icons::{self, ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, section_icon};
+use crate::icons::{self, section_icon, ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT};
+use crate::settings_state::{SettingsSectionDef, SETTINGS_NAV_GROUPS, SETTINGS_SECTIONS};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
 use crate::{splitter, sql_editor};
-use datazen_ui_api::{ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi};
-use rune::{FileDialogOptions, TextEdit, Tx};
+use datazen_ui_api::{
+    ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi,
+    Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi,
+};
 use rune::tok::{self, type_};
-use rune::{Color, Cx, El, col, oklch, row, text, text_input};
+use rune::{col, oklch, row, text, text_input, Color, Cx, El};
+use rune::{FileDialogOptions, TextEdit, Tx};
 
+/// A6: grouped settings navigation (2 groups, 12 sections) with deep-link
+/// selection by section key. Only the active section's content renders so
+/// navigation switching is observable and addressable.
 pub(crate) fn settings_page(state: &AppState, theme: tok::Theme) -> El {
+    let active = state.settings_section();
+    row()
+        .key("settings-page")
+        .w_full()
+        .h_full()
+        .gap(0.0)
+        .child(settings_nav(state, theme, active))
+        .child(settings_content(state, theme, active))
+}
+
+fn settings_nav(state: &AppState, theme: tok::Theme, active: &str) -> El {
+    let mut nav = col()
+        .key("settings-nav")
+        .w(180.0)
+        .h_full()
+        .px(8.0)
+        .py(8.0)
+        .gap(2.0)
+        .fill(theme.bg);
+
+    for (group_id, group_label) in SETTINGS_NAV_GROUPS {
+        let mut group = col()
+            .key(format!("settings-nav-group-{group_id}"))
+            .w_full()
+            .gap(2.0)
+            .pt(10.0)
+            .child(
+                row()
+                    .key(format!("settings-nav-group-label-{group_id}"))
+                    .w_full()
+                    .h(20.0)
+                    .px(12.0)
+                    .center_y()
+                    .child(
+                        text((*group_label).to_owned())
+                            .font(type_::LABEL)
+                            .color(theme.text_secondary),
+                    ),
+            );
+        for section in SETTINGS_SECTIONS
+            .iter()
+            .filter(|section| section.group == group_id)
+        {
+            let is_active = section.id == active;
+            let id = section.id;
+            let fill = if is_active {
+                theme.control_off
+            } else {
+                theme.bg
+            };
+            let label_color = if is_active {
+                theme.text
+            } else {
+                theme.text_secondary
+            };
+            group = group.child(
+                row()
+                    .key(format!("settings-nav-{id}"))
+                    .w_full()
+                    .h(30.0)
+                    .px(12.0)
+                    .center_y()
+                    .radius(6.0)
+                    .fill(fill)
+                    .child(
+                        text(section.label.to_owned())
+                            .font(type_::LABEL)
+                            .color(label_color),
+                    )
+                    .on_press(move |state: &mut AppState| state.set_settings_section(id)),
+            );
+        }
+        nav = nav.child(group);
+    }
+    nav
+}
+
+fn settings_content(state: &AppState, theme: tok::Theme, active: &str) -> El {
+    let body = match active {
+        "general" => general_section(state, theme),
+        "appearance" => appearance_section(state, theme),
+        "dataBrowsing" => data_browsing_section(state, theme),
+        "editor" => editor_section(state, theme),
+        "behavior" => behavior_section(state, theme),
+        "logging" => placeholder_section("logging", "Logging", theme),
+        "ai" => placeholder_section("ai", "AI Assistant", theme),
+        "prompts" => placeholder_section("prompts", "Prompts", theme),
+        "mcpServer" => placeholder_section("mcpServer", "MCP Server", theme),
+        "mcpClient" => placeholder_section("mcpClient", "MCP Client", theme),
+        "tunnels" => placeholder_section("tunnels", "Tunnels", theme),
+        "extensions" => placeholder_section("extensions", "Extensions", theme),
+        _ => placeholder_section(active, "Settings", theme),
+    };
+    col()
+        .key(format!("settings-content-{active}"))
+        .grow(1.0)
+        .h_full()
+        .px(24.0)
+        .py(16.0)
+        .gap(12.0)
+        .child(body)
+}
+
+fn general_section(state: &AppState, theme: tok::Theme) -> El {
+    col()
+        .key("settings-section-general")
+        .w_full()
+        .gap(12.0)
+        .child(section_title("General", theme))
+        .child(
+            text("Application settings and saved queries.".to_owned())
+                .font(type_::LABEL)
+                .color(theme.text_secondary),
+        )
+        .child(favorites_section(state, theme))
+}
+
+fn appearance_section(state: &AppState, theme: tok::Theme) -> El {
     let settings = state.ui_settings();
     let dark = settings
         .iter()
@@ -22,24 +147,11 @@ pub(crate) fn settings_page(state: &AppState, theme: tok::Theme) -> El {
             _ => None,
         })
         .unwrap_or(true);
-    let page_size = settings
-        .iter()
-        .find_map(|setting| match setting {
-            Setting::TablePageSize { rows } => Some(*rows),
-            _ => None,
-        })
-        .unwrap_or(TABLE_PAGE_SIZE);
-    let max_rows = settings
-        .iter()
-        .find_map(|setting| match setting {
-            Setting::QueryMaxRows { rows } => Some(*rows),
-            _ => None,
-        })
-        .unwrap_or(100);
-    let mut page = col()
-        .key("settings-page")
+    col()
+        .key("settings-section-appearance")
         .w_full()
         .gap(12.0)
+        .child(section_title("Appearance", theme))
         .child(
             row()
                 .key("settings-appearance")
@@ -47,11 +159,6 @@ pub(crate) fn settings_page(state: &AppState, theme: tok::Theme) -> El {
                 .h(32.0)
                 .gap(12.0)
                 .center_y()
-                .child(
-                    text("Appearance".to_owned())
-                        .font(type_::TITLE)
-                        .color(theme.text),
-                )
                 .child(
                     row()
                         .key("settings-theme")
@@ -68,6 +175,30 @@ pub(crate) fn settings_page(state: &AppState, theme: tok::Theme) -> El {
                         .on_press(|state: &mut AppState| state.toggle_theme()),
                 ),
         )
+        .child(settings_error_row(state, theme))
+}
+
+fn data_browsing_section(state: &AppState, theme: tok::Theme) -> El {
+    let settings = state.ui_settings();
+    let page_size = settings
+        .iter()
+        .find_map(|setting| match setting {
+            Setting::TablePageSize { rows } => Some(*rows),
+            _ => None,
+        })
+        .unwrap_or(TABLE_PAGE_SIZE);
+    let max_rows = settings
+        .iter()
+        .find_map(|setting| match setting {
+            Setting::QueryMaxRows { rows } => Some(*rows),
+            _ => None,
+        })
+        .unwrap_or(100);
+    col()
+        .key("settings-section-dataBrowsing")
+        .w_full()
+        .gap(12.0)
+        .child(section_title("Data Browsing", theme))
         .child(
             row()
                 .key("settings-data")
@@ -75,7 +206,6 @@ pub(crate) fn settings_page(state: &AppState, theme: tok::Theme) -> El {
                 .h(32.0)
                 .gap(8.0)
                 .center_y()
-                .child(text("Data".to_owned()).font(type_::TITLE).color(theme.text))
                 .child(
                     text(format!("Rows per page: {page_size}"))
                         .font(type_::LABEL)
@@ -122,27 +252,80 @@ pub(crate) fn settings_page(state: &AppState, theme: tok::Theme) -> El {
                         .child(text("Set").font(type_::LABEL).color(theme.text))
                         .on_press(|state: &mut AppState| state.set_query_max_rows()),
                 ),
-        );
-    if let Some(error) = &state.settings_error {
-        page = page.child(
-            row()
-                .key("settings-error")
-                .w_full()
-                .h(24.0)
-                .px(8.0)
-                .center_y()
-                .radius(6.0)
-                .fill(theme.control_off)
-                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
-        );
-    }
+        )
+        .child(settings_error_row(state, theme))
+        .child(export_section(state, theme))
+        .child(import_section(state, theme))
+        .child(backup_section(state, theme))
+}
 
+fn editor_section(state: &AppState, theme: tok::Theme) -> El {
+    col()
+        .key("settings-section-editor")
+        .w_full()
+        .gap(12.0)
+        .child(section_title("Editor", theme))
+        .child(snippets_section(state, theme))
+}
+
+fn behavior_section(_state: &AppState, theme: tok::Theme) -> El {
+    placeholder_section("behavior", "Behavior", theme)
+}
+
+fn section_title(label: &str, theme: tok::Theme) -> El {
+    row()
+        .w_full()
+        .h(28.0)
+        .center_y()
+        .child(text(label.to_owned()).font(type_::TITLE).color(theme.text))
+}
+
+fn placeholder_section(id: &str, label: &str, theme: tok::Theme) -> El {
+    col()
+        .key(format!("settings-section-{id}"))
+        .w_full()
+        .gap(8.0)
+        .child(section_title(label, theme))
+        .child(
+            text(format!(
+                "{label} settings are not available in this Rune build yet."
+            ))
+            .font(type_::LABEL)
+            .color(theme.text_secondary),
+        )
+}
+
+fn settings_error_row(state: &AppState, theme: tok::Theme) -> El {
+    if let Some(error) = &state.settings_error {
+        row()
+            .key("settings-error")
+            .w_full()
+            .h(24.0)
+            .px(8.0)
+            .center_y()
+            .radius(6.0)
+            .fill(theme.control_off)
+            .child(
+                text(error.clone())
+                    .font(type_::LABEL)
+                    .color(theme.text_secondary),
+            )
+    } else {
+        row().key("settings-error-empty").w(0.0).h(0.0)
+    }
+}
+
+fn snippets_section(state: &AppState, theme: tok::Theme) -> El {
     // SQL snippets: add, update, delete.
     let mut snippets = col()
         .key("settings-snippets")
         .w_full()
         .gap(6.0)
-        .child(text("SQL snippets".to_owned()).font(type_::TITLE).color(theme.text))
+        .child(
+            text("SQL snippets".to_owned())
+                .font(type_::TITLE)
+                .color(theme.text),
+        )
         .child(
             row()
                 .key("snippet-form")
@@ -199,8 +382,16 @@ pub(crate) fn settings_page(state: &AppState, theme: tok::Theme) -> El {
                 .px(8.0)
                 .radius(6.0)
                 .fill(theme.control_off)
-                .child(text(snippet.name.clone()).font(type_::LABEL).color(theme.text))
-                .child(text(snippet.sql.clone()).font(type_::LABEL).color(theme.text_secondary))
+                .child(
+                    text(snippet.name.clone())
+                        .font(type_::LABEL)
+                        .color(theme.text),
+                )
+                .child(
+                    text(snippet.sql.clone())
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                )
                 .child(
                     row()
                         .key(format!("snippet-delete-{index}"))
@@ -209,7 +400,11 @@ pub(crate) fn settings_page(state: &AppState, theme: tok::Theme) -> El {
                         .center_y()
                         .radius(4.0)
                         .fill(theme.control_off)
-                        .child(text("Delete").font(type_::LABEL).color(theme.text_secondary))
+                        .child(
+                            text("Delete")
+                                .font(type_::LABEL)
+                                .color(theme.text_secondary),
+                        )
                         .on_press(move |state: &mut AppState| state.delete_snippet(&name)),
                 ),
         );
@@ -224,14 +419,14 @@ pub(crate) fn settings_page(state: &AppState, theme: tok::Theme) -> El {
                 .center_y()
                 .radius(6.0)
                 .fill(theme.control_off)
-                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+                .child(
+                    text(error.clone())
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
         );
     }
-    page.child(snippets)
-        .child(favorites_section(state, theme))
-        .child(export_section(state, theme))
-        .child(import_section(state, theme))
-        .child(backup_section(state, theme))
+    snippets
 }
 
 /// The favorites section (T6): save the current query, list the host's
@@ -242,7 +437,11 @@ pub(crate) fn favorites_section(state: &AppState, theme: tok::Theme) -> El {
         .key("settings-favorites")
         .w_full()
         .gap(6.0)
-        .child(text("Favorites".to_owned()).font(type_::TITLE).color(theme.text))
+        .child(
+            text("Favorites".to_owned())
+                .font(type_::TITLE)
+                .color(theme.text),
+        )
         .child(
             row()
                 .key("favorite-form")
@@ -300,7 +499,11 @@ pub(crate) fn favorites_section(state: &AppState, theme: tok::Theme) -> El {
                 .px(8.0)
                 .radius(6.0)
                 .fill(theme.control_off)
-                .child(text(favorite.title.clone()).font(type_::LABEL).color(theme.text))
+                .child(
+                    text(favorite.title.clone())
+                        .font(type_::LABEL)
+                        .color(theme.text),
+                )
                 .child(
                     text(favorite.sql.clone())
                         .font(type_::LABEL)
@@ -336,7 +539,11 @@ pub(crate) fn favorites_section(state: &AppState, theme: tok::Theme) -> El {
                         .center_y()
                         .radius(4.0)
                         .fill(theme.control_off)
-                        .child(text("Delete").font(type_::LABEL).color(theme.text_secondary))
+                        .child(
+                            text("Delete")
+                                .font(type_::LABEL)
+                                .color(theme.text_secondary),
+                        )
                         .on_press(move |state: &mut AppState| state.delete_favorite_row(index)),
                 ),
         );
@@ -351,7 +558,11 @@ pub(crate) fn favorites_section(state: &AppState, theme: tok::Theme) -> El {
                 .center_y()
                 .radius(6.0)
                 .fill(theme.control_off)
-                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+                .child(
+                    text(error.clone())
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
         );
     }
     section
@@ -363,7 +574,11 @@ pub(crate) fn backup_section(state: &AppState, theme: tok::Theme) -> El {
         .key("backup-section")
         .w_full()
         .gap(6.0)
-        .child(text("Backup".to_owned()).font(type_::TITLE).color(theme.text))
+        .child(
+            text("Backup".to_owned())
+                .font(type_::TITLE)
+                .color(theme.text),
+        )
         .child(
             row()
                 .key("backup-controls")
@@ -380,7 +595,9 @@ pub(crate) fn backup_section(state: &AppState, theme: tok::Theme) -> El {
                         .radius(6.0)
                         .fill(theme.control_off)
                         .child(text("Start backup").font(type_::LABEL).color(theme.text))
-                        .on_press_tx(|state: &mut AppState, tx: &mut Tx| state.begin_backup_form(tx)),
+                        .on_press_tx(|state: &mut AppState, tx: &mut Tx| {
+                            state.begin_backup_form(tx)
+                        }),
                 )
                 .child(
                     row()
@@ -415,7 +632,11 @@ pub(crate) fn backup_section(state: &AppState, theme: tok::Theme) -> El {
                 .center_y()
                 .radius(6.0)
                 .fill(theme.control_off)
-                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+                .child(
+                    text(error.clone())
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
         );
     }
     if let Some(snapshot) = &state.backup_snapshot {
@@ -427,11 +648,11 @@ pub(crate) fn backup_section(state: &AppState, theme: tok::Theme) -> El {
 /// The import wizard's first two steps: source, then target table. No target,
 /// no next step.
 pub(crate) fn import_section(state: &AppState, theme: tok::Theme) -> El {
-    let mut section = col()
-        .key("import-section")
-        .w_full()
-        .gap(6.0)
-        .child(text("Import".to_owned()).font(type_::TITLE).color(theme.text));
+    let mut section = col().key("import-section").w_full().gap(6.0).child(
+        text("Import".to_owned())
+            .font(type_::TITLE)
+            .color(theme.text),
+    );
     match state.import_step {
         0 => section = section.child(
             row()
@@ -567,7 +788,11 @@ pub(crate) fn import_section(state: &AppState, theme: tok::Theme) -> El {
                 .center_y()
                 .radius(6.0)
                 .fill(theme.control_off)
-                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+                .child(
+                    text(error.clone())
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
         );
     }
     section
@@ -577,7 +802,11 @@ pub(crate) fn export_section(state: &AppState, theme: tok::Theme) -> El {
         .key("export-section")
         .w_full()
         .gap(6.0)
-        .child(text("Export".to_owned()).font(type_::TITLE).color(theme.text))
+        .child(
+            text("Export".to_owned())
+                .font(type_::TITLE)
+                .color(theme.text),
+        )
         .child(
             row()
                 .key("export-form")
@@ -616,7 +845,9 @@ pub(crate) fn export_section(state: &AppState, theme: tok::Theme) -> El {
                         .radius(6.0)
                         .fill(theme.control_off)
                         .child(text("Export").font(type_::LABEL).color(theme.text))
-                        .on_press_tx(|state: &mut AppState, tx: &mut Tx| state.begin_export_form(tx)),
+                        .on_press_tx(|state: &mut AppState, tx: &mut Tx| {
+                            state.begin_export_form(tx)
+                        }),
                 ),
         );
     if let Some(error) = &state.export_error {
@@ -629,7 +860,11 @@ pub(crate) fn export_section(state: &AppState, theme: tok::Theme) -> El {
                 .center_y()
                 .radius(6.0)
                 .fill(theme.control_off)
-                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+                .child(
+                    text(error.clone())
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
         );
     }
     if let Some(job) = state.export_job {
@@ -642,7 +877,11 @@ pub(crate) fn export_section(state: &AppState, theme: tok::Theme) -> El {
                 .center_y()
                 .radius(6.0)
                 .fill(theme.control_off)
-                .child(text(format!("job #{job}")).font(type_::LABEL).color(theme.text_secondary))
+                .child(
+                    text(format!("job #{job}"))
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                )
                 .child(
                     row()
                         .key("export-refresh")
