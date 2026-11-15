@@ -26,9 +26,11 @@ React 页面和组件保留。不删除、不改成空壳、不把现有入口�
 - [x] S1–S6、B1–B8、Q、O、P、D、W、H、C1–C2 全部完成（提交与测试报告见 [tasks.md](tasks.md)）
 - [x] C3 收尾测量（数字见下节）
 - [x] C4 未迁移区域提示（WAPPS/Onboarding 告知 React 页面还在，见 [testing/C4-unmigrated-notice.md](testing/C4-unmigrated-notice.md)）
+- [x] A4 表浏览对齐：行号 gutter、按表列宽持久化与回填、FK 面包屑、状态横幅、待提交条（`e041fc463`, `5ae657365`；测试报告 `testing/A4-table-browse.md`）
 
 ## Verification
-`cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1`：datazen-ui 113 passed、datazen-ui-api 54 passed；GR2 `cargo check` exit 0。
+- A4（2026-11-16，本 worktree `feature/a4-table-browse`）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui --offline --lib -- --test-threads=1` → **164 passed, 0 failed**；`CARGO_TARGET_DIR="$PWD/target" cargo check -p datazen-rune-host --offline` → exit 0（既有 warnings）。报告：`testing/A4-table-browse.md`；提交：`e041fc463`（feat）、`5ae657365`（fix）。
+- 历史基线（C3 收尾）：`cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1`：datazen-ui 113 passed、datazen-ui-api 54 passed；GR2 `cargo check` exit 0。
 
 ## 收尾测量（C3）
 
