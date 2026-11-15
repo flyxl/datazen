@@ -1,7 +1,7 @@
 ## Current Task
-- **任务**: L5 ContentToolbar 48pt（按 section 出动作行）+ PanelTabBar 48pt（tablist 键盘 Arrow/Home/End、active 下划线、关闭钮）
+- **任务**: L6 ContentStatusBar 40pt（连接状态 + 库/表/列/行计数 + 快捷键提示），替换底部 “Migration preview” 横幅
 - **负责人**: Coder Agent
-- **状态**: L1–L4 已完成（L4: rail 40/112 + 折叠持久化、navigator 280 可拖拽 min200/max500 持久化、树/动作迁入 navigator，GR2 156 / GR4 绿）；第五阶段计划见 [plan-native-5.md](plan-native-5.md)。L5 进行中。
+- **状态**: L1–L5 已完成（L5: 48pt ContentToolbar + 48pt PanelTabBar/tablist，GR2 157 / GR4 绿）；第五阶段计划见 [plan-native-5.md](plan-native-5.md)。L6 进行中。
 
 ## N5 组装配方（调查结论，fc160ec 时点）
 
