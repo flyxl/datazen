@@ -1,7 +1,7 @@
 ## Current Task
-- **任务**: E7（文档收尾）——第四阶段（basic 驱动接入，[plan-native-4.md](plan-native-4.md)）。
+- **任务**: 无——第四阶段（basic 驱动接入，[plan-native-4.md](plan-native-4.md)）E1–E7 全部完成。
 - **负责人**: Coder Agent
-- **状态**: E1（fc1c658）、E2（e8a2337）、E3（ef116f8）、E4（d4d59d1）、E5（d221c3e）、E6（a623e8a）已完成；E7 进行中（native-host.md 驱动矩阵与验证程度分级、tasks/progress 收口）。
+- **状态**: 四阶段计划全部完成并推送：帧循环零无界 IO（E1–E3）、宿主静态准入 basic SKU 十一工厂（E4）、连接表单接活宿主（E5）、离线验证扫尾（E6）、文档矩阵分级收口（E7）。真机端到端冒烟为环境差距待验（native-host.md 如实分级）；后续扩展点见 plan-native-4.md 范围外清单与 native-host.md 的剩余差距。
 
 ## N5 组装配方（调查结论，fc160ec 时点）
 
