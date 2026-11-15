@@ -131,3 +131,4 @@ React 页面和组件不删不改。一个任务一个提交，不并行。
 | L3 | 已完成 | d019d8f72 | testing/L3-titlebar.md |
 | L4 | 已完成 | e1ebb67fc | testing/L4-rail-navigator.md |
 | L5 | 已完成 | 6e893a41e | testing/L5-toolbar-tabbar.md |
+| L6 | 已完成 | a979152fb | testing/L6-status-bar.md |
