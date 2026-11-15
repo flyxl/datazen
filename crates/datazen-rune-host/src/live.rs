@@ -3877,6 +3877,53 @@ mod tests {
     }
 
     #[test]
+    fn remote_drivers_answer_honest_refusals_from_a_closed_port() {
+        // E6: the linked remote drivers are truly invoked — a connection to
+        // a port nothing listens on (probed before this test: 5432/3306/
+        // 6379 all refuse in this sandbox) fails with the driver's own
+        // connection sentence, never "no driver" and never a lie. The
+        // configs carry a two-second acquire window so the pools' retry
+        // backoff cannot outlast the poll window — the product default
+        // stays thirty. The real-server end-to-end smoke stays an
+        // environment gap: no postgres/mysql/redis binaries here, and no
+        // root to install them.
+        let cases = [
+            ("warehouse-pg", "postgresql", 5432u16),
+            ("warehouse-my", "mysql", 3306),
+            ("warehouse-redis", "redis", 6379),
+        ];
+        for (id, engine, port) in cases {
+            let dir = temp_dir(&format!("refused-{engine}"));
+            let store_path = dir.join("connections.json");
+            let mut config = sqlite_config(id, None);
+            config.database_type = engine.into();
+            config.host = Some("127.0.0.1".into());
+            config.port = Some(port);
+            config.username = Some("app".into());
+            config.connection_timeout = 2;
+            save_connection(&store_path, config);
+            let mut adapter = LiveAdapter::with_data_dir(
+                Arc::new(FileConnectionRepository::open(&store_path).unwrap()),
+                &dir,
+            );
+            assert!(
+                adapter.begin_job(AdapterJob::OpenConnection { generation: 1, id: id.into() }),
+                "the host takes the open job"
+            );
+            let error = poll_open(&mut adapter).expect_err("a closed port cannot open");
+            assert!(
+                !error.contains("no driver"),
+                "{engine}: the driver was resolved and invoked, not missing: {error}"
+            );
+            let lower = error.to_lowercase();
+            assert!(
+                lower.contains("connect") || lower.contains("refus"),
+                "{engine}: the sentence is about the connection: {error}"
+            );
+        }
+    }
+
+    #[test]
     fn a_value_search_finds_the_columns_that_match() {
         let dir = temp_dir("value-search");
         let mut adapter = opened_adapter(&dir);
