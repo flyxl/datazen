@@ -40,10 +40,17 @@
 - 仅改 Rune UI 与文档；React/内核契约未动。
 
 
-## 增量：导航器过滤（树侧，进行中）
+## 增量：导航器过滤（树侧）
 
-- **提交**：见 tasks.md（本增量 feat）
+- **提交**：`14d021f5e`（feat），`655f7e8d9`（docs）
 - **改动**：`navigator_panel` 增加 `navigator-filter-input`；`object_tree` 支持按名称过滤数据库/模式/表并在无匹配时显示 `object-tree-empty`（“No objects”/“No matches”）。
 - **测试**：`navigator_filter_filters_object_tree_nodes`；GR2 **161 passed / 0 failed**。
 
-说明：A1 目标中的 pinned/最近/分组 依赖连接元数据（pin/group/recency）当前 `ConnectionProfile`/状态模型未承载，未在本增量臆造；后续在数据模型具备时继续对齐。
+## 增量：导航器连接树层级（Recent / All，进行中）
+
+- **提交**：feat `73261fa10`，docs 本次提交
+- **改动**：`navigator_panel` 增加 `navigator-connections` 连接树（A1）：`nav-group-recent`（会话内最近打开，`AppState::recent_connection_ids`，UI 状态、非持久化/无契约变更）与 `nav-group-all`（全部可见连接）两级分组；`navigator-filter-input` 同时过滤连接名/引擎/id；点击 `nav-conn-*` / `nav-conn-recent-*` 打开连接并记录 recent。保留既有 `object-tree` 与对象过滤行为。
+- **测试**：`navigator_connections_tree_shows_recent_and_all_groups_and_filters`；既有 `navigator_filter_filters_object_tree_nodes`、`the_navigator_panel_holds_the_tree_and_persists_width` 通过。
+- **门禁**：GR2 **162 passed / 0 failed**（`--test-threads=1`）；GR4 `cargo check -p datazen-rune-host --offline` 通过。
+
+说明：A1 目标中的 pinned/用户分组仍依赖 `ConnectionProfile`/公开契约未承载的元数据，未在本增量臆造；已在契约允许范围内提供“最近（会话态）/全部”树层级与值过滤，并持续记录差距。

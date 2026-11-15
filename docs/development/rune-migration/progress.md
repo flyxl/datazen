@@ -1,7 +1,7 @@
 ## Current Task
-- **任务**: A1 连接首页/树逐页对齐（布局/样式/交互与 Tauri 版一致）— 继续树侧 pinned/最近/分组（受数据模型限制）
+- **任务**: A1 连接首页/树逐页对齐（布局/样式/交互与 Tauri 版一致）— 树侧在契约允许范围内补齐层级后可推进 A2
 - **负责人**: Coder Agent
-- **状态**: L1–L7 已完成；A1 首页与导航器过滤/树空态已提交，GR2 161 / GR4 绿。pinned/最近/分组需连接元数据扩展，按现有契约暂无法完整落地。第五阶段计划见 [plan-native-5.md](plan-native-5.md)。可推进 A2。
+- **状态**: L1–L7 已完成；A1 首页、导航器过滤/树空态、连接树 Recent(会话态)/All 分组与连接名过滤已落地（pinned/用户分组仍受 `ConnectionProfile`/公开契约元数据限制，未臆造）。GR2 **162 passed / 0 failed**，GR4 绿。第五阶段计划见 [plan-native-5.md](plan-native-5.md)。下一步推进 A2 连接表单对话框化。
 
 ## N5 组装配方（调查结论，fc160ec 时点）
 
