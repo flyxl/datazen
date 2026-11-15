@@ -204,6 +204,14 @@ pub struct AppState {
     /// T5: the loaded table's inbound references (None until asked for).
     inbound_refs: Option<Vec<datazen_ui_api::InboundRef>>,
     fk_error: Option<String>,
+    /// E1: the structure generation — bumped by every structure request (a
+    /// table open, a view switch, an ER open). A structure delivery from a
+    /// generation the table's entry has moved past is dropped.
+    structure_generation: u32,
+    /// E1: the loaded structures, per table — the four-part answer the
+    /// structure views and the outbound FK navigation read. Render
+    /// functions read this map only, never the adapter.
+    structures: std::collections::BTreeMap<String, StructureState>,
     /// The export dialog's format, range and its job.
     export_format_index: u32,
     export_range: TextEdit,
@@ -327,6 +335,8 @@ impl Default for AppState {
             value_search_query: String::new(),
             inbound_refs: None,
             fk_error: None,
+            structure_generation: 0,
+            structures: std::collections::BTreeMap::new(),
             export_format_index: 0,
             export_range: TextEdit::new(String::new()),
             export_job: None,
@@ -373,6 +383,17 @@ impl Default for AppState {
             workflow_loading: None,
         }
     }
+}
+
+/// One table's structure read state (E1): the generation the entry waits
+/// on, its loading and error marks, and the four-part answer once it
+/// lands. Render functions read the data; the honest states say
+/// themselves instead of drawing a phantom empty table.
+struct StructureState {
+    generation: u32,
+    loading: bool,
+    error: Option<String>,
+    data: Option<datazen_ui_api::TableStructure>,
 }
 
 impl AppState {
@@ -444,6 +465,12 @@ impl AppState {
 
     fn set_table_view(&mut self, view: TableView) {
         self.table_view = view;
+        // E1: a view switch re-asks for the selected table's structure —
+        // the views render the cache, and the switch is the refresh (the
+        // DDL drafts' apply refetches through the same path).
+        if let Some(table) = self.selected_table() {
+            self.begin_structure_read(&table);
+        }
     }
 
     /// The settings in force: the host's once it persists them (N8), the
@@ -492,7 +519,10 @@ impl AppState {
     }
 
     /// One structure read with the host first (N10): the live catalog's
-    /// answer when the host has one, the memory port's otherwise.
+    /// answer when the host has one, the memory port's otherwise. E1: the
+    /// views no longer call these — the job fills the cache they render,
+    /// and these serve the declined path (the demo process's memory port,
+    /// memory-speed) that fills the same cache on the spot.
     fn structure_ddl(&self, table: &str) -> Result<String, String> {
         self.desktop
             .table_ddl(table)
@@ -759,15 +789,17 @@ impl AppState {
     }
 
     /// The outbound foreign key of the focused cell's column (T5), with the
-    /// column's own pairing index. The loaded page's structure is the
-    /// vocabulary the N10 reads already carry.
+    /// column's own pairing index. E1: the key list is the structure
+    /// cache's foreign-key segment — the job's answer, never a live read.
     fn outbound_fk_of_focus(&self) -> Option<(datazen_ui_api::ForeignKeySpec, usize)> {
         let table = self.grid.table_label().to_owned();
         let column = self.grid.column_name(self.grid.focus().1)?.to_owned();
         let keys = self
-            .desktop
-            .table_foreign_keys(&table)
-            .unwrap_or_else(|_| self.workspace.table_foreign_keys(&table).unwrap_or_default());
+            .structures
+            .get(&table)
+            .and_then(|entry| entry.data.as_ref())
+            .map(|data| data.foreign_keys.clone())
+            .unwrap_or_default();
         keys.into_iter().find_map(|key| {
             let index = key.columns.iter().position(|name| *name == column)?;
             Some((key, index))
@@ -776,8 +808,28 @@ impl AppState {
 
     /// Open the referenced table filtered on the focused cell's value (T5).
     /// A composite key navigates by the focused column's own pairing, the
-    /// same single-column answer the filter bar gives.
+    /// same single-column answer the filter bar gives. E1: a structure that
+    /// has not landed answers with an honest sentence, not a silent no-op.
     fn go_to_referenced_row(&mut self) {
+        let table = self.grid.table_label().to_owned();
+        let not_ready = match self.structures.get(&table) {
+            None | Some(StructureState { loading: true, .. }) => {
+                Some("the table's structure is still loading — try again once it lands".to_owned())
+            }
+            Some(StructureState { error: Some(error), .. }) => Some(error.clone()),
+            Some(StructureState { data: None, .. }) => Some(
+                "the table's structure is not loaded — switch the view or reopen the table"
+                    .to_owned(),
+            ),
+            Some(StructureState { data: Some(_), .. }) => None,
+        };
+        if let Some(sentence) = not_ready {
+            self.fk_error = Some(sentence);
+            return;
+        }
+        // The structure landed: this key press clears the last FK sentence —
+        // a successful navigation leaves no stale error behind.
+        self.fk_error = None;
         let Some((key, index)) = self.outbound_fk_of_focus() else { return };
         let Some(target_column) = key.target_columns.get(index).cloned() else { return };
         let value = self.grid.cell(self.grid.focus().0, self.grid.focus().1);
@@ -1483,8 +1535,20 @@ impl AppState {
             })
             .or_else(|| database.schemas.first().map(|schema| schema.name.clone()));
         if let Some(schema) = schema {
+            // E1: the ER boxes render the structure cache only; the open is
+            // the one moment the reads are asked for — one job per table of
+            // the schema, each landing in its own cache entry.
+            let tables = database
+                .schemas
+                .iter()
+                .find(|node| node.name == schema)
+                .map(|node| node.tables.clone())
+                .unwrap_or_default();
             self.er_schema = Some((database.name.clone(), schema));
             self.active = Section::Workspace;
+            for table in tables {
+                self.begin_structure_read(&table);
+            }
         }
     }
 
@@ -1525,6 +1589,9 @@ impl AppState {
         let sql = drafts.iter().map(|draft| draft.sql(&table)).collect::<Vec<_>>().join("\n");
         if self.workspace.apply_ddl(&table, &sql).is_ok() {
             self.column_drafts.remove(&table);
+            // E1: the applied DDL changed the table's structure — the cache
+            // the views render is refetched through the same job path.
+            self.begin_structure_read(&table);
         }
     }
 
@@ -1600,10 +1667,14 @@ impl AppState {
         self.connect_loading = None;
         self.desktop_catalog = None;
         self.desktop_connection = None;
+        self.structures.clear();
     }
 
     fn open_table_tab(&mut self, title: &str) -> Option<u32> {
         let id = self.tabs.open(TabKind::Table, title)?;
+        // E1: opening a table asks for its structure — the four views and
+        // the outbound FK navigation render the cached answer only.
+        self.begin_structure_read(title);
         self.sync_grid_to_selected_tab();
         Some(id)
     }
@@ -1832,6 +1903,42 @@ impl AppState {
         self.read_generation
     }
 
+    /// Bump and return the next structure generation (E1). Every structure
+    /// request — a table open, a view switch, an ER open — starts one, so a
+    /// delivery from a read the table's entry has moved past is dropped.
+    fn next_structure_generation(&mut self) -> u32 {
+        self.structure_generation += 1;
+        self.structure_generation
+    }
+
+    /// E1: ask for one table's structure as a job — the four reads (DDL,
+    /// columns, indexes, foreign keys) travel together and land as one
+    /// delivery. A host that declines the job keeps the synchronous reads:
+    /// the decline promises the synchronous methods serve, and the demo
+    /// process's memory port is memory-speed — the same cache fills on the
+    /// spot and the render path stays adapter-free either way.
+    fn begin_structure_read(&mut self, table: &str) {
+        let generation = self.next_structure_generation();
+        let job = AdapterJob::ReadStructure { generation, table: table.to_owned() };
+        if self.desktop.begin_job(job) {
+            self.structures.insert(
+                table.to_owned(),
+                StructureState { generation, loading: true, error: None, data: None },
+            );
+            return;
+        }
+        let data = datazen_ui_api::TableStructure {
+            ddl: self.structure_ddl(table).unwrap_or_default(),
+            columns: self.structure_columns(table).unwrap_or_default(),
+            indexes: self.structure_indexes(table).unwrap_or_default(),
+            foreign_keys: self.structure_foreign_keys(table).unwrap_or_default(),
+        };
+        self.structures.insert(
+            table.to_owned(),
+            StructureState { generation, loading: false, error: None, data: Some(data) },
+        );
+    }
+
     /// A host job's answer arrived on the poll path. The loading marker of
     /// the finished request always clears; the state itself is written only
     /// when the delivery's generation is still the current one.
@@ -1849,6 +1956,9 @@ impl AppState {
                         // The session opened: the live catalog is the truth, the
                         // workspace starts fresh and the first table opens
                         // through the same read path as every other one.
+                        // E1: a new session is a new truth — the structure
+                        // cache empties with it.
+                        self.structures.clear();
                         self.collapsed.clear();
                         self.table_page = 0;
                         self.sort = None;
@@ -1903,6 +2013,29 @@ impl AppState {
                     self.table_page = page.page;
                     self.grid.load_page(&page);
                     self.grid.set_editable(page.read_only.is_none());
+                }
+            }
+            AdapterDelivery::StructureRead { generation, table, structure } => {
+                // E1: the answer lands only on the entry still waiting for
+                // this generation — a newer read (a view switch, a reopen,
+                // the DDL drafts' apply) replaced the entry and the late
+                // answer drops on the floor.
+                let Some(entry) = self.structures.get_mut(&table) else {
+                    return;
+                };
+                if entry.generation != generation {
+                    return;
+                }
+                entry.loading = false;
+                match structure {
+                    Ok(data) => {
+                        entry.data = Some(data);
+                        entry.error = None;
+                    }
+                    Err(error) => {
+                        entry.data = None;
+                        entry.error = Some(error);
+                    }
                 }
             }
             AdapterDelivery::CommitCount { generation, count } => {
@@ -3234,10 +3367,17 @@ fn er_view(state: &AppState, database: &str, schema: &str, theme: tok::Theme) ->
         .radius(8.0)
         .fill(theme.control_off);
     for (index, table) in tables.iter().enumerate() {
-        let columns = state.structure_columns(table).unwrap_or_default();
+        // E1: the ER boxes read the structure cache only — the open asked
+        // for every table of the schema, and a box whose read has not
+        // landed says so instead of drawing a phantom empty table.
+        let columns = state
+            .structures
+            .get(table)
+            .and_then(|entry| entry.data.as_ref())
+            .map(|data| data.columns.as_slice());
         let default = ((index % 3) as f32 * 230.0, (index / 3) as f32 * 180.0);
         let (x, y) = state.er_positions.get(table).copied().unwrap_or(default);
-        canvas = canvas.child(er_box(table, &columns, x, y, theme));
+        canvas = canvas.child(er_box(table, columns, x, y, theme));
     }
     col()
         .key("er-page")
@@ -3270,15 +3410,16 @@ fn er_view(state: &AppState, database: &str, schema: &str, theme: tok::Theme) ->
         .child(canvas)
 }
 
-/// One table box. Collapsed boxes show the column count instead of every column.
+/// One table box. Collapsed boxes show the column count instead of every
+/// column; a box whose structure read has not landed says so (E1).
 fn er_box(
     table: &str,
-    columns: &[datazen_ui_api::ColumnSpec],
+    columns: Option<&[datazen_ui_api::ColumnSpec]>,
     x: f32,
     y: f32,
     theme: tok::Theme,
 ) -> El {
-    let collapsed = columns.len() > 12;
+    let collapsed = columns.is_some_and(|columns| columns.len() > 12);
     let table = table.to_owned();
     let drag_table = table.clone();
     let mut class_box = col()
@@ -3317,12 +3458,12 @@ fn er_box(
         });
     if collapsed {
         class_box = class_box.child(
-            text(format!("{} columns", columns.len()))
+            text(format!("{} columns", columns.map_or(0, |columns| columns.len())))
                 .key(format!("er-collapsed-{table}"))
                 .font(type_::LABEL)
                 .color(theme.text_secondary),
         );
-    } else {
+    } else if let Some(columns) = columns {
         for (index, column) in columns.iter().enumerate() {
             class_box = class_box.child(
                 text(column.name.clone())
@@ -3331,6 +3472,13 @@ fn er_box(
                     .color(theme.text_secondary),
             );
         }
+    } else {
+        class_box = class_box.child(
+            text("structure not loaded")
+                .key(format!("er-pending-{table}"))
+                .font(type_::LABEL)
+                .color(theme.text_secondary),
+        );
     }
     class_box
 }
@@ -3379,10 +3527,47 @@ fn view_switcher(state: &AppState, theme: tok::Theme) -> El {
         .child(entry("view-ddl", "DDL", TableView::Ddl, state.table_view == TableView::Ddl))
 }
 
+/// E1: the honest state of one table's structure read — a read in flight,
+/// its failure sentence, or the "not loaded" hint for an entry that never
+/// landed. None when the four segments are there to draw.
+fn structure_notice(state: &AppState, table: &str) -> Option<String> {
+    match state.structures.get(table) {
+        None => Some(
+            "the table's structure is not loaded — switch the view or reopen the table".into(),
+        ),
+        Some(StructureState { loading: true, .. }) => {
+            Some("reading the table's structure…".into())
+        }
+        Some(StructureState { error: Some(error), .. }) => Some(error.clone()),
+        Some(StructureState { data: Some(_), .. }) => None,
+        Some(StructureState { data: None, .. }) => Some(
+            "the table's structure is not loaded — switch the view or reopen the table".into(),
+        ),
+    }
+}
+
+/// One thin notice row for a structure view (E1): the loading, error or
+/// not-loaded sentence in the list's own skin.
+fn notice_row(key: &str, sentence: &str, theme: tok::Theme) -> El {
+    row()
+        .key(key.to_owned())
+        .w_full()
+        .h(28.0)
+        .px(8.0)
+        .center_y()
+        .child(text(sentence.to_owned()).font(type_::LABEL).color(theme.text_secondary))
+}
+
 /// The column list: name, type, nullability — one row per column, plus the
 /// drafts section. The official list is read-only; drafts are separate.
 fn columns_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
-    let columns = state.structure_columns(title).unwrap_or_default();
+    // E1: the cache is the only read — the job's columns segment renders.
+    let columns = state
+        .structures
+        .get(title)
+        .and_then(|entry| entry.data.as_ref())
+        .map(|data| data.columns.clone())
+        .unwrap_or_default();
     let header = |label: &str, width: f32| {
         row()
             .w(width)
@@ -3423,6 +3608,9 @@ fn columns_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
                 .child(cell(&column.sql_type, 140.0))
                 .child(cell(if column.nullable { "yes" } else { "no" }, 100.0)),
         );
+    }
+    if let Some(sentence) = structure_notice(state, title) {
+        list = list.child(notice_row("columns-structure-notice", &sentence, theme));
     }
     let mut list = list.child(column_drafts_section(state, title, theme));
     list
@@ -3537,7 +3725,13 @@ fn column_drafts_section(state: &AppState, title: &str, theme: tok::Theme) -> El
 
 /// The index list: name, columns in index order, uniqueness.
 fn indexes_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
-    let indexes = state.structure_indexes(title).unwrap_or_default();
+    // E1: the cache is the only read — the job's indexes segment renders.
+    let indexes = state
+        .structures
+        .get(title)
+        .and_then(|entry| entry.data.as_ref())
+        .map(|data| data.indexes.clone())
+        .unwrap_or_default();
     let header = |label: &str, width: f32| {
         row()
             .w(width)
@@ -3579,12 +3773,22 @@ fn indexes_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
                 .child(cell(if spec.unique { "yes" } else { "no" }, 100.0)),
         );
     }
+    if let Some(sentence) = structure_notice(state, title) {
+        list = list.child(notice_row("indexes-structure-notice", &sentence, theme));
+    }
     list
 }
 
 /// The foreign key list: this table's columns, the target table, its columns.
 fn foreign_keys_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
-    let keys = state.structure_foreign_keys(title).unwrap_or_default();
+    // E1: the cache is the only read — the job's foreign-key segment
+    // renders.
+    let keys = state
+        .structures
+        .get(title)
+        .and_then(|entry| entry.data.as_ref())
+        .map(|data| data.foreign_keys.clone())
+        .unwrap_or_default();
     let header = |label: &str, width: f32| {
         row()
             .w(width)
@@ -3631,13 +3835,34 @@ fn foreign_keys_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
                 .child(cell(&references, 320.0)),
         );
     }
+    if let Some(sentence) = structure_notice(state, title) {
+        list = list.child(notice_row("fks-structure-notice", &sentence, theme));
+    }
     list
 }
 
 /// The DDL page: the port's string, verbatim, one line per row. An empty string
 /// is its own empty state.
 fn ddl_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
-    let ddl = state.structure_ddl(title).ok().filter(|ddl| !ddl.is_empty());
+    // E1: the cache is the only read — the job's DDL segment renders; a
+    // read that has not landed says so instead of an empty page.
+    if let Some(sentence) = structure_notice(state, title) {
+        return col()
+            .key("table-ddl-notice")
+            .w_full()
+            .h(160.0)
+            .px(12.0)
+            .py(8.0)
+            .radius(8.0)
+            .fill(theme.control_off)
+            .child(text(sentence).font(type_::LABEL).color(theme.text_secondary));
+    }
+    let ddl = state
+        .structures
+        .get(title)
+        .and_then(|entry| entry.data.as_ref())
+        .map(|data| data.ddl.clone())
+        .filter(|ddl| !ddl.is_empty());
     match ddl {
         Some(ddl) => {
             let mut page = col()
@@ -9280,6 +9505,27 @@ mod tests {
                             }),
                         }
                     }
+                    AdapterJob::ReadStructure { generation, table } => {
+                        let ddl = format!("CREATE TABLE {table} (job text);");
+                        AdapterDelivery::StructureRead {
+                            generation,
+                            table,
+                            structure: Ok(datazen_ui_api::TableStructure {
+                                ddl,
+                                columns: vec![datazen_ui_api::ColumnSpec {
+                                    name: "job".into(),
+                                    sql_type: "text".into(),
+                                    nullable: true,
+                                }],
+                                indexes: vec![datazen_ui_api::IndexSpec {
+                                    name: "idx_job".into(),
+                                    columns: vec!["job".into()],
+                                    unique: true,
+                                }],
+                                foreign_keys: Vec::new(),
+                            }),
+                        }
+                    }
                     AdapterJob::CommitCells { generation, .. } => AdapterDelivery::CommitCount {
                         generation,
                         count: if fail_commit {
@@ -9347,6 +9593,261 @@ mod tests {
         runtime.settle_all();
         runtime.frame(0.0);
         assert!(runtime.find("table-loading").is_none(), "the marker leaves the footer");
+    }
+
+    #[test]
+    fn a_table_open_sends_one_structure_job_and_the_delivery_fills_the_cache() {
+        use super::app_poll;
+
+        let mut runtime = runtime();
+        runtime.poll = Some(app_poll);
+        runtime.state.desktop = Box::new(JobAdapter::new());
+        runtime.state.open_table_tab("events").unwrap();
+        // The job went out; the entry waits on its generation.
+        assert_eq!(runtime.state.structure_generation, 1, "the open asked once");
+        let entry = runtime.state.structures.get("events").expect("the entry waits");
+        assert!(entry.loading, "the read is in flight");
+        assert!(entry.data.is_none(), "nothing landed yet");
+
+        // The delivery lands on the poll after the next one.
+        runtime.settle_all();
+        runtime.frame(0.0);
+        runtime.frame(0.0);
+        let entry = runtime.state.structures.get("events").expect("the entry stays");
+        assert!(!entry.loading, "the marker leaves with the delivery");
+        let data = entry.data.as_ref().expect("the four segments landed");
+        assert_eq!(data.columns.first().map(|column| column.name.as_str()), Some("job"));
+        assert!(data.indexes.first().is_some_and(|index| index.unique));
+        assert!(!data.ddl.is_empty(), "the DDL segment renders");
+    }
+
+    #[test]
+    fn a_late_structure_delivery_for_a_superseded_generation_is_dropped() {
+        use super::app_poll;
+        use super::TableView;
+
+        let mut runtime = runtime();
+        runtime.poll = Some(app_poll);
+        runtime.state.desktop = Box::new(JobAdapter::new());
+        runtime.state.open_table_tab("events").unwrap();
+        // The view switch supersedes the open's read: the entry moves to
+        // generation 2 while the generation-1 answer is still in flight.
+        runtime.state.set_table_view(TableView::Columns);
+        assert_eq!(
+            runtime.state.structures.get("events").map(|entry| entry.generation),
+            Some(2),
+            "the view switch restarts the read"
+        );
+
+        // Both answers arrive on the same poll, the stale one first.
+        runtime.settle_all();
+        runtime.frame(0.0);
+        runtime.frame(0.0);
+        let entry = runtime.state.structures.get("events").expect("the entry stays");
+        assert_eq!(entry.generation, 2, "the current generation holds the entry");
+        assert!(!entry.loading, "the current generation's answer landed");
+        assert!(entry.data.is_some(), "the stale answer did not overwrite it");
+    }
+
+    #[test]
+    fn the_outbound_fk_key_reads_the_cache_and_is_honest_while_it_lands() {
+        use super::app_poll;
+        use super::StructureState;
+
+        let mut runtime = runtime();
+        runtime.poll = Some(app_poll);
+        runtime.state.desktop = Box::new(JobAdapter::new());
+        runtime.state.open_table_tab("events").unwrap();
+        runtime.settle_all();
+        runtime.frame(0.0);
+        runtime.frame(0.0);
+        // The grid has its page; the focused column is the job's one.
+        assert_eq!(runtime.state.grid.column_name(0), Some("job"));
+
+        // A structure still in flight answers with a sentence, not a no-op.
+        runtime.state.structures.insert(
+            "events".into(),
+            StructureState { generation: 9, loading: true, error: None, data: None },
+        );
+        runtime.state.go_to_referenced_row();
+        assert!(
+            runtime.state.fk_error.as_deref().is_some_and(|error| error.contains("loading")),
+            "the sentence says the structure is loading: {:?}",
+            runtime.state.fk_error
+        );
+
+        // The landed structure serves the navigation: the key's own pairing
+        // opens the target table filtered on the focused cell.
+        runtime.state.structures.insert(
+            "events".into(),
+            StructureState {
+                generation: 10,
+                loading: false,
+                error: None,
+                data: Some(datazen_ui_api::TableStructure {
+                    ddl: String::new(),
+                    columns: Vec::new(),
+                    indexes: Vec::new(),
+                    foreign_keys: vec![datazen_ui_api::ForeignKeySpec {
+                        name: "fk_job".into(),
+                        columns: vec!["job".into()],
+                        target_table: "users".into(),
+                        target_columns: vec!["id".into()],
+                    }],
+                }),
+            },
+        );
+        runtime.state.go_to_referenced_row();
+        assert!(runtime.state.fk_error.is_none(), "{:?}", runtime.state.fk_error);
+        assert_eq!(
+            runtime.state.tabs.selected().map(|tab| tab.title.as_str()),
+            Some("users"),
+            "the referenced table opens"
+        );
+        assert!(
+            runtime.state.filter.as_ref().is_some_and(|filter| filter.column == "id"),
+            "the filter presets the target column"
+        );
+    }
+
+    /// E1: a host that takes structure jobs must never be asked the four
+    /// synchronous structure reads — the render path reads the cache the
+    /// job fills. Every sync structure method panics, so any adapter call
+    /// on the render path fails the test by failing the process.
+    struct StructureStrictHost {
+        accepted: Vec<AdapterJob>,
+    }
+
+    impl StructureStrictHost {
+        fn new() -> Self {
+            Self { accepted: Vec::new() }
+        }
+    }
+
+    impl DesktopAdapter for StructureStrictHost {
+        fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String> {
+            Err(DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn read_table_page(
+            &mut self,
+            _: &str,
+            _: u32,
+            _: u32,
+            _: Option<&ColumnSort>,
+            _: Option<&ColumnFilter>,
+        ) -> Result<TablePage, String> {
+            Err(DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn commit_cells(&mut self, _: &str, _: &[(u32, String, String)]) -> Result<u32, String> {
+            Err(DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn table_ddl(&self, _: &str) -> Result<String, String> {
+            panic!("the DDL read reached the adapter's synchronous path")
+        }
+
+        fn table_columns(&self, _: &str) -> Result<Vec<datazen_ui_api::ColumnSpec>, String> {
+            panic!("the columns read reached the adapter's synchronous path")
+        }
+
+        fn table_indexes(&self, _: &str) -> Result<Vec<datazen_ui_api::IndexSpec>, String> {
+            panic!("the indexes read reached the adapter's synchronous path")
+        }
+
+        fn table_foreign_keys(
+            &self,
+            _: &str,
+        ) -> Result<Vec<datazen_ui_api::ForeignKeySpec>, String> {
+            panic!("the foreign keys read reached the adapter's synchronous path")
+        }
+
+        fn begin_job(&mut self, job: AdapterJob) -> bool {
+            self.accepted.push(job);
+            true
+        }
+
+        fn poll_jobs(&mut self) -> Vec<AdapterDelivery> {
+            self.accepted
+                .drain(..)
+                .map(|job| match job {
+                    AdapterJob::ReadStructure { generation, table } => {
+                        let ddl = format!("CREATE TABLE {table} (id integer);");
+                        AdapterDelivery::StructureRead {
+                            generation,
+                            table,
+                            structure: Ok(datazen_ui_api::TableStructure {
+                                ddl,
+                                columns: vec![datazen_ui_api::ColumnSpec {
+                                    name: "id".into(),
+                                    sql_type: "integer".into(),
+                                    nullable: false,
+                                }],
+                                indexes: Vec::new(),
+                                foreign_keys: Vec::new(),
+                            }),
+                        }
+                    }
+                    AdapterJob::ReadTable { generation, table, page, page_size, .. } => {
+                        AdapterDelivery::TablePage {
+                            generation,
+                            page: Ok(TablePage {
+                                table,
+                                columns: vec!["id".into()],
+                                rows: vec![vec!["row".into()]],
+                                page,
+                                page_size,
+                                total_rows: 1,
+                                sort: None,
+                                filter: None,
+                                primary_key: Vec::new(),
+                                read_only: None,
+                            }),
+                        }
+                    }
+                    _ => unreachable!("the test only sends structure and read jobs"),
+                })
+                .collect()
+        }
+    }
+
+    #[test]
+    fn the_structure_views_render_from_the_cache_and_never_touch_the_adapter() {
+        use super::app_poll;
+        use super::TableView;
+        use datazen_ui_api::WorkspaceApi;
+
+        let mut runtime = runtime();
+        runtime.poll = Some(app_poll);
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.desktop = Box::new(StructureStrictHost::new());
+        runtime.state.open_table_tab("customers").unwrap();
+        runtime.settle_all();
+        runtime.frame(0.0);
+
+        // The four structure views and the data view render; a synchronous
+        // structure read on the render path would panic inside the host.
+        for view in [
+            TableView::Data,
+            TableView::Columns,
+            TableView::Indexes,
+            TableView::ForeignKeys,
+            TableView::Ddl,
+        ] {
+            runtime.state.set_table_view(view);
+            runtime.frame(0.0);
+        }
+
+        // The ER page renders its boxes from the same cache.
+        runtime.state.open_er();
+        runtime.settle_all();
+        runtime.frame(0.0);
+        assert!(runtime.find("er-box-customers").is_some(), "the ER box renders");
+        assert!(
+            runtime.find("er-pending-customers").is_none(),
+            "the box's structure landed, not the pending hint"
+        );
     }
 
     #[test]

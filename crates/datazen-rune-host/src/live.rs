@@ -37,7 +37,8 @@ use datazen_driver_api::{ConnectionHandle, DatabaseDriver, Value as Cell};
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnFilter, ColumnSort, ConnectionProfile,
     DashboardWidget, DatabaseNode, DesktopAdapter, ProgressSnapshot, SchemaNode, Snippet,
-    TablePage, ValueSearchHit, Workflow, WorkflowStepResult, DESKTOP_NOT_IMPLEMENTED,
+    TablePage, TableStructure, ValueSearchHit, Workflow, WorkflowStepResult,
+    DESKTOP_NOT_IMPLEMENTED,
 };
 use datazen_ui_api::{FavoriteSpec, ImportPreview, ImportedConnectionSpec, InboundRef};
 use datazen::workflow::domain::error::WorkflowError;
@@ -69,6 +70,13 @@ enum HostJob {
         sort: Option<ColumnSort>,
         filter: Option<ColumnFilter>,
     },
+    /// One table's structure, four reads in one job (E1): the schema
+    /// (columns, indexes, foreign keys) and the DDL, over the live session
+    /// the worker owns.
+    ReadStructure {
+        generation: u32,
+        table: String,
+    },
     CommitCells {
         generation: u32,
         batch: datazen_ui_api::CellEditBatch,
@@ -88,6 +96,8 @@ enum HostAnswer {
         results: Result<Vec<WorkflowStepResult>, String>,
     },
     TablePage { generation: u32, page: Result<TablePage, String> },
+    /// One table's four-part structure (or its failure sentence) (E1).
+    Structure { generation: u32, table: String, structure: Result<TableStructure, String> },
     CommitCount { generation: u32, count: Result<u32, String> },
     QueryPage { generation: u32, page: Result<TablePage, String> },
 }
@@ -306,6 +316,13 @@ impl LiveAdapter {
                                     generation,
                                     page: Err(format!("the job runtime did not start: {error}")),
                                 },
+                                HostJob::ReadStructure { generation, .. } => HostAnswer::Structure {
+                                    generation,
+                                    table: String::new(),
+                                    structure: Err(format!(
+                                        "the job runtime did not start: {error}"
+                                    )),
+                                },
                                 HostJob::CommitCells { generation, .. } => HostAnswer::CommitCount {
                                     generation,
                                     count: Err(format!("the job runtime did not start: {error}")),
@@ -379,6 +396,14 @@ impl LiveAdapter {
                                 filter,
                             ));
                             HostAnswer::TablePage { generation, page: page_result }
+                        }
+                        HostJob::ReadStructure { generation, table } => {
+                            let structure = runtime.block_on(read_structure(
+                                &worker_session,
+                                &worker_schemas,
+                                &table,
+                            ));
+                            HostAnswer::Structure { generation, table, structure }
                         }
                         HostJob::CommitCells { generation, batch } => {
                             let count = runtime.block_on(commit_edits(
@@ -1091,6 +1116,102 @@ async fn read_table(
     })
 }
 
+/// One table's structure, four reads in one job (E1): the schema — columns,
+/// indexes, foreign keys — and the DDL, over the live session the worker
+/// owns. The same two driver calls the adapter's synchronous reads used to
+/// make (N10), now on the runtime that owns the session's pool, so a
+/// remote driver costs the frame loop one delivery, never a blocking read.
+/// The schema lands in the shared cache the page turns already warm; the
+/// DDL segment degrades to empty — the DDL view's own empty state —
+/// because a driver without a DDL command is not a failed structure read.
+async fn read_structure(
+    session: &Arc<Mutex<LiveSession>>,
+    schemas: &Arc<Mutex<std::collections::HashMap<String, datazen_driver_api::TableSchema>>>,
+    table: &str,
+) -> Result<TableStructure, String> {
+    let (driver, handle, database) = {
+        let session = session.lock().expect("the live session lock");
+        if !session.is_open() {
+            return Err("the live session is not open".into());
+        }
+        (
+            session.driver.clone().expect("checked"),
+            session.handle.clone().expect("checked"),
+            session.database.clone(),
+        )
+    };
+    let schema_database = database.clone().unwrap_or_else(|| "main".into());
+    // The schema: the shared cache first, the driver on a miss — the same
+    // miss path `read_table` warms beside every page read. The guard drops
+    // before the match: the miss arm takes the lock again to insert.
+    let cached = schemas.lock().expect("the schema lock").get(table).cloned();
+    let schema = match cached {
+        Some(schema) => schema,
+        None => {
+            let schema = driver
+                .get_table_schema(&handle, table, &schema_database, None)
+                .await
+                .map_err(|error| error.to_string())?;
+            if schema.columns.is_empty() {
+                // A schema with no columns is a table the catalog does not
+                // have — the driver's honest answer for an unknown name.
+                return Err(format!("the catalog has no table '{table}'"));
+            }
+            schemas
+                .lock()
+                .expect("the schema lock")
+                .insert(table.to_owned(), schema.clone());
+            schema
+        }
+    };
+    // The DDL: the driver's own command renders the object's definition.
+    let ddl = driver
+        .execute_command(
+            &handle,
+            "get_object_ddl",
+            serde_json::json!({
+                "kind": "table",
+                "name": table,
+                "database": schema_database,
+            }),
+        )
+        .await
+        .ok()
+        .and_then(|result| result.data.get("ddl").and_then(|ddl| ddl.as_str()).map(str::to_owned))
+        .unwrap_or_default();
+    Ok(TableStructure {
+        ddl,
+        columns: schema
+            .columns
+            .iter()
+            .map(|column| datazen_ui_api::ColumnSpec {
+                name: column.name.clone(),
+                sql_type: column.data_type.clone(),
+                nullable: column.nullable,
+            })
+            .collect(),
+        indexes: schema
+            .indexes
+            .iter()
+            .map(|index| datazen_ui_api::IndexSpec {
+                name: index.name.clone(),
+                columns: index.columns.clone(),
+                unique: index.is_unique,
+            })
+            .collect(),
+        foreign_keys: schema
+            .foreign_keys
+            .iter()
+            .map(|key| datazen_ui_api::ForeignKeySpec {
+                name: key.name.clone(),
+                columns: key.columns.clone(),
+                target_table: key.referenced_table.clone(),
+                target_columns: key.referenced_columns.clone(),
+            })
+            .collect(),
+    })
+}
+
 /// One driver cell as the grid's text: null is the empty string, bytes land
 /// as their lossy text, everything else its own display form.
 fn cell_to_text(cell: Option<Cell>) -> String {
@@ -1730,6 +1851,9 @@ impl DesktopAdapter for LiveAdapter {
             AdapterJob::ReadTable { generation, table, page, page_size, sort, filter } => {
                 HostJob::ReadTable { generation, table, page, page_size, sort, filter }
             }
+            AdapterJob::ReadStructure { generation, table } => {
+                HostJob::ReadStructure { generation, table }
+            }
             AdapterJob::CommitCells { generation, batch } => {
                 HostJob::CommitCells { generation, batch }
             }
@@ -1760,6 +1884,9 @@ impl DesktopAdapter for LiveAdapter {
                 }
                 HostAnswer::TablePage { generation, page } => {
                     deliveries.push(AdapterDelivery::TablePage { generation, page });
+                }
+                HostAnswer::Structure { generation, table, structure } => {
+                    deliveries.push(AdapterDelivery::StructureRead { generation, table, structure });
                 }
                 HostAnswer::CommitCount { generation, count } => {
                     deliveries.push(AdapterDelivery::CommitCount { generation, count });
@@ -2543,6 +2670,62 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         panic!("the read job never answered");
+    }
+
+    /// Poll the adapter until its structure job answers (E1).
+    fn poll_structure(adapter: &mut LiveAdapter, table: &str) -> Result<TableStructure, String> {
+        for _ in 0..300 {
+            for delivery in adapter.poll_jobs() {
+                if let AdapterDelivery::StructureRead { table: answered, structure, .. } = delivery {
+                    if answered == table {
+                        return structure;
+                    }
+                }
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("the structure job never answered");
+    }
+
+    #[test]
+    fn structure_jobs_answer_the_four_segments_from_sqlite() {
+        let dir = temp_dir("structure");
+        let mut adapter = opened_adapter(&dir);
+
+        assert!(adapter.begin_job(AdapterJob::ReadStructure {
+            generation: 2,
+            table: "orders".into(),
+        }));
+        let structure = poll_structure(&mut adapter, "orders").expect("the structure reads");
+        // The four segments, one job: the columns, the unique index, the
+        // foreign key, and the driver's own DDL render.
+        let names: Vec<&str> = structure.columns.iter().map(|column| column.name.as_str()).collect();
+        assert_eq!(names, vec!["id", "user_id", "note"]);
+        assert!(
+            structure
+                .indexes
+                .iter()
+                .any(|index| index.name == "idx_orders_note" && index.unique),
+            "the unique index is in the answer: {:?}",
+            structure.indexes
+        );
+        assert_eq!(structure.foreign_keys.len(), 1, "{:?}", structure.foreign_keys);
+        let key = &structure.foreign_keys[0];
+        assert_eq!(key.columns, vec!["user_id".to_string()]);
+        assert_eq!(key.target_table, "users");
+        assert!(!structure.ddl.is_empty(), "the DDL segment renders");
+    }
+
+    #[test]
+    fn a_structure_job_for_an_unknown_table_answers_a_sentence() {
+        let dir = temp_dir("structure-missing");
+        let mut adapter = opened_adapter(&dir);
+        assert!(adapter.begin_job(AdapterJob::ReadStructure {
+            generation: 2,
+            table: "nope".into(),
+        }));
+        let error = poll_structure(&mut adapter, "nope").expect_err("an unknown table is a failure");
+        assert!(error.contains("no table"), "the sentence names it: {error}");
     }
 
     /// Open the fixture connection through the adapter (the N3 job path) and

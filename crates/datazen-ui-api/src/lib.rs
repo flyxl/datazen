@@ -109,6 +109,19 @@ pub struct ColumnSpec {
     pub nullable: bool,
 }
 
+/// One table's structure, four reads in one answer (E1): the DDL, the
+/// columns, the indexes and the foreign keys. The job twin of the four
+/// synchronous catalog reads, fetched as one job so a remote driver costs
+/// the frame loop one delivery, never four unbounded reads on it.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct TableStructure {
+    /// The driver's own DDL render; empty is the DDL view's empty state.
+    pub ddl: String,
+    pub columns: Vec<ColumnSpec>,
+    pub indexes: Vec<IndexSpec>,
+    pub foreign_keys: Vec<ForeignKeySpec>,
+}
+
 /// The three name layers the port reports: databases, their schemas, and the
 /// tables inside each schema. Orders are the port's and stay stable.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -526,6 +539,13 @@ pub enum AdapterJob {
         sort: Option<ColumnSort>,
         filter: Option<ColumnFilter>,
     },
+    /// Read one table's structure, four reads in one job (E1): the DDL,
+    /// the columns, the indexes and the foreign keys, over the live
+    /// session — the structure views render the cached answer only.
+    ReadStructure {
+        generation: u32,
+        table: String,
+    },
     /// Apply one batch of cell edits, the job twin of `commit_cells`. The
     /// rows are the page's, addressed by the table's primary key.
     CommitCells {
@@ -557,6 +577,14 @@ pub enum AdapterDelivery {
     ValueSearched { generation: u32, hits: Result<Vec<ValueSearchHit>, String> },
     /// A read job's page (or its failure sentence).
     TablePage { generation: u32, page: Result<TablePage, String> },
+    /// A structure job's four-part answer (or its failure sentence) (E1).
+    /// The table rides along: the cache is per table, and a delivery for a
+    /// table whose entry moved to a newer generation is dropped.
+    StructureRead {
+        generation: u32,
+        table: String,
+        structure: Result<TableStructure, String>,
+    },
     /// A commit job's landed edit count (or its failure sentence).
     CommitCount { generation: u32, count: Result<u32, String> },
     /// A query job's result page (or its failure sentence).
