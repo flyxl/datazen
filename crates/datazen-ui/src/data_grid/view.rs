@@ -488,7 +488,13 @@ fn cell(
     let selected = grid.covers(row_index, col_index);
     let active = grid.focus == (row_index, col_index);
     let frozen = col_index == 0;
-    let fill = if active {
+    let current_hit = grid.is_current_find_hit(row_index, col_index);
+    let any_hit = grid.is_find_hit(row_index, col_index);
+    let fill = if current_hit {
+        if dark { oklch(0.55, 0.14, 85.0) } else { oklch(0.86, 0.14, 85.0) }
+    } else if any_hit {
+        if dark { oklch(0.42, 0.10, 85.0) } else { oklch(0.92, 0.10, 85.0) }
+    } else if active {
         if dark { oklch(0.45, 0.09, 250.0) } else { oklch(0.78, 0.10, 250.0) }
     } else if selected {
         if dark { oklch(0.38, 0.05, 250.0) } else { oklch(0.86, 0.05, 250.0) }

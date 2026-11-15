@@ -118,3 +118,103 @@ fn editing_commits_into_the_cell_and_survives_as_data() {
     assert!(!grid.is_editing());
     assert_eq!(grid.cell(4, 6), "r4c6雪");
 }
+
+fn sample_result_grid() -> DataGrid {
+    let page = datazen_ui_api::TablePage {
+        table: "result".into(),
+        columns: vec!["id".into(), "name".into(), "note".into()],
+        rows: vec![
+            vec!["1".into(), "alice".into(), "hello".into()],
+            vec!["2".into(), "bob".into(), "ALICE again".into()],
+            vec!["3".into(), "carol".into(), "world".into()],
+        ],
+        page: 0,
+        page_size: 50,
+        total_rows: 3,
+        sort: None,
+        filter: None,
+        primary_key: Vec::new(),
+        read_only: Some("result".into()),
+    };
+    let mut grid = DataGrid::new();
+    grid.load_page(&page);
+    grid
+}
+
+#[test]
+fn find_sets_hits_in_row_major_order_and_selects_first_hit() {
+    let mut grid = sample_result_grid();
+    grid.set_find_needle("alice");
+    assert_eq!(grid.find_needle(), "alice");
+    assert_eq!(grid.find_hit_count(), 2);
+    assert_eq!(grid.find_current_index(), 1);
+    assert_eq!(grid.current_find_hit(), Some((0, 1)));
+    assert_eq!(grid.focus(), (0, 1), "focus moves to the current hit");
+    assert!(grid.is_find_hit(0, 1));
+    assert!(grid.is_find_hit(1, 2));
+    assert!(grid.is_current_find_hit(0, 1));
+    assert!(!grid.is_current_find_hit(1, 2));
+}
+
+#[test]
+fn find_next_and_prev_navigate_hits_and_wrap() {
+    let mut grid = sample_result_grid();
+    grid.set_find_needle("alice");
+    assert!(grid.find_next());
+    assert_eq!(grid.current_find_hit(), Some((1, 2)));
+    assert_eq!(grid.find_current_index(), 2);
+    assert!(grid.find_next(), "wraps to first");
+    assert_eq!(grid.current_find_hit(), Some((0, 1)));
+    assert!(grid.find_prev(), "wraps to last");
+    assert_eq!(grid.current_find_hit(), Some((1, 2)));
+    assert!(grid.find_prev());
+    assert_eq!(grid.current_find_hit(), Some((0, 1)));
+}
+
+#[test]
+fn find_is_case_insensitive_and_trims_empty_needle() {
+    let mut grid = sample_result_grid();
+    grid.set_find_needle("ALICE");
+    assert_eq!(grid.find_hit_count(), 2);
+    grid.set_find_needle("   ");
+    assert_eq!(grid.find_hit_count(), 0);
+    assert_eq!(grid.find_current_index(), 0);
+    assert_eq!(grid.current_find_hit(), None);
+}
+
+#[test]
+fn find_with_no_matches_reports_zero_and_navigation_is_false() {
+    let mut grid = sample_result_grid();
+    grid.set_find_needle("zzz");
+    assert_eq!(grid.find_hit_count(), 0);
+    assert_eq!(grid.find_current_index(), 0);
+    assert!(!grid.find_next());
+    assert!(!grid.find_prev());
+    assert!(!grid.is_find_hit(0, 0));
+}
+
+#[test]
+fn clear_find_resets_hits_and_new_page_clears_find() {
+    let mut grid = sample_result_grid();
+    grid.set_find_needle("alice");
+    assert_eq!(grid.find_hit_count(), 2);
+    grid.clear_find();
+    assert_eq!(grid.find_hit_count(), 0);
+    assert_eq!(grid.find_needle(), "");
+    grid.set_find_needle("bob");
+    assert_eq!(grid.find_hit_count(), 1);
+    grid.load_page(&datazen_ui_api::TablePage {
+        table: "result".into(),
+        columns: vec!["x".into()],
+        rows: vec![vec!["bob".into()]],
+        page: 0,
+        page_size: 50,
+        total_rows: 1,
+        sort: None,
+        filter: None,
+        primary_key: Vec::new(),
+        read_only: Some("result".into()),
+    });
+    assert_eq!(grid.find_hit_count(), 0, "loading a page clears find");
+    assert_eq!(grid.find_needle(), "");
+}

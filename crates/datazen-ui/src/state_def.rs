@@ -2,7 +2,7 @@
 
 use crate::data_grid::DataGrid;
 use crate::sql_editor::SqlEditor;
-use crate::types::{Section, TableView, Tool};
+use crate::types::{ResultView, Section, TableView, Tool};
 use crate::{icons, splitter};
 #[cfg(not(target_arch = "wasm32"))]
 use datazen_ui_api::UseCaseAdapter;
@@ -51,6 +51,10 @@ pub struct AppState {
     /// T1: the result grid holds the keyboard after a result cell is pressed;
     /// typing, Escape or pressing the editor surface hands it back.
     pub(crate) result_focused: bool,
+    /// A5: table/chart presentation of the query result workspace.
+    pub(crate) result_view: ResultView,
+    /// A5: the result find bar's search text.
+    pub(crate) result_find: TextEdit,
     /// The query generation: bumped by every run and every cancel. A result page
     /// from a generation that is not the current one is dropped.
     pub(crate) query_generation: u32,
@@ -246,6 +250,8 @@ impl Default for AppState {
             recent_connection_ids: Vec::new(),
             result_grid: None,
             result_focused: false,
+            result_view: ResultView::Table,
+            result_find: TextEdit::new(String::new()),
             query_generation: 0,
             read_generation: 0,
             table_loading: None,

@@ -67,3 +67,11 @@ pub(crate) enum Tool {
     Transfer,
     ValueSearch,
 }
+
+/// A5: how the result workspace presents query results.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum ResultView {
+    #[default]
+    Table,
+    Chart,
+}
