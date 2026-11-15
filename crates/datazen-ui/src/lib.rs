@@ -7,6 +7,74 @@ mod data_grid;
 mod splitter;
 mod sql_editor;
 
+// L4: rail layout constants (points), persisted via Setting::Layout.
+const RAIL_WIDTH_COLLAPSED: u32 = 40;
+const RAIL_WIDTH_EXPANDED: u32 = 112;
+const NAVIGATOR_WIDTH_DEFAULT: u32 = 280;
+const NAVIGATOR_WIDTH_MIN: u32 = 200;
+const NAVIGATOR_WIDTH_MAX: u32 = 500;
+const SIDEBAR_RAIL_WIDTH_KEY: &str = "sidebar-rail-width";
+const NAVIGATOR_WIDTH_KEY: &str = "navigator-width";
+
+// L4: lucide-semantic rail icons (24x24, stroke outline, currentColor).
+static ICON_CONNECTIONS: rune::Icon = rune::Icon {
+    name: "rail-connections",
+    view: 24.0,
+    body: r#"<ellipse cx="12" cy="5" rx="9" ry="3" stroke="currentColor" stroke-width="2" fill="none"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5" stroke="currentColor" stroke-width="2" fill="none"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3" stroke="currentColor" stroke-width="2" fill="none"/>"#,
+};
+static ICON_WORKSPACE: rune::Icon = rune::Icon {
+    name: "rail-workspace",
+    view: 24.0,
+    body: r#"<rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M3 9h18M9 21V9" stroke="currentColor" stroke-width="2" fill="none"/>"#,
+};
+static ICON_SETTINGS: rune::Icon = rune::Icon {
+    name: "rail-settings",
+    view: 24.0,
+    body: r#"<circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" fill="none"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6c.32 0 .63-.12.87-.33.3-.27.49-.65.52-1.06V3a2 2 0 1 1 4 0v.09c.03.41.22.79.52 1.06.24.21.55.33.87.33.65 0 1.26-.38 1.54-.97l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06c-.43.46-.55 1.13-.33 1.71.19.5.6.88 1.12 1.03H21a2 2 0 1 1 0 4h-.09c-.41.03-.79.22-1.06.52-.21.24-.33.55-.33.87z" stroke="currentColor" stroke-width="2" fill="none"/>"#,
+};
+static ICON_TOOLS: rune::Icon = rune::Icon {
+    name: "rail-tools",
+    view: 24.0,
+    body: r#"<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>"#,
+};
+static ICON_DASHBOARDS: rune::Icon = rune::Icon {
+    name: "rail-dashboards",
+    view: 24.0,
+    body: r#"<path d="M3 3v18h18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><rect x="7" y="12" width="3" height="6" rx="1" stroke="currentColor" stroke-width="2" fill="none"/><rect x="12" y="9" width="3" height="9" rx="1" stroke="currentColor" stroke-width="2" fill="none"/><rect x="17" y="6" width="3" height="12" rx="1" stroke="currentColor" stroke-width="2" fill="none"/>"#,
+};
+static ICON_WORKFLOWS: rune::Icon = rune::Icon {
+    name: "rail-workflows",
+    view: 24.0,
+    body: r#"<rect x="3" y="3" width="6" height="6" rx="1" stroke="currentColor" stroke-width="2" fill="none"/><rect x="15" y="3" width="6" height="6" rx="1" stroke="currentColor" stroke-width="2" fill="none"/><rect x="9" y="15" width="6" height="6" rx="1" stroke="currentColor" stroke-width="2" fill="none"/><path d="M6 9v3a1 1 0 0 0 1 1h4M18 9v3a1 1 0 0 1-1 1h-4M12 13v2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>"#,
+};
+static ICON_WAPPS: rune::Icon = rune::Icon {
+    name: "rail-wapps",
+    view: 24.0,
+    body: r#"<rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2" fill="none"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2" fill="none"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2" fill="none"/><path d="M14 17.5h7M17.5 14v7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>"#,
+};
+static ICON_CHEVRON_LEFT: rune::Icon = rune::Icon {
+    name: "rail-collapse",
+    view: 16.0,
+    body: r#"<path d="M10 4L6 8l4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>"#,
+};
+static ICON_CHEVRON_RIGHT: rune::Icon = rune::Icon {
+    name: "rail-expand",
+    view: 16.0,
+    body: r#"<path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>"#,
+};
+
+fn section_icon(section: Section) -> &'static rune::Icon {
+    match section {
+        Section::Connections => &ICON_CONNECTIONS,
+        Section::Workspace => &ICON_WORKSPACE,
+        Section::Settings => &ICON_SETTINGS,
+        Section::Tools => &ICON_TOOLS,
+        Section::Dashboards => &ICON_DASHBOARDS,
+        Section::Workflows => &ICON_WORKFLOWS,
+        Section::Wapps => &ICON_WAPPS,
+    }
+}
+
 use data_grid::DataGrid;
 use datazen_ui_api::{AdapterDelivery, AdapterJob, ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile, DashboardWidget, DESKTOP_NOT_IMPLEMENTED, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, UnimplementedAdapter, Workflow, WorkflowStepResult, WorkspaceApi};
 // The desktop host's use-case adapter; the wasm host brings its own later.
@@ -14,8 +82,8 @@ use datazen_ui_api::{AdapterDelivery, AdapterJob, ColumnDraft, ColumnFilter, Col
 use datazen_ui_api::UseCaseAdapter;
 use rune::tok::{self, type_};
 use rune::{
-    App, AppSpec, Cx, El, FileDialogOptions, FileDialogResult, Ime, Key, KeyEvent, TextEdit,
-    Titlebar, Tx, col, oklch, row, text, text_input,
+    App, AppSpec, Color, Cx, El, FileDialogOptions, FileDialogResult, Ime, Key, KeyEvent,
+    TextEdit, Titlebar, Tx, col, oklch, row, text, text_input,
 };
 use sql_editor::SqlEditor;
 
@@ -620,6 +688,28 @@ impl AppState {
     /// the drag ends, so a restart reopens the same proportions.
     fn set_layout_size(&mut self, key: &str, value: u32) -> Result<(), String> {
         self.write_ui_setting(Setting::Layout { key: key.into(), value })
+    }
+
+    /// L4: the rail is expanded (icon + label) by default; collapsed shows
+    /// icons only. Persisted as its width in points.
+    fn sidebar_expanded(&self) -> bool {
+        self.sidebar_rail_width() > RAIL_WIDTH_COLLAPSED
+    }
+
+    fn sidebar_rail_width(&self) -> u32 {
+        let w = self.layout_size(SIDEBAR_RAIL_WIDTH_KEY).unwrap_or(RAIL_WIDTH_EXPANDED);
+        if w <= RAIL_WIDTH_COLLAPSED { RAIL_WIDTH_COLLAPSED } else { RAIL_WIDTH_EXPANDED }
+    }
+
+    fn toggle_sidebar_expanded(&mut self) {
+        let next = if self.sidebar_expanded() { RAIL_WIDTH_COLLAPSED } else { RAIL_WIDTH_EXPANDED };
+        let _ = self.set_layout_size(SIDEBAR_RAIL_WIDTH_KEY, next);
+    }
+
+    /// L4: navigator panel width in points, clamped to its resizable range.
+    fn navigator_width(&self) -> u32 {
+        let w = self.layout_size(NAVIGATOR_WIDTH_KEY).unwrap_or(NAVIGATOR_WIDTH_DEFAULT);
+        w.clamp(NAVIGATOR_WIDTH_MIN, NAVIGATOR_WIDTH_MAX)
     }
 
     /// The table page size from the settings in force (fallback: the built-in 25).
@@ -2332,30 +2422,86 @@ impl AppState {
     }
 }
 
-fn navigation_item(state: &AppState, section: Section, dark: bool) -> El {
+fn rail_item(state: &AppState, section: Section, expanded: bool, dark: bool) -> El {
     let theme = tok::theme(dark);
     let selected = state.active == section;
-
-    row()
-        .key(format!("nav-{}", section.key()))
+    let bg = if selected { tok::accent(0, dark) } else { Color::TRANSPARENT };
+    let fg = if selected { theme.text } else { theme.text_secondary };
+    let mut item = row()
+        .key(format!("rail-{}", section.key()))
         .w_full()
-        .h(36.0)
-        .px(12.0)
+        .h(40.0)
+        .px(if expanded { 12.0 } else { 0.0 })
         .center_y()
-        .radius(7.0)
-        .fill(if selected {
-            tok::accent(0, dark)
-        } else {
-            theme.control_off
-        })
-        .child(
-            text(section.label())
-                .font(type_::LABEL)
-                .color(theme.text),
-        )
+        .gap(if expanded { 10.0 } else { 0.0 })
+        .radius(8.0)
+        .fill(bg)
         .role("tab")
         .label(section.label())
-        .on_press(move |state: &mut AppState| state.select(section))
+        .on_press(move |state: &mut AppState| state.select(section));
+    if expanded {
+        item = item
+            .child(rune::icon(section_icon(section), 18.0).color(fg))
+            .child(text(section.label()).font(type_::LABEL).color(fg));
+    } else {
+        item = item.justify_center().child(rune::icon(section_icon(section), 18.0).color(fg));
+    }
+    item
+}
+
+fn rail_view(state: &AppState, dark: bool) -> El {
+    let theme = tok::theme(dark);
+    let expanded = state.sidebar_expanded();
+    let width = state.sidebar_rail_width() as f32;
+    let mut items = col().w_full().gap(4.0);
+    for section in Section::ALL {
+        items = items.child(rail_item(state, section, expanded, dark));
+    }
+    let toggle_icon = if expanded { &ICON_CHEVRON_LEFT } else { &ICON_CHEVRON_RIGHT };
+    let toggle = row()
+        .key("rail-toggle")
+        .w_full()
+        .h(32.0)
+        .center()
+        .radius(8.0)
+        .fill(theme.control_off)
+        .label(if expanded { "Collapse sidebar" } else { "Expand sidebar" })
+        .on_press(|state: &mut AppState| state.toggle_sidebar_expanded())
+        .child(rune::icon(toggle_icon, 14.0).color(theme.text_secondary));
+    col()
+        .key("datazen-rail")
+        .w(width)
+        .h_full()
+        .px(4.0)
+        .py(8.0)
+        .gap(8.0)
+        .fill(theme.bg)
+        .child(items)
+        .child(col().w_full().grow(1.0))
+        .child(toggle)
+}
+
+fn navigator_panel(state: &AppState, theme: tok::Theme) -> El {
+    let width = state.navigator_width() as f32;
+    col()
+        .key("datazen-navigator")
+        .w(width)
+        .h_full()
+        .px(12.0)
+        .py(12.0)
+        .gap(8.0)
+        .fill(theme.bg)
+        .child(
+            text("Navigator")
+                .key("navigator-title")
+                .font(type_::LABEL)
+                .color(theme.text_secondary),
+        )
+        .child(object_tree(state, theme))
+        .child(refresh_button(state, theme))
+        .child(er_button(state, theme))
+        .child(open_query_button(theme))
+        .child(disconnect_button(state, theme))
 }
 /// The connection after `current` in the port's list, wrapping around.
 /// A workflow as YAML text.
@@ -5367,46 +5513,16 @@ fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
         .unwrap_or_else(|| cx.system_dark());
     let theme = tok::theme(dark);
 
-    let mut navigation = col().w_full().gap(4.0);
-    for section in Section::ALL {
-        navigation = navigation.child(navigation_item(state, section, dark));
-    }
-
-    let sidebar = col()
-        .key("datazen-sidebar")
-        .w(224.0)
-        .h_full()
-        .px(16.0)
-        .py(20.0)
-        .gap(18.0)
-        .fill(theme.bg)
-        .child(
-            text("DataZen")
-                .font(type_::TITLE)
-                .color(theme.text),
-        )
-        .child(
-            text("DATABASE WORKSPACE")
-                .font(type_::LABEL)
-                .color(theme.text_secondary),
-        )
-        .child(navigation)
-        .child(object_tree(state, theme))
-        .child(refresh_button(state, theme))
-        .child(er_button(state, theme))
-        .child(open_query_button(theme))
-        .child(disconnect_button(state, theme))
-        .child(
-            col()
-                .w_full()
-                .h(1.0)
-                .fill(theme.control_off),
-        )
-        .child(
-            text("Rune native UI preview")
-                .font(type_::LABEL)
-                .color(theme.text_secondary),
-        );
+    let rail = rail_view(state, dark);
+    let navigator = navigator_panel(state, theme);
+    let nav_splitter = splitter::splitter_handle(
+        state,
+        NAVIGATOR_WIDTH_KEY,
+        splitter::SplitAxis::Vertical,
+        NAVIGATOR_WIDTH_MIN,
+        NAVIGATOR_WIDTH_MAX,
+        NAVIGATOR_WIDTH_DEFAULT,
+    );
 
     // L3: self-drawn titlebar (40pt). The whole band moves the window; the
     // leading inset keeps clear of the platform's window controls (macOS
@@ -5447,7 +5563,8 @@ fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
 
     let page = col()
         .key("datazen-page")
-        .w_full()
+        .grow(1.0)
+        .min_w(0.0)
         .h_full()
         .px(24.0)
         .py(24.0)
@@ -5475,7 +5592,10 @@ fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
         .key("datazen-body")
         .w_full()
         .h_full()
-        .child(sidebar)
+        .min_w(0.0)
+        .child(rail)
+        .child(navigator)
+        .child(nav_splitter)
         .child(page);
 
     col()
@@ -5641,7 +5761,12 @@ pub fn start() {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppState, APP_FONT_FAMILIES, APP_FONTS, Section, Setting, TABLE_PAGE_SIZE, query_selected, sql_editor, type_, view};
+    use super::{
+        query_selected, sql_editor, type_, view, AppState, Section, Setting, APP_FONTS,
+        APP_FONT_FAMILIES, NAVIGATOR_WIDTH_DEFAULT, NAVIGATOR_WIDTH_KEY, NAVIGATOR_WIDTH_MAX,
+        NAVIGATOR_WIDTH_MIN, RAIL_WIDTH_COLLAPSED, RAIL_WIDTH_EXPANDED, SIDEBAR_RAIL_WIDTH_KEY,
+        TABLE_PAGE_SIZE,
+    };
     use rune::{Env, Runtime};
 
     fn runtime() -> Runtime<AppState> {
@@ -5924,7 +6049,7 @@ mod tests {
         runtime.frame(0.0);
 
         let tree = runtime.accessibility_json();
-        let nav = find(&tree, "nav-wapps").expect("the sidebar lists the area");
+        let nav = find(&tree, "rail-wapps").expect("the sidebar lists the area");
         assert_eq!(nav["role"], "tab");
         assert_eq!(nav["name"], "WAPPS");
 
@@ -5983,7 +6108,7 @@ mod tests {
 
         assert!(runtime.find("datazen-root").is_some());
         for section in Section::ALL {
-            let id = format!("nav-{}", section.key());
+            let id = format!("rail-{}", section.key());
             assert!(runtime.find(&id).is_some(), "missing navigation node: {id}");
         }
     }
@@ -5994,13 +6119,13 @@ mod tests {
         runtime.frame(0.0);
 
         for key in ["connections", "workspace", "settings"] {
-            let id = format!("nav-{key}");
+            let id = format!("rail-{key}");
             assert!(runtime.find(&id).is_some(), "missing navigation node: {id}");
         }
         // Three of the four old placeholder pages are gone for good; workflows
         // returned as a real page with the W series.
         for key in ["sql-editor", "data-browser", "schema"] {
-            let id = format!("nav-{key}");
+            let id = format!("rail-{key}");
             assert!(runtime.find(&id).is_none(), "{id} is not a product page anymore");
         }
     }
@@ -6011,7 +6136,7 @@ mod tests {
         runtime.frame(0.0);
 
         let (x, y) = runtime
-            .find("nav-workspace")
+            .find("rail-workspace")
             .expect("Workspace navigation item should exist");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
@@ -6025,7 +6150,7 @@ mod tests {
         let mut runtime = runtime();
         runtime.frame(0.0);
 
-        let (x, y) = runtime.find("nav-workspace").expect("workspace navigation");
+        let (x, y) = runtime.find("rail-workspace").expect("workspace navigation");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
@@ -7207,7 +7332,7 @@ mod tests {
         let mut runtime = runtime();
         runtime.frame(0.0);
 
-        let (x, y) = runtime.find("nav-settings").unwrap();
+        let (x, y) = runtime.find("rail-settings").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -7235,11 +7360,11 @@ mod tests {
         );
 
         // Leave and come back: the setting is where the port keeps it.
-        let (x, y) = runtime.find("nav-connections").unwrap();
+        let (x, y) = runtime.find("rail-connections").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-settings").unwrap();
+        let (x, y) = runtime.find("rail-settings").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
@@ -7275,7 +7400,7 @@ mod tests {
         runtime.frame(0.0);
         assert_eq!(runtime.state.grid.page_size(), 25, "the default");
 
-        let (x, y) = runtime.find("nav-settings").unwrap();
+        let (x, y) = runtime.find("rail-settings").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -7299,7 +7424,7 @@ mod tests {
         assert_eq!(runtime.state.grid.cell(9, 1), "customer-19");
 
         // An invalid value keeps the old setting and shows the error.
-        let (x, y) = runtime.find("nav-settings").unwrap();
+        let (x, y) = runtime.find("rail-settings").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -7349,7 +7474,7 @@ mod tests {
 
         let mut runtime = runtime();
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-settings").unwrap();
+        let (x, y) = runtime.find("rail-settings").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -7460,7 +7585,7 @@ mod tests {
             }],
         });
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-settings").unwrap();
+        let (x, y) = runtime.find("rail-settings").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -7486,7 +7611,7 @@ mod tests {
     fn an_export_without_a_range_gets_no_job() {
         let mut runtime = runtime();
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-settings").unwrap();
+        let (x, y) = runtime.find("rail-settings").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -7593,7 +7718,7 @@ mod tests {
         let mut runtime = runtime();
         runtime.state.desktop = Box::new(adapter);
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-settings").unwrap();
+        let (x, y) = runtime.find("rail-settings").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -7619,7 +7744,7 @@ mod tests {
         let mut runtime = runtime();
         runtime.state.desktop = Box::new(adapter);
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-settings").unwrap();
+        let (x, y) = runtime.find("rail-settings").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -7645,7 +7770,7 @@ mod tests {
         let mut runtime = runtime();
         runtime.state.desktop = Box::new(adapter);
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-settings").unwrap();
+        let (x, y) = runtime.find("rail-settings").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -7685,7 +7810,7 @@ mod tests {
     fn browsing_picks_the_import_source() {
         let mut runtime = runtime();
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-settings").unwrap();
+        let (x, y) = runtime.find("rail-settings").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -7706,7 +7831,7 @@ mod tests {
     fn a_failed_export_shows_its_error_line_from_the_snapshot() {
         let mut runtime = runtime();
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-settings").unwrap();
+        let (x, y) = runtime.find("rail-settings").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -7753,7 +7878,7 @@ mod tests {
     fn the_import_wizard_needs_a_target_to_move_on() {
         let mut runtime = runtime();
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-settings").unwrap();
+        let (x, y) = runtime.find("rail-settings").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -7801,7 +7926,7 @@ mod tests {
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
-        let (x, y) = runtime.find("nav-settings").unwrap();
+        let (x, y) = runtime.find("rail-settings").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -7864,7 +7989,7 @@ mod tests {
         });
 
         // Tools page, the search tab.
-        let (x, y) = runtime.find("nav-tools").unwrap();
+        let (x, y) = runtime.find("rail-tools").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -7905,7 +8030,7 @@ mod tests {
 
         // Cancel while in flight: the delivery lands nowhere.
         runtime.state.value_search_value = rune::TextEdit::new("again");
-        let (x, y) = runtime.find("nav-tools").unwrap();
+        let (x, y) = runtime.find("rail-tools").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -8129,7 +8254,7 @@ mod tests {
         // The demo process refuses honestly: no favorites without the host.
         let mut runtime = runtime();
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-settings").unwrap();
+        let (x, y) = runtime.find("rail-settings").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -8167,7 +8292,7 @@ mod tests {
         assert_eq!(runtime.state.sql.doc(), "SELECT * FROM users");
 
         // Rename: the form's title moves the row's title.
-        let (x, y) = runtime.find("nav-settings").unwrap();
+        let (x, y) = runtime.find("rail-settings").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -8269,7 +8394,7 @@ mod tests {
         let mut runtime = runtime();
         runtime.state.desktop = Box::new(adapter);
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-connections").unwrap();
+        let (x, y) = runtime.find("rail-connections").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -8323,7 +8448,7 @@ mod tests {
         runtime.poll = Some(app_poll);
         runtime.state.desktop = Box::new(JobAdapter::new());
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-workflows").expect("workflows navigation");
+        let (x, y) = runtime.find("rail-workflows").expect("workflows navigation");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -8356,7 +8481,7 @@ mod tests {
     fn the_sync_wizard_refuses_the_same_endpoint_twice() {
         let mut runtime = runtime();
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-tools").expect("tools navigation");
+        let (x, y) = runtime.find("rail-tools").expect("tools navigation");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -8397,7 +8522,7 @@ mod tests {
     fn the_sync_table_step_selects_all_and_clears() {
         let mut runtime = runtime();
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-tools").unwrap();
+        let (x, y) = runtime.find("rail-tools").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -8443,7 +8568,7 @@ mod tests {
     fn the_sync_options_default_and_round_trip() {
         let mut runtime = runtime();
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-tools").unwrap();
+        let (x, y) = runtime.find("rail-tools").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -8488,7 +8613,7 @@ mod tests {
     fn the_sync_preview_is_a_read_only_grid() {
         let mut runtime = runtime();
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-tools").unwrap();
+        let (x, y) = runtime.find("rail-tools").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -8517,7 +8642,7 @@ mod tests {
     fn the_sync_run_needs_tables_and_finishes_through_snapshots() {
         let mut runtime = runtime();
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-tools").unwrap();
+        let (x, y) = runtime.find("rail-tools").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -8565,7 +8690,7 @@ mod tests {
     fn the_compare_step_marks_same_name_objects() {
         let mut runtime = runtime();
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-tools").unwrap();
+        let (x, y) = runtime.find("rail-tools").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -8585,7 +8710,7 @@ mod tests {
     fn an_empty_compare_plan_has_its_own_empty_state() {
         let mut runtime = runtime();
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-tools").unwrap();
+        let (x, y) = runtime.find("rail-tools").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -8611,7 +8736,7 @@ mod tests {
     fn a_failed_plan_apply_keeps_the_plan_visible() {
         let mut runtime = runtime();
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-tools").unwrap();
+        let (x, y) = runtime.find("rail-tools").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -8667,7 +8792,7 @@ mod tests {
     fn a_column_already_in_a_pair_cannot_pair_again() {
         let mut runtime = runtime();
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-tools").unwrap();
+        let (x, y) = runtime.find("rail-tools").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -8710,7 +8835,7 @@ mod tests {
     fn cancelling_the_transfer_confirmation_leaves_no_job() {
         let mut runtime = runtime();
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-tools").unwrap();
+        let (x, y) = runtime.find("rail-tools").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -8775,7 +8900,7 @@ mod tests {
     fn an_empty_dashboard_has_its_own_empty_state() {
         let mut runtime = runtime();
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-dashboards").expect("dashboards navigation");
+        let (x, y) = runtime.find("rail-dashboards").expect("dashboards navigation");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
@@ -8796,7 +8921,7 @@ mod tests {
             .workspace
             .save_dashboard_widget("Weekly", "select 1")
             .unwrap();
-        let (x, y) = runtime.find("nav-dashboards").unwrap();
+        let (x, y) = runtime.find("rail-dashboards").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.settle_all();
@@ -8815,7 +8940,7 @@ mod tests {
     fn a_widget_without_a_title_cannot_be_saved() {
         let mut runtime = runtime();
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-dashboards").unwrap();
+        let (x, y) = runtime.find("rail-dashboards").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -8929,7 +9054,7 @@ mod tests {
         runtime.frame(0.0);
 
         // The workflows page lists the host's workflow, not the port's demo.
-        let (x, y) = runtime.find("nav-workflows").expect("workflows navigation");
+        let (x, y) = runtime.find("rail-workflows").expect("workflows navigation");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -8955,7 +9080,7 @@ mod tests {
         );
 
         // The dashboards page shows the host's widget with its own bars.
-        let (x, y) = runtime.find("nav-dashboards").expect("dashboards navigation");
+        let (x, y) = runtime.find("rail-dashboards").expect("dashboards navigation");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -8976,7 +9101,7 @@ mod tests {
 
         // The widget form's save lands in the host's dashboard use case and
         // the form clears.
-        let (x, y) = runtime.find("nav-dashboards").expect("dashboards navigation");
+        let (x, y) = runtime.find("rail-dashboards").expect("dashboards navigation");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -8997,7 +9122,7 @@ mod tests {
         );
 
         // The workflow editor's save and run land in the host's registry.
-        let (x, y) = runtime.find("nav-workflows").expect("workflows navigation");
+        let (x, y) = runtime.find("rail-workflows").expect("workflows navigation");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -9043,7 +9168,7 @@ mod tests {
     fn the_workflow_list_is_sorted_by_name() {
         let mut runtime = runtime();
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-workflows").expect("workflows navigation");
+        let (x, y) = runtime.find("rail-workflows").expect("workflows navigation");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
@@ -9064,7 +9189,7 @@ mod tests {
 
         let mut runtime = runtime();
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-workflows").unwrap();
+        let (x, y) = runtime.find("rail-workflows").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -9137,7 +9262,7 @@ mod tests {
         let mut runtime = runtime();
         runtime.on_key = Some(app_key);
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-workflows").unwrap();
+        let (x, y) = runtime.find("rail-workflows").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -9174,7 +9299,7 @@ mod tests {
     fn workflow_run_results_separate_failures_from_successes() {
         let mut runtime = runtime();
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-workflows").unwrap();
+        let (x, y) = runtime.find("rail-workflows").unwrap();
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
@@ -9333,7 +9458,7 @@ mod tests {
         assert!(runtime.find("sql-editor-field").is_some());
         assert!(runtime.find("tab-strip").is_some());
 
-        let (x, y) = runtime.find("nav-connections").expect("connections navigation");
+        let (x, y) = runtime.find("rail-connections").expect("connections navigation");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
@@ -9351,7 +9476,7 @@ mod tests {
         let mut runtime = runtime();
         runtime.frame(0.0);
 
-        let (x, y) = runtime.find("nav-connections").expect("connections navigation");
+        let (x, y) = runtime.find("rail-connections").expect("connections navigation");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
@@ -9379,13 +9504,13 @@ mod tests {
         let mut runtime = runtime();
         runtime.frame(0.0);
 
-        let (x, y) = runtime.find("nav-connections").expect("connections navigation");
+        let (x, y) = runtime.find("rail-connections").expect("connections navigation");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
         assert!(runtime.find("desktop-adapter-message").is_some());
 
-        let (x, y) = runtime.find("nav-settings").expect("settings navigation");
+        let (x, y) = runtime.find("rail-settings").expect("settings navigation");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
@@ -9409,7 +9534,7 @@ mod tests {
         }]));
         runtime.frame(0.0);
 
-        let (x, y) = runtime.find("nav-connections").expect("connections navigation");
+        let (x, y) = runtime.find("rail-connections").expect("connections navigation");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
@@ -9645,7 +9770,7 @@ mod tests {
     fn the_settings_page_is_its_own_page_not_the_old_preview_card() {
         let mut runtime = runtime();
         runtime.frame(0.0);
-        let (x, y) = runtime.find("nav-settings").expect("settings navigation");
+        let (x, y) = runtime.find("rail-settings").expect("settings navigation");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
@@ -10867,5 +10992,89 @@ mod tests {
             elements.iter().any(|e| e.key.as_deref() == Some("datazen-body")),
             "sidebar+page live under the titlebar body row"
         );
+    }
+
+    #[test]
+    fn the_rail_renders_sections_toggles_collapse_and_persists() {
+        // L4: 7 rail items + a collapse toggle; collapsed/expanded state
+        // persists through the layout settings port and the rail renders.
+        let mut rt = runtime();
+        rt.frame(0.0);
+        let keys: Vec<String> = rt.elements().iter().filter_map(|e| e.key.clone()).collect();
+        assert!(keys.iter().any(|k| k == "datazen-rail"), "rail present: {keys:?}");
+        for section in Section::ALL {
+            let id = format!("rail-{}", section.key());
+            assert!(keys.iter().any(|k| k == &id), "missing rail item: {id}");
+        }
+        assert!(keys.iter().any(|k| k == "rail-toggle"), "collapse toggle present");
+        assert!(!keys.iter().any(|k| k == "datazen-sidebar"), "old sidebar is gone");
+
+        // Default: expanded (112pt).
+        assert!(rt.state.sidebar_expanded(), "expanded by default");
+        assert_eq!(rt.state.sidebar_rail_width(), RAIL_WIDTH_EXPANDED);
+        rt.frame(0.0);
+        let rail_w = rt
+            .elements()
+            .into_iter()
+            .find(|e| e.key.as_deref() == Some("datazen-rail"))
+            .map(|e| e.rect[2])
+            .unwrap_or(0.0);
+        assert!(
+            (rail_w - RAIL_WIDTH_EXPANDED as f32).abs() < 1.0,
+            "expanded rail width, got {rail_w}"
+        );
+
+        // Collapse/expand via the action and verify persistence.
+        rt.state.toggle_sidebar_expanded();
+        assert!(!rt.state.sidebar_expanded(), "collapsed after toggle");
+        assert_eq!(rt.state.sidebar_rail_width(), RAIL_WIDTH_COLLAPSED);
+        assert_eq!(
+            rt.state.layout_size(SIDEBAR_RAIL_WIDTH_KEY),
+            Some(RAIL_WIDTH_COLLAPSED),
+            "collapse persisted"
+        );
+        rt.frame(1.0 / 60.0);
+        assert!(rt.elements().iter().any(|e| e.key.as_deref() == Some("datazen-rail")));
+
+        rt.state.toggle_sidebar_expanded();
+        assert!(rt.state.sidebar_expanded(), "expanded again");
+        assert_eq!(rt.state.sidebar_rail_width(), RAIL_WIDTH_EXPANDED);
+        assert_eq!(rt.state.layout_size(SIDEBAR_RAIL_WIDTH_KEY), Some(RAIL_WIDTH_EXPANDED));
+        rt.frame(1.0 / 60.0);
+        assert!(rt.elements().iter().any(|e| e.key.as_deref() == Some("datazen-rail")));
+
+        // A fresh runtime seeded from the same persisted width reads collapsed.
+        let mut seeded = AppState::default();
+        seeded.set_layout_size(SIDEBAR_RAIL_WIDTH_KEY, RAIL_WIDTH_COLLAPSED).unwrap();
+        assert!(!seeded.sidebar_expanded());
+        assert_eq!(seeded.sidebar_rail_width(), RAIL_WIDTH_COLLAPSED);
+    }
+
+    #[test]
+    fn the_navigator_panel_holds_the_tree_and_persists_width() {
+        // L4: the object tree moved into a resizable navigator panel in the
+        // content area; its width persists through the layout port.
+        let mut rt = runtime();
+        rt.frame(0.0);
+        let keys: Vec<String> = rt.elements().iter().filter_map(|e| e.key.clone()).collect();
+        assert!(keys.iter().any(|k| k == "datazen-navigator"), "navigator panel: {keys:?}");
+        assert!(keys.iter().any(|k| k == "object-tree"), "tree in navigator: {keys:?}");
+        assert!(
+            keys.iter().any(|k| k == "open-query"),
+            "workspace action in navigator: {keys:?}"
+        );
+        assert!(
+            keys.iter().any(|k| k.starts_with("splitter:") && k.contains(NAVIGATOR_WIDTH_KEY)),
+            "navigator splitter present: {keys:?}"
+        );
+
+        assert_eq!(rt.state.navigator_width(), NAVIGATOR_WIDTH_DEFAULT, "default navigator width");
+        rt.state.set_layout_size(NAVIGATOR_WIDTH_KEY, 340).unwrap();
+        assert_eq!(rt.state.navigator_width(), 340, "persisted width reads back");
+        // Out-of-range persisted values clamp to the resizable range.
+        rt.state.set_layout_size(NAVIGATOR_WIDTH_KEY, 50).unwrap();
+        assert_eq!(rt.state.navigator_width(), NAVIGATOR_WIDTH_MIN);
+        rt.state.set_layout_size(NAVIGATOR_WIDTH_KEY, 9000).unwrap();
+        assert_eq!(rt.state.navigator_width(), NAVIGATOR_WIDTH_MAX);
     }
 }
