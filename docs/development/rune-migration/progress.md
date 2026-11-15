@@ -1,7 +1,7 @@
 ## Current Task
-- **任务**: E5（连接表单接活宿主）——第四阶段（basic 驱动接入，[plan-native-4.md](plan-native-4.md)）。
+- **任务**: E6（离线验证扫尾）——第四阶段（basic 驱动接入，[plan-native-4.md](plan-native-4.md)）。
 - **负责人**: Coder Agent
-- **状态**: E1（fc1c658）、E2（e8a2337）、E3（ef116f8）、E4（d4d59d1）已完成——宿主静态准入 basic SKU 11 工厂 id，GR5 首跑全绿；E5 进行中。
+- **状态**: E1（fc1c658）、E2（e8a2337）、E3（ef116f8）、E4（d4d59d1）、E5（d221c3e）已完成；E6 进行中（连接不可达路径断言 + GR5 如实记录）。
 
 ## N5 组装配方（调查结论，fc160ec 时点）
 
