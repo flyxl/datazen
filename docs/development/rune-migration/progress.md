@@ -1,10 +1,11 @@
 ## Current Task
-- **任务**: A3 查询面板逐页对齐（plan-native-5）— A2 连接表单对话框化已完成，继续推进编辑器高度可拖持久化/工具栏动作群/收藏历史侧栏/结果多 tab
+- **任务**: A3/A4/A5 逐页对齐（plan-native-5）— A2、A6 已合流主轨；A4 在并行 worktree 推进中，继续完成 A3 查询面板与 A5 结果工作区对齐并整合 A4
 - **负责人**: Coder Agent
-- **状态**: L1–L7、A2 已完成；A1 仍进行中（首页与导航器 Recent/All/过滤已落地，pinned/用户分组受契约限制）。A2 将连接表单改为对话框（Basic/Connection 分组 + SSH 隧道 UI 占位、保存走既有 draft 路径、必填校验保持），GR2 **163 passed / 0 failed**，GR4 绿。第五阶段计划见 [plan-native-5.md](plan-native-5.md)。
+- **状态**: L1–L7 已完成；A1 进行中（首页与导航器 Recent/All/过滤已落地，pinned/用户分组受契约限制）。A2 连接表单对话框化（Basic/Connection 分组 + SSH 隧道 UI 占位，保存走既有 draft 路径）已合流；A6 设置导航分组（12 section × 2 组 + 深链 key）已合流。第五阶段计划见 [plan-native-5.md](plan-native-5.md)。
 
 ## Completed Work (recent)
-- [x] A2 连接表单对话框化（`1e383c421`，见 [testing/A2-connection-form-dialog.md](testing/A2-connection-form-dialog.md)）
+- [x] A2 连接表单对话框化（`1e383c421`, `7e06bf48e`，合流主轨；见 [testing/A2-connection-form-dialog.md](testing/A2-connection-form-dialog.md)）
+- [x] A6 设置导航分组（`27c5f2292`, `95b4a4c30`，合流主轨；见 [testing/A6-settings-nav.md](testing/A6-settings-nav.md)）
 
 ## N5 组装配方（调查结论，fc160ec 时点）
 
