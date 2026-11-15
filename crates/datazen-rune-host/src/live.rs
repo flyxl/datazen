@@ -1924,6 +1924,29 @@ async fn run_query(
     })
 }
 
+/// What one setting write does to the document's ui object (L1): the three
+/// scalar settings set one flat key verbatim; a layout size sets a key
+/// inside the layout sub-object.
+enum UiWrite {
+    Scalar(&'static str, serde_json::Value),
+    Layout(String, u32),
+}
+
+fn ui_write(setting: &datazen_ui_api::Setting) -> UiWrite {
+    match setting {
+        datazen_ui_api::Setting::Theme { dark } => {
+            UiWrite::Scalar("themeDark", serde_json::json!(dark))
+        }
+        datazen_ui_api::Setting::TablePageSize { rows } => {
+            UiWrite::Scalar("tablePageSize", serde_json::json!(rows))
+        }
+        datazen_ui_api::Setting::QueryMaxRows { rows } => {
+            UiWrite::Scalar("queryMaxRows", serde_json::json!(rows))
+        }
+        datazen_ui_api::Setting::Layout { key, value } => UiWrite::Layout(key.clone(), *value),
+    }
+}
+
 impl DesktopAdapter for LiveAdapter {
     fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String> {
         // The file store's list path touches only the loaded store; its
@@ -2134,6 +2157,18 @@ impl DesktopAdapter for LiveAdapter {
         if let Some(rows) = ui.get("queryMaxRows").and_then(|value| value.as_u64()) {
             settings.push(datazen_ui_api::Setting::QueryMaxRows { rows: rows as u32 });
         }
+        // Layout sizes (L1) live in their own sub-object; each entry is one
+        // region's persisted size in points.
+        if let Some(layout) = ui.get("layout").and_then(|layout| layout.as_object()) {
+            for (key, value) in layout {
+                if let Some(points) = value.as_u64() {
+                    settings.push(datazen_ui_api::Setting::Layout {
+                        key: key.clone(),
+                        value: points as u32,
+                    });
+                }
+            }
+        }
         if settings.is_empty() {
             // An empty answer would replace the memory port's list with
             // "nothing set"; the honest fresh install reports nothing and
@@ -2145,30 +2180,9 @@ impl DesktopAdapter for LiveAdapter {
     }
 
     fn write_ui_setting(&mut self, setting: datazen_ui_api::Setting) -> Result<(), String> {
-        // The same validation the memory port runs: the rules are the
-        // product's, not the store's.
-        match &setting {
-            datazen_ui_api::Setting::Theme { .. } => {}
-            datazen_ui_api::Setting::TablePageSize { rows } => {
-                if *rows == 0 || *rows > 500 {
-                    return Err(format!("table page size must be 1..=500, got {rows}"));
-                }
-            }
-            datazen_ui_api::Setting::QueryMaxRows { rows } => {
-                if *rows == 0 || *rows > 10_000 {
-                    return Err(format!("query max rows must be 1..=10000, got {rows}"));
-                }
-            }
-        }
-        let (key, value) = match &setting {
-            datazen_ui_api::Setting::Theme { dark } => ("themeDark", serde_json::json!(dark)),
-            datazen_ui_api::Setting::TablePageSize { rows } => {
-                ("tablePageSize", serde_json::json!(rows))
-            }
-            datazen_ui_api::Setting::QueryMaxRows { rows } => {
-                ("queryMaxRows", serde_json::json!(rows))
-            }
-        };
+        // The same validation both ports run: the rules are the product's,
+        // not the store's (L1 shares them through the port).
+        setting.validate()?;
         let mut document = self.settings_document.lock().expect("the settings lock").clone();
         let ui = document
             .as_object_mut()
@@ -2176,7 +2190,22 @@ impl DesktopAdapter for LiveAdapter {
             .entry("ui")
             .or_insert_with(|| serde_json::json!({}));
         if let Some(object) = ui.as_object_mut() {
-            object.insert(key.into(), value);
+            match ui_write(&setting) {
+                UiWrite::Scalar(key, value) => {
+                    object.insert(key.into(), value);
+                }
+                UiWrite::Layout(key, points) => {
+                    // Layout sizes land in their own sub-object: region keys
+                    // cannot collide with the scalar settings.
+                    if let Some(layout) = object
+                        .entry("layout")
+                        .or_insert_with(|| serde_json::json!({}))
+                        .as_object_mut()
+                    {
+                        layout.insert(key, serde_json::json!(points));
+                    }
+                }
+            }
         }
         // Through the use case: the repository writes atomically, the
         // service round-trips the stored snapshot. The file write is small
@@ -3212,7 +3241,7 @@ mod tests {
         assert!(dir.join("settings.json").exists(), "the settings file exists");
 
         // A fresh adapter over the same data dir sees them: persistence.
-        let mut reopened = LiveAdapter::with_data_dir(repository, &dir);
+        let mut reopened = LiveAdapter::with_data_dir(repository.clone(), &dir);
         let settings = reopened.read_ui_settings().unwrap();
         assert!(settings.contains(&datazen_ui_api::Setting::TablePageSize { rows: 50 }));
 
@@ -3226,6 +3255,34 @@ mod tests {
         assert!(error.contains("1..=500"), "the refusal names the rule: {error}");
         let after = std::fs::read_to_string(&dir.join("settings.json")).unwrap();
         assert_eq!(before, after, "a refused write changes nothing on disk");
+
+        // Layout sizes (L1) land in the ui object's layout sub-object and
+        // survive a reopen; a second write to the same region replaces in
+        // place, another region coexists.
+        let size = |key: &str, points: u32| {
+            datazen_ui_api::Setting::Layout { key: key.into(), value: points }
+        };
+        reopened.write_ui_setting(size("navigator-width", 280)).unwrap();
+        reopened.write_ui_setting(size("navigator-width", 312)).unwrap();
+        reopened.write_ui_setting(size("editor-height", 320)).unwrap();
+        let settings = reopened.read_ui_settings().unwrap();
+        assert!(settings.contains(&size("navigator-width", 312)));
+        assert!(settings.contains(&size("editor-height", 320)));
+        let mut fresh = LiveAdapter::with_data_dir(repository, &dir);
+        assert!(
+            fresh.read_ui_settings().unwrap().contains(&size("navigator-width", 312)),
+            "the layout size survives a reopen"
+        );
+
+        // The shared validation refuses a bad layout key and a bad size, and
+        // the file stays as it was.
+        let before = std::fs::read_to_string(&dir.join("settings.json")).unwrap();
+        let error = fresh.write_ui_setting(size("Navigator", 280)).unwrap_err();
+        assert!(error.contains("layout key"), "the refusal names the rule: {error}");
+        let error = fresh.write_ui_setting(size("navigator-width", 0)).unwrap_err();
+        assert!(error.contains("1..=10000"), "the refusal names the rule: {error}");
+        let after = std::fs::read_to_string(&dir.join("settings.json")).unwrap();
+        assert_eq!(before, after, "a refused layout write changes nothing on disk");
     }
 
     #[test]

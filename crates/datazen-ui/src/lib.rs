@@ -600,6 +600,22 @@ impl AppState {
         }
     }
 
+    /// One persisted layout size in points (L1), read from the settings in
+    /// force. `None` means the region has never been resized: the caller
+    /// applies its default.
+    fn layout_size(&self, key: &str) -> Option<u32> {
+        self.ui_settings().into_iter().find_map(|setting| match setting {
+            Setting::Layout { key: region, value } if region == key => Some(value),
+            _ => None,
+        })
+    }
+
+    /// Persist one layout size in points (L1): the splitter stores it once
+    /// the drag ends, so a restart reopens the same proportions.
+    fn set_layout_size(&mut self, key: &str, value: u32) -> Result<(), String> {
+        self.write_ui_setting(Setting::Layout { key: key.into(), value })
+    }
+
     /// The table page size from the settings in force (fallback: the built-in 25).
     fn table_page_size(&self) -> u32 {
         self.ui_settings()
@@ -5585,7 +5601,7 @@ pub fn start() {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppState, APP_FONT_FAMILIES, APP_FONTS, Section, TABLE_PAGE_SIZE, query_selected, sql_editor, type_, view};
+    use super::{AppState, APP_FONT_FAMILIES, APP_FONTS, Section, Setting, TABLE_PAGE_SIZE, query_selected, sql_editor, type_, view};
     use rune::{Env, Runtime};
 
     fn runtime() -> Runtime<AppState> {
@@ -10691,6 +10707,36 @@ mod tests {
     }
 
     #[test]
+    fn layout_sizes_round_trip_through_the_settings_ports() {
+        // The memory port answers while the demo desktop says not
+        // implemented: the helpers ride the same fallback as the scalar
+        // settings (L1).
+        let mut state = AppState::default();
+        assert_eq!(state.layout_size("navigator-width"), None, "a fresh app has no layout sizes");
+
+        state.set_layout_size("navigator-width", 280).unwrap();
+        assert_eq!(state.layout_size("navigator-width"), Some(280));
+        state.set_layout_size("navigator-width", 300).unwrap();
+        assert_eq!(state.layout_size("navigator-width"), Some(300), "the region's last size wins");
+        state.set_layout_size("editor-height", 320).unwrap();
+        assert_eq!(state.layout_size("editor-height"), Some(320));
+
+        // One entry per region key, other regions coexist.
+        let layouts = state
+            .ui_settings()
+            .into_iter()
+            .filter(|s| matches!(s, Setting::Layout { .. }))
+            .count();
+        assert_eq!(layouts, 2, "one entry per region");
+
+        // The port's rules apply on the UI path too: a bad key is refused
+        // and nothing is stored.
+        let error = state.set_layout_size("Navigator", 280).unwrap_err();
+        assert!(error.contains("layout key"), "the refusal names the rule: {error}");
+        assert_eq!(state.layout_size("Navigator"), None);
+    }
+
+    #[test]
     fn a_host_that_persists_settings_answers_the_reads_and_writes() {
         use datazen_ui_api::{Setting, SettingsApi};
 
@@ -10723,12 +10769,14 @@ mod tests {
             }
             fn write_ui_setting(&mut self, setting: Setting) -> Result<(), String> {
                 self.writes.push(setting.clone());
-                let kind = |setting: &Setting| match setting {
-                    Setting::Theme { .. } => 0,
-                    Setting::TablePageSize { .. } => 1,
-                    Setting::QueryMaxRows { .. } => 2,
+                let slot = |setting: &Setting| match setting {
+                    Setting::Theme { .. } => "theme".to_string(),
+                    Setting::TablePageSize { .. } => "tablePageSize".to_string(),
+                    Setting::QueryMaxRows { .. } => "queryMaxRows".to_string(),
+                    // One slot per region key, like the memory port.
+                    Setting::Layout { key, .. } => format!("layout:{key}"),
                 };
-                self.settings.retain(|existing| kind(existing) != kind(&setting));
+                self.settings.retain(|existing| slot(existing) != slot(&setting));
                 self.settings.push(setting);
                 Ok(())
             }

@@ -274,6 +274,57 @@ pub enum Setting {
     Theme { dark: bool },
     TablePageSize { rows: u32 },
     QueryMaxRows { rows: u32 },
+    /// One layout size in integer points (L1): `key` names the resizable
+    /// region (for example `navigator-width`), `value` its persisted size.
+    /// Points, not floats: the entry stays `Eq` and the file stays readable,
+    /// and every React-side layout number is an integer anyway.
+    Layout { key: String, value: u32 },
+}
+
+impl Setting {
+    /// The product's validation rules, shared by both ports (L1): the same
+    /// sentences the memory port has always answered, so a rejection reads
+    /// the same wherever it surfaces.
+    pub fn validate(&self) -> Result<(), String> {
+        match self {
+            Setting::Theme { .. } => Ok(()),
+            Setting::TablePageSize { rows } => {
+                if *rows == 0 || *rows > 500 {
+                    return Err(format!("table page size must be 1..=500, got {rows}"));
+                }
+                Ok(())
+            }
+            Setting::QueryMaxRows { rows } => {
+                if *rows == 0 || *rows > 10_000 {
+                    return Err(format!("query max rows must be 1..=10000, got {rows}"));
+                }
+                Ok(())
+            }
+            Setting::Layout { key, value } => {
+                if !valid_layout_key(key) {
+                    return Err(format!(
+                        "layout key must be lowercase letters, digits or hyphens, got {key:?}"
+                    ));
+                }
+                if *value == 0 || *value > 10_000 {
+                    return Err(format!("layout size must be 1..=10000, got {value}"));
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+/// A layout key is a short lowercase identifier: it names one resizable
+/// region and lands in the settings file verbatim.
+fn valid_layout_key(key: &str) -> bool {
+    let mut chars = key.chars();
+    match chars.next() {
+        Some(first) if first.is_ascii_lowercase() => {}
+        _ => return false,
+    }
+    key.len() <= 48
+        && key.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
 /// Reads and writes settings, one entry at a time.
@@ -1213,21 +1264,8 @@ impl SettingsApi for MemoryWorkspace {
     }
 
     fn write_setting(&mut self, setting: Setting) -> Result<(), String> {
-        match &setting {
-            Setting::Theme { .. } => {}
-            Setting::TablePageSize { rows } => {
-                if *rows == 0 || *rows > 500 {
-                    return Err(format!("table page size must be 1..=500, got {rows}"));
-                }
-            }
-            Setting::QueryMaxRows { rows } => {
-                if *rows == 0 || *rows > 10_000 {
-                    return Err(format!("query max rows must be 1..=10000, got {rows}"));
-                }
-            }
-        }
-        let kind = setting_kind(&setting);
-        self.settings.retain(|existing| setting_kind(existing) != kind);
+        setting.validate()?;
+        self.settings.retain(|existing| !replaces_slot(existing, &setting));
         self.settings.push(setting);
         Ok(())
     }
@@ -1238,6 +1276,17 @@ fn setting_kind(setting: &Setting) -> u8 {
         Setting::Theme { .. } => 0,
         Setting::TablePageSize { .. } => 1,
         Setting::QueryMaxRows { .. } => 2,
+        Setting::Layout { .. } => 3,
+    }
+}
+
+/// Whether `existing` holds the slot `incoming` writes: the same entry for
+/// the scalar settings, the same region key for layout sizes — one size per
+/// region, every region coexists.
+fn replaces_slot(existing: &Setting, incoming: &Setting) -> bool {
+    match (existing, incoming) {
+        (Setting::Layout { key: a, .. }, Setting::Layout { key: b, .. }) => a == b,
+        _ => setting_kind(existing) == setting_kind(incoming),
     }
 }
 
@@ -2348,6 +2397,44 @@ mod tests {
 
         assert!(workspace.write_setting(Setting::Theme { dark: false }).is_ok());
         assert!(workspace.read_settings().contains(&Setting::Theme { dark: false }));
+    }
+
+    #[test]
+    fn layout_settings_validate_and_dedup_per_region_key() {
+        let mut workspace = MemoryWorkspace::new();
+
+        // A valid size lands; the same region key replaces in place, a
+        // different region key coexists (L1).
+        workspace.write_setting(Setting::Layout { key: "navigator-width".into(), value: 280 }).unwrap();
+        workspace.write_setting(Setting::Layout { key: "editor-height".into(), value: 320 }).unwrap();
+        workspace.write_setting(Setting::Layout { key: "navigator-width".into(), value: 300 }).unwrap();
+        let settings = workspace.read_settings();
+        assert!(settings.contains(&Setting::Layout { key: "navigator-width".into(), value: 300 }));
+        assert!(settings.contains(&Setting::Layout { key: "editor-height".into(), value: 320 }));
+        let navigator = settings
+            .iter()
+            .filter(|s| matches!(s, Setting::Layout { key, .. } if key == "navigator-width"))
+            .count();
+        assert_eq!(navigator, 1, "one entry per region key");
+
+        // The shared rules: bad keys and out-of-range sizes are refused, and
+        // nothing changes.
+        let before = workspace.read_settings();
+        for bad in [
+            Setting::Layout { key: "Navigator".into(), value: 280 },
+            Setting::Layout { key: "has space".into(), value: 280 },
+            Setting::Layout { key: "".into(), value: 280 },
+            Setting::Layout { key: "navigator-width".into(), value: 0 },
+            Setting::Layout { key: "navigator-width".into(), value: 10_001 },
+        ] {
+            assert!(workspace.write_setting(bad).is_err(), "the bad entry is refused");
+        }
+        assert_eq!(workspace.read_settings(), before, "failed writes change nothing");
+
+        // The shared validation speaks for the scalar settings too.
+        assert!(Setting::TablePageSize { rows: 999 }.validate().is_err());
+        assert!(Setting::QueryMaxRows { rows: 0 }.validate().is_err());
+        assert!(Setting::Layout { key: "editor-height".into(), value: 456 }.validate().is_ok());
     }
 
     #[test]
