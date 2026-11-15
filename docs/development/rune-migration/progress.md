@@ -1,7 +1,7 @@
 ## Current Task
-- **任务**: A1 连接首页/树逐页对齐（布局/样式/交互与 Tauri 版一致）
+- **任务**: A1 连接首页/树逐页对齐（布局/样式/交互与 Tauri 版一致）— 继续树侧 pinned/最近/分组/值搜索
 - **负责人**: Coder Agent
-- **状态**: L1–L7 已完成（L7: grid/sql/ER 主题 token 适配亮暗，GR2 159 / GR4 绿）；第五阶段计划见 [plan-native-5.md](plan-native-5.md)。A1 进行中。
+- **状态**: L1–L7 已完成；A1 首页（Hero+卡片+最近查询区块）已提交，GR2 160 / GR4 绿。第五阶段计划见 [plan-native-5.md](plan-native-5.md)。A1 树侧对齐进行中。
 
 ## N5 组装配方（调查结论，fc160ec 时点）
 
