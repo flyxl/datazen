@@ -636,7 +636,7 @@ pub fn editor_font() -> TextStyle {
     TextStyle::new(13.0, 400.0)
 }
 
-pub fn highlight_sql(src: &str) -> Vec<Span> {
+pub fn highlight_sql(src: &str, dark: bool) -> Vec<Span> {
     let bytes = src.as_bytes();
     let mut i = 0;
     let mut spans = Vec::new();
@@ -647,7 +647,7 @@ pub fn highlight_sql(src: &str) -> Vec<Span> {
             while i < bytes.len() && bytes[i] != b'\n' {
                 i += 1;
             }
-            spans.push(Span::new(start, i).color(comment_color()).italic());
+            spans.push(Span::new(start, i).color(comment_color(dark)).italic());
             continue;
         }
         if bytes[i] == b'/' && bytes.get(i + 1) == Some(&b'*') {
@@ -657,7 +657,7 @@ pub fn highlight_sql(src: &str) -> Vec<Span> {
                 i += 1;
             }
             i = (i + 2).min(bytes.len());
-            spans.push(Span::new(start, i).color(comment_color()).italic());
+            spans.push(Span::new(start, i).color(comment_color(dark)).italic());
             continue;
         }
         if bytes[i] == b'\'' || bytes[i] == b'"' {
@@ -680,7 +680,7 @@ pub fn highlight_sql(src: &str) -> Vec<Span> {
                     i += 1;
                 }
             }
-            spans.push(Span::new(start, i).color(string_color()));
+            spans.push(Span::new(start, i).color(string_color(dark)));
             continue;
         }
         if bytes[i].is_ascii_digit() {
@@ -689,7 +689,7 @@ pub fn highlight_sql(src: &str) -> Vec<Span> {
             while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'.') {
                 i += 1;
             }
-            spans.push(Span::new(start, i).color(number_color()));
+            spans.push(Span::new(start, i).color(number_color(dark)));
             continue;
         }
         if bytes[i].is_ascii_alphabetic() || bytes[i] == b'_' {
@@ -699,7 +699,7 @@ pub fn highlight_sql(src: &str) -> Vec<Span> {
                 i += 1;
             }
             if is_keyword(&src[start..i]) {
-                spans.push(Span::new(start, i).color(keyword_color()).bold());
+                spans.push(Span::new(start, i).color(keyword_color(dark)).bold());
             }
             continue;
         }
@@ -709,8 +709,8 @@ pub fn highlight_sql(src: &str) -> Vec<Span> {
 }
 
 /// The editor page: a scroll view of unwrapped lines. Not a `text_input`.
-pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color) -> El {
-    let spans = highlight_sql(&editor.doc);
+pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: bool) -> El {
+    let spans = highlight_sql(&editor.doc, dark);
     let carets: Vec<(usize, bool)> = editor
         .selection
         .ranges()
@@ -721,12 +721,12 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color) -> El {
     let main_head = editor.main_head();
     let mut doc = col().key("sql-editor-field").w(EDITOR_SURFACE_WIDTH).min_h(300.0);
     for (n, (start, line)) in split_lines(&editor.doc).into_iter().enumerate() {
-        doc = doc.child(line_row(n, start, line, &spans, &carets, editor));
+        doc = doc.child(line_row(n, start, line, &spans, &carets, editor, dark));
         if !editor.completion_items().is_empty()
             && main_head >= start
             && main_head <= start + line.len()
         {
-            doc = doc.child(completion_list(editor, ink));
+            doc = doc.child(completion_list(editor, ink, dark));
         }
     }
     let count = editor.cursor_count();
@@ -834,12 +834,14 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color) -> El {
 }
 
 /// The keyword completion, drawn in the canvas below the caret's line.
-fn completion_list(editor: &SqlEditor, ink: rune::Color) -> El {
+fn completion_list(editor: &SqlEditor, ink: rune::Color, dark: bool) -> El {
+    let bg = if dark { oklch(0.22, 0.03, 250.0) } else { oklch(0.97, 0.01, 250.0) };
+    let sel_bg = if dark { oklch(0.34, 0.08, 250.0) } else { oklch(0.86, 0.06, 250.0) };
     let mut list = col()
         .key("sql-completion")
         .w(170.0)
         .radius(6.0)
-        .fill(oklch(0.22, 0.03, 250.0));
+        .fill(bg);
     for (index, item) in editor.completion_items().iter().enumerate() {
         let selected = index == editor.completion_selected();
         list = list.child(
@@ -849,7 +851,7 @@ fn completion_list(editor: &SqlEditor, ink: rune::Color) -> El {
                 .h(18.0)
                 .px(8.0)
                 .center_y()
-                .fill(if selected { oklch(0.34, 0.08, 250.0) } else { oklch(0.22, 0.03, 250.0) })
+                .fill(if selected { sel_bg } else { bg })
                 .child(text(*item).font(editor_font()).color(ink))
                 .on_press(move |state: &mut crate::AppState| {
                     state.sql.completion_accept_index(index);
@@ -861,7 +863,7 @@ fn completion_list(editor: &SqlEditor, ink: rune::Color) -> El {
 
 /// A plain document surface: the editor's model and IME caret, but no SQL
 /// highlighting — for workflow YAML and other non-SQL text.
-pub fn plain_panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color) -> El {
+pub fn plain_panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: bool) -> El {
     let carets: Vec<(usize, bool)> = editor
         .selection
         .ranges()
@@ -871,7 +873,7 @@ pub fn plain_panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color) -> 
         .collect();
     let mut doc = col().key("yaml-editor-field").w(EDITOR_SURFACE_WIDTH).min_h(160.0);
     for (n, (start, line)) in split_lines(&editor.doc).into_iter().enumerate() {
-        doc = doc.child(line_row(n, start, line, &[], &carets, editor));
+        doc = doc.child(line_row(n, start, line, &[], &carets, editor, dark));
     }
     col()
         .key("yaml-editor")
@@ -910,6 +912,7 @@ fn line_row(
     spans: &[Span],
     carets: &[(usize, bool)],
     editor: &SqlEditor,
+    dark: bool,
 ) -> El {
     let end = start + line.len();
     let mut here: Vec<(usize, bool)> = carets
@@ -928,17 +931,18 @@ fn line_row(
         }
         if is_main {
             if let Some(composed) = editor.composition() {
+                let underline = if dark { oklch(0.8, 0.1, 95.0) } else { oklch(0.55, 0.12, 95.0) };
                 row = row.child(
                     text(composed)
                         .font(editor_font())
-                        .spans(vec![Span::new(0, composed.len()).underline(oklch(0.8, 0.1, 95.0))]),
+                        .spans(vec![Span::new(0, composed.len()).underline(underline)]),
                 );
             }
             if editor.focused() {
-                row = row.child(caret(true));
+                row = row.child(caret(true, dark));
             }
         } else {
-            row = row.child(caret(false));
+            row = row.child(caret(false, dark));
         }
         cursor = rel;
     }
@@ -970,8 +974,15 @@ fn clip_span(span: &Span, abs_from: usize, abs_to: usize, origin: usize) -> Opti
     Some(out)
 }
 
-fn caret(main: bool) -> El {
-    let bar = col().w(2.0).h(16.0).fill(if main { oklch(0.9, 0.12, 250.0) } else { oklch(0.8, 0.08, 250.0) });
+fn caret(main: bool, dark: bool) -> El {
+    let fill = if dark {
+        if main { oklch(0.9, 0.12, 250.0) } else { oklch(0.8, 0.08, 250.0) }
+    } else if main {
+        oklch(0.35, 0.10, 250.0)
+    } else {
+        oklch(0.45, 0.08, 250.0)
+    };
+    let bar = col().w(2.0).h(16.0).fill(fill);
     if main { bar.key("sql-caret").ime_cursor() } else { bar }
 }
 
@@ -988,17 +999,17 @@ fn split_lines(doc: &str) -> Vec<(usize, &str)> {
     out
 }
 
-fn keyword_color() -> rune::Color {
-    oklch(0.72, 0.13, 305.0)
+fn keyword_color(dark: bool) -> rune::Color {
+    if dark { oklch(0.72, 0.13, 305.0) } else { oklch(0.48, 0.16, 305.0) }
 }
-fn string_color() -> rune::Color {
-    oklch(0.74, 0.12, 145.0)
+fn string_color(dark: bool) -> rune::Color {
+    if dark { oklch(0.74, 0.12, 145.0) } else { oklch(0.50, 0.14, 145.0) }
 }
-fn comment_color() -> rune::Color {
-    oklch(0.62, 0.02, 95.0)
+fn comment_color(dark: bool) -> rune::Color {
+    if dark { oklch(0.62, 0.02, 95.0) } else { oklch(0.52, 0.03, 95.0) }
 }
-fn number_color() -> rune::Color {
-    oklch(0.78, 0.12, 70.0)
+fn number_color(dark: bool) -> rune::Color {
+    if dark { oklch(0.78, 0.12, 70.0) } else { oklch(0.52, 0.14, 70.0) }
 }
 
 fn is_keyword(word: &str) -> bool {
@@ -1064,7 +1075,7 @@ mod tests {
     #[test]
     fn highlights_keywords_strings_comments_and_numbers() {
         let src = "SELECT 42 FROM t WHERE name = '雪' -- tail\n";
-        let spans = highlight_sql(src);
+        let spans = highlight_sql(src, true);
         let slice = |span: &Span| &src[span.start as usize..span.end as usize];
         assert!(spans.iter().any(|s| slice(s) == "SELECT"));
         assert!(spans.iter().any(|s| slice(s) == "FROM"));
@@ -1077,7 +1088,7 @@ mod tests {
     #[test]
     fn block_comment_does_not_color_the_keyword_inside_it() {
         let src = "/* SELECT */ FROM";
-        let spans = highlight_sql(src);
+        let spans = highlight_sql(src, true);
         let slice = |span: &Span| &src[span.start as usize..span.end as usize];
         assert!(spans.iter().any(|s| slice(s) == "/* SELECT */"));
         assert!(spans.iter().any(|s| slice(s) == "FROM"));

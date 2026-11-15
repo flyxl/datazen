@@ -487,13 +487,13 @@ pub(crate) fn grid_of<'a>(state: &'a crate::AppState, slot: GridSlot) -> &'a Dat
 
 /// The scrolling sheet the table page and the query result share: a sticky header
 /// over a window of virtual rows.
-fn sheet(grid: &DataGrid, slot: GridSlot, ink: rune::Color, well: rune::Color, height: f32) -> El {
+fn sheet(grid: &DataGrid, slot: GridSlot, ink: rune::Color, well: rune::Color, height: f32, dark: bool) -> El {
     let scroll_x = grid.scroll_x();
     let width = COL_W * grid.cols as f32;
     let sheet = col()
         .key(slot.key("data-grid-sheet"))
         .w(width)
-        .child(header_row(grid, slot, ink).sticky_top(0.0))
+        .child(header_row(grid, slot, ink, dark).sticky_top(0.0))
         .child(
             col()
                 .key(slot.key("data-grid-rows"))
@@ -503,7 +503,7 @@ fn sheet(grid: &DataGrid, slot: GridSlot, ink: rune::Color, well: rune::Color, h
                     grid.rows as usize,
                     ROW_H,
                     move |_state: &crate::AppState, index| Cow::Owned(slot.key(&format!("grid-row-{index}"))),
-                    move |state: &crate::AppState, index| data_row(grid_of(state, slot), slot, index as u32, ink),
+                    move |state: &crate::AppState, index| data_row(grid_of(state, slot), slot, index as u32, ink, dark),
                 )
                 .virtual_rows_version(1u32),
         );
@@ -529,7 +529,7 @@ fn sheet(grid: &DataGrid, slot: GridSlot, ink: rune::Color, well: rune::Color, h
     scroll
 }
 
-pub fn panel(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well: rune::Color) -> El {
+pub fn panel(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well: rune::Color, dark: bool) -> El {
     let grid = &state.grid;
     let status = status_line(grid);
     let mut panel = col()
@@ -554,7 +554,7 @@ pub fn panel(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well
     panel
         .child(filter_bar(state, ink, muted, well))
         .child(fk_bar(state, ink, muted, well))
-        .child(sheet(grid, GridSlot::Table, ink, well, 380.0))
+        .child(sheet(grid, GridSlot::Table, ink, well, 380.0, dark))
         .child(footer(state, ink, muted))
 }
 
@@ -677,6 +677,7 @@ pub fn result_panel(
     ink: rune::Color,
     muted: rune::Color,
     well: rune::Color,
+    dark: bool,
 ) -> El {
     col()
         .key("result-grid")
@@ -688,7 +689,7 @@ pub fn result_panel(
                 .color(muted)
                 .key("result-grid-status"),
         )
-        .child(sheet(grid, slot, ink, well, 200.0))
+        .child(sheet(grid, slot, ink, well, 200.0, dark))
 }
 
 /// The status line above the grid: page shape, column window, selection, dirty cells.
@@ -829,14 +830,15 @@ fn footer(state: &crate::AppState, ink: rune::Color, muted: rune::Color) -> El {
         )
 }
 
-fn header_row(grid: &DataGrid, slot: GridSlot, ink: rune::Color) -> El {
-    let mut line = row().key(slot.key("data-grid-header")).h(ROW_H).fill(oklch(0.22, 0.02, 250.0));
+fn header_row(grid: &DataGrid, slot: GridSlot, ink: rune::Color, dark: bool) -> El {
+    let header_bg = if dark { oklch(0.22, 0.02, 250.0) } else { oklch(0.92, 0.01, 250.0) };
+    let mut line = row().key(slot.key("data-grid-header")).h(ROW_H).fill(header_bg);
     let mut cursor = 0u32;
     for col_index in grid.built_columns() {
         if col_index > cursor {
             line = line.child(el().w((col_index - cursor) as f32 * COL_W).h(ROW_H));
         }
-        line = line.child(header_cell(grid, slot, col_index, ink));
+        line = line.child(header_cell(grid, slot, col_index, ink, dark));
         cursor = col_index + 1;
     }
     if cursor < grid.cols {
@@ -845,11 +847,11 @@ fn header_row(grid: &DataGrid, slot: GridSlot, ink: rune::Color) -> El {
     line
 }
 
-fn data_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color) -> El {
-    paint_row(grid, slot, row_index, ink)
+fn data_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color, dark: bool) -> El {
+    paint_row(grid, slot, row_index, ink, dark)
 }
 
-fn paint_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color) -> El {
+fn paint_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color, dark: bool) -> El {
     let cols = grid.built_columns();
     // The key matches the virtual list's row key, so the row reads its place
     // in the set from the list's index.
@@ -862,7 +864,7 @@ fn paint_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color) 
         if col_index > cursor {
             line = line.child(el().w((col_index - cursor) as f32 * COL_W).h(ROW_H));
         }
-        line = line.child(cell(grid, slot, row_index, col_index, ink));
+        line = line.child(cell(grid, slot, row_index, col_index, ink, dark));
         cursor = col_index + 1;
     }
     if cursor < grid.cols {
@@ -871,7 +873,7 @@ fn paint_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color) 
     line
 }
 
-fn header_cell(grid: &DataGrid, slot: GridSlot, col_index: u32, ink: rune::Color) -> El {
+fn header_cell(grid: &DataGrid, slot: GridSlot, col_index: u32, ink: rune::Color, dark: bool) -> El {
     let label = grid
         .column_name(col_index)
         .map(str::to_owned)
@@ -893,25 +895,26 @@ fn header_cell(grid: &DataGrid, slot: GridSlot, col_index: u32, ink: rune::Color
         cell = cell.on_press(move |state: &mut crate::AppState| state.cycle_sort(col_index));
     }
     if col_index == 0 {
-        cell = cell.sticky_left(0.0).fill(oklch(0.24, 0.03, 250.0));
+        let frozen_bg = if dark { oklch(0.24, 0.03, 250.0) } else { oklch(0.90, 0.01, 250.0) };
+        cell = cell.sticky_left(0.0).fill(frozen_bg);
     }
     cell
 }
 
-fn cell(grid: &DataGrid, slot: GridSlot, row_index: u32, col_index: u32, ink: rune::Color) -> El {
+fn cell(grid: &DataGrid, slot: GridSlot, row_index: u32, col_index: u32, ink: rune::Color, dark: bool) -> El {
     let selected = grid.covers(row_index, col_index);
     let active = grid.focus == (row_index, col_index);
     let frozen = col_index == 0;
     let fill = if active {
-        oklch(0.45, 0.09, 250.0)
+        if dark { oklch(0.45, 0.09, 250.0) } else { oklch(0.78, 0.10, 250.0) }
     } else if selected {
-        oklch(0.38, 0.05, 250.0)
+        if dark { oklch(0.38, 0.05, 250.0) } else { oklch(0.86, 0.05, 250.0) }
     } else if frozen {
-        oklch(0.2, 0.02, 250.0)
+        if dark { oklch(0.20, 0.02, 250.0) } else { oklch(0.94, 0.01, 250.0) }
     } else if row_index % 2 == 0 {
-        oklch(0.18, 0.01, 250.0)
+        if dark { oklch(0.18, 0.01, 250.0) } else { oklch(0.99, 0.005, 250.0) }
     } else {
-        oklch(0.16, 0.01, 250.0)
+        if dark { oklch(0.16, 0.01, 250.0) } else { oklch(0.965, 0.005, 250.0) }
     };
     let mut box_el = row()
         .key(slot.key(&format!("cell-{row_index}-{col_index}")))

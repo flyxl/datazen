@@ -2525,14 +2525,14 @@ fn query_selected(state: &AppState) -> bool {
     state.tabs.selected().is_some_and(|tab| tab.kind == TabKind::Query)
 }
 
-fn page_body(state: &AppState, theme: tok::Theme) -> El {
+fn page_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     match state.active {
         Section::Connections => connection_list(state, theme),
-        Section::Workspace => workspace_body(state, theme),
+        Section::Workspace => workspace_body(state, theme, dark),
         Section::Settings => settings_page(state, theme),
-        Section::Tools => tools_page(state, theme),
+        Section::Tools => tools_page(state, theme, dark),
         Section::Dashboards => dashboards_page(state, theme),
-        Section::Workflows => workflows_page(state, theme),
+        Section::Workflows => workflows_page(state, theme, dark),
         Section::Wapps => wapps_page(theme),
     }
 }
@@ -2585,7 +2585,7 @@ fn wapps_page(theme: tok::Theme) -> El {
 }
 
 /// The workflows page: the list, sorted by name, and the step editor.
-fn workflows_page(state: &AppState, theme: tok::Theme) -> El {
+fn workflows_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let workflows = state.host_workflows();
     let mut page = col()
         .key("workflows-page")
@@ -2699,6 +2699,7 @@ fn workflows_page(state: &AppState, theme: tok::Theme) -> El {
             &state.workflow_yaml,
             theme.text,
             theme.text_secondary,
+            dark,
         ));
         if !state.workflow_results.is_empty() {
             let mut results = col()
@@ -2925,7 +2926,7 @@ fn bar_chart(state: &AppState, id: u64, theme: tok::Theme) -> El {
 }
 
 /// The tools page: one switcher, three tools. Sync, compare, transfer.
-fn tools_page(state: &AppState, theme: tok::Theme) -> El {
+fn tools_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let entry = |key: &str, label: &str, tool: Tool, active: bool| {
         row()
             .key(key)
@@ -2955,7 +2956,7 @@ fn tools_page(state: &AppState, theme: tok::Theme) -> El {
                 .child(entry("tool-search", "Search values", Tool::ValueSearch, state.tool == Tool::ValueSearch)),
         )
         .child(match state.tool {
-            Tool::Sync => sync_tool(state, theme),
+            Tool::Sync => sync_tool(state, theme, dark),
             Tool::Compare => compare_tool(state, theme),
             Tool::Transfer => transfer_tool(state, theme),
             Tool::ValueSearch => value_search_tool(state, theme),
@@ -3476,7 +3477,7 @@ fn compare_tool(state: &AppState, theme: tok::Theme) -> El {
 }
 
 /// The sync wizard. Step 1: pick the two endpoints.
-fn sync_tool(state: &AppState, theme: tok::Theme) -> El {
+fn sync_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let mut section = col().key("sync-tool").w_full().gap(6.0);
     match state.sync_step {
         0 => section = section
@@ -3670,6 +3671,7 @@ fn sync_tool(state: &AppState, theme: tok::Theme) -> El {
                     theme.text,
                     theme.text_secondary,
                     theme.control_off,
+                    dark,
                 ));
             }
             section = section.child(
@@ -3738,15 +3740,15 @@ fn sync_tool(state: &AppState, theme: tok::Theme) -> El {
 /// The workspace is driven by the tabs: a query tab shows the SQL editor above the
 /// results, a loaded table page shows the grid, and anything else is an empty state.
 /// The old standalone editor and demo-grid sections are no longer product pages.
-fn workspace_body(state: &AppState, theme: tok::Theme) -> El {
+fn workspace_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     if query_selected(state) {
-        return query_workspace(state, theme);
+        return query_workspace(state, theme, dark);
     }
     if let Some((database, schema)) = &state.er_schema {
-        return er_view(state, database, schema, theme);
+        return er_view(state, database, schema, theme, dark);
     }
     if state.grid.has_page() {
-        return table_workspace(state, theme);
+        return table_workspace(state, theme, dark);
     }
     workspace_empty(theme)
 }
@@ -3754,7 +3756,7 @@ fn workspace_body(state: &AppState, theme: tok::Theme) -> El {
 /// The ER page: one box per table of the open schema. Wide tables (more than 12
 /// columns) draw collapsed, showing the column count. Boxes drag; their
 /// positions live in UI state.
-fn er_view(state: &AppState, database: &str, schema: &str, theme: tok::Theme) -> El {
+fn er_view(state: &AppState, database: &str, schema: &str, theme: tok::Theme, dark: bool) -> El {
     let catalog = state.catalog();
     let tables: Vec<String> = catalog
         .databases
@@ -3780,7 +3782,7 @@ fn er_view(state: &AppState, database: &str, schema: &str, theme: tok::Theme) ->
             .map(|data| data.columns.as_slice());
         let default = ((index % 3) as f32 * 230.0, (index / 3) as f32 * 180.0);
         let (x, y) = state.er_positions.get(table).copied().unwrap_or(default);
-        canvas = canvas.child(er_box(table, columns, x, y, theme));
+        canvas = canvas.child(er_box(table, columns, x, y, theme, dark));
     }
     col()
         .key("er-page")
@@ -3821,16 +3823,18 @@ fn er_box(
     x: f32,
     y: f32,
     theme: tok::Theme,
+    dark: bool,
 ) -> El {
     let collapsed = columns.is_some_and(|columns| columns.len() > 12);
     let table = table.to_owned();
     let drag_table = table.clone();
+    let box_fill = if dark { oklch(0.24, 0.03, 250.0) } else { oklch(0.96, 0.01, 250.0) };
     let mut class_box = col()
         .key(format!("er-box-{table}"))
         .absolute(x, y)
         .w(200.0)
         .radius(8.0)
-        .fill(oklch(0.24, 0.03, 250.0))
+        .fill(box_fill)
         .px(8.0)
         .py(6.0)
         .gap(2.0)
@@ -3887,11 +3891,11 @@ fn er_box(
 }
 
 /// A table tab shows the view switcher above either the data grid or the DDL.
-fn table_workspace(state: &AppState, theme: tok::Theme) -> El {
+fn table_workspace(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let title = state.tabs.selected().map(|tab| tab.title.clone()).unwrap_or_default();
     let _ = &title;
     let body = match state.table_view {
-        TableView::Data => data_grid::panel(state, theme.text, theme.text_secondary, theme.control_off),
+        TableView::Data => data_grid::panel(state, theme.text, theme.text_secondary, theme.control_off, dark),
         TableView::Ddl => ddl_view(state, &title, theme),
         TableView::Columns => columns_view(state, &title, theme),
         TableView::Indexes => indexes_view(state, &title, theme),
@@ -5185,7 +5189,7 @@ fn object_tree(state: &AppState, theme: tok::Theme) -> El {
     tree
 }
 
-fn query_workspace(state: &AppState, theme: tok::Theme) -> El {
+fn query_workspace(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     // N1: a query job in flight says so above whatever the area shows —
     // the placeholder before the first result, the stale grid of the run
     // before it.
@@ -5204,6 +5208,7 @@ fn query_workspace(state: &AppState, theme: tok::Theme) -> El {
             theme.text,
             theme.text_secondary,
             theme.control_off,
+            dark,
         ),
         None => col()
             .key("query-results")
@@ -5219,7 +5224,7 @@ fn query_workspace(state: &AppState, theme: tok::Theme) -> El {
         .key("query-tab")
         .w_full()
         .gap(8.0)
-        .child(sql_editor::panel(&state.sql, theme.text, theme.text_secondary))
+        .child(sql_editor::panel(&state.sql, theme.text, theme.text_secondary, dark))
         .child(
             row()
                 .key("query-toolbar")
@@ -5762,7 +5767,7 @@ fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
         } else {
             row().key("tab-strip-absent").h(0.0)
         })
-        .child(page_body(state, theme))
+        .child(page_body(state, theme, dark))
         .child(content_status_bar(state, theme));
 
     let body = row()
@@ -11373,5 +11378,52 @@ mod tests {
             texts.iter().any(|t| t.contains("New query") && t.contains("Close")),
             "shortcut hints rendered: {texts:?}"
         );
+    }
+
+    #[test]
+    fn light_theme_renders_grid_editor_and_er_with_theme_tokens() {
+        // L7: hardcoded dark surfaces in grid/editor/ER follow the active theme.
+        let mut rt = runtime();
+        rt.state.write_ui_setting(Setting::Theme { dark: false }).ok();
+        rt.invalidate();
+        rt.frame(0.0);
+        assert!(rt.find("content-toolbar").is_some(), "chrome renders in light mode");
+
+        // Table grid renders under light theme.
+        rt.state.active = Section::Workspace;
+        let _ = rt.state.tabs.open(datazen_ui_api::TabKind::Table, "customers");
+        rt.state.grid.load_page(&datazen_ui_api::TablePage {
+            table: "customers".into(),
+            columns: vec!["id".into(), "name".into()],
+            rows: vec![vec!["1".into(), "Ada".into()]],
+            page: 0,
+            page_size: 50,
+            total_rows: 1,
+            sort: None,
+            filter: None,
+            primary_key: vec!["id".into()],
+            read_only: None,
+        });
+        rt.state.table_view = super::TableView::Data;
+        rt.state.er_schema = None;
+        rt.invalidate();
+        rt.frame(0.0);
+        assert!(rt.find("data-grid").is_some(), "grid renders in light mode");
+
+        // SQL editor renders under light theme (selected query tab).
+        let _ = rt.state.tabs.open(datazen_ui_api::TabKind::Query, "Query");
+        rt.state.er_schema = None;
+        rt.invalidate();
+        rt.frame(0.0);
+        assert!(rt.find("sql-editor").is_some(), "sql editor renders in light mode");
+
+        // ER canvas renders under light theme when schema is open and no query is selected.
+        let table = rt.state.tabs.open(datazen_ui_api::TabKind::Table, "orders").expect("tab");
+        rt.state.tabs.select(table);
+        rt.state.er_schema = Some(("main".into(), "public".into()));
+        rt.invalidate();
+        rt.frame(0.0);
+        assert!(rt.find("er-page").is_some(), "ER page renders in light mode");
+        assert!(rt.find("er-canvas").is_some(), "ER canvas renders in light mode");
     }
 }
