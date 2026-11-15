@@ -175,6 +175,11 @@ pub struct AppState {
     connection_name: TextEdit,
     connection_engine: TextEdit,
     connection_address: TextEdit,
+    /// E5: the remote fields the live host maps onto its config; the
+    /// memory port ignores them.
+    connection_username: TextEdit,
+    connection_password: TextEdit,
+    connection_database: TextEdit,
     connection_error: Option<String>,
     /// The snippet form's fields and its last rejected write.
     snippet_name: TextEdit,
@@ -328,6 +333,9 @@ impl Default for AppState {
             connection_name: TextEdit::new(String::new()),
             connection_engine: TextEdit::new(String::new()),
             connection_address: TextEdit::new(String::new()),
+            connection_username: TextEdit::new(String::new()),
+            connection_password: TextEdit::new(String::new()),
+            connection_database: TextEdit::new(String::new()),
             connection_error: None,
             snippet_name: TextEdit::new(String::new()),
             snippet_sql: TextEdit::new(String::new()),
@@ -628,17 +636,60 @@ impl AppState {
     }
 
     /// Save the connection form through the port. A missing address is refused
-    /// and nothing is saved.
+    /// and nothing is saved. E5: the six fields travel as one draft — the
+    /// live host persists it through its connection use case (the password
+    /// lands sealed), the memory port keeps its semantics.
     fn save_connection_form(&mut self) {
-        let name = self.connection_name.text.clone();
-        let engine = self.connection_engine.text.clone();
-        let address = self.connection_address.text.clone();
-        match self.workspace.save_connection(&name, &engine, &address) {
+        // E5: the engines the host links are the form's whitelist — the
+        // registry's own admission ("linked means offered"). A host that
+        // answers none is the demo process: the memory port's own default
+        // engine applies, and its rules take the save.
+        let engines = self.desktop.available_engines();
+        let engine = self.connection_engine.text.trim().to_owned();
+        let engine = if engine.is_empty() {
+            if engines.is_empty() {
+                "postgres".to_owned()
+            } else {
+                self.connection_error = Some(format!(
+                    "an engine is required — the host links {}",
+                    engines.join(", ")
+                ));
+                return;
+            }
+        } else {
+            engine
+        };
+        if !engines.is_empty() && !engines.contains(&engine) {
+            self.connection_error = Some(format!(
+                "the host links {} — '{engine}' is not among them",
+                engines.join(", ")
+            ));
+            return;
+        }
+        let draft = datazen_ui_api::ConnectionDraft {
+            name: self.connection_name.text.clone(),
+            engine,
+            address: self.connection_address.text.clone(),
+            username: self.connection_username.text.trim().to_owned(),
+            password: self.connection_password.text.clone(),
+            database: self.connection_database.text.trim().to_owned(),
+        };
+        let saved = match self.desktop.save_connection(&draft) {
+            Ok(()) => Ok(()),
+            Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
+                self.workspace.save_connection(&draft)
+            }
+            Err(error) => Err(error),
+        };
+        match saved {
             Ok(()) => {
                 self.connection_error = None;
                 self.connection_name = TextEdit::new(String::new());
                 self.connection_engine = TextEdit::new(String::new());
                 self.connection_address = TextEdit::new(String::new());
+                self.connection_username = TextEdit::new(String::new());
+                self.connection_password = TextEdit::new(String::new());
+                self.connection_database = TextEdit::new(String::new());
             }
             Err(error) => self.connection_error = Some(error),
         }
@@ -5116,6 +5167,27 @@ fn connection_list(state: &AppState, theme: tok::Theme) -> El {
                     .w(170.0)
                     .h(24.0)
                     .on_edit(|state: &mut AppState| &mut state.connection_address),
+            )
+            .child(
+                text_input(&state.connection_username, type_::LABEL)
+                    .key("connection-username-input")
+                    .w(110.0)
+                    .h(24.0)
+                    .on_edit(|state: &mut AppState| &mut state.connection_username),
+            )
+            .child(
+                text_input(&state.connection_password, type_::LABEL)
+                    .key("connection-password-input")
+                    .w(110.0)
+                    .h(24.0)
+                    .on_edit(|state: &mut AppState| &mut state.connection_password),
+            )
+            .child(
+                text_input(&state.connection_database, type_::LABEL)
+                    .key("connection-database-input")
+                    .w(110.0)
+                    .h(24.0)
+                    .on_edit(|state: &mut AppState| &mut state.connection_database),
             )
             .child(
                 row()
@@ -10226,6 +10298,86 @@ mod tests {
             runtime.state.inbound_loading.is_some(),
             "the stale answer did not clear the newer ask's marker"
         );
+    }
+
+    #[test]
+    fn the_connection_form_saves_through_the_host_and_the_whitelist_refuses() {
+        struct FormHost {
+            saved: std::rc::Rc<std::cell::RefCell<Vec<datazen_ui_api::ConnectionDraft>>>,
+        }
+
+        impl DesktopAdapter for FormHost {
+            fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String> {
+                Err(DESKTOP_NOT_IMPLEMENTED.into())
+            }
+
+            fn read_table_page(
+                &mut self,
+                _: &str,
+                _: u32,
+                _: u32,
+                _: Option<&ColumnSort>,
+                _: Option<&ColumnFilter>,
+            ) -> Result<TablePage, String> {
+                Err(DESKTOP_NOT_IMPLEMENTED.into())
+            }
+
+            fn commit_cells(&mut self, _: &str, _: &[(u32, String, String)]) -> Result<u32, String> {
+                Err(DESKTOP_NOT_IMPLEMENTED.into())
+            }
+
+            fn available_engines(&self) -> Vec<String> {
+                vec!["sqlite".into(), "postgresql".into()]
+            }
+
+            fn save_connection(
+                &mut self,
+                draft: &datazen_ui_api::ConnectionDraft,
+            ) -> Result<(), String> {
+                self.saved.borrow_mut().push(draft.clone());
+                Ok(())
+            }
+        }
+
+        let saved = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut state = AppState::default();
+        state.desktop =
+            Box::new(FormHost { saved: std::rc::Rc::clone(&saved) });
+        state.connection_name = rune::TextEdit::new("Warehouse");
+        state.connection_engine = rune::TextEdit::new("postgresql");
+        state.connection_address = rune::TextEdit::new("db.example.com:5432");
+        state.connection_username = rune::TextEdit::new("app");
+        state.connection_password = rune::TextEdit::new("s3cret");
+        state.connection_database = rune::TextEdit::new("analytics");
+        state.save_connection_form();
+        assert!(state.connection_error.is_none(), "{:?}", state.connection_error);
+        assert_eq!(saved.borrow().len(), 1, "the draft reached the host");
+        let draft = saved.borrow()[0].clone();
+        assert_eq!(draft.engine, "postgresql");
+        assert_eq!(draft.address, "db.example.com:5432");
+        assert_eq!(draft.username, "app");
+        assert_eq!(draft.password, "s3cret");
+        assert_eq!(draft.database, "analytics");
+        assert_eq!(state.connection_name.text, "", "the form cleared");
+
+        // The whitelist: an engine the host does not link is refused before
+        // the host is asked; the sentence names the linked set.
+        state.connection_engine = rune::TextEdit::new("oracle");
+        state.connection_address = rune::TextEdit::new("db.example.com");
+        state.save_connection_form();
+        assert_eq!(saved.borrow().len(), 1, "nothing more reached the host");
+        let error = state.connection_error.as_deref().expect("the refusal shows");
+        assert!(error.contains("not among them"), "the sentence names it: {error}");
+
+        // The empty engine asks for one — the live host links real types,
+        // not the memory port's demo default.
+        state.connection_error = None;
+        state.connection_engine = rune::TextEdit::new("  ");
+        state.connection_address = rune::TextEdit::new("db.example.com");
+        state.save_connection_form();
+        assert_eq!(saved.borrow().len(), 1, "still nothing more reached the host");
+        let error = state.connection_error.as_deref().expect("the empty engine asks");
+        assert!(error.contains("an engine is required"), "the sentence names it: {error}");
     }
 
     #[test]

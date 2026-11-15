@@ -148,6 +148,21 @@ pub struct ConnectionProfile {
     pub engine: String,
 }
 
+/// The connection form's one save (E5): the fields both ports speak — the
+/// memory port keeps its name/engine/address semantics and ignores the
+/// credentials, the live host maps all six onto its `ConnectionConfig`
+/// (the password lands sealed, never in the file's plaintext).
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ConnectionDraft {
+    pub name: String,
+    pub engine: String,
+    /// "host" or "host:port".
+    pub address: String,
+    pub username: String,
+    pub password: String,
+    pub database: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Session {
     pub connection_id: String,
@@ -361,6 +376,21 @@ pub trait DesktopAdapter {
     /// process has no scan and the UI refuses honestly.
     fn table_inbound_references(&self, _table: &str) -> Result<Vec<InboundRef>, String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// Save the connection form's draft (E5): the live host maps it onto
+    /// its `ConnectionConfig` and persists it through the connection use
+    /// case — the password lands sealed (T10). The default answers the
+    /// fixed error; the UI falls back to the memory port.
+    fn save_connection(&mut self, _draft: &ConnectionDraft) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// The engines the host's registry admitted (E4/E5) — the connection
+    /// form's whitelist; "linked means offered". Empty means no live host
+    /// and the memory port's own rules apply.
+    fn available_engines(&self) -> Vec<String> {
+        Vec::new()
     }
 
     /// The saved favorite queries (T6), newest first. The default answers
@@ -949,7 +979,7 @@ pub trait WorkspaceApi {
     fn table_foreign_keys(&self, table: &str) -> Result<Vec<ForeignKeySpec>, String>;
     /// Save a connection from the form: name, engine, address. It goes into
     /// the port only, never the system keychain. A missing address is refused.
-    fn save_connection(&mut self, name: &str, engine: &str, address: &str) -> Result<(), String>;
+    fn save_connection(&mut self, draft: &ConnectionDraft) -> Result<(), String>;
     /// The saved SQL snippets.
     fn snippets(&self) -> Vec<Snippet>;
     /// Create a snippet; an existing name is refused.
@@ -1709,7 +1739,8 @@ impl WorkspaceApi for MemoryWorkspace {
         Ok(())
     }
 
-    fn save_connection(&mut self, name: &str, engine: &str, address: &str) -> Result<(), String> {
+    fn save_connection(&mut self, draft: &ConnectionDraft) -> Result<(), String> {
+        let ConnectionDraft { name, engine, address, .. } = draft;
         if address.trim().is_empty() {
             return Err("address is required".into());
         }
@@ -2323,11 +2354,22 @@ mod tests {
     fn a_connection_without_an_address_cannot_be_saved() {
         let mut workspace = MemoryWorkspace::new();
         let before = workspace.connections().len();
-        assert!(workspace.save_connection("Remote", "postgres", "").is_err());
-        assert!(workspace.save_connection("Remote", "postgres", "   ").is_err());
+        let draft = |name: &str, engine: &str, address: &str| ConnectionDraft {
+            name: name.into(),
+            engine: engine.into(),
+            address: address.into(),
+            ..ConnectionDraft::default()
+        };
+        assert!(workspace.save_connection(&draft("Remote", "postgres", "")).is_err());
+        assert!(workspace.save_connection(&draft("Remote", "postgres", "   ")).is_err());
         assert_eq!(workspace.connections().len(), before, "nothing was saved");
 
-        workspace.save_connection("Remote Postgres", "postgres", "db.example.com:5432").unwrap();
+        // The credential fields ride along without changing the memory
+        // port's semantics (E5: the draft is the shared shape).
+        let mut postgres = draft("Remote Postgres", "postgres", "db.example.com:5432");
+        postgres.username = "app".into();
+        postgres.database = "analytics".into();
+        workspace.save_connection(&postgres).unwrap();
         let saved = workspace.connections().last().unwrap();
         assert_eq!(saved.id, "remote-postgres");
         assert_eq!(saved.name, "Remote Postgres");
@@ -2335,7 +2377,7 @@ mod tests {
         assert_eq!(workspace.connections().len(), before + 1);
 
         // A duplicate name gets its own id; both are in the port, not the keychain.
-        workspace.save_connection("Remote Postgres", "mysql", "db2.example.com:3306").unwrap();
+        workspace.save_connection(&draft("Remote Postgres", "mysql", "db2.example.com:3306")).unwrap();
         assert_eq!(workspace.connections().last().unwrap().id, "remote-postgres-2");
     }
 

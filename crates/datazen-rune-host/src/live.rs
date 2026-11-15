@@ -35,10 +35,10 @@ use datazen::dashboard::domain::types::ViewMode;
 use datazen_driver_api::filters::{FilterCondition, FilterOperator, SortCondition};
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver, Value as Cell};
 use datazen_ui_api::{
-    AdapterDelivery, AdapterJob, Catalog, ColumnFilter, ColumnSort, ConnectionProfile,
-    DashboardWidget, DatabaseNode, DesktopAdapter, ProgressSnapshot, SchemaNode, Snippet,
-    TablePage, TableStructure, ValueSearchHit, Workflow, WorkflowStepResult,
-    DESKTOP_NOT_IMPLEMENTED,
+    AdapterDelivery, AdapterJob, Catalog, ColumnFilter, ColumnSort, ConnectionDraft,
+    ConnectionProfile, DashboardWidget, DatabaseNode, DesktopAdapter, ProgressSnapshot,
+    SchemaNode, Snippet, TablePage, TableStructure, ValueSearchHit, Workflow,
+    WorkflowStepResult, DESKTOP_NOT_IMPLEMENTED,
 };
 use datazen_ui_api::{FavoriteSpec, ImportPreview, ImportedConnectionSpec, InboundRef};
 use datazen::workflow::domain::error::WorkflowError;
@@ -1954,6 +1954,100 @@ impl DesktopAdapter for LiveAdapter {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 
+    fn available_engines(&self) -> Vec<String> {
+        // E4: the registry's admission is the engine whitelist — linked
+        // means offered, and the form deserves the same list the binary
+        // declares.
+        self.registry.available_types()
+    }
+
+    fn save_connection(&mut self, draft: &ConnectionDraft) -> Result<(), String> {
+        // E5: the form's six fields land as one config through the
+        // connection use case. The store's save seals the password (T10)
+        // before the file ever sees it; the engine must be one the host's
+        // registry admitted — linked means offered, anything else is a
+        // hard error by construction and gets its sentence here too.
+        let name = draft.name.trim();
+        let name = if name.is_empty() { "Untitled" } else { name };
+        let engine = draft.engine.trim();
+        let engines = self.registry.available_types();
+        if !engines.iter().any(|linked| linked == engine) {
+            return Err(format!(
+                "the host links {} — '{engine}' is not among them",
+                engines.join(", ")
+            ));
+        }
+        let address = draft.address.trim();
+        if address.is_empty() {
+            return Err("address is required".into());
+        }
+        let (host, port) = match address.rsplit_once(':') {
+            Some((host, port)) => (
+                host.to_owned(),
+                Some(port.parse::<u16>().map_err(|_| {
+                    format!("the address is 'host[:port]' — '{port}' is not a port")
+                })?),
+            ),
+            None => (address.to_owned(), None),
+        };
+        // The id: the memory port's slug of the name, deduplicated against
+        // the store — the same shape both worlds speak.
+        let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
+        let existing: Vec<String> =
+            futures_executor::block_on(self.service.list_plain(&scope))
+                .map_err(|error| error.to_string())?
+                .into_iter()
+                .map(|config| config.id)
+                .collect();
+        let slug = |name: &str| {
+            let mut id: String = name
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '-' })
+                .collect();
+            while id.contains("--") {
+                id = id.replace("--", "-");
+            }
+            id.trim_matches('-').to_owned()
+        };
+        let mut base = slug(name);
+        if base.is_empty() {
+            base = "connection".into();
+        }
+        let mut id = base.clone();
+        let mut counter = 2;
+        while existing.contains(&id) {
+            id = format!("{base}-{counter}");
+            counter += 1;
+        }
+        let config = datazen_driver_api::ConnectionConfig {
+            id,
+            name: name.to_owned(),
+            database_type: engine.to_owned(),
+            host: Some(host),
+            port,
+            database: (!draft.database.is_empty()).then(|| draft.database.clone()),
+            schema: None,
+            username: (!draft.username.is_empty()).then(|| draft.username.clone()),
+            password: (!draft.password.is_empty()).then(|| draft.password.clone()),
+            ssl_mode: datazen_driver_api::SslMode::default(),
+            connection_timeout: 30,
+            max_pool_size: 10,
+            ssh_tunnel: None,
+            tunnel_kind: None,
+            tunnel_id: None,
+            http_proxy_tunnel: None,
+            websocket_tunnel: None,
+            color_tag: None,
+            group: None,
+            last_connected_at: None,
+            server_version: None,
+            options: None,
+            read_only: false,
+            pinned: false,
+        };
+        futures_executor::block_on(self.service.save(&scope, config)).map_err(|error| error.to_string())
+    }
+
     fn commit_cells(&mut self, _: &str, _: &[(u32, String, String)]) -> Result<u32, String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
@@ -3696,6 +3790,90 @@ mod tests {
         // The DDL read is part of the structure job; its sync path refuses.
         let ddl = adapter.table_ddl("orders").expect_err("the sync DDL path refuses");
         assert!(ddl.contains("structure job"), "the sentence names the job: {ddl}");
+    }
+
+    #[test]
+    fn a_form_connection_lands_sealed_in_the_store() {
+        // The sandbox has no OS keychain — the file backend the T10 tests
+        // use serves the sealing the same way.
+        std::env::set_var("DATAZEN_NATIVE_KEYRING", "file");
+        let dir = temp_dir("form-save");
+        let store_path = dir.join("connections.json");
+        let mut adapter = LiveAdapter::with_data_dir(
+            Arc::new(FileConnectionRepository::open(&store_path).unwrap()),
+            &dir,
+        );
+        let draft = ConnectionDraft {
+            name: "Warehouse".into(),
+            engine: "postgresql".into(),
+            address: "db.example.com:5432".into(),
+            username: "app".into(),
+            password: "s3cret".into(),
+            database: "analytics".into(),
+        };
+        adapter.save_connection(&draft).expect("the form saves");
+
+        // The file holds the config with the password sealed (T10), never
+        // the plaintext; the remote fields all land.
+        let raw = std::fs::read_to_string(&store_path).unwrap();
+        assert!(raw.contains("postgresql"), "the engine lands: {raw}");
+        assert!(raw.contains("db.example.com"), "the host lands: {raw}");
+        assert!(raw.contains("analytics"), "the database lands: {raw}");
+        assert!(!raw.contains("s3cret"), "the password never lands in plaintext: {raw}");
+
+        // The list serves it back under the slug the name mints.
+        let listed = adapter.list_connections().unwrap();
+        let saved = listed.iter().find(|profile| profile.id == "warehouse").expect("the slug id");
+        assert_eq!(saved.engine, "postgresql");
+        assert_eq!(saved.name, "Warehouse");
+    }
+
+    #[test]
+    fn a_form_connection_refuses_what_the_host_does_not_link() {
+        std::env::set_var("DATAZEN_NATIVE_KEYRING", "file");
+        let dir = temp_dir("form-refuse");
+        let store_path = dir.join("connections.json");
+        let mut adapter = LiveAdapter::with_data_dir(
+            Arc::new(FileConnectionRepository::open(&store_path).unwrap()),
+            &dir,
+        );
+        // An engine outside the registry's admission is refused before
+        // anything lands; the sentence names the linked set.
+        let draft = ConnectionDraft {
+            name: "Nope".into(),
+            engine: "oracle".into(),
+            address: "db.example.com".into(),
+            ..ConnectionDraft::default()
+        };
+        let refused = adapter.save_connection(&draft).expect_err("oracle is not linked");
+        assert!(refused.contains("not among them"), "the sentence names it: {refused}");
+        // The empty engine has no default on the live host — the registry
+        // admits types, not guesses.
+        let empty = ConnectionDraft {
+            engine: String::new(),
+            ..draft
+        };
+        let refused = adapter
+            .save_connection(&empty)
+            .expect_err("an empty engine is not a linked type");
+        assert!(refused.contains("not among them"), "the empty engine refuses: {refused}");
+        // A malformed port is a sentence, not a panic.
+        let bad_port = ConnectionDraft {
+            engine: "postgresql".into(),
+            address: "db.example.com:not-a-port".into(),
+            ..empty
+        };
+        let refused = adapter
+            .save_connection(&bad_port)
+            .expect_err("a malformed port refuses");
+        assert!(refused.contains("not a port"), "the sentence names it: {refused}");
+        assert!(adapter.list_connections().unwrap().is_empty(), "nothing landed");
+
+        // The whitelist answers the linked set — the same eleven the
+        // registry admits (E4).
+        assert!(adapter.available_engines().contains(&"sqlite".to_string()));
+        assert!(adapter.available_engines().contains(&"postgresql".to_string()));
+        assert_eq!(adapter.available_engines().len(), 11);
     }
 
     #[test]
