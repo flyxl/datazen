@@ -1,21 +1,21 @@
 //! View modules.
 
-mod view_chrome;
-mod view_navigation;
-mod view_connections;
-mod view_workspace;
-mod view_structure;
-mod view_settings;
-mod view_tools_sync;
-mod view_tools_ops;
-mod view_dashboards_workflows;
+mod chrome;
+mod navigation;
+mod connections;
+mod workspace;
+mod structure;
+mod settings;
+mod tools_sync;
+mod tools_ops;
+mod dashboards_workflows;
 
-pub(crate) use view_chrome::*;
-pub(crate) use view_navigation::*;
-pub(crate) use view_connections::*;
-pub(crate) use view_workspace::*;
-pub(crate) use view_structure::*;
-pub(crate) use view_settings::*;
-pub(crate) use view_tools_sync::*;
-pub(crate) use view_tools_ops::*;
-pub(crate) use view_dashboards_workflows::*;
+pub(crate) use chrome::*;
+pub(crate) use navigation::*;
+pub(crate) use connections::*;
+pub(crate) use workspace::*;
+pub(crate) use structure::*;
+pub(crate) use settings::*;
+pub(crate) use tools_sync::*;
+pub(crate) use tools_ops::*;
+pub(crate) use dashboards_workflows::*;
