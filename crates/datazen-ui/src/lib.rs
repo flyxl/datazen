@@ -5328,17 +5328,50 @@ fn disconnect_button(state: &AppState, theme: tok::Theme) -> El {
 }
 
 fn connection_list(state: &AppState, theme: tok::Theme) -> El {
-    let mut list = col().key("connection-list").w_full().gap(8.0);
+    let mut list = col().key("connection-list").w_full().gap(12.0);
+
+    let port_connections = state.workspace.connections();
+    let connections = state
+        .desktop_connections
+        .as_deref()
+        .unwrap_or(port_connections);
+
+    // A1: home hero — summary aligned toward React ConnectionWorkspaceHome.
+    let connection_count = connections.len();
+    let mut engines: Vec<String> = connections.iter().map(|c| c.engine.clone()).collect();
+    engines.sort();
+    engines.dedup();
+    let engine_count = engines.len();
+    let hero = col()
+        .key("connections-home-hero")
+        .w_full()
+        .gap(6.0)
+        .child(
+            text("Select a connection")
+                .key("connections-home-title")
+                .font(type_::TITLE)
+                .color(theme.text),
+        )
+        .child(
+            text(format!(
+                "{connection_count} connections · {engine_count} engine types"
+            ))
+            .key("connections-home-subtitle")
+            .font(type_::LABEL)
+            .color(theme.text_secondary),
+        );
+    list = list.child(hero);
+
     // The desktop adapter's answer: its list once it is wired (H3), or its
     // fixed error over the memory port's demo list until then (H2).
     if let Some(message) = &state.desktop_error {
         list = list.child(
             row()
                 .w_full()
-                .h(24.0)
-                .px(8.0)
+                .h(28.0)
+                .px(10.0)
                 .center_y()
-                .radius(6.0)
+                .radius(8.0)
                 .fill(theme.control_off)
                 .child(
                     text(message.clone())
@@ -5348,16 +5381,15 @@ fn connection_list(state: &AppState, theme: tok::Theme) -> El {
                 ),
         );
     }
-    // N3: a live host's open job in flight. The page keeps its list; the
-    // marker says the connect is running.
+    // N3: a live host's open job in flight.
     if state.connect_loading.is_some() {
         list = list.child(
             row()
                 .w_full()
-                .h(24.0)
-                .px(8.0)
+                .h(28.0)
+                .px(10.0)
                 .center_y()
-                .radius(6.0)
+                .radius(8.0)
                 .fill(theme.control_off)
                 .child(
                     text("Connecting…")
@@ -5367,27 +5399,100 @@ fn connection_list(state: &AppState, theme: tok::Theme) -> El {
                 ),
         );
     }
-    let port_connections = state.workspace.connections();
-    let connections = state
-        .desktop_connections
-        .as_deref()
-        .unwrap_or(port_connections);
+
+    let mut cards = col()
+        .key("connections-card-list")
+        .w_full()
+        .gap(6.0)
+        .child(
+            text("Your connections")
+                .key("connections-section-title")
+                .font(type_::LABEL)
+                .color(theme.text_secondary),
+        );
     for profile in connections {
         let id = profile.id.clone();
-        let label = format!("{} · {}", profile.name, profile.engine);
-        list = list.child(
+        cards = cards.child(
             row()
                 .key(format!("connection-{id}"))
+                .w_full()
+                .h(44.0)
+                .px(12.0)
+                .center_y()
+                .radius(8.0)
+                .fill(theme.control_off)
+                .gap(10.0)
+                .child(
+                    col()
+                        .grow(1.0)
+                        .gap(2.0)
+                        .child(text(profile.name.clone()).font(type_::LABEL).color(theme.text))
+                        .child(
+                            text(profile.engine.clone())
+                                .font(type_::LABEL)
+                                .color(theme.text_secondary),
+                        ),
+                )
+                .child(
+                    row()
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.bg)
+                        .child(text("Connect").font(type_::LABEL).color(theme.text)),
+                )
+                .on_press(move |state: &mut AppState| state.open_connection(&id)),
+        );
+    }
+    if connection_count == 0 {
+        cards = cards.child(
+            row()
+                .key("connections-empty")
                 .w_full()
                 .h(40.0)
                 .px(12.0)
                 .center_y()
                 .radius(8.0)
                 .fill(theme.control_off)
-                .child(text(label).font(type_::LABEL).color(theme.text))
-                .on_press(move |state: &mut AppState| state.open_connection(&id)),
+                .child(
+                    text("No connections yet")
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
         );
     }
+    list = list.child(cards);
+
+    // A1: recent queries section (structural; history source may be unavailable).
+    list = list.child(
+        col()
+            .key("connections-recent-queries")
+            .w_full()
+            .gap(6.0)
+            .child(
+                text("Recent queries")
+                    .key("connections-recent-title")
+                    .font(type_::LABEL)
+                    .color(theme.text_secondary),
+            )
+            .child(
+                row()
+                    .key("connections-recent-empty")
+                    .w_full()
+                    .h(36.0)
+                    .px(12.0)
+                    .center_y()
+                    .radius(8.0)
+                    .fill(theme.control_off)
+                    .child(
+                        text("No recent queries")
+                            .font(type_::LABEL)
+                            .color(theme.text_secondary),
+                    ),
+            ),
+    );
+
     let mut form = col().key("connection-form").w_full().gap(8.0).child(
         row()
             .key("connection-form-fields")
@@ -6293,6 +6398,60 @@ mod tests {
             let id = format!("rail-{}", section.key());
             assert!(runtime.find(&id).is_some(), "missing navigation node: {id}");
         }
+    }
+
+    #[test]
+    fn connections_home_shows_hero_cards_and_recent_queries_section() {
+        // A1: the connections page renders a hero summary, connection cards,
+        // and a recent-queries section (empty state when no history source).
+        let mut rt = runtime();
+        rt.frame(0.0);
+        let keys: Vec<String> = rt.elements().iter().filter_map(|e| e.key.clone()).collect();
+        assert!(
+            keys.iter().any(|k| k == "connections-home-hero"),
+            "hero present: {keys:?}"
+        );
+        assert!(
+            keys.iter().any(|k| k == "connections-home-title"),
+            "hero title present"
+        );
+        assert!(
+            keys.iter().any(|k| k == "connections-home-subtitle"),
+            "hero subtitle present"
+        );
+        assert!(
+            keys.iter().any(|k| k == "connections-card-list"),
+            "card list present"
+        );
+        assert!(
+            keys.iter().any(|k| k == "connections-section-title"),
+            "connections section title present"
+        );
+        assert!(
+            keys.iter().any(|k| k.starts_with("connection-")),
+            "connection cards rendered: {keys:?}"
+        );
+        assert!(
+            keys.iter().any(|k| k == "connections-recent-queries"),
+            "recent queries section present"
+        );
+        assert!(
+            keys.iter().any(|k| k == "connections-recent-empty"),
+            "recent queries empty state present without history source"
+        );
+        let texts: Vec<String> = rt.elements().iter().filter_map(|e| e.text.clone()).collect();
+        assert!(
+            texts.iter().any(|t| t.contains("Select a connection")),
+            "hero heading text present: {texts:?}"
+        );
+        assert!(
+            texts.iter().any(|t| t.contains("Your connections")),
+            "connections section label present: {texts:?}"
+        );
+        assert!(
+            texts.iter().any(|t| t.contains("Recent queries")),
+            "recent queries label present: {texts:?}"
+        );
     }
 
     #[test]
