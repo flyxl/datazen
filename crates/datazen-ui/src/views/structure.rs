@@ -7,7 +7,7 @@ use crate::constants::*;
 use crate::icons::{self, section_icon};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
-use crate::ui::field::single_line_field;
+use crate::ui::field::TextField;
 use crate::{splitter, sql_editor};
 use datazen_ui_api::{
     ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi,
@@ -268,14 +268,18 @@ pub(crate) fn column_drafts_section(state: &AppState, title: &str, theme: tok::T
             .gap(8.0)
             .center_y()
             .child(
-                single_line_field("draft-name-input", &state.draft_name, type_::LABEL, 24.0)
-                    .w(140.0)
-                    .on_edit(|state: &mut AppState| &mut state.draft_name),
+                TextField::new("draft-name-input", &state.draft_name)
+                    .height(24.0)
+                    .width(140.0)
+                    .on_edit(|state: &mut AppState| &mut state.draft_name)
+                    .build(),
             )
             .child(
-                single_line_field("draft-type-input", &state.draft_type, type_::LABEL, 24.0)
-                    .w(110.0)
-                    .on_edit(|state: &mut AppState| &mut state.draft_type),
+                TextField::new("draft-type-input", &state.draft_type)
+                    .height(24.0)
+                    .width(110.0)
+                    .on_edit(|state: &mut AppState| &mut state.draft_type)
+                    .build(),
             )
             .child(
                 row()

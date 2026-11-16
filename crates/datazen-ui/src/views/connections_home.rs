@@ -13,7 +13,7 @@ use crate::icons::{
     ICON_SPARKLES, ICON_TERMINAL,
 };
 use crate::state_def::AppState;
-use crate::ui::field::single_line_field;
+use crate::ui::field::TextField;
 use datazen_ui_api::ConnectionProfile;
 use rune::tok::{self, type_};
 use rune::{
@@ -321,14 +321,11 @@ fn home_header(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 .border(1.0, theme.card_border)
                 .child(icon(&ICON_SEARCH, 13.0).color(theme.text_secondary))
                 .child(
-                    single_line_field(
-                        "home-connections-filter",
-                        &state.connection_search,
-                        type_::LABEL,
-                        28.0,
-                    )
-                    .grow(1.0)
-                    .placeholder("Filter connections…", theme.text_secondary),
+                    TextField::new("home-connections-filter", &state.connection_search)
+                        .height(28.0)
+                        .grow()
+                        .placeholder("Filter connections…", theme.text_secondary)
+                        .build(),
                 ),
         )
         .child(

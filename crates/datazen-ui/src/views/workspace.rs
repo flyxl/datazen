@@ -7,7 +7,7 @@ use crate::constants::*;
 use crate::icons::{self, section_icon};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{ResultView, Section, TableView, Tool};
-use crate::ui::field::single_line_field;
+use crate::ui::field::TextField;
 use crate::{splitter, sql_editor};
 use datazen_ui_api::{
     ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi,
@@ -579,13 +579,15 @@ fn result_find_bar(state: &AppState, grid: &crate::data_grid::DataGrid, theme: t
         .gap(6.0)
         .center_y()
         .child(
-            single_line_field("result-find-input", &state.result_find, type_::LABEL, 24.0)
-                .w(220.0)
+            TextField::new("result-find-input", &state.result_find)
+                .height(24.0)
+                .width(220.0)
                 .on_edit(|state: &mut AppState| &mut state.result_find)
                 .on_submit(|state: &mut AppState, tx| {
                     state.apply_result_find();
                     tx.blur();
-                }),
+                })
+                .build(),
         )
         .child(
             row()

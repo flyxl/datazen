@@ -8,7 +8,7 @@ use crate::icons::{self, section_icon};
 use crate::settings_state::{SettingsSectionDef, SETTINGS_NAV_GROUPS, SETTINGS_SECTIONS};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
-use crate::ui::field::single_line_field;
+use crate::ui::field::TextField;
 use crate::{splitter, sql_editor};
 use datazen_ui_api::{
     ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi,
@@ -220,14 +220,11 @@ fn data_browsing_section(state: &AppState, theme: tok::Theme) -> El {
                         .color(theme.text_secondary),
                 )
                 .child(
-                    single_line_field(
-                        "settings-page-size-input",
-                        &state.page_size_input,
-                        type_::LABEL,
-                        24.0,
-                    )
-                    .w(90.0)
-                    .on_edit(|state: &mut AppState| &mut state.page_size_input),
+                    TextField::new("settings-page-size-input", &state.page_size_input)
+                        .height(24.0)
+                        .width(90.0)
+                        .on_edit(|state: &mut AppState| &mut state.page_size_input)
+                        .build(),
                 )
                 .child(
                     row()
@@ -246,14 +243,11 @@ fn data_browsing_section(state: &AppState, theme: tok::Theme) -> El {
                         .color(theme.text_secondary),
                 )
                 .child(
-                    single_line_field(
-                        "settings-max-rows-input",
-                        &state.max_rows_input,
-                        type_::LABEL,
-                        24.0,
-                    )
-                    .w(90.0)
-                    .on_edit(|state: &mut AppState| &mut state.max_rows_input),
+                    TextField::new("settings-max-rows-input", &state.max_rows_input)
+                        .height(24.0)
+                        .width(90.0)
+                        .on_edit(|state: &mut AppState| &mut state.max_rows_input)
+                        .build(),
                 )
                 .child(
                     row()
@@ -351,15 +345,19 @@ fn snippets_section(state: &AppState, theme: tok::Theme) -> El {
                 .center_y()
                 .flex_wrap()
                 .child(
-                    single_line_field("snippet-name-input", &state.snippet_name, type_::LABEL, 24.0)
-                        .w(140.0)
-                        .on_edit(|state: &mut AppState| &mut state.snippet_name),
+                    TextField::new("snippet-name-input", &state.snippet_name)
+                        .height(24.0)
+                        .width(140.0)
+                        .on_edit(|state: &mut AppState| &mut state.snippet_name)
+                        .build(),
                 )
                 .child(
-                    single_line_field("snippet-sql-input", &state.snippet_sql, type_::LABEL, 24.0)
-                        .w(280.0)
-                        .min_w(0.0)
-                        .on_edit(|state: &mut AppState| &mut state.snippet_sql),
+                    TextField::new("snippet-sql-input", &state.snippet_sql)
+                        .height(24.0)
+                        .width(280.0)
+                        .min_width(0.0)
+                        .on_edit(|state: &mut AppState| &mut state.snippet_sql)
+                        .build(),
                 )
                 .child(
                     row()
@@ -464,15 +462,12 @@ pub(crate) fn favorites_section(state: &AppState, theme: tok::Theme) -> El {
                 .gap(8.0)
                 .center_y()
                 .child(
-                    single_line_field(
-                        "favorite-title-input",
-                        &state.favorite_title,
-                        type_::LABEL,
-                        24.0,
-                    )
-                    .grow(1.0)
-                    .min_w(0.0)
-                    .on_edit(|state: &mut AppState| &mut state.favorite_title),
+                    TextField::new("favorite-title-input", &state.favorite_title)
+                        .height(24.0)
+                        .grow()
+                        .min_width(0.0)
+                        .on_edit(|state: &mut AppState| &mut state.favorite_title)
+                        .build(),
                 )
                 .child(
                     row()
@@ -686,14 +681,11 @@ pub(crate) fn import_section(state: &AppState, theme: tok::Theme) -> El {
                         .color(theme.text_secondary),
                 )
                 .child(
-                    single_line_field(
-                        "import-source-input",
-                        &state.import_source,
-                        type_::LABEL,
-                        24.0,
-                    )
-                    .w(240.0)
-                    .on_edit(|state: &mut AppState| &mut state.import_source),
+                    TextField::new("import-source-input", &state.import_source)
+                        .height(24.0)
+                        .width(240.0)
+                        .on_edit(|state: &mut AppState| &mut state.import_source)
+                        .build(),
                 )
                 .child(
                     row()
@@ -751,14 +743,11 @@ pub(crate) fn import_section(state: &AppState, theme: tok::Theme) -> El {
                             .color(theme.text_secondary),
                     )
                     .child(
-                        single_line_field(
-                            "import-target-input",
-                            &state.import_target,
-                            type_::LABEL,
-                            24.0,
-                        )
-                        .w(180.0)
-                        .on_edit(|state: &mut AppState| &mut state.import_target),
+                        TextField::new("import-target-input", &state.import_target)
+                            .height(24.0)
+                            .width(180.0)
+                            .on_edit(|state: &mut AppState| &mut state.import_target)
+                            .build(),
                     )
                     .child(
                         row()
@@ -856,9 +845,11 @@ pub(crate) fn export_section(state: &AppState, theme: tok::Theme) -> El {
                         .on_press(|state: &mut AppState| state.cycle_export_format()),
                 )
                 .child(
-                    single_line_field("export-range-input", &state.export_range, type_::LABEL, 24.0)
-                        .w(220.0)
-                        .on_edit(|state: &mut AppState| &mut state.export_range),
+                    TextField::new("export-range-input", &state.export_range)
+                        .height(24.0)
+                        .width(220.0)
+                        .on_edit(|state: &mut AppState| &mut state.export_range)
+                        .build(),
                 )
                 .child(
                     row()

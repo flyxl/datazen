@@ -7,7 +7,7 @@ use crate::constants::*;
 use crate::icons::{self, section_icon};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
-use crate::ui::field::single_line_field;
+use crate::ui::field::TextField;
 use crate::{splitter, sql_editor};
 use datazen_ui_api::{
     ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi,
@@ -265,15 +265,19 @@ pub(crate) fn dashboards_page(state: &AppState, theme: tok::Theme) -> El {
                 .gap(8.0)
                 .center_y()
                 .child(
-                    single_line_field("widget-title-input", &state.widget_title, type_::LABEL, 24.0)
-                        .w(160.0)
-                        .on_edit(|state: &mut AppState| &mut state.widget_title),
+                    TextField::new("widget-title-input", &state.widget_title)
+                        .height(24.0)
+                        .width(160.0)
+                        .on_edit(|state: &mut AppState| &mut state.widget_title)
+                        .build(),
                 )
                 .child(
-                    single_line_field("widget-query-input", &state.widget_query, type_::LABEL, 24.0)
-                        .w(260.0)
+                    TextField::new("widget-query-input", &state.widget_query)
+                        .height(24.0)
+                        .width(260.0)
                         .shrink()
-                        .on_edit(|state: &mut AppState| &mut state.widget_query),
+                        .on_edit(|state: &mut AppState| &mut state.widget_query)
+                        .build(),
                 )
                 .child(
                     row()

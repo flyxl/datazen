@@ -7,7 +7,7 @@ use crate::constants::*;
 use crate::icons::{self, section_icon};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
-use crate::ui::field::single_line_field;
+use crate::ui::field::TextField;
 use crate::{splitter, sql_editor};
 use datazen_ui_api::{
     ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi,
@@ -35,14 +35,11 @@ pub(crate) fn value_search_tool(state: &AppState, theme: tok::Theme) -> El {
                 .gap(8.0)
                 .center_y()
                 .child(
-                    single_line_field(
-                        "value-search-input",
-                        &state.value_search_value,
-                        type_::LABEL,
-                        24.0,
-                    )
-                    .w(220.0)
-                    .on_edit(|state: &mut AppState| &mut state.value_search_value),
+                    TextField::new("value-search-input", &state.value_search_value)
+                        .height(24.0)
+                        .width(220.0)
+                        .on_edit(|state: &mut AppState| &mut state.value_search_value)
+                        .build(),
                 )
                 .child(
                     row()

@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use rune::{El, GrowthSpec, ScrollPos, TextStyle, col, el, oklch, row, text};
 
 use super::{DataGrid, GUTTER_W, ROW_H};
-use crate::ui::field::single_line_field;
+use crate::ui::field::TextField;
 
 /// Which grid a render call targets: the table page's or the query result's.
 /// The result keys are prefixed so both can be mounted in one frame.
@@ -363,13 +363,16 @@ fn filter_bar(state: &crate::AppState, ink: rune::Color, muted: rune::Color, wel
                 .on_press(|state: &mut crate::AppState| state.cycle_filter_column()),
         )
         .child(
-            single_line_field("filter-input", &state.filter_editor, label_style(), 24.0)
-                .w(220.0)
+            TextField::new("filter-input", &state.filter_editor)
+                .height(24.0)
+                .text_style(label_style())
+                .width(220.0)
                 .on_edit(|state: &mut crate::AppState| &mut state.filter_editor)
                 .on_submit(|state: &mut crate::AppState, tx| {
                     state.apply_filter();
                     tx.blur();
-                }),
+                })
+                .build(),
         )
         .child(
             text(format!("{} rows", state.grid.total_rows()))
@@ -624,13 +627,16 @@ fn cell(
     }
     if active && grid.editing {
         box_el.child(
-            single_line_field(slot.key("grid-editor"), &grid.editor, editor_font(), ROW_H - 4.0)
-                .w((w - 16.0).max(24.0))
+            TextField::new(slot.key("grid-editor"), &grid.editor)
+                .height(ROW_H - 4.0)
+                .text_style(editor_font())
+                .width((w - 16.0).max(24.0))
                 .on_edit(|state: &mut crate::AppState| &mut state.grid.editor)
                 .on_submit(|state: &mut crate::AppState, tx| {
                     state.commit_grid_edit();
                     tx.blur();
-                }),
+                })
+                .build(),
         )
     } else {
         box_el.child(text(grid.cell(row_index, col_index)).font(label_style()).color(ink))

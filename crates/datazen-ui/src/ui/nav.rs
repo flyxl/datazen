@@ -4,7 +4,7 @@ use crate::state_def::AppState;
 use rune::tok::{self, type_};
 use rune::{col, row, text, Color, El, Icon, TextEdit};
 
-use super::field::single_line_field;
+use super::field::TextField;
 use super::theme::{nav_palette, NAV_CHEVRON, NAV_ICON, NAV_INDENT, NAV_RADIUS, NAV_ROW_H, NAV_SEARCH_H};
 
 fn base_icon_button(key: &str, icon: &'static Icon, label: &str, theme: tok::Theme) -> El {
@@ -44,14 +44,15 @@ pub(crate) fn search_field(
     } else {
         format!("{key}-input")
     };
-    let input = single_line_field(input_key, edit, type_::LABEL, NAV_SEARCH_H)
-        .grow(1.0)
-        .min_w(0.0)
+    let input = TextField::new(input_key, edit)
+        .height(NAV_SEARCH_H)
+        .grow()
         .radius(NAV_RADIUS)
         .fill(Color::TRANSPARENT)
-        .color(theme.text)
+        .ink(theme.text)
         .placeholder(placeholder.to_owned(), palette.text_faint)
-        .on_edit(on_edit);
+        .on_edit(on_edit)
+        .build();
     row()
         .key(key.to_owned())
         .w_full()

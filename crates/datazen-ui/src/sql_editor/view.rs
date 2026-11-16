@@ -2,7 +2,7 @@ use rune::{El, Ime, Key, KeyEvent, Span, TextEdit, TextStyle, Tx, col, oklch, ro
 
 use super::highlight::highlight_sql;
 use super::model::SqlEditor;
-use crate::ui::field::single_line_field;
+use crate::ui::field::TextField;
 
 /// Editing surface width. The scroll viewport is narrower, so a long line moves sideways
 /// instead of wrapping. CodeMirror's `lineWrapping` off does this inside the line layout;
@@ -73,13 +73,16 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: boo
                 .gap(8.0)
                 .center_y()
                 .child(
-                    single_line_field("sql-find-input", &editor.find_input, editor_font(), 24.0)
-                        .w(150.0)
+                    TextField::new("sql-find-input", &editor.find_input)
+                        .height(24.0)
+                        .text_style(editor_font())
+                        .width(150.0)
                         .on_edit(|state: &mut crate::AppState| &mut state.sql.find_input)
                         .on_submit(|state: &mut crate::AppState, tx| {
                             state.sql.find_from_bar();
                             tx.blur();
-                        }),
+                        })
+                        .build(),
                 )
                 .child(
                     text("Find next")
@@ -91,13 +94,16 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: boo
                         }),
                 )
                 .child(
-                    single_line_field("sql-replace-input", &editor.replace_input, editor_font(), 24.0)
-                        .w(150.0)
+                    TextField::new("sql-replace-input", &editor.replace_input)
+                        .height(24.0)
+                        .text_style(editor_font())
+                        .width(150.0)
                         .on_edit(|state: &mut crate::AppState| &mut state.sql.replace_input)
                         .on_submit(|state: &mut crate::AppState, tx| {
                             state.sql.replace_current_from_bar();
                             tx.blur();
-                        }),
+                        })
+                        .build(),
                 )
                 .child(
                     text("Replace")

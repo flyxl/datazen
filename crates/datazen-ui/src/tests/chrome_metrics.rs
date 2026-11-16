@@ -462,7 +462,7 @@ use rune::{Env, Runtime};
     }
 
 #[test]
-fn single_line_fields_put_their_text_in_the_middle() {
+fn text_fields_put_their_line_in_the_middle() {
     // Rune lays a field's text out from the content box's top edge, so a field
     // taller than its line pins the text (and the caret) to the top. The shared
     // component hands the surplus back as symmetric padding; every single-line
@@ -489,7 +489,7 @@ fn single_line_fields_put_their_text_in_the_middle() {
 }
 
 #[test]
-fn single_line_field_component_keeps_the_requested_height() {
+fn the_text_field_component_keeps_the_requested_geometry() {
     // The component owns the height and the padding that centres the line, so a
     // caller cannot build a field taller than its line and leave the text
     // pinned to the top. The padding sits inside the box: the field still takes
@@ -497,22 +497,16 @@ fn single_line_field_component_keeps_the_requested_height() {
     fn probe(state: &AppState, _cx: &mut rune::Cx<AppState>) -> rune::El {
         rune::col()
             .child(
-                crate::ui::field::single_line_field(
-                    "probe-short",
-                    &state.connection_search,
-                    type_::LABEL,
-                    24.0,
-                )
-                .w(120.0),
+                crate::ui::field::TextField::new("probe-short", &state.connection_search)
+                    .height(24.0)
+                    .width(120.0)
+                    .build(),
             )
             .child(
-                crate::ui::field::single_line_field(
-                    "probe-tall",
-                    &state.connection_search,
-                    type_::LABEL,
-                    36.0,
-                )
-                .w(120.0),
+                crate::ui::field::TextField::new("probe-tall", &state.connection_search)
+                    .height(36.0)
+                    .width(120.0)
+                    .build(),
             )
     }
     let env = Env {

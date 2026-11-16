@@ -5,7 +5,7 @@
 use super::*;
 
 use crate::state_def::AppState;
-use crate::ui::field::single_line_field;
+use crate::ui::field::TextField;
 use rune::tok::{self, type_};
 use rune::{col, oklcha, row, text, El};
 use rune::{FileDialogOptions, Tx};
@@ -137,20 +137,17 @@ pub(crate) fn import_bar(state: &AppState, theme: tok::Theme) -> El {
             .gap(6.0)
             .child(text("导入密码（可选）").font(type_::LABEL).color(theme.text_secondary))
             .child(
-                single_line_field(
-                    "import-password-input",
-                    &state.import_password,
-                    type_::LABEL,
-                    36.0,
-                )
-                .w_full()
-                .px(12.0)
-                .radius(8.0)
-                .fill(theme.card)
-                .border(1.0, theme.card_border)
-                .placeholder("加密导出文件请输入密码", theme.text_secondary)
-                .secure()
-                .on_edit(|state: &mut AppState| &mut state.import_password),
+                TextField::new("import-password-input", &state.import_password)
+                    .height(36.0)
+                    .w_full()
+                    .pad_x(12.0)
+                    .radius(8.0)
+                    .fill(theme.card)
+                    .border(1.0, theme.card_border)
+                    .placeholder("加密导出文件请输入密码", theme.text_secondary)
+                    .secure()
+                    .on_edit(|state: &mut AppState| &mut state.import_password)
+                    .build(),
             )
             .child(
                 text("仅加密导出需要密码；普通文件可留空。")
@@ -228,13 +225,14 @@ fn form_input(
     theme: tok::Theme,
     edit: fn(&mut AppState) -> &mut rune::TextEdit,
 ) -> El {
-    single_line_field(key.to_owned(), value, type_::LABEL, 36.0)
-        .w_full()
-        .px(12.0)
+    TextField::new(key.to_owned(), value)
+        .height(36.0)
+        .pad_x(12.0)
         .radius(8.0)
         .fill(theme.card)
         .border(1.0, theme.card_border)
         .on_edit(edit)
+        .build()
 }
 
 fn password_input(
