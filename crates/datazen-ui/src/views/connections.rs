@@ -5,9 +5,9 @@
 use super::*;
 
 use crate::state_def::AppState;
-use crate::ui::centered_field_pad;
+use crate::ui::field::single_line_field;
 use rune::tok::{self, type_};
-use rune::{col, oklcha, row, text, text_input, El};
+use rune::{col, oklcha, row, text, El};
 use rune::{FileDialogOptions, Tx};
 
 /// The connections page: the home body. The connection form and the import
@@ -137,19 +137,20 @@ pub(crate) fn import_bar(state: &AppState, theme: tok::Theme) -> El {
             .gap(6.0)
             .child(text("导入密码（可选）").font(type_::LABEL).color(theme.text_secondary))
             .child(
-                text_input(&state.import_password, type_::LABEL)
-                    .key("import-password-input")
-                    .w_full()
-                    .h(36.0)
-                    .px(12.0)
-                    .py(centered_field_pad(type_::LABEL, 36.0))
-                    .single_line()
-                    .radius(8.0)
-                    .fill(theme.card)
-                    .border(1.0, theme.card_border)
-                    .placeholder("加密导出文件请输入密码", theme.text_secondary)
-                    .secure()
-                    .on_edit(|state: &mut AppState| &mut state.import_password),
+                single_line_field(
+                    "import-password-input",
+                    &state.import_password,
+                    type_::LABEL,
+                    36.0,
+                )
+                .w_full()
+                .px(12.0)
+                .radius(8.0)
+                .fill(theme.card)
+                .border(1.0, theme.card_border)
+                .placeholder("加密导出文件请输入密码", theme.text_secondary)
+                .secure()
+                .on_edit(|state: &mut AppState| &mut state.import_password),
             )
             .child(
                 text("仅加密导出需要密码；普通文件可留空。")
@@ -227,12 +228,9 @@ fn form_input(
     theme: tok::Theme,
     edit: fn(&mut AppState) -> &mut rune::TextEdit,
 ) -> El {
-    text_input(value, type_::LABEL).single_line()
-        .key(key.to_owned())
+    single_line_field(key.to_owned(), value, type_::LABEL, 36.0)
         .w_full()
-        .h(36.0)
         .px(12.0)
-        .py(centered_field_pad(type_::LABEL, 36.0))
         .radius(8.0)
         .fill(theme.card)
         .border(1.0, theme.card_border)

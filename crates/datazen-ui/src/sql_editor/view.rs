@@ -1,8 +1,8 @@
-use rune::{El, Ime, Key, KeyEvent, Span, TextEdit, TextStyle, Tx, col, oklch, row, text, text_input};
+use rune::{El, Ime, Key, KeyEvent, Span, TextEdit, TextStyle, Tx, col, oklch, row, text};
 
 use super::highlight::highlight_sql;
 use super::model::SqlEditor;
-use crate::ui::centered_field_pad;
+use crate::ui::field::single_line_field;
 
 /// Editing surface width. The scroll viewport is narrower, so a long line moves sideways
 /// instead of wrapping. CodeMirror's `lineWrapping` off does this inside the line layout;
@@ -73,11 +73,8 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: boo
                 .gap(8.0)
                 .center_y()
                 .child(
-                    text_input(&editor.find_input, editor_font()).single_line()
-                        .key("sql-find-input")
+                    single_line_field("sql-find-input", &editor.find_input, editor_font(), 24.0)
                         .w(150.0)
-                        .h(24.0)
-                        .py(centered_field_pad(editor_font(), 24.0))
                         .on_edit(|state: &mut crate::AppState| &mut state.sql.find_input)
                         .on_submit(|state: &mut crate::AppState, tx| {
                             state.sql.find_from_bar();
@@ -94,11 +91,8 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: boo
                         }),
                 )
                 .child(
-                    text_input(&editor.replace_input, editor_font()).single_line()
-                        .key("sql-replace-input")
+                    single_line_field("sql-replace-input", &editor.replace_input, editor_font(), 24.0)
                         .w(150.0)
-                        .h(24.0)
-                        .py(centered_field_pad(editor_font(), 24.0))
                         .on_edit(|state: &mut crate::AppState| &mut state.sql.replace_input)
                         .on_submit(|state: &mut crate::AppState, tx| {
                             state.sql.replace_current_from_bar();

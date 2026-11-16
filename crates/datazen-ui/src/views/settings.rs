@@ -8,14 +8,14 @@ use crate::icons::{self, section_icon};
 use crate::settings_state::{SettingsSectionDef, SETTINGS_NAV_GROUPS, SETTINGS_SECTIONS};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
-use crate::ui::centered_field_pad;
+use crate::ui::field::single_line_field;
 use crate::{splitter, sql_editor};
 use datazen_ui_api::{
     ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi,
     Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi,
 };
 use rune::tok::{self, type_};
-use rune::{col, oklch, row, text, text_input, Color, Cx, El};
+use rune::{col, oklch, row, text, Color, Cx, El};
 use rune::{FileDialogOptions, TextEdit, Tx};
 
 /// A6: grouped settings navigation (2 groups, 12 sections) with deep-link
@@ -220,12 +220,14 @@ fn data_browsing_section(state: &AppState, theme: tok::Theme) -> El {
                         .color(theme.text_secondary),
                 )
                 .child(
-                    text_input(&state.page_size_input, type_::LABEL).single_line()
-                        .key("settings-page-size-input")
-                        .w(90.0)
-                        .h(24.0)
-                        .py(centered_field_pad(type_::LABEL, 24.0))
-                        .on_edit(|state: &mut AppState| &mut state.page_size_input),
+                    single_line_field(
+                        "settings-page-size-input",
+                        &state.page_size_input,
+                        type_::LABEL,
+                        24.0,
+                    )
+                    .w(90.0)
+                    .on_edit(|state: &mut AppState| &mut state.page_size_input),
                 )
                 .child(
                     row()
@@ -244,12 +246,14 @@ fn data_browsing_section(state: &AppState, theme: tok::Theme) -> El {
                         .color(theme.text_secondary),
                 )
                 .child(
-                    text_input(&state.max_rows_input, type_::LABEL).single_line()
-                        .key("settings-max-rows-input")
-                        .w(90.0)
-                        .h(24.0)
-                        .py(centered_field_pad(type_::LABEL, 24.0))
-                        .on_edit(|state: &mut AppState| &mut state.max_rows_input),
+                    single_line_field(
+                        "settings-max-rows-input",
+                        &state.max_rows_input,
+                        type_::LABEL,
+                        24.0,
+                    )
+                    .w(90.0)
+                    .on_edit(|state: &mut AppState| &mut state.max_rows_input),
                 )
                 .child(
                     row()
@@ -347,20 +351,14 @@ fn snippets_section(state: &AppState, theme: tok::Theme) -> El {
                 .center_y()
                 .flex_wrap()
                 .child(
-                    text_input(&state.snippet_name, type_::LABEL).single_line()
-                        .key("snippet-name-input")
+                    single_line_field("snippet-name-input", &state.snippet_name, type_::LABEL, 24.0)
                         .w(140.0)
-                        .h(24.0)
-                        .py(centered_field_pad(type_::LABEL, 24.0))
                         .on_edit(|state: &mut AppState| &mut state.snippet_name),
                 )
                 .child(
-                    text_input(&state.snippet_sql, type_::LABEL).single_line()
-                        .key("snippet-sql-input")
+                    single_line_field("snippet-sql-input", &state.snippet_sql, type_::LABEL, 24.0)
                         .w(280.0)
                         .min_w(0.0)
-                        .h(24.0)
-                        .py(centered_field_pad(type_::LABEL, 24.0))
                         .on_edit(|state: &mut AppState| &mut state.snippet_sql),
                 )
                 .child(
@@ -466,13 +464,15 @@ pub(crate) fn favorites_section(state: &AppState, theme: tok::Theme) -> El {
                 .gap(8.0)
                 .center_y()
                 .child(
-                    text_input(&state.favorite_title, type_::LABEL).single_line()
-                        .key("favorite-title-input")
-                        .grow(1.0)
-                        .min_w(0.0)
-                        .h(24.0)
-                        .py(centered_field_pad(type_::LABEL, 24.0))
-                        .on_edit(|state: &mut AppState| &mut state.favorite_title),
+                    single_line_field(
+                        "favorite-title-input",
+                        &state.favorite_title,
+                        type_::LABEL,
+                        24.0,
+                    )
+                    .grow(1.0)
+                    .min_w(0.0)
+                    .on_edit(|state: &mut AppState| &mut state.favorite_title),
                 )
                 .child(
                     row()
@@ -686,12 +686,14 @@ pub(crate) fn import_section(state: &AppState, theme: tok::Theme) -> El {
                         .color(theme.text_secondary),
                 )
                 .child(
-                    text_input(&state.import_source, type_::LABEL).single_line()
-                        .key("import-source-input")
-                        .w(240.0)
-                        .h(24.0)
-                        .py(centered_field_pad(type_::LABEL, 24.0))
-                        .on_edit(|state: &mut AppState| &mut state.import_source),
+                    single_line_field(
+                        "import-source-input",
+                        &state.import_source,
+                        type_::LABEL,
+                        24.0,
+                    )
+                    .w(240.0)
+                    .on_edit(|state: &mut AppState| &mut state.import_source),
                 )
                 .child(
                     row()
@@ -749,12 +751,14 @@ pub(crate) fn import_section(state: &AppState, theme: tok::Theme) -> El {
                             .color(theme.text_secondary),
                     )
                     .child(
-                        text_input(&state.import_target, type_::LABEL).single_line()
-                            .key("import-target-input")
-                            .w(180.0)
-                            .h(24.0)
-                            .py(centered_field_pad(type_::LABEL, 24.0))
-                            .on_edit(|state: &mut AppState| &mut state.import_target),
+                        single_line_field(
+                            "import-target-input",
+                            &state.import_target,
+                            type_::LABEL,
+                            24.0,
+                        )
+                        .w(180.0)
+                        .on_edit(|state: &mut AppState| &mut state.import_target),
                     )
                     .child(
                         row()
@@ -852,11 +856,8 @@ pub(crate) fn export_section(state: &AppState, theme: tok::Theme) -> El {
                         .on_press(|state: &mut AppState| state.cycle_export_format()),
                 )
                 .child(
-                    text_input(&state.export_range, type_::LABEL).single_line()
-                        .key("export-range-input")
+                    single_line_field("export-range-input", &state.export_range, type_::LABEL, 24.0)
                         .w(220.0)
-                        .h(24.0)
-                        .py(centered_field_pad(type_::LABEL, 24.0))
                         .on_edit(|state: &mut AppState| &mut state.export_range),
                 )
                 .child(

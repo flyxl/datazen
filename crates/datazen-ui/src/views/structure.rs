@@ -7,14 +7,14 @@ use crate::constants::*;
 use crate::icons::{self, section_icon};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
-use crate::ui::centered_field_pad;
+use crate::ui::field::single_line_field;
 use crate::{splitter, sql_editor};
 use datazen_ui_api::{
     ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi,
     Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi,
 };
 use rune::tok::{self, type_};
-use rune::{col, oklch, row, text, text_input, Color, Cx, El};
+use rune::{col, oklch, row, text, Color, Cx, El};
 use rune::{FileDialogOptions, TextEdit, Tx};
 
 pub(crate) fn er_view(
@@ -268,19 +268,13 @@ pub(crate) fn column_drafts_section(state: &AppState, title: &str, theme: tok::T
             .gap(8.0)
             .center_y()
             .child(
-                text_input(&state.draft_name, type_::LABEL).single_line()
-                    .key("draft-name-input")
+                single_line_field("draft-name-input", &state.draft_name, type_::LABEL, 24.0)
                     .w(140.0)
-                    .h(24.0)
-                    .py(centered_field_pad(type_::LABEL, 24.0))
                     .on_edit(|state: &mut AppState| &mut state.draft_name),
             )
             .child(
-                text_input(&state.draft_type, type_::LABEL).single_line()
-                    .key("draft-type-input")
+                single_line_field("draft-type-input", &state.draft_type, type_::LABEL, 24.0)
                     .w(110.0)
-                    .h(24.0)
-                    .py(centered_field_pad(type_::LABEL, 24.0))
                     .on_edit(|state: &mut AppState| &mut state.draft_type),
             )
             .child(

@@ -465,15 +465,15 @@ use rune::{Env, Runtime};
 fn single_line_fields_put_their_text_in_the_middle() {
     // Rune lays a field's text out from the content box's top edge, so a field
     // taller than its line pins the text (and the caret) to the top. The shared
-    // helper hands the surplus back as symmetric padding; every single-line
-    // field calls it with its own height and font.
+    // component hands the surplus back as symmetric padding; every single-line
+    // field is built through it with its own height and font.
     for (style, height) in [
         (type_::LABEL, 24.0),
         (type_::LABEL, 28.0),
         (type_::LABEL, 36.0),
         (rune::TextStyle::new(13.0, 400.0), 24.0),
     ] {
-        let pad = crate::ui::centered_field_pad(style, height);
+        let pad = crate::ui::field::centered_pad(style, height);
         assert!(pad >= 0.0, "{height}: padding {pad} is negative");
         assert!(
             (pad * 2.0 + style.line_px() - height).abs() < 0.01,
@@ -482,8 +482,56 @@ fn single_line_fields_put_their_text_in_the_middle() {
         );
     }
     // The two navigator/home search fields: 28 points tall, 15-point line.
-    assert_eq!(crate::ui::centered_field_pad(type_::LABEL, 28.0), 6.5);
+    assert_eq!(crate::ui::field::centered_pad(type_::LABEL, 28.0), 6.5);
     // A field shorter than its line keeps its text at the top instead of
     // asking for negative padding.
-    assert_eq!(crate::ui::centered_field_pad(type_::LABEL, 10.0), 0.0);
+    assert_eq!(crate::ui::field::centered_pad(type_::LABEL, 10.0), 0.0);
+}
+
+#[test]
+fn single_line_field_component_keeps_the_requested_height() {
+    // The component owns the height and the padding that centres the line, so a
+    // caller cannot build a field taller than its line and leave the text
+    // pinned to the top. The padding sits inside the box: the field still takes
+    // the height it asked for, and therefore keeps its whole click target.
+    fn probe(state: &AppState, _cx: &mut rune::Cx<AppState>) -> rune::El {
+        rune::col()
+            .child(
+                crate::ui::field::single_line_field(
+                    "probe-short",
+                    &state.connection_search,
+                    type_::LABEL,
+                    24.0,
+                )
+                .w(120.0),
+            )
+            .child(
+                crate::ui::field::single_line_field(
+                    "probe-tall",
+                    &state.connection_search,
+                    type_::LABEL,
+                    36.0,
+                )
+                .w(120.0),
+            )
+    }
+    let env = Env {
+        system_dark: true,
+        scale: 1.0,
+    };
+    let mut rt = Runtime::new(AppState::default(), probe, (400.0, 200.0), env);
+    rt.frame(0.0);
+    let elements = rt.elements();
+    for (key, height) in [("probe-short", 24.0), ("probe-tall", 36.0)] {
+        let field = elements
+            .iter()
+            .find(|element| element.key.as_deref() == Some(key))
+            .expect("the field is laid out");
+        assert!(
+            (field.rect[3] - height).abs() < 0.5,
+            "{key}: height {}, want {height}",
+            field.rect[3]
+        );
+        assert!(field.rect[2] > 0.0, "{key}: width {}", field.rect[2]);
+    }
 }

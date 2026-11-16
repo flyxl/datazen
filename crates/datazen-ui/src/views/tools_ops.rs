@@ -7,14 +7,14 @@ use crate::constants::*;
 use crate::icons::{self, section_icon};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
-use crate::ui::centered_field_pad;
+use crate::ui::field::single_line_field;
 use crate::{splitter, sql_editor};
 use datazen_ui_api::{
     ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi,
     Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi,
 };
 use rune::tok::{self, type_};
-use rune::{col, oklch, row, text, text_input, Color, Cx, El};
+use rune::{col, oklch, row, text, Color, Cx, El};
 use rune::{FileDialogOptions, TextEdit, Tx};
 
 pub(crate) fn value_search_tool(state: &AppState, theme: tok::Theme) -> El {
@@ -35,12 +35,14 @@ pub(crate) fn value_search_tool(state: &AppState, theme: tok::Theme) -> El {
                 .gap(8.0)
                 .center_y()
                 .child(
-                    text_input(&state.value_search_value, type_::LABEL).single_line()
-                        .key("value-search-input")
-                        .w(220.0)
-                        .h(24.0)
-                        .py(centered_field_pad(type_::LABEL, 24.0))
-                        .on_edit(|state: &mut AppState| &mut state.value_search_value),
+                    single_line_field(
+                        "value-search-input",
+                        &state.value_search_value,
+                        type_::LABEL,
+                        24.0,
+                    )
+                    .w(220.0)
+                    .on_edit(|state: &mut AppState| &mut state.value_search_value),
                 )
                 .child(
                     row()

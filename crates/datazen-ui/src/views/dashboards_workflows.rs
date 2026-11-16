@@ -7,14 +7,14 @@ use crate::constants::*;
 use crate::icons::{self, section_icon};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
-use crate::ui::centered_field_pad;
+use crate::ui::field::single_line_field;
 use crate::{splitter, sql_editor};
 use datazen_ui_api::{
     ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi,
     Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi,
 };
 use rune::tok::{self, type_};
-use rune::{col, oklch, row, text, text_input, Color, Cx, El};
+use rune::{col, oklch, row, text, Color, Cx, El};
 use rune::{FileDialogOptions, TextEdit, Tx};
 
 pub(crate) fn wapps_page(theme: tok::Theme) -> El {
@@ -265,20 +265,14 @@ pub(crate) fn dashboards_page(state: &AppState, theme: tok::Theme) -> El {
                 .gap(8.0)
                 .center_y()
                 .child(
-                    text_input(&state.widget_title, type_::LABEL).single_line()
-                        .key("widget-title-input")
+                    single_line_field("widget-title-input", &state.widget_title, type_::LABEL, 24.0)
                         .w(160.0)
-                        .h(24.0)
-                        .py(centered_field_pad(type_::LABEL, 24.0))
                         .on_edit(|state: &mut AppState| &mut state.widget_title),
                 )
                 .child(
-                    text_input(&state.widget_query, type_::LABEL).single_line()
-                        .key("widget-query-input")
+                    single_line_field("widget-query-input", &state.widget_query, type_::LABEL, 24.0)
                         .w(260.0)
                         .shrink()
-                        .h(24.0)
-                        .py(centered_field_pad(type_::LABEL, 24.0))
                         .on_edit(|state: &mut AppState| &mut state.widget_query),
                 )
                 .child(
