@@ -591,13 +591,16 @@ use rune::{Env, Runtime};
 
     #[test]
     fn the_navigator_panel_holds_the_tree_and_persists_width() {
-        // L4: the object tree moved into a resizable navigator panel in the
-        // content area; its width persists through the layout port.
+        // L4: the navigator panel holds the connections/object trees and is
+        // resizable; its width persists through the layout port. The object
+        // tree is shown when a session/catalog is open.
         let mut rt = runtime();
+        rt.state.desktop_catalog = Some(datazen_ui_api::Catalog { databases: Vec::new() });
         rt.frame(0.0);
         let keys: Vec<String> = rt.elements().iter().filter_map(|e| e.key.clone()).collect();
         assert!(keys.iter().any(|k| k == "datazen-navigator"), "navigator panel: {keys:?}");
-        assert!(keys.iter().any(|k| k == "object-tree"), "tree in navigator: {keys:?}");
+        assert!(keys.iter().any(|k| k == "navigator-connections"), "connections tree: {keys:?}");
+        assert!(keys.iter().any(|k| k == "object-tree"), "object tree in navigator: {keys:?}");
         assert!(
             keys.iter().any(|k| k == "open-query"),
             "workspace action in navigator: {keys:?}"

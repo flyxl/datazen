@@ -186,7 +186,7 @@ pub(crate) fn navigator_panel(state: &AppState, theme: tok::Theme, dark: bool) -
     // `navigator-filter-input` inside the wrapper.
     let filter = filter; // wrapper already keyed; input has `navigator-filter-input`
 
-    col()
+    let mut panel = col()
         .key("datazen-navigator")
         .w(width)
         .h_full()
@@ -196,11 +196,19 @@ pub(crate) fn navigator_panel(state: &AppState, theme: tok::Theme, dark: bool) -
         .fill(theme.bg)
         .child(toolbar)
         .child(filter)
-        .child(navigator_connections_tree(state, theme, dark))
-        .child(section_divider("navigator-objects-divider", theme))
-        .child(object_tree(state, theme))
-        .child(col().w_full().grow(1.0).min_h(0.0))
-        .child(navigator_actions(state, theme))
+        .child(navigator_connections_tree(state, theme, dark));
+
+    if state.session_open() {
+        panel = panel
+            .child(section_divider("navigator-objects-divider", theme))
+            .child(object_tree(state, theme))
+            .child(col().w_full().grow(1.0).min_h(0.0))
+            .child(navigator_actions(state, theme));
+    } else {
+        panel = panel.child(col().w_full().grow(1.0).min_h(0.0));
+    }
+
+    panel
 }
 
 fn section_divider(key: &str, theme: tok::Theme) -> El {

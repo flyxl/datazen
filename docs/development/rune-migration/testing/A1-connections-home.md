@@ -120,3 +120,9 @@
 - **改动**：顶部 `Databases / Workflow / Dashboard / Workspace / Extensions`，底部 `Settings` + 折叠按钮；`Section` 主导航标签对齐 React；移除 rail 中的 `Tools` 入口（非 React 主侧栏项，功能保留于 `Section::Tools`）。样式按 React 侧栏做紧凑化（项高度/图标尺寸/激活态/分组与边框）。
 - **测试**：更新 rail 相关断言（顺序、主项存在性、移除 `rail-tools`），并将依赖 rail 点击进入 Tools 的测试改为状态选择以维持覆盖。
 - **门禁**：`cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **183 + 56 passed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
+
+## 增量：导航器搜索/分割线与对象树显示修复（本次）
+
+- **修复**：导航器搜索输入文本与图标垂直居中对齐；导航器与主内容区分割线改为细线（贴近 React）；无会话时隐藏对象树分割线/对象树/会话操作区，避免多余 “No objects” 提示。
+- **测试调整**：`host_jobs::the_navigator_panel_holds_the_tree_and_persists_width` 在有会话/catalog 上下文下断言对象树；`workspace_tabs::clicking_a_session_table_opens_a_table_tab` 调整为连接后出现对象树。
+- **门禁**：`cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **183 + 56 passed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。

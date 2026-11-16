@@ -77,3 +77,12 @@ React 页面和组件保留。不删除、不改成空壳、不把现有入口�
   - Rail 视觉细化：去圆角项样式、紧凑分组间距、卡片底色与右侧边框，贴近 React 侧栏观感。
   - 测试适配：更新 rail 顺序/图标/存在性断言；原依赖 `rail-tools` 点击进入 Tools 的用例改为 `state.select(Section::Tools)` 以保持行为覆盖。
 - **门禁**：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **183 + 56 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
+
+## 增量：导航器搜索/分割线与对象树显示修复（本次）
+
+- **问题**：连接搜索框文本未与图标垂直居中；导航器与主内容区分割线过粗；未连接会话时导航器下方出现多余水平分割线与 “No objects” 提示。
+- **改动**：`crates/datazen-ui/src/ui/nav.rs`、`crates/datazen-ui/src/views/navigation.rs`、`crates/datazen-ui/src/splitter.rs`、`crates/datazen-ui/src/tests/{host_jobs.rs,workspace_tabs.rs}`
+  - 搜索框：`search_field` 输入控件增加垂直居中对齐，保证文本与搜索图标对齐。
+  - 分割线：导航器/主内容区 splitter 改为 1px 细分割线样式（更贴近 React）。
+  - 对象树区域：仅在 `session_open()` 时渲染对象树分割线、对象树与会话操作区；无会话时不再显示多余分割线和 “No objects” 空态。同步调整相关测试期望。
+- **门禁**：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **183 + 56 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。

@@ -321,13 +321,16 @@ fn tab_strip_selects_and_closes_table_tabs() {
 fn clicking_a_session_table_opens_a_table_tab() {
     let mut runtime = runtime();
     runtime.frame(0.0);
-    assert!(runtime.find("object-tree").is_some());
-    assert!(runtime.find("tree-table-customers").is_none());
+    assert!(
+        runtime.find("object-tree").is_none(),
+        "object tree is shown only when a session/catalog is open"
+    );
 
     let (x, y) = runtime.find("connection-local").expect("connection");
     runtime.pointer_down(x, y);
     runtime.pointer_up(x, y);
     runtime.frame(1.0);
+    assert!(runtime.find("object-tree").is_some(), "object tree appears after connecting");
 
     let (x, y) = runtime
         .find("tree-table-customers")

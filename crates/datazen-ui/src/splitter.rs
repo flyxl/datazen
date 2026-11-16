@@ -103,10 +103,10 @@ pub(crate) fn splitter_handle(
         .label(label)
         .a11y_value(format!("{size} pt"))
         .focusable(true)
-        .fill(oklch(0.5, 0.0, 0.0)); // subtle neutral handle; themed later
+        .fill(oklch(0.5, 0.0, 0.0).alpha(0.2));
     handle = match axis {
-        SplitAxis::Vertical => handle.w(5.0).h_full(),
-        SplitAxis::Horizontal => handle.w_full().h(5.0),
+        SplitAxis::Vertical => handle.w(1.0).h_full(),
+        SplitAxis::Horizontal => handle.w_full().h(1.0),
     };
 
     // Drag resizes: Down seeds the start, Move previews, Up persists (or the
