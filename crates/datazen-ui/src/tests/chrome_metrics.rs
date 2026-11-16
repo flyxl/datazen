@@ -500,12 +500,14 @@ fn the_text_field_component_keeps_the_requested_geometry() {
                 crate::ui::field::TextField::new("probe-short", &state.connection_search)
                     .height(24.0)
                     .width(120.0)
+                    .on_edit(|state: &mut AppState| &mut state.connection_search)
                     .build(),
             )
             .child(
                 crate::ui::field::TextField::new("probe-tall", &state.connection_search)
                     .height(36.0)
                     .width(120.0)
+                    .on_edit(|state: &mut AppState| &mut state.connection_search)
                     .build(),
             )
     }

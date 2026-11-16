@@ -325,6 +325,7 @@ fn home_header(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                         .height(28.0)
                         .grow()
                         .placeholder("Filter connections…", theme.text_secondary)
+                        .on_edit(|state: &mut AppState| &mut state.connection_search)
                         .build(),
                 ),
         )

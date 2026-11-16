@@ -421,6 +421,36 @@ use rune::{Env, Runtime};
     }
 
     #[test]
+    fn the_home_filter_takes_a_caret_from_a_click() {
+        // Rune focuses a text box only when it can reach the edit it binds
+        // (`can_focus` asks for the input's accessor, which only `on_edit`
+        // sets). The header filter shipped without that binding, so a click
+        // left no caret and typing went nowhere; bind it and the click types.
+        let mut rt = runtime();
+        rt.frame(0.0);
+        let (x, y) = rt.find("home-connections-filter").expect("the header filter");
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        rt.frame(0.0);
+        rt.paste("replica");
+        rt.settle_all();
+        rt.frame(0.0);
+        assert_eq!(
+            rt.state.connection_search.display().0,
+            "replica",
+            "a click puts a caret in the header filter and typing reaches it"
+        );
+        assert!(
+            rt.find("connection-replica").is_some(),
+            "the typed filter narrows the cards"
+        );
+        assert!(
+            rt.find("connection-local").is_none(),
+            "the typed filter drops the other cards"
+        );
+    }
+
+    #[test]
     fn connections_home_filters_and_pages_the_card_list() {
         // A1: the header filter narrows the cards, a miss renders the
         // no-match state, and more than six connections page behind show all.

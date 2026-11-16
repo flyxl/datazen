@@ -49,6 +49,7 @@ pub(crate) struct TextField<'a> {
     ink: Option<Color>,
     secure: bool,
     label: Option<String>,
+    bound: bool,
     acts: Vec<Box<dyn FnOnce(El) -> El>>,
 }
 
@@ -72,6 +73,7 @@ impl<'a> TextField<'a> {
             ink: None,
             secure: false,
             label: None,
+            bound: false,
             acts: Vec::new(),
         }
     }
@@ -167,6 +169,7 @@ impl<'a> TextField<'a> {
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
+        self.bound = true;
         self.acts.push(Box::new(move |e: El| e.on_edit(f)));
         self
     }
@@ -177,6 +180,10 @@ impl<'a> TextField<'a> {
     }
 
     pub(crate) fn build(self) -> El {
+        // Rune focuses a text box only when it can reach the `TextEdit` it
+        // edits (`can_focus` asks the input for its accessor), and that comes
+        // from `on_edit`: a field without it never takes a caret.
+        debug_assert!(self.bound, "a text field without on_edit cannot take focus");
         let mut e = text_input(self.edit, self.style)
             .key(self.key)
             .h(self.height)
