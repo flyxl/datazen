@@ -28,7 +28,7 @@ pub(crate) fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
     let theme = tok::theme(dark);
 
     let rail = rail_view(state, dark);
-    let navigator = navigator_panel(state, theme);
+    let navigator = navigator_panel(state, theme, dark);
     let nav_splitter = splitter::splitter_handle(
         state,
         NAVIGATOR_WIDTH_KEY,

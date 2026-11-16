@@ -1,22 +1,20 @@
-//! View functions for the DataZen Rune UI.
-#![allow(unused_imports)]
+//! Navigator panel and tree views (connections + session objects).
+//!
+//! Built on shared UI primitives in `crate::ui` so the connection navigator can
+//! be styled consistently and reused as a base for richer tree interactions.
 
-use super::*;
-
-use crate::constants::*;
-use crate::icons::{self, section_icon};
-use crate::state_def::{AppState, StructureState, WidgetBarsState};
-use crate::types::{Section, TableView, Tool};
-use crate::{splitter, sql_editor};
-use datazen_ui_api::{
-    ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi,
-    Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi,
+use crate::icons;
+use crate::state_def::AppState;
+use crate::ui::nav::{
+    nav_branch_row, nav_connection_row, nav_empty_row, nav_leaf_row, nav_section_header,
+    nav_toolbar_button, search_field,
 };
+use crate::ui::theme::NAV_GAP;
+use datazen_ui_api::ConnectionProfile;
 use rune::tok::{self, type_};
-use rune::{col, oklch, row, text, text_input, Color, Cx, El};
-use rune::{FileDialogOptions, TextEdit, Tx};
+use rune::{col, row, text, Color, El};
 
-pub(crate) fn navigator_connections_tree(state: &AppState, theme: tok::Theme) -> El {
+pub(crate) fn navigator_connections_tree(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let filter = state.navigator_filter.text.trim().to_lowercase();
     let visible = state.visible_connections();
     let matches = |c: &ConnectionProfile| {
@@ -36,144 +34,185 @@ pub(crate) fn navigator_connections_tree(state: &AppState, theme: tok::Theme) ->
     }
     let all: Vec<ConnectionProfile> = visible.into_iter().filter(matches).collect();
 
-    let mut tree = col().key("navigator-connections").w_full().gap(4.0);
-    tree = tree.child(
-        text("Connections")
-            .key("navigator-connections-title")
-            .font(type_::LABEL)
-            .color(theme.text_secondary),
-    );
+    let selected_conn = state.desktop_connection.clone();
 
+    let mut tree = col().key("navigator-connections").w_full().gap(NAV_GAP);
     tree = tree.child(
-        text("Recent")
-            .key("nav-group-recent")
-            .font(type_::LABEL)
-            .color(theme.text_secondary),
-    );
-    if recent.is_empty() {
-        tree = tree.child(
-            row()
-                .key("nav-group-recent-empty")
-                .w_full()
-                .h(24.0)
-                .px(8.0)
-                .center_y()
-                .child(
-                    text(if filter.is_empty() {
-                        "No recent connections"
-                    } else {
-                        "No matches"
-                    })
+        row()
+            .key("navigator-connections-title")
+            .w_full()
+            .h(24.0)
+            .px(4.0)
+            .center_y()
+            .child(
+                text("Connections")
                     .font(type_::LABEL)
                     .color(theme.text_secondary),
-                ),
-        );
+            ),
+    );
+
+    // Recent section (session-only UI state).
+    tree = tree.child(nav_section_header(
+        "nav-group-recent",
+        "Recent",
+        recent.len(),
+        true,
+        theme,
+    ));
+    if recent.is_empty() {
+        tree = tree.child(nav_empty_row(
+            "nav-group-recent-empty",
+            if filter.is_empty() {
+                "No recent connections"
+            } else {
+                "No matches"
+            },
+            1,
+            theme,
+        ));
     } else {
         for c in recent {
             let id = c.id.clone();
-            let label = format!("{} · {}", c.name, c.engine);
-            tree = tree.child(
-                row()
-                    .key(format!("nav-conn-recent-{}", c.id))
-                    .w_full()
-                    .h(28.0)
-                    .px(16.0)
-                    .center_y()
-                    .radius(6.0)
-                    .fill(theme.control_off)
-                    .label(label.clone())
-                    .child(text(label).font(type_::LABEL).color(theme.text))
-                    .on_press(move |state: &mut AppState| state.open_connection(&id)),
-            );
+            let selected = selected_conn.as_deref() == Some(c.id.as_str());
+            let row_el = nav_connection_row(
+                &format!("nav-conn-recent-{}", c.id),
+                &c.name,
+                &c.engine,
+                1,
+                selected,
+                theme,
+                dark,
+            )
+            .on_press(move |state: &mut AppState| state.open_connection(&id));
+            tree = tree.child(row_el);
         }
     }
 
-    tree = tree.child(
-        text("All connections")
-            .key("nav-group-all")
-            .font(type_::LABEL)
-            .color(theme.text_secondary),
-    );
+    // All connections section.
+    tree = tree.child(nav_section_header(
+        "nav-group-all",
+        "All connections",
+        all.len(),
+        true,
+        theme,
+    ));
     if all.is_empty() {
-        tree = tree.child(
-            row()
-                .key("nav-group-all-empty")
-                .w_full()
-                .h(24.0)
-                .px(8.0)
-                .center_y()
-                .child(
-                    text(if filter.is_empty() {
-                        "No connections"
-                    } else {
-                        "No matches"
-                    })
-                    .font(type_::LABEL)
-                    .color(theme.text_secondary),
-                ),
-        );
+        tree = tree.child(nav_empty_row(
+            "nav-group-all-empty",
+            if filter.is_empty() {
+                "No connections"
+            } else {
+                "No matches"
+            },
+            1,
+            theme,
+        ));
     } else {
         for c in all {
             let id = c.id.clone();
-            let label = format!("{} · {}", c.name, c.engine);
-            tree = tree.child(
-                row()
-                    .key(format!("nav-conn-{}", c.id))
-                    .w_full()
-                    .h(28.0)
-                    .px(16.0)
-                    .center_y()
-                    .radius(6.0)
-                    .fill(theme.control_off)
-                    .label(label.clone())
-                    .child(text(label).font(type_::LABEL).color(theme.text))
-                    .on_press(move |state: &mut AppState| state.open_connection(&id)),
-            );
+            let selected = selected_conn.as_deref() == Some(c.id.as_str());
+            let row_el = nav_connection_row(
+                &format!("nav-conn-{}", c.id),
+                &c.name,
+                &c.engine,
+                1,
+                selected,
+                theme,
+                dark,
+            )
+            .on_press(move |state: &mut AppState| state.open_connection(&id));
+            tree = tree.child(row_el);
         }
     }
 
     tree
 }
-pub(crate) fn navigator_panel(state: &AppState, theme: tok::Theme) -> El {
+
+pub(crate) fn navigator_panel(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let width = state.navigator_width() as f32;
+
+    let toolbar = row()
+        .key("navigator-toolbar")
+        .w_full()
+        .h(32.0)
+        .gap(4.0)
+        .center_y()
+        .child(
+            text("Databases")
+                .key("navigator-title")
+                .font(type_::TITLE)
+                .color(theme.text)
+                .grow(1.0)
+                .min_w(0.0)
+                .truncate(),
+        )
+        .child(nav_toolbar_button(
+            "open-query",
+            &icons::ICON_PLUS,
+            "New query",
+            theme,
+            |state| {
+                let _ = state.open_query_tab("Query");
+            },
+        ));
+
+    let filter = search_field(
+        "navigator-filter",
+        &state.navigator_filter,
+        "Search…",
+        theme,
+        |state| &mut state.navigator_filter,
+    );
+
+    // Keep legacy key on the actual input for existing interactions/tests.
+    // `search_field` wraps the input; also expose a stable-key alias row if needed
+    // is not required because tests look up elements by key; our input key is
+    // `navigator-filter-input` inside the wrapper.
+    let filter = filter; // wrapper already keyed; input has `navigator-filter-input`
+
     col()
         .key("datazen-navigator")
         .w(width)
         .h_full()
-        .px(12.0)
-        .py(12.0)
+        .px(10.0)
+        .py(10.0)
         .gap(8.0)
         .fill(theme.bg)
-        .child(
-            text("Navigator")
-                .key("navigator-title")
-                .font(type_::LABEL)
-                .color(theme.text_secondary),
-        )
-        .child(
-            text_input(&state.navigator_filter, type_::LABEL)
-                .key("navigator-filter-input")
-                .w_full()
-                .h(28.0)
-                .on_edit(|state: &mut AppState| &mut state.navigator_filter),
-        )
-        .child(navigator_connections_tree(state, theme))
+        .child(toolbar)
+        .child(filter)
+        .child(navigator_connections_tree(state, theme, dark))
+        .child(section_divider("navigator-objects-divider", theme))
         .child(object_tree(state, theme))
-        .child(refresh_button(state, theme))
-        .child(er_button(state, theme))
-        .child(open_query_button(theme))
-        .child(disconnect_button(state, theme))
+        .child(col().w_full().grow(1.0).min_h(0.0))
+        .child(navigator_actions(state, theme))
 }
-/// The connection after `current` in the port's list, wrapping around.
-/// A workflow as YAML text.
+
+fn section_divider(key: &str, theme: tok::Theme) -> El {
+    row()
+        .key(key.to_owned())
+        .w_full()
+        .h(1.0)
+        .fill(theme.card_border.alpha(0.6))
+}
+
+fn navigator_actions(state: &AppState, theme: tok::Theme) -> El {
+    let mut actions = col().key("navigator-actions").w_full().gap(4.0);
+    actions = actions.child(refresh_button(state, theme));
+    actions = actions.child(er_button(state, theme));
+    actions = actions.child(disconnect_button(state, theme));
+    actions
+}
+
 pub(crate) fn object_tree(state: &AppState, theme: tok::Theme) -> El {
     let catalog = state.catalog();
     let filter = state.navigator_filter.text.trim().to_lowercase();
     let mut rows: Vec<El> = Vec::new();
+
     for database in &catalog.databases {
         let db_match = filter.is_empty() || database.name.to_lowercase().contains(&filter);
         let mut schema_rows: Vec<El> = Vec::new();
         let mut db_has_match = db_match;
+
         for schema in &database.schemas {
             let schema_match = db_match || schema.name.to_lowercase().contains(&filter);
             let mut table_rows: Vec<El> = Vec::new();
@@ -186,20 +225,17 @@ pub(crate) fn object_tree(state: &AppState, theme: tok::Theme) -> El {
                     continue;
                 }
                 let title = name.clone();
-                table_rows.push(
-                    row()
-                        .key(format!("tree-table-{name}"))
-                        .w_full()
-                        .h(28.0)
-                        .px(32.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(theme.control_off)
-                        .child(text(name.clone()).font(type_::LABEL).color(theme.text))
-                        .on_press(move |state: &mut AppState| {
-                            state.open_table_tab(&title);
-                        }),
-                );
+                let row_el = nav_leaf_row(
+                    &format!("tree-table-{name}"),
+                    name,
+                    2,
+                    &icons::ICON_TABLE,
+                    theme,
+                )
+                .on_press(move |state: &mut AppState| {
+                    state.open_table_tab(&title);
+                });
+                table_rows.push(row_el);
             }
             if table_rows.is_empty() && !(filter.is_empty() || schema_match) {
                 continue;
@@ -208,22 +244,18 @@ pub(crate) fn object_tree(state: &AppState, theme: tok::Theme) -> El {
             let schema_path = format!("{}/{}", database.name, schema.name);
             let schema_key = format!("tree-schema-{}-{}", database.name, schema.name);
             let collapsed = state.collapsed.contains(&schema_path) && filter.is_empty();
-            schema_rows.push(
-                row()
-                    .key(schema_key)
-                    .w_full()
-                    .h(28.0)
-                    .px(20.0)
-                    .center_y()
-                    .radius(6.0)
-                    .fill(theme.control_off)
-                    .child(
-                        text(format!("{} · schema", schema.name))
-                            .font(type_::LABEL)
-                            .color(theme.text_secondary),
-                    )
-                    .on_press(move |state: &mut AppState| state.toggle_expand(&schema_path)),
-            );
+            let schema_label = format!("{} ({})", schema.name, schema.tables.len());
+            let schema_row = nav_branch_row(
+                &schema_key,
+                &schema_label,
+                Some("schema"),
+                1,
+                !collapsed,
+                &icons::ICON_FOLDER,
+                theme,
+            )
+            .on_press(move |state: &mut AppState| state.toggle_expand(&schema_path));
+            schema_rows.push(schema_row);
             if !collapsed {
                 schema_rows.extend(table_rows);
             }
@@ -233,98 +265,60 @@ pub(crate) fn object_tree(state: &AppState, theme: tok::Theme) -> El {
         }
         let db_path = database.name.clone();
         let db_collapsed = state.collapsed.contains(&database.name) && filter.is_empty();
-        rows.push(
-            row()
-                .key(format!("tree-db-{}", database.name))
-                .w_full()
-                .h(28.0)
-                .px(8.0)
-                .center_y()
-                .radius(6.0)
-                .fill(theme.control_off)
-                .child(
-                    text(format!("{} · database", database.name))
-                        .font(type_::LABEL)
-                        .color(theme.text),
-                )
-                .on_press(move |state: &mut AppState| state.toggle_expand(&db_path)),
-        );
+        let db_label = format!("{} ({})", database.name, database.schemas.len());
+        let db_row = nav_branch_row(
+            &format!("tree-db-{}", database.name),
+            &db_label,
+            Some("database"),
+            0,
+            !db_collapsed,
+            &icons::ICON_CONNECTIONS,
+            theme,
+        )
+        .on_press(move |state: &mut AppState| state.toggle_expand(&db_path));
+        rows.push(db_row);
         if !db_collapsed {
             rows.extend(schema_rows);
         }
     }
+
     if rows.is_empty() {
         let msg = if filter.is_empty() {
             "No objects"
         } else {
             "No matches"
         };
-        rows.push(
-            row()
-                .key("object-tree-empty")
-                .w_full()
-                .h(28.0)
-                .px(8.0)
-                .center_y()
-                .child(text(msg).font(type_::LABEL).color(theme.text_secondary)),
-        );
+        rows.push(nav_empty_row("object-tree-empty", msg, 0, theme));
     }
-    let count = rows.len() as f32;
-    let height = if count == 0.0 {
-        0.0
-    } else {
-        count * 28.0 + (count - 1.0) * 4.0
-    };
-    let mut tree = col().key("object-tree").w_full().h(height).gap(4.0);
-    for row in rows {
-        tree = tree.child(row);
+
+    let mut tree = col().key("object-tree").w_full().gap(NAV_GAP);
+    for row_el in rows {
+        tree = tree.child(row_el);
     }
     tree
 }
-pub(crate) fn open_query_button(theme: tok::Theme) -> El {
-    row()
-        .key("open-query")
-        .w_full()
-        .h(32.0)
-        .px(8.0)
-        .center_y()
-        .radius(6.0)
-        .fill(theme.control_off)
-        .child(text("New query").font(type_::LABEL).color(theme.text))
-        .on_press(|state: &mut AppState| {
-            state.open_query_tab("Query");
-        })
-}
+
 pub(crate) fn er_button(state: &AppState, theme: tok::Theme) -> El {
     if !state.session_open() {
         return row().key("er-button-absent").h(0.0);
     }
-    row()
-        .key("er-button")
-        .w_full()
-        .h(28.0)
-        .px(8.0)
-        .center_y()
-        .radius(6.0)
-        .fill(theme.control_off)
-        .child(text("ER diagram").font(type_::LABEL).color(theme.text))
+    action_row("er-button", "ER diagram", &icons::ICON_LAYOUT, theme)
         .on_press(|state: &mut AppState| state.open_er())
 }
+
 pub(crate) fn refresh_button(state: &AppState, theme: tok::Theme) -> El {
     if !state.session_open() {
         return row().key("tree-refresh-absent").h(0.0);
     }
-    row()
-        .key("tree-refresh")
-        .w_full()
-        .h(28.0)
-        .px(8.0)
-        .center_y()
-        .radius(6.0)
-        .fill(theme.control_off)
-        .child(text("Refresh catalog").font(type_::LABEL).color(theme.text))
-        .on_press(|state: &mut AppState| state.refresh_catalog())
+    action_row(
+        "tree-refresh",
+        "Refresh catalog",
+        &icons::ICON_REFRESH,
+        theme,
+    )
+    .on_press(|state: &mut AppState| state.refresh_catalog())
 }
+
 pub(crate) fn disconnect_button(state: &AppState, theme: tok::Theme) -> El {
     if !state.session_open() {
         return row().key("disconnect-absent").h(0.0);
@@ -332,11 +326,27 @@ pub(crate) fn disconnect_button(state: &AppState, theme: tok::Theme) -> El {
     row()
         .key("disconnect")
         .w_full()
-        .h(32.0)
+        .h(28.0)
         .px(8.0)
+        .gap(8.0)
         .center_y()
         .radius(6.0)
-        .fill(theme.control_off)
+        .hover(theme.hover)
+        .child(rune::icon(&icons::ICON_X, 14.0).color(theme.text_secondary))
         .child(text("Disconnect").font(type_::LABEL).color(theme.text))
         .on_press(|state: &mut AppState| state.disconnect())
+}
+
+fn action_row(key: &str, label: &str, icon: &'static rune::Icon, theme: tok::Theme) -> El {
+    row()
+        .key(key.to_owned())
+        .w_full()
+        .h(28.0)
+        .px(8.0)
+        .gap(8.0)
+        .center_y()
+        .radius(6.0)
+        .hover(theme.hover)
+        .child(rune::icon(icon, 14.0).color(theme.text_secondary))
+        .child(text(label.to_owned()).font(type_::LABEL).color(theme.text))
 }
