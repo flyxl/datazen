@@ -51,77 +51,95 @@ pub(crate) fn navigator_connections_tree(state: &AppState, theme: tok::Theme, da
             ),
     );
 
+    let filtering = !filter.is_empty();
+
     // Recent section (session-only UI state).
-    tree = tree.child(nav_section_header(
-        "nav-group-recent",
-        "Recent",
-        recent.len(),
-        true,
-        theme,
-    ));
-    if recent.is_empty() {
-        tree = tree.child(nav_empty_row(
-            "nav-group-recent-empty",
-            if filter.is_empty() {
-                "No recent connections"
-            } else {
-                "No matches"
-            },
-            1,
+    let recent_key = "nav:recent";
+    let recent_expanded = filtering || !state.collapsed.contains(recent_key);
+    tree = tree.child(
+        nav_section_header(
+            "nav-group-recent",
+            "Recent",
+            recent.len(),
+            recent_expanded,
+            &icons::ICON_CLOCK,
             theme,
-        ));
-    } else {
-        for c in recent {
-            let id = c.id.clone();
-            let selected = selected_conn.as_deref() == Some(c.id.as_str());
-            let row_el = nav_connection_row(
-                &format!("nav-conn-recent-{}", c.id),
-                &c.name,
-                &c.engine,
+        )
+        .on_press(|state: &mut AppState| state.toggle_expand("nav:recent")),
+    );
+    if recent_expanded {
+        if recent.is_empty() {
+            tree = tree.child(nav_empty_row(
+                "nav-group-recent-empty",
+                if filter.is_empty() {
+                    "No recent connections"
+                } else {
+                    "No matches"
+                },
                 1,
-                selected,
                 theme,
-                dark,
-            )
-            .on_press(move |state: &mut AppState| state.open_connection(&id));
-            tree = tree.child(row_el);
+            ));
+        } else {
+            for c in recent {
+                let id = c.id.clone();
+                let selected = selected_conn.as_deref() == Some(c.id.as_str());
+                let row_el = nav_connection_row(
+                    &format!("nav-conn-recent-{}", c.id),
+                    &c.name,
+                    &c.engine,
+                    1,
+                    selected,
+                    theme,
+                    dark,
+                )
+                .on_press(move |state: &mut AppState| state.open_connection(&id));
+                tree = tree.child(row_el);
+            }
         }
     }
 
     // All connections section.
-    tree = tree.child(nav_section_header(
-        "nav-group-all",
-        "All connections",
-        all.len(),
-        true,
-        theme,
-    ));
-    if all.is_empty() {
-        tree = tree.child(nav_empty_row(
-            "nav-group-all-empty",
-            if filter.is_empty() {
-                "No connections"
-            } else {
-                "No matches"
-            },
-            1,
+    let all_key = "nav:all";
+    let all_expanded = filtering || !state.collapsed.contains(all_key);
+    tree = tree.child(
+        nav_section_header(
+            "nav-group-all",
+            "All connections",
+            all.len(),
+            all_expanded,
+            &icons::ICON_CONNECTIONS,
             theme,
-        ));
-    } else {
-        for c in all {
-            let id = c.id.clone();
-            let selected = selected_conn.as_deref() == Some(c.id.as_str());
-            let row_el = nav_connection_row(
-                &format!("nav-conn-{}", c.id),
-                &c.name,
-                &c.engine,
+        )
+        .on_press(|state: &mut AppState| state.toggle_expand("nav:all")),
+    );
+    if all_expanded {
+        if all.is_empty() {
+            tree = tree.child(nav_empty_row(
+                "nav-group-all-empty",
+                if filter.is_empty() {
+                    "No connections"
+                } else {
+                    "No matches"
+                },
                 1,
-                selected,
                 theme,
-                dark,
-            )
-            .on_press(move |state: &mut AppState| state.open_connection(&id));
-            tree = tree.child(row_el);
+            ));
+        } else {
+            for c in all {
+                let id = c.id.clone();
+                let selected = selected_conn.as_deref() == Some(c.id.as_str());
+                let row_el = nav_connection_row(
+                    &format!("nav-conn-{}", c.id),
+                    &c.name,
+                    &c.engine,
+                    1,
+                    selected,
+                    theme,
+                    dark,
+                )
+                .on_press(move |state: &mut AppState| state.open_connection(&id));
+                tree = tree.child(row_el);
+            }
         }
     }
 

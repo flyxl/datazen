@@ -71,6 +71,7 @@ pub(crate) fn nav_section_header(
     label: &str,
     count: usize,
     expanded: bool,
+    icon: &'static Icon,
     theme: tok::Theme,
 ) -> El {
     let chevron = if expanded {
@@ -88,10 +89,14 @@ pub(crate) fn nav_section_header(
         .radius(NAV_RADIUS)
         .hover(theme.hover)
         .child(rune::icon(chevron, NAV_CHEVRON).color(theme.text_secondary))
+        .child(rune::icon(icon, NAV_ICON).color(theme.text_secondary))
         .child(
             text(label.to_uppercase())
                 .font(type_::LABEL)
-                .color(theme.text_secondary),
+                .color(theme.text_secondary)
+                .grow(1.0)
+                .min_w(0.0)
+                .truncate(),
         )
         .child(
             text(format!("({count})"))
