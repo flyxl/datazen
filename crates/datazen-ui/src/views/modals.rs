@@ -7,16 +7,16 @@ use super::*;
 
 use crate::state_def::AppState;
 use rune::tok::{self, type_};
-use rune::{col, oklcha, row, text, Color, El, ScrollSpec};
+use rune::{col, oklch, oklcha, row, text, Color, El, ScrollSpec, TextStyle};
 
 /// The floating layer for whatever dialog is open — the import dialog first
 /// (the React share dialog opens at most one), else the connection form.
 /// `None` mounts nothing and the window keeps its plain layout.
-pub(crate) fn modal_layer(state: &AppState, theme: tok::Theme) -> Option<El> {
+pub(crate) fn modal_layer(state: &AppState, theme: tok::Theme, dark: bool) -> Option<El> {
     if state.import_dialog_open {
         Some(import_dialog_layer(state, theme))
     } else if state.connection_dialog_open {
-        Some(connection_dialog_layer(state, theme))
+        Some(connection_dialog_layer(state, theme, dark))
     } else {
         None
     }
@@ -49,6 +49,50 @@ fn accent_fill(_theme: tok::Theme) -> Color {
 
 fn accent_hover_fill(_theme: tok::Theme) -> Color {
     oklcha(0.58, 0.17, 256.0, 1.0)
+}
+
+/// Stable accent hue per engine id (aligned with connections home badges).
+fn engine_hue(engine: &str) -> f32 {
+    match engine.to_ascii_lowercase().as_str() {
+        "postgres" | "postgresql" | "pg" => 256.0,
+        "sqlite" | "sqlite3" => 152.0,
+        "mysql" | "mariadb" => 58.0,
+        "mongodb" | "mongo" => 152.0,
+        "redis" => 25.0,
+        "sqlserver" | "mssql" => 220.0,
+        "clickhouse" => 300.0,
+        "duckdb" => 80.0,
+        _ => {
+            let mut hash: u64 = 0xcbf29ce484222325;
+            for byte in engine.as_bytes() {
+                hash ^= u64::from(*byte);
+                hash = hash.wrapping_mul(0x100000001b3);
+            }
+            (hash % 360) as f32
+        }
+    }
+}
+
+/// Engine badge icon (colored rounded badge + monogram) for driver list.
+fn engine_badge_icon(engine: &str, size: f32, dark: bool) -> El {
+    let hue = engine_hue(engine);
+    let fill = oklch(if dark { 0.5 } else { 0.58 }, 0.12, hue);
+    let initial = engine
+        .chars()
+        .next()
+        .unwrap_or('?')
+        .to_uppercase()
+        .to_string();
+    row()
+        .size(size, size)
+        .radius(size * 0.28)
+        .center()
+        .fill(fill)
+        .child(
+            text(initial)
+                .font(TextStyle::new(size * 0.46, 700.0))
+                .color(oklch(0.99, 0.005, 256.0)),
+        )
 }
 
 fn close_button(key: &str, theme: tok::Theme, close: impl Fn(&mut AppState) + 'static) -> El {
@@ -186,8 +230,8 @@ fn import_dialog_layer(state: &AppState, theme: tok::Theme) -> El {
 }
 
 /// New-connection dialog (React-aligned: left type sidebar + right header/body/footer).
-fn connection_dialog_layer(state: &AppState, theme: tok::Theme) -> El {
-    let sidebar = connection_type_sidebar(state, theme);
+fn connection_dialog_layer(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+    let sidebar = connection_type_sidebar(state, theme, dark);
 
     let header = row()
         .w_full()
@@ -266,7 +310,7 @@ fn connection_dialog_layer(state: &AppState, theme: tok::Theme) -> El {
 }
 
 /// Left sidebar: database type/engine picker (React-aligned structure).
-fn connection_type_sidebar(state: &AppState, theme: tok::Theme) -> El {
+fn connection_type_sidebar(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let mut list = col().w_full().gap(2.0).px(8.0).py(8.0);
     let current = state.connection_engine.text.trim().to_ascii_lowercase();
     let mut engines = state.desktop.available_engines();
@@ -293,9 +337,9 @@ fn connection_type_sidebar(state: &AppState, theme: tok::Theme) -> El {
             row()
                 .key(format!("connection-engine-option-{}", engine))
                 .w_full()
-                .h(34.0)
+                .h(36.0)
                 .px(10.0)
-                .gap(8.0)
+                .gap(10.0)
                 .center_y()
                 .radius(8.0)
                 .fill(row_bg)
@@ -303,19 +347,7 @@ fn connection_type_sidebar(state: &AppState, theme: tok::Theme) -> El {
                 .on_press(move |state: &mut AppState| {
                     state.connection_engine = rune::TextEdit::new(eng.clone());
                 })
-                .child(
-                    row()
-                        .w(18.0)
-                        .h(18.0)
-                        .radius(4.0)
-                        .center()
-                        .fill(if is_selected { accent_fill(theme) } else { theme.control_off })
-                        .child(
-                            text(label.chars().next().unwrap_or('?').to_uppercase().to_string())
-                                .font(type_::LABEL)
-                                .color(if is_selected { Color::WHITE } else { theme.text_secondary }),
-                        ),
-                )
+                .child(engine_badge_icon(&engine, 20.0, dark))
                 .child(
                     text(label)
                         .font(type_::LABEL)

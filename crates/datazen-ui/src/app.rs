@@ -126,7 +126,7 @@ pub(crate) fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
         })
         .child(titlebar)
         .child(body)
-        .children(modal_layer(state, theme))
+        .children(modal_layer(state, theme, dark))
 }
 
 /// The app's window chrome (L3): self-drawn 40pt titlebar and a minimum size

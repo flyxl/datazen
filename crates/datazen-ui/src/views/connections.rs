@@ -141,10 +141,12 @@ pub(crate) fn import_bar(state: &AppState, theme: tok::Theme) -> El {
                     .w_full()
                     .h(36.0)
                     .px(12.0)
+                    .center_y()
                     .radius(8.0)
                     .fill(theme.card)
                     .border(1.0, theme.card_border)
                     .placeholder("加密导出文件请输入密码", theme.text_secondary)
+                    .secure()
                     .on_edit(|state: &mut AppState| &mut state.import_password),
             )
             .child(
@@ -228,10 +230,20 @@ fn form_input(
         .w_full()
         .h(36.0)
         .px(12.0)
+        .center_y()
         .radius(8.0)
         .fill(theme.card)
         .border(1.0, theme.card_border)
         .on_edit(edit)
+}
+
+fn password_input(
+    key: &str,
+    value: &rune::TextEdit,
+    theme: tok::Theme,
+    edit: fn(&mut AppState) -> &mut rune::TextEdit,
+) -> El {
+    form_input(key, value, theme, edit).secure()
 }
 
 fn section_toggle(key: &str, title: &str, subtitle: Option<&str>, theme: tok::Theme) -> El {
@@ -297,44 +309,7 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
                 ),
         );
 
-    // Standard connection fields in 2-column grid (React StandardConnectionFields order).
-    let row1 = row()
-        .w_full()
-        .gap(16.0)
-        .child(
-            col()
-                .grow(1.0)
-                .min_w(0.0)
-                .gap(6.0)
-                .child(field_label("主机 *", theme))
-                .child(form_input(
-                    "connection-address-input",
-                    &state.connection_address,
-                    theme,
-                    |state: &mut AppState| &mut state.connection_address,
-                )),
-        )
-        .child(
-            col()
-                .grow(1.0)
-                .min_w(0.0)
-                .gap(6.0)
-                .child(field_label("端口", theme))
-                .child(
-                    text_input(&state.connection_ssh_port, type_::LABEL) // placeholder slot not used; keep layout
-                        .w_full()
-                        .h(36.0)
-                        .px(12.0)
-                        .radius(8.0)
-                        .fill(theme.control_off)
-                        .border(1.0, theme.card_border)
-                        .placeholder("—", theme.text_secondary),
-                ),
-        );
-    // Note: we don't have a separate port field in state for direct connection (address holds host:port in some flows),
-    // but to match React layout we show Host/Port/Database/Username/Password grid. We keep required key on address (host).
-    // Better: render a visual Port label cell but keep only real bound fields; use database/username/password inputs.
-
+    // Connection fields in 2-column grid (React StandardConnectionFields order/layout).
     let row_host_port = row()
         .key("connection-connection-fields")
         .w_full()
@@ -388,7 +363,7 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
                 .min_w(0.0)
                 .gap(6.0)
                 .child(field_label("密码", theme))
-                .child(form_input(
+                .child(password_input(
                     "connection-password-input",
                     &state.connection_password,
                     theme,
