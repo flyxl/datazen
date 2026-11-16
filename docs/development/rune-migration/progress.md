@@ -53,3 +53,17 @@ React 页面和组件保留。不删除、不改成空壳、不把现有入口�
 - **2 万行的页挂载 21 行**：首帧静止（视口 1440×900、sheet 高 380pt、行高 28pt）时，挂载窗口为列表头部的 21 行，与列表长度无关。数字由 `twenty_thousand_rows_mount_a_window_and_two_hundred_columns_build_one_window_of_cells` 断言钉死（报告见 [testing/C3-mount-counts.md](testing/C3-mount-counts.md)）。
 - **200 列的页每行建 12 格**：列窗口 COL_WINDOW=12，静止时冻结首列落在窗口内共 12 列，表头同样建 12 个；横向滚动后冻结列在窗口外另建一格，每行 13 格（既有单元测试的上界 ≤ COL_WINDOW+1）。
 - 量法不改产品代码：规模页经既有 `load_page` 装入——2 万条空记录，格值走网格的 `r{r}c{c}` 回退，页只占约 480 KB 而非 400 万格。
+
+## 增量：首页对齐 Tauri/React 参考（本次）
+
+- **目标**：按 Tauri 参考截图（`site/assets/screenshots/01-main-window.png`）与 React `ConnectionWorkspaceHome`/home 组件对齐 Rune Connections 首页布局与观感（在当前契约/数据限制内）。
+- **改动**：`crates/datazen-ui/src/views/connections_home.rs`、`crates/datazen-ui/src/icons.rs`
+  - Hero：标题字号/权重与间距调整；副标题改为 `N connections · M groups · K engine types` 三段加粗计数（groups 因 `ConnectionProfile` 无分组元数据暂显示 0）；引擎徽章簇与对齐细节微调。
+  - 连接区头部：保留 `connections-header`/`connections-section-title`/`home-connections-filter`/`import-connections`/`connection-new`，筛选框增加搜索图标容器与更贴近 React 的按钮文案/样式。
+  - 连接卡片：卡片行高度/间距/hover、名称与引擎 chip、元信息行、状态 pill 与 Connect/Open 按钮样式对齐；Connect 按钮带播放图标；保持 `connection-{id}`、`conn-status-*`、`conn-open-*`、分页键等行为与测试兼容。
+  - 最近查询：保留 `connections-recent-queries`/`connections-recent-title`/`connections-recent-card`/`connections-recent-empty`，头部增加右侧 `View all` 占位（`connections-recent-view-all`），空态文案/图标居中布局对齐。
+  - 新增 MCP promo bar（`home-mcp-promo-bar`）：图标+标题/描述+命令展示+Copy 占位，契约未暴露可执行路径/复制能力时仅做布局对齐与诚实展示。
+  - 快捷键 footer：保留 `connections-shortcut-footer`/`connections-shortcut-key`，扩展为多组快捷键提示（Run/Save/Format）以贴近 React footer 布局。
+  - 图标：补充 `ICON_PLAY`、`ICON_COPY`、`ICON_TERMINAL`、`ICON_SPARKLES`。
+- **限制**：未改 `packages/frontend`/`packages/web`、内核契约与 `datazen-ui-api`；`ConnectionProfile` 无 host/port/group、无真实 query history/MCP 配置来源，相关内容以现有数据与诚实占位呈现。
+- **门禁**：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **56 + 183 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。本环境无法抓取运行中 GUI 截图（display capture 不可用），以本地参考图与 React 实现对齐。

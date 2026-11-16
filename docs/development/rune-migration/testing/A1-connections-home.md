@@ -102,3 +102,14 @@
   - 对象树改为分支/叶子行原语（数据库/模式展开 chevron 与图标、表图标、缩进、计数标签），保留 `object-tree` / `tree-db-*` / `tree-schema-*` / `tree-table-*` / `object-tree-empty` 及展开/打开行为；底部操作行（刷新/ER/断开）统一为图标+文本样式。
 - **兼容性**：未改 `packages/frontend`/`packages/web`、内核契约与 `datazen-ui-api`；保留既有 navigator 相关 key 与测试契约。
 - **门禁**：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **56 + 183 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。G1–G4 不适用（未改 `packages/frontend` / `packages/web`）。
+
+## 增量：首页对齐 Tauri/React 参考（本次）
+
+- **改动文件**：`crates/datazen-ui/src/views/connections_home.rs`、`crates/datazen-ui/src/icons.rs`
+- **对齐点**（契约允许范围内）：
+  - Hero 副标题结构调整为连接/分组/引擎类型三段计数（分组无契约数据时为 0）并保留加粗数值与徽章簇。
+  - 连接列表头部、筛选框与操作按钮样式/排布更贴近 React；卡片行信息层级、状态 pill、Connect/Open 按钮（含 Connect 图标）与分页/无匹配状态保持既有键与行为。
+  - Recent queries 区块增加头部 `View all` 占位与对齐的空态布局，保留 `connections-recent-queries`/`connections-recent-empty` 等键。
+  - 新增 `home-mcp-promo-bar` MCP 宣传条与多快捷键提示 footer（保留 `connections-shortcut-footer` 根键）；无真实数据/能力时为诚实占位。
+- **兼容性**：保留 `connection-list`、`connections-home-*`、`connections-card-list`、`connection-{id}`、`conn-status-*`、`conn-open-*`、`connections-show-all`、`connections-no-match`、`home-connections-filter`、`import-connections`、`connection-new`、`connections-empty`/`connections-create-first`、`connections-recent-*` 等既有键与交互。
+- **门禁**：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **56 + 183 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
