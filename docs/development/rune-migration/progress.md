@@ -102,3 +102,10 @@ React 页面和组件保留。不删除、不改成空壳、不把现有入口�
   - `crates/datazen-ui/src/views/dashboards_workflows.rs`：widget 查询输入 `.shrink()`，960 宽下 Refresh 不再越界。
 - **回归测试**（`crates/datazen-ui/src/tests/chrome_metrics.rs`）：`the_titlebar_keeps_its_theme_toggle_inside_the_window`（标题栏两档窗口）、`every_section_keeps_its_controls_inside_the_minimum_window_width`（六页 × 960×640 横向不越界）、`every_settings_section_keeps_its_rows_inside_the_minimum_window`（12 个 section 内容列不越界）、`the_settings_page_ends_above_the_status_bar`（页底不压状态栏）。前两条修复均已反向验证：回退对应源码后测试失败、恢复后通过。
 - **结果**：1440×816 与 960×640（含 light 主题）下，六页与 settings 全部 section 无横向越界；settings 页在 1440×816 收在 144..736、状态栏 752..792，全部内容在窗内；960×640 下仅连接首页滚动内容（MCP 条与快捷键 footer）低于可视区，由 `connection-list` 滚动到达，属预期。
+
+## 增量：连接对话框页脚动作区对齐（本次）
+
+- **问题**：新建连接对话框的保存按钮在滚动表单末尾（960x640 下表单高 493pt 超过滚动视口 496pt，保存落在视口外），页脚只有测试连接/取消，且取消重复一份；React 的页脚固定为「测试连接 / 取消 / 保存」。
+- **修复**：`views/connections.rs` 移除表单内动作行；`views/modals.rs` 页脚按 React 顺序改为测试连接/取消/保存（保存主按钮复用 `save_connection_form`，键 `connection-save` 保留，文案「保存」）。动作行移出后表单高 433pt，960 与 1440 下均无需滚动即可看全字段。
+- **测试**：新增 `chrome_metrics::the_connection_and_import_dialogs_fit_the_minimum_window`（960x640 下两种对话框在窗内、页脚与主按钮可见），已反向验证。
+- **门禁**：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **56 + 188 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。

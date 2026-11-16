@@ -46,3 +46,11 @@
 
 - **SSH 隧道**：仅提供 UI 结构/控件对齐，不持久化、不进入 `ConnectionDraft`，保存与连接契约不变（符合 plan-native-5 A2 约束）。
 - **表单形态**：对话框为页内面板式呈现（Rune 视图树），未引入独立窗口；键位与保存语义对齐既有测试与端口。
+
+## 增量：页脚动作区与最小窗口适配（本次）
+
+- **问题**：React `NewConnectionDialog` 的页脚固定为「测试连接 / 取消 / 保存」三项（`footer` 常驻、`shrink-0`），保存是页脚主按钮；Rune 版把「取消 / 创建」放在滚动表单内容末尾，页脚只有「测试连接 / 取消」——960x640 下表单高 493pt、滚动视口 496pt，保存按钮落在视口底缘之外，要先滚动才能看到，且「取消」在表单与页脚各有一份。
+- **修复**：`crates/datazen-ui/src/views/connections.rs` 的 `connection_form_fields` 删除表单内动作行（`connection-form-actions`/`connection-cancel`），只保留字段与错误行；`crates/datazen-ui/src/views/modals.rs` 的对话框页脚按 React 顺序改为「测试连接（secondary）/ 取消（secondary，保留 `dialog-cancel`）/ 保存（primary，`connection-save` 调 `save_connection_form`，文案对齐 i18n `common.save` =「保存」）」。
+- **结果**（headless `--tree`）：960x640 下对话框 [20,10,920,620]（底 630 < 640）、右列页脚 [240,566,700,64]、保存按钮 [860,580,56,36] 全在窗内；1440x816 下对话框 [260,98,920,620]、页脚 [480,654,700,64]、保存 [1100,668,56,36]。动作行移出后表单高 433pt，落在滚动视口 496pt 内，无需滚动即可看到全部字段（保留 `scroll` 以应对更小的将来内容）。
+- **测试**：`chrome_metrics::the_connection_and_import_dialogs_fit_the_minimum_window` —— 960x640 下分别打开新建/导入对话框，断言对话框在窗内、页脚在对话框内、主按钮（`connection-save` / `import-confirm`）在可见页脚内；已反向验证（把保存放回滚动表单、页脚去掉保存后该断言失败）。
+- **门禁**：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **56 + 188 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
