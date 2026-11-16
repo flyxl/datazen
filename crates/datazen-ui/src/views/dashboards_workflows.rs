@@ -264,14 +264,14 @@ pub(crate) fn dashboards_page(state: &AppState, theme: tok::Theme) -> El {
                 .gap(8.0)
                 .center_y()
                 .child(
-                    text_input(&state.widget_title, type_::LABEL)
+                    text_input(&state.widget_title, type_::LABEL).single_line()
                         .key("widget-title-input")
                         .w(160.0)
                         .h(24.0)
                         .on_edit(|state: &mut AppState| &mut state.widget_title),
                 )
                 .child(
-                    text_input(&state.widget_query, type_::LABEL)
+                    text_input(&state.widget_query, type_::LABEL).single_line()
                         .key("widget-query-input")
                         .w(260.0)
                         .h(24.0)

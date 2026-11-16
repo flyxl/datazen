@@ -362,7 +362,7 @@ fn filter_bar(state: &crate::AppState, ink: rune::Color, muted: rune::Color, wel
                 .on_press(|state: &mut crate::AppState| state.cycle_filter_column()),
         )
         .child(
-            text_input(&state.filter_editor, label_style())
+            text_input(&state.filter_editor, label_style()).single_line()
                 .key("filter-input")
                 .w(220.0)
                 .h(24.0)
@@ -625,7 +625,7 @@ fn cell(
     }
     if active && grid.editing {
         box_el.child(
-            text_input(&grid.editor, editor_font())
+            text_input(&grid.editor, editor_font()).single_line()
                 .key(slot.key("grid-editor"))
                 .w((w - 16.0).max(24.0))
                 .h(ROW_H - 4.0)

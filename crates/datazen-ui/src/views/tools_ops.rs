@@ -34,7 +34,7 @@ pub(crate) fn value_search_tool(state: &AppState, theme: tok::Theme) -> El {
                 .gap(8.0)
                 .center_y()
                 .child(
-                    text_input(&state.value_search_value, type_::LABEL)
+                    text_input(&state.value_search_value, type_::LABEL).single_line()
                         .key("value-search-input")
                         .w(220.0)
                         .h(24.0)

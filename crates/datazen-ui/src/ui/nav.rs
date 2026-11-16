@@ -47,7 +47,7 @@ pub(crate) fn search_field(
         .key(input_key)
         .grow(1.0)
         .min_w(0.0)
-        .h(20.0)
+        .h(NAV_SEARCH_H)
         .single_line()
         .center_y()
         .radius(NAV_RADIUS)

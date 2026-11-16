@@ -72,7 +72,7 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: boo
                 .gap(8.0)
                 .center_y()
                 .child(
-                    text_input(&editor.find_input, editor_font())
+                    text_input(&editor.find_input, editor_font()).single_line()
                         .key("sql-find-input")
                         .w(150.0)
                         .h(24.0)
@@ -92,7 +92,7 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: boo
                         }),
                 )
                 .child(
-                    text_input(&editor.replace_input, editor_font())
+                    text_input(&editor.replace_input, editor_font()).single_line()
                         .key("sql-replace-input")
                         .w(150.0)
                         .h(24.0)

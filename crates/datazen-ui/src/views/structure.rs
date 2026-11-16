@@ -267,14 +267,14 @@ pub(crate) fn column_drafts_section(state: &AppState, title: &str, theme: tok::T
             .gap(8.0)
             .center_y()
             .child(
-                text_input(&state.draft_name, type_::LABEL)
+                text_input(&state.draft_name, type_::LABEL).single_line()
                     .key("draft-name-input")
                     .w(140.0)
                     .h(24.0)
                     .on_edit(|state: &mut AppState| &mut state.draft_name),
             )
             .child(
-                text_input(&state.draft_type, type_::LABEL)
+                text_input(&state.draft_type, type_::LABEL).single_line()
                     .key("draft-type-input")
                     .w(110.0)
                     .h(24.0)

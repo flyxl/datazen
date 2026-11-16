@@ -212,7 +212,7 @@ fn data_browsing_section(state: &AppState, theme: tok::Theme) -> El {
                         .color(theme.text_secondary),
                 )
                 .child(
-                    text_input(&state.page_size_input, type_::LABEL)
+                    text_input(&state.page_size_input, type_::LABEL).single_line()
                         .key("settings-page-size-input")
                         .w(90.0)
                         .h(24.0)
@@ -235,7 +235,7 @@ fn data_browsing_section(state: &AppState, theme: tok::Theme) -> El {
                         .color(theme.text_secondary),
                 )
                 .child(
-                    text_input(&state.max_rows_input, type_::LABEL)
+                    text_input(&state.max_rows_input, type_::LABEL).single_line()
                         .key("settings-max-rows-input")
                         .w(90.0)
                         .h(24.0)
@@ -334,14 +334,14 @@ fn snippets_section(state: &AppState, theme: tok::Theme) -> El {
                 .gap(8.0)
                 .center_y()
                 .child(
-                    text_input(&state.snippet_name, type_::LABEL)
+                    text_input(&state.snippet_name, type_::LABEL).single_line()
                         .key("snippet-name-input")
                         .w(140.0)
                         .h(24.0)
                         .on_edit(|state: &mut AppState| &mut state.snippet_name),
                 )
                 .child(
-                    text_input(&state.snippet_sql, type_::LABEL)
+                    text_input(&state.snippet_sql, type_::LABEL).single_line()
                         .key("snippet-sql-input")
                         .w(280.0)
                         .h(24.0)
@@ -450,7 +450,7 @@ pub(crate) fn favorites_section(state: &AppState, theme: tok::Theme) -> El {
                 .gap(8.0)
                 .center_y()
                 .child(
-                    text_input(&state.favorite_title, type_::LABEL)
+                    text_input(&state.favorite_title, type_::LABEL).single_line()
                         .key("favorite-title-input")
                         .w(200.0)
                         .h(24.0)
@@ -667,7 +667,7 @@ pub(crate) fn import_section(state: &AppState, theme: tok::Theme) -> El {
                         .color(theme.text_secondary),
                 )
                 .child(
-                    text_input(&state.import_source, type_::LABEL)
+                    text_input(&state.import_source, type_::LABEL).single_line()
                         .key("import-source-input")
                         .w(240.0)
                         .h(24.0)
@@ -729,7 +729,7 @@ pub(crate) fn import_section(state: &AppState, theme: tok::Theme) -> El {
                             .color(theme.text_secondary),
                     )
                     .child(
-                        text_input(&state.import_target, type_::LABEL)
+                        text_input(&state.import_target, type_::LABEL).single_line()
                             .key("import-target-input")
                             .w(180.0)
                             .h(24.0)
@@ -830,7 +830,7 @@ pub(crate) fn export_section(state: &AppState, theme: tok::Theme) -> El {
                         .on_press(|state: &mut AppState| state.cycle_export_format()),
                 )
                 .child(
-                    text_input(&state.export_range, type_::LABEL)
+                    text_input(&state.export_range, type_::LABEL).single_line()
                         .key("export-range-input")
                         .w(220.0)
                         .h(24.0)

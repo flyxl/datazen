@@ -578,7 +578,7 @@ fn result_find_bar(state: &AppState, grid: &crate::data_grid::DataGrid, theme: t
         .gap(6.0)
         .center_y()
         .child(
-            text_input(&state.result_find, type_::LABEL)
+            text_input(&state.result_find, type_::LABEL).single_line()
                 .key("result-find-input")
                 .w(220.0)
                 .h(24.0)
