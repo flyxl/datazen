@@ -146,6 +146,7 @@ pub(crate) fn import_bar(state: &AppState, theme: tok::Theme) -> El {
                     .fill(theme.card)
                     .border(1.0, theme.card_border)
                     .placeholder("加密导出文件请输入密码", theme.text_secondary)
+                    .single_line()
                     .secure()
                     .on_edit(|state: &mut AppState| &mut state.import_password),
             )
@@ -243,7 +244,7 @@ fn password_input(
     theme: tok::Theme,
     edit: fn(&mut AppState) -> &mut rune::TextEdit,
 ) -> El {
-    form_input(key, value, theme, edit).secure()
+    form_input(key, value, theme, edit).single_line().secure()
 }
 
 fn section_toggle(key: &str, title: &str, subtitle: Option<&str>, theme: tok::Theme) -> El {

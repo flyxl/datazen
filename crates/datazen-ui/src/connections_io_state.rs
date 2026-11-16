@@ -146,6 +146,23 @@ impl AppState {
         }
     }
 
+    /// Primary import action: confirm a ready preview, or (re)parse the chosen
+    /// file when a password is needed/changed and no preview is available yet.
+    pub(crate) fn submit_connections_import(&mut self) {
+        if self.import_preview.is_some() {
+            self.confirm_connections_import();
+            return;
+        }
+        if let Some(path) = self.import_file.clone() {
+            self.begin_connections_import(&path);
+            if self.import_preview.is_some() {
+                self.confirm_connections_import();
+            }
+            return;
+        }
+        self.import_notice = Some("请先选择要导入的连接文件".into());
+    }
+
     /// The import modal (the React share dialog's import mode): opening it
     /// starts from a clean slate; closing drops the journey's picks.
     pub(crate) fn open_import_dialog(&mut self) {

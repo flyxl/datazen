@@ -184,7 +184,7 @@ fn import_dialog_layer(state: &AppState, theme: tok::Theme) -> El {
             "导入连接",
             theme,
             |state: &mut AppState| {
-                state.confirm_connections_import();
+                state.submit_connections_import();
             },
         ));
 
