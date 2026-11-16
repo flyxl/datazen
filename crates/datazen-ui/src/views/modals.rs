@@ -1,14 +1,13 @@
-//! The real modal dialog layer (the React `Dialog`): a dimming scrim over
-//! the whole window with the dialog panel centered on it. While a layer is
-//! mounted the rail, the navigator and the page stay inert and Escape
-//! dismisses (`El::modal`); the panel keys are the ones the import flows and
-//! the connection-form tests press.
+//! The modal dialog layer (React-aligned): a dimming scrim over the window
+//! with the dialog panel centered on it. While mounted the background stays
+//! inert and Escape dismisses (`El::modal`). Required panel/field keys are
+//! preserved for existing flows and tests.
 
 use super::*;
 
 use crate::state_def::AppState;
 use rune::tok::{self, type_};
-use rune::{col, oklcha, row, text, Color, El, TextStyle};
+use rune::{col, oklcha, row, text, Color, El, ScrollSpec};
 
 /// The floating layer for whatever dialog is open — the import dialog first
 /// (the React share dialog opens at most one), else the connection form.
@@ -23,12 +22,10 @@ pub(crate) fn modal_layer(state: &AppState, theme: tok::Theme) -> Option<El> {
     }
 }
 
-/// The scrim + centered panel both dialogs ride on: full-window, dimmed, and
-/// modal — presses outside stay inert, Escape runs the dismissal.
+/// The scrim + centered panel: full-window, dimmed, and modal.
 fn dialog_layer(
     key: &str,
     panel: El,
-    scrim: Color,
     dismiss: impl Fn(&mut AppState) + 'static,
 ) -> El {
     col()
@@ -37,67 +34,27 @@ fn dialog_layer(
         .w_full()
         .h_full()
         .center()
-        .fill(scrim)
+        .fill(scrim())
         .modal(false, dismiss)
         .child(panel)
 }
 
-/// A dialog panel: the React `Dialog`'s rounded bordered card with a header
-/// (title + X close), a body and an optional footer row.
-fn panel(
-    key: &str,
-    title: &str,
-    title_key: &str,
-    width: f32,
-    theme: tok::Theme,
-    close: El,
-    body: El,
-    footer: Option<El>,
-) -> El {
-    let mut card = col()
-        .key(key.to_owned())
-        .w(width)
-        .radius(12.0)
-        .fill(theme.card)
-        .border(1.0, theme.card_border)
-        .child(
-            row()
-                .key(format!("{key}-header"))
-                .w_full()
-                .h(48.0)
-                .px(16.0)
-                .gap(8.0)
-                .center_y()
-                .child(
-                    text(title.to_owned())
-                        .key(title_key.to_owned())
-                        .font(TextStyle::new(14.0, 600.0))
-                        .color(theme.text)
-                        .grow(1.0),
-                )
-                .child(close),
-        )
-        .child(
-            col()
-                .key(format!("{key}-body"))
-                .w_full()
-                .min_h(0.0)
-                .px(16.0)
-                .py(12.0)
-                .gap(10.0)
-                .child(body),
-        );
-    if let Some(footer) = footer {
-        card = card.child(footer);
-    }
-    card
+fn scrim() -> Color {
+    oklcha(0.0, 0.0, 256.0, 0.5)
 }
 
-/// The close press both dialogs share (the React header X).
+fn accent_fill(_theme: tok::Theme) -> Color {
+    oklcha(0.62, 0.17, 256.0, 1.0)
+}
+
+fn accent_hover_fill(_theme: tok::Theme) -> Color {
+    oklcha(0.58, 0.17, 256.0, 1.0)
+}
+
 fn close_button(key: &str, theme: tok::Theme, close: impl Fn(&mut AppState) + 'static) -> El {
     row()
         .key(key.to_owned())
-        .size(24.0, 24.0)
+        .size(28.0, 28.0)
         .center()
         .radius(6.0)
         .label("Close")
@@ -106,152 +63,295 @@ fn close_button(key: &str, theme: tok::Theme, close: impl Fn(&mut AppState) + 's
         .on_press(move |state: &mut AppState| close(state))
 }
 
-/// The import dialog (React `ConnectionShareDialog` import mode): the
-/// formats hint, the picked file, the password for the encrypted formats,
-/// then the parsed preview and its confirm, then the outcome notice. The
-/// file pick is the dialog's own button (`import-choose-file`), so the
-/// journey is: open dialog → choose file → preview → import.
-fn import_dialog_layer(state: &AppState, theme: tok::Theme) -> El {
-    let mut body = col().key("import-dialog-fields").w_full().gap(10.0);
-    body = body.child(
-        text("Supports DataZen (.datazenconnection), DBX, DataGrip (dataSources.xml), Navicat (.ncx), DBeaver (data-sources.json), and TablePlus (.tableplusconnection).")
-            .key("import-formats-hint")
-            .w_full()
-            .font(type_::LABEL)
-            .color(theme.text_secondary)
-            .wrap(),
-    );
-    if let Some(file) = &state.import_file {
-        body = body.child(
-            row()
-                .key("import-selected-file-row")
-                .w_full()
-                .min_h(24.0)
-                .gap(8.0)
-                .center_y()
-                .child(
-                    text("Selected file")
-                        .key("import-selected-file-label")
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                )
-                .child(
-                    text(short_file_name(file))
-                        .key("import-selected-file")
-                        .font(type_::LABEL)
-                        .color(theme.text)
-                        .grow(1.0)
-                        .min_w(0.0),
-                )
-                .child(
-                    row()
-                        .key("import-change-file")
-                        .h(24.0)
-                        .px(8.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(theme.control_off)
-                        .label("Change file")
-                        .child(text("Change file").font(type_::LABEL).color(theme.text))
-                        .on_press_tx(import_press),
-                ),
-        );
-    } else {
-        body = body.child(
-            row()
-                .key("import-choose-file")
-                .h(28.0)
-                .px(10.0)
-                .center_y()
-                .radius(7.0)
-                .fill(theme.control_off)
-                .label("Choose file")
-                .child(text("Choose file…").font(type_::LABEL).color(theme.text))
-                .on_press_tx(import_press),
-        );
-    }
-    // The password, the parsed preview, its confirm and the outcome notice
-    // (the keys the import flows and tests press) ride the dialog body.
-    body = body.child(import_bar(state, theme));
-
-    let card = panel(
-        "import-dialog",
-        "Import connections",
-        "import-dialog-title",
-        460.0,
-        theme,
-        close_button("import-dialog-close", theme, |state: &mut AppState| {
-            state.close_import_dialog()
-        }),
-        body,
-        Some(dialog_footer(theme, |state: &mut AppState| {
-            state.close_import_dialog()
-        })),
-    );
-    dialog_layer(
-        "import-dialog-layer",
-        card,
-        scrim(),
-        |state: &mut AppState| state.close_import_dialog(),
-    )
-}
-
-/// The connection form over the React `Dialog` chrome: the same grouped
-/// fields, error row and actions the inline form had, floating now. The
-/// form's own actions row is the footer, so no extra one is added.
-fn connection_dialog_layer(state: &AppState, theme: tok::Theme) -> El {
-    let card = panel(
-        "connection-dialog",
-        "New connection",
-        "connection-dialog-title",
-        700.0,
-        theme,
-        close_button("connection-dialog-close", theme, |state: &mut AppState| {
-            state.close_connection_dialog()
-        }),
-        connection_form_fields(state, theme),
-        None,
-    );
-    dialog_layer(
-        "connection-dialog-layer",
-        card,
-        scrim(),
-        |state: &mut AppState| state.close_connection_dialog(),
-    )
-}
-
-/// The footer the import dialog shares with every future dialog: the Cancel
-/// press at the trailing edge (the React dialog's secondary button).
-fn dialog_footer(theme: tok::Theme, close: impl Fn(&mut AppState) + Copy + 'static) -> El {
+fn ghost_button(
+    key: &str,
+    label: &str,
+    theme: tok::Theme,
+    on_press: impl Fn(&mut AppState) + 'static,
+) -> El {
     row()
+        .key(key.to_owned())
+        .h(36.0)
+        .px(14.0)
+        .center()
+        .radius(8.0)
+        .border(1.0, theme.card_border)
+        .fill(theme.card)
+        .hover(theme.hover)
+        .on_press(on_press)
+        .child(text(label).font(type_::LABEL).color(theme.text))
+}
+
+fn secondary_button(
+    key: &str,
+    label: &str,
+    theme: tok::Theme,
+    on_press: impl Fn(&mut AppState) + 'static,
+) -> El {
+    row()
+        .key(key.to_owned())
+        .h(36.0)
+        .px(14.0)
+        .center()
+        .radius(8.0)
+        .border(1.0, theme.card_border)
+        .fill(theme.card)
+        .hover(theme.hover)
+        .on_press(on_press)
+        .child(text(label).font(type_::LABEL).color(theme.text_secondary))
+}
+
+fn primary_button(
+    key: &str,
+    label: &str,
+    theme: tok::Theme,
+    on_press: impl Fn(&mut AppState) + 'static,
+) -> El {
+    row()
+        .key(key.to_owned())
+        .h(36.0)
+        .px(16.0)
+        .center()
+        .radius(8.0)
+        .fill(accent_fill(theme))
+        .hover(accent_hover_fill(theme))
+        .on_press(on_press)
+        .child(text(label).font(type_::LABEL).color(Color::WHITE))
+}
+
+/// Import dialog (React ConnectionShareDialog, import/file mode layout).
+fn import_dialog_layer(state: &AppState, theme: tok::Theme) -> El {
+    let body = connections::import_dialog_body(state, theme);
+
+    let footer = row()
         .key("dialog-footer")
         .w_full()
-        .h(44.0)
-        .px(16.0)
-        .gap(8.0)
+        .h(56.0)
+        .px(20.0)
         .center_y()
-        .fill(theme.bg)
-        .child(col().grow(1.0))
+        .justify_end()
+        .gap(8.0)
+        .border(1.0, theme.separator)
+        .child(ghost_button("dialog-cancel", "取消", theme, |state: &mut AppState| {
+            state.close_import_dialog();
+        }))
+        .child(primary_button(
+            "import-confirm",
+            "导入连接",
+            theme,
+            |state: &mut AppState| {
+                state.confirm_connections_import();
+            },
+        ));
+
+    let panel = col()
+        .key("import-dialog")
+        .w(520.0)
+        .max_h(560.0)
+        .radius(12.0)
+        .fill(theme.card)
+        .border(1.0, theme.card_border)
         .child(
             row()
-                .key("dialog-cancel")
-                .h(28.0)
-                .px(10.0)
+                .w_full()
+                .h(56.0)
+                .px(20.0)
                 .center_y()
-                .radius(7.0)
-                .fill(theme.control_off)
-                .label("Cancel")
-                .child(text("Cancel").font(type_::LABEL).color(theme.text))
-                .on_press(move |state: &mut AppState| close(state)),
+                .justify_between()
+                .border(1.0, theme.separator)
+                .child(
+                    text("导入连接")
+                        .key("import-dialog-title")
+                        .font(type_::TITLE)
+                        .color(theme.text),
+                )
+                .child(close_button("import-dialog-close", theme, |state: &mut AppState| {
+                    state.close_import_dialog();
+                })),
         )
+        .child(
+            col()
+                .w_full()
+                .grow(1.0)
+                .min_h(0.0)
+                .px(20.0)
+                .py(20.0)
+                .child(body),
+        )
+        .child(footer);
+
+    dialog_layer("import-dialog-layer", panel, |state: &mut AppState| {
+        state.close_import_dialog();
+    })
 }
 
-/// The React scrim (`bg-black/50`) in both appearances.
-fn scrim() -> Color {
-    oklcha(0.0, 0.0, 256.0, 0.5)
+/// New-connection dialog (React-aligned: left type sidebar + right header/body/footer).
+fn connection_dialog_layer(state: &AppState, theme: tok::Theme) -> El {
+    let sidebar = connection_type_sidebar(state, theme);
+
+    let header = row()
+        .w_full()
+        .h(60.0)
+        .px(24.0)
+        .center_y()
+        .justify_between()
+        .border(1.0, theme.separator)
+        .child(
+            text("新建连接")
+                .key("connection-dialog-title")
+                .font(type_::TITLE)
+                .color(theme.text),
+        )
+        .child(close_button(
+            "connection-dialog-close",
+            theme,
+            |state: &mut AppState| state.close_connection_dialog(),
+        ));
+
+    let body = col()
+        .w_full()
+        .grow(1.0)
+        .min_h(0.0)
+        .scroll(ScrollSpec { stick_bottom: false })
+        .px(24.0)
+        .py(24.0)
+        .child(connections::connection_form_fields(state, theme));
+
+    let footer = row()
+        .key("connection-dialog-footer")
+        .w_full()
+        .h(64.0)
+        .px(24.0)
+        .center_y()
+        .justify_end()
+        .gap(8.0)
+        .border(1.0, theme.separator)
+        .child(secondary_button(
+            "connection-test",
+            "测试连接",
+            theme,
+            |_state: &mut AppState| {},
+        ))
+        .child(ghost_button(
+            "dialog-cancel",
+            "取消",
+            theme,
+            |state: &mut AppState| {
+                state.close_connection_dialog();
+            },
+        ));
+
+    let right = col()
+        .grow(1.0)
+        .min_w(0.0)
+        .h_full()
+        .child(header)
+        .child(body)
+        .child(footer);
+
+    let panel = row()
+        .key("connection-dialog")
+        .w(920.0)
+        .h(620.0)
+        .max_h(700.0)
+        .radius(12.0)
+        .fill(theme.card)
+        .border(1.0, theme.card_border)
+        .child(sidebar)
+        .child(right);
+
+    dialog_layer("connection-dialog-layer", panel, |state: &mut AppState| {
+        state.close_connection_dialog();
+    })
 }
 
-/// The file's own name, for the dialog's picked-file row.
-fn short_file_name(path: &str) -> String {
-    path.rsplit(['/', '\\']).next().unwrap_or(path).to_owned()
+/// Left sidebar: database type/engine picker (React-aligned structure).
+fn connection_type_sidebar(state: &AppState, theme: tok::Theme) -> El {
+    let mut list = col().w_full().gap(2.0).px(8.0).py(8.0);
+    let current = state.connection_engine.text.trim().to_ascii_lowercase();
+    let mut engines = state.desktop.available_engines();
+    if engines.is_empty() {
+        engines = vec![
+            "postgresql".to_owned(),
+            "mysql".to_owned(),
+            "sqlite".to_owned(),
+            "redis".to_owned(),
+            "mongodb".to_owned(),
+        ];
+    }
+
+    for engine in engines {
+        let is_selected = if current.is_empty() {
+            engine.eq_ignore_ascii_case("postgresql")
+        } else {
+            current == engine.to_ascii_lowercase()
+        };
+        let eng = engine.clone();
+        let label = engine.clone();
+        let row_bg = if is_selected { theme.hover } else { Color::TRANSPARENT };
+        list = list.child(
+            row()
+                .key(format!("connection-engine-option-{}", engine))
+                .w_full()
+                .h(34.0)
+                .px(10.0)
+                .gap(8.0)
+                .center_y()
+                .radius(8.0)
+                .fill(row_bg)
+                .hover(theme.hover)
+                .on_press(move |state: &mut AppState| {
+                    state.connection_engine = rune::TextEdit::new(eng.clone());
+                })
+                .child(
+                    row()
+                        .w(18.0)
+                        .h(18.0)
+                        .radius(4.0)
+                        .center()
+                        .fill(if is_selected { accent_fill(theme) } else { theme.control_off })
+                        .child(
+                            text(label.chars().next().unwrap_or('?').to_uppercase().to_string())
+                                .font(type_::LABEL)
+                                .color(if is_selected { Color::WHITE } else { theme.text_secondary }),
+                        ),
+                )
+                .child(
+                    text(label)
+                        .font(type_::LABEL)
+                        .color(if is_selected { theme.text } else { theme.text_secondary })
+                        .grow(1.0)
+                        .min_w(0.0)
+                        .truncate(),
+                ),
+        );
+    }
+
+    col()
+        .w(220.0)
+        .h_full()
+        .border(1.0, theme.separator)
+        .fill(theme.bg)
+        .child(
+            col()
+                .w_full()
+                .px(12.0)
+                .py(12.0)
+                .gap(8.0)
+                .border(1.0, theme.separator)
+                .child(text("选择数据库类型").font(type_::LABEL).color(theme.text))
+                .child(
+                    text("从左侧选择类型")
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
+        )
+        .child(
+            col()
+                .w_full()
+                .grow(1.0)
+                .min_h(0.0)
+                .scroll(ScrollSpec { stick_bottom: false })
+                .child(list),
+        )
 }

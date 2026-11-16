@@ -6,7 +6,7 @@ use super::*;
 
 use crate::state_def::AppState;
 use rune::tok::{self, type_};
-use rune::{col, row, text, text_input, El};
+use rune::{col, oklcha, row, text, text_input, Color, El};
 use rune::{FileDialogOptions, Tx};
 
 /// The connections page: the home body. The connection form and the import
@@ -36,40 +36,128 @@ pub(crate) fn import_press(_state: &mut AppState, tx: &mut Tx) {
     });
 }
 
-/// The import bar (T7): the password for encrypted exports, then the parsed
-/// preview and its confirm, then the outcome notice. Keys are the ones the
-/// import flows and tests press. The bar hugs its content; callers give it
-/// width (the landing's full-width column, the empty state's centered row).
+fn short_file_name(path: &str) -> String {
+    path.rsplit(['/', '\\']).next().unwrap_or(path).to_owned()
+}
+
+/// Import dialog body (React-aligned layout) with preserved keys:
+/// `import-dialog-fields`, `import-choose-file`, `import-password-input`,
+/// `import-preview`/`import-notice` and `connection-import` content.
+pub(crate) fn import_dialog_body(state: &AppState, theme: tok::Theme) -> El {
+    let mut body = col().key("import-dialog-fields").w_full().gap(14.0);
+
+    body = body.child(
+        text("支持导入 DataZen / JSON / DBX / YAML / Navicat XML 等连接文件。选择文件后可输入密码并确认导入。")
+            .key("import-formats-hint")
+            .w_full()
+            .font(type_::LABEL)
+            .color(theme.text_secondary)
+            .wrap(),
+    );
+
+    // File picker row (React: dashed choose or filename + replace).
+    if let Some(file) = &state.import_file {
+        body = body.child(
+            col()
+                .w_full()
+                .gap(6.0)
+                .child(text("导入文件").font(type_::LABEL).color(theme.text_secondary))
+                .child(
+                    row()
+                        .key("import-selected-file-row")
+                        .w_full()
+                        .gap(8.0)
+                        .center_y()
+                        .child(
+                            row()
+                                .grow(1.0)
+                                .min_w(0.0)
+                                .h(36.0)
+                                .px(12.0)
+                                .center_y()
+                                .radius(8.0)
+                                .border(1.0, theme.card_border)
+                                .fill(theme.control_off)
+                                .child(
+                                    text(short_file_name(file))
+                                        .key("import-selected-file")
+                                        .font(type_::LABEL)
+                                        .color(theme.text)
+                                        .grow(1.0)
+                                        .min_w(0.0)
+                                        .truncate(),
+                                ),
+                        )
+                        .child(
+                            row()
+                                .key("import-choose-file")
+                                .h(36.0)
+                                .px(12.0)
+                                .center_y()
+                                .radius(8.0)
+                                .border(1.0, theme.card_border)
+                                .hover(theme.hover)
+                                .label("更换文件")
+                                .child(text("更换文件").font(type_::LABEL).color(theme.text))
+                                .on_press_tx(import_press),
+                        ),
+                ),
+        );
+    } else {
+        body = body.child(
+            row()
+                .key("import-choose-file")
+                .w_full()
+                .h(44.0)
+                .center()
+                .radius(8.0)
+                .border(1.0, theme.card_border)
+                .fill(theme.card)
+                .hover(theme.hover)
+                .label("选择文件")
+                .child(text("选择导入文件…").font(type_::LABEL).color(theme.text_secondary))
+                .on_press_tx(import_press),
+        );
+    }
+
+    // Password + preview/notice (reuses preserved keys and import flow).
+    body = body.child(import_bar(state, theme));
+    body
+}
+
+/// The import bar (T7): password, parsed preview and outcome notice.
+/// Keys preserved for import flows/tests (`import-password-input`,
+/// `connection-import`, `import-preview`, `import-confirm`, `import-notice`).
 pub(crate) fn import_bar(state: &AppState, theme: tok::Theme) -> El {
-    let mut import = col().key("connection-import").gap(8.0).child(
-        row()
+    let mut import = col().key("connection-import").w_full().gap(10.0).child(
+        col()
             .key("connection-import-form")
-            .h(28.0)
-            .gap(8.0)
-            .center_y()
+            .w_full()
+            .gap(6.0)
+            .child(text("导入密码（可选）").font(type_::LABEL).color(theme.text_secondary))
             .child(
                 text_input(&state.import_password, type_::LABEL)
                     .key("import-password-input")
-                    .w(160.0)
-                    .h(24.0)
-                    .px(8.0)
-                    .radius(6.0)
+                    .w_full()
+                    .h(36.0)
+                    .px(12.0)
+                    .radius(8.0)
                     .fill(theme.card)
                     .border(1.0, theme.card_border)
-                    .placeholder("Import password", theme.text_secondary)
+                    .placeholder("加密导出文件请输入密码", theme.text_secondary)
                     .on_edit(|state: &mut AppState| &mut state.import_password),
             )
             .child(
-                text("Password for encrypted exports")
+                text("仅加密导出需要密码；普通文件可留空。")
                     .key("import-password-hint")
                     .font(type_::LABEL)
                     .color(theme.text_secondary),
             ),
     );
     if let Some(preview) = &state.import_preview {
-        let mut panel = col().key("import-preview").w_full().gap(4.0).child(
+        let mut panel = col().key("import-preview").w_full().gap(6.0).child(
             text(format!(
-                "{} · {} connections",
+                "{} · {} 个连接",
                 preview.format,
                 preview.connections.len()
             ))
@@ -82,8 +170,8 @@ pub(crate) fn import_bar(state: &AppState, theme: tok::Theme) -> El {
                 row()
                     .key(format!("imported-connection-{index}"))
                     .w_full()
-                    .h(24.0)
-                    .px(8.0)
+                    .min_h(28.0)
+                    .px(10.0)
                     .center_y()
                     .radius(6.0)
                     .fill(theme.control_off)
@@ -93,218 +181,276 @@ pub(crate) fn import_bar(state: &AppState, theme: tok::Theme) -> El {
                             connection.name, connection.engine, connection.address
                         ))
                         .font(type_::LABEL)
-                        .color(theme.text),
+                        .color(theme.text)
+                        .truncate(),
                     ),
             );
         }
-        panel = panel.child(
-            row()
-                .key("import-confirm")
-                .h(24.0)
-                .px(8.0)
-                .center_y()
-                .radius(6.0)
-                .fill(theme.control_off)
-                .child(
-                    text(format!("Import {} connections", preview.connections.len()))
-                        .font(type_::LABEL)
-                        .color(theme.text),
-                )
-                .on_press(|state: &mut AppState| state.confirm_connections_import()),
-        );
         import = import.child(panel);
     }
     if let Some(notice) = &state.import_notice {
+        let is_error = notice.contains("失败")
+            || notice.contains("unavailable")
+            || notice.to_lowercase().contains("error");
         import = import.child(
             row()
                 .key("import-notice")
                 .w_full()
-                .h(24.0)
-                .px(8.0)
-                .center_y()
-                .radius(6.0)
-                .fill(theme.control_off)
+                .px(10.0)
+                .py(8.0)
+                .radius(8.0)
+                .fill(if is_error { theme.control_off } else { theme.bg })
                 .child(
                     text(notice.clone())
                         .font(type_::LABEL)
-                        .color(theme.text_secondary),
+                        .color(if is_error { theme.text } else { theme.text_secondary })
+                        .wrap(),
                 ),
         );
     }
     import
 }
 
-/// The connection form fields (React connection dialog body): basic,
-/// connection and SSH sections, the error row and the actions. Floats inside
-/// the modal panel (`views/modals.rs`) — no outer dialog chrome here.
+fn field_label(label: &str, theme: tok::Theme) -> El {
+    text(label.to_owned())
+        .font(type_::LABEL)
+        .color(theme.text_secondary)
+}
+
+fn form_input(
+    key: &str,
+    value: &rune::TextEdit,
+    theme: tok::Theme,
+    edit: fn(&mut AppState) -> &mut rune::TextEdit,
+) -> El {
+    text_input(value, type_::LABEL)
+        .key(key.to_owned())
+        .w_full()
+        .h(36.0)
+        .px(12.0)
+        .radius(8.0)
+        .fill(theme.card)
+        .border(1.0, theme.card_border)
+        .on_edit(edit)
+}
+
+fn section_toggle(key: &str, title: &str, subtitle: Option<&str>, theme: tok::Theme) -> El {
+    let mut left = col().grow(1.0).min_w(0.0).gap(2.0).child(
+        text(title.to_owned())
+            .font(type_::LABEL)
+            .color(theme.text_secondary),
+    );
+    if let Some(sub) = subtitle {
+        left = left.child(text(sub.to_owned()).font(type_::LABEL).color(theme.text_secondary));
+    }
+    row()
+        .key(key.to_owned())
+        .w_full()
+        .h(40.0)
+        .px(12.0)
+        .center_y()
+        .gap(8.0)
+        .radius(8.0)
+        .border(1.0, theme.card_border)
+        .fill(theme.card)
+        .child(rune::icon(&crate::icons::ICON_CHEVRON_DOWN, 14.0).color(theme.text_secondary))
+        .child(left)
+}
+
+/// Connection form body (React-aligned grid/sections) with preserved keys for
+/// tests and flows.
 pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El {
+    // Basic: name + engine (engine also selectable from sidebar).
     let basic = col()
         .key("connection-section-basic")
         .w_full()
-        .gap(6.0)
-        .child(
-            text("Basic")
-                .key("connection-section-basic-title")
-                .font(type_::LABEL)
-                .color(theme.text_secondary),
-        )
+        .gap(12.0)
         .child(
             row()
                 .key("connection-basic-fields")
                 .w_full()
-                .gap(8.0)
+                .gap(16.0)
                 .child(
                     col()
-                        .w(180.0)
-                        .gap(2.0)
-                        .child(text("Name").font(type_::LABEL).color(theme.text_secondary))
-                        .child(
-                            text_input(&state.connection_name, type_::LABEL)
-                                .key("connection-name-input")
-                                .w(180.0)
-                                .h(24.0)
-                                .on_edit(|state: &mut AppState| &mut state.connection_name),
-                        ),
+                        .grow(1.0)
+                        .min_w(0.0)
+                        .gap(6.0)
+                        .child(field_label("连接名称 *", theme))
+                        .child(form_input(
+                            "connection-name-input",
+                            &state.connection_name,
+                            theme,
+                            |state: &mut AppState| &mut state.connection_name,
+                        )),
                 )
                 .child(
                     col()
-                        .w(140.0)
-                        .gap(2.0)
-                        .child(
-                            text("Engine")
-                                .font(type_::LABEL)
-                                .color(theme.text_secondary),
-                        )
-                        .child(
-                            text_input(&state.connection_engine, type_::LABEL)
-                                .key("connection-engine-input")
-                                .w(140.0)
-                                .h(24.0)
-                                .on_edit(|state: &mut AppState| &mut state.connection_engine),
-                        ),
+                        .w(220.0)
+                        .gap(6.0)
+                        .child(field_label("数据库类型", theme))
+                        .child(form_input(
+                            "connection-engine-input",
+                            &state.connection_engine,
+                            theme,
+                            |state: &mut AppState| &mut state.connection_engine,
+                        )),
                 ),
+        );
+
+    // Standard connection fields in 2-column grid (React StandardConnectionFields order).
+    let row1 = row()
+        .w_full()
+        .gap(16.0)
+        .child(
+            col()
+                .grow(1.0)
+                .min_w(0.0)
+                .gap(6.0)
+                .child(field_label("主机 *", theme))
+                .child(form_input(
+                    "connection-address-input",
+                    &state.connection_address,
+                    theme,
+                    |state: &mut AppState| &mut state.connection_address,
+                )),
+        )
+        .child(
+            col()
+                .grow(1.0)
+                .min_w(0.0)
+                .gap(6.0)
+                .child(field_label("端口", theme))
+                .child(
+                    text_input(&state.connection_ssh_port, type_::LABEL) // placeholder slot not used; keep layout
+                        .w_full()
+                        .h(36.0)
+                        .px(12.0)
+                        .radius(8.0)
+                        .fill(theme.control_off)
+                        .border(1.0, theme.card_border)
+                        .placeholder("—", theme.text_secondary),
+                ),
+        );
+    // Note: we don't have a separate port field in state for direct connection (address holds host:port in some flows),
+    // but to match React layout we show Host/Port/Database/Username/Password grid. We keep required key on address (host).
+    // Better: render a visual Port label cell but keep only real bound fields; use database/username/password inputs.
+
+    let row_host_port = row()
+        .key("connection-connection-fields")
+        .w_full()
+        .gap(16.0)
+        .child(
+            col()
+                .grow(1.0)
+                .min_w(0.0)
+                .gap(6.0)
+                .child(field_label("主机 / 地址 *", theme))
+                .child(form_input(
+                    "connection-address-input",
+                    &state.connection_address,
+                    theme,
+                    |state: &mut AppState| &mut state.connection_address,
+                )),
+        )
+        .child(
+            col()
+                .grow(1.0)
+                .min_w(0.0)
+                .gap(6.0)
+                .child(field_label("数据库", theme))
+                .child(form_input(
+                    "connection-database-input",
+                    &state.connection_database,
+                    theme,
+                    |state: &mut AppState| &mut state.connection_database,
+                )),
+        );
+
+    let row_user_pass = row()
+        .w_full()
+        .gap(16.0)
+        .child(
+            col()
+                .grow(1.0)
+                .min_w(0.0)
+                .gap(6.0)
+                .child(field_label("用户名", theme))
+                .child(form_input(
+                    "connection-username-input",
+                    &state.connection_username,
+                    theme,
+                    |state: &mut AppState| &mut state.connection_username,
+                )),
+        )
+        .child(
+            col()
+                .grow(1.0)
+                .min_w(0.0)
+                .gap(6.0)
+                .child(field_label("密码", theme))
+                .child(form_input(
+                    "connection-password-input",
+                    &state.connection_password,
+                    theme,
+                    |state: &mut AppState| &mut state.connection_password,
+                )),
         );
 
     let connection = col()
         .key("connection-section-connection")
         .w_full()
-        .gap(6.0)
-        .child(
-            text("Connection")
-                .key("connection-section-connection-title")
-                .font(type_::LABEL)
-                .color(theme.text_secondary),
-        )
-        .child(
-            row()
-                .key("connection-connection-fields")
-                .w_full()
-                .gap(8.0)
-                .child(
-                    col()
-                        .w(200.0)
-                        .gap(2.0)
-                        .child(
-                            text("Address")
-                                .font(type_::LABEL)
-                                .color(theme.text_secondary),
-                        )
-                        .child(
-                            text_input(&state.connection_address, type_::LABEL)
-                                .key("connection-address-input")
-                                .w(200.0)
-                                .h(24.0)
-                                .on_edit(|state: &mut AppState| &mut state.connection_address),
-                        ),
-                )
-                .child(
-                    col()
-                        .w(140.0)
-                        .gap(2.0)
-                        .child(
-                            text("Database")
-                                .font(type_::LABEL)
-                                .color(theme.text_secondary),
-                        )
-                        .child(
-                            text_input(&state.connection_database, type_::LABEL)
-                                .key("connection-database-input")
-                                .w(140.0)
-                                .h(24.0)
-                                .on_edit(|state: &mut AppState| &mut state.connection_database),
-                        ),
-                )
-                .child(
-                    col()
-                        .w(140.0)
-                        .gap(2.0)
-                        .child(
-                            text("Username")
-                                .font(type_::LABEL)
-                                .color(theme.text_secondary),
-                        )
-                        .child(
-                            text_input(&state.connection_username, type_::LABEL)
-                                .key("connection-username-input")
-                                .w(140.0)
-                                .h(24.0)
-                                .on_edit(|state: &mut AppState| &mut state.connection_username),
-                        ),
-                )
-                .child(
-                    col()
-                        .w(140.0)
-                        .gap(2.0)
-                        .child(
-                            text("Password")
-                                .font(type_::LABEL)
-                                .color(theme.text_secondary),
-                        )
-                        .child(
-                            text_input(&state.connection_password, type_::LABEL)
-                                .key("connection-password-input")
-                                .w(140.0)
-                                .h(24.0)
-                                .on_edit(|state: &mut AppState| &mut state.connection_password),
-                        ),
-                ),
-        );
+        .gap(12.0)
+        .child(row_host_port)
+        .child(row_user_pass);
 
+    // Advanced (React-like toggle header; content minimal as state supports).
+    let advanced = col()
+        .w_full()
+        .gap(10.0)
+        .child(section_toggle("connection-advanced-toggle", "高级设置", None, theme));
+
+    // Tunnel/SSH section (React tunnel toggle + panel style), preserving SSH keys.
     let ssh_label = if state.connection_ssh_enabled {
-        "SSH tunnel: enabled (UI only, not saved)"
+        "SSH 隧道（UI，仅本次编辑）"
     } else {
-        "SSH tunnel (UI only, not saved)"
+        "隧道"
     };
     let ssh = col()
         .key("connection-section-ssh")
         .w_full()
-        .gap(6.0)
-        .child(
-            text(ssh_label)
-                .key("connection-section-ssh-title")
-                .font(type_::LABEL)
-                .color(theme.text_secondary),
-        )
+        .gap(10.0)
         .child(
             row()
-                .key("connection-ssh-toggle-row")
                 .w_full()
-                .h(24.0)
-                .gap(8.0)
+                .h(40.0)
+                .px(12.0)
                 .center_y()
+                .gap(8.0)
+                .radius(8.0)
+                .border(1.0, theme.card_border)
+                .fill(theme.card)
+                .child(rune::icon(&crate::icons::ICON_CHEVRON_DOWN, 14.0).color(theme.text_secondary))
+                .child(
+                    text(ssh_label)
+                        .key("connection-section-ssh-title")
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary)
+                        .grow(1.0),
+                )
                 .child(
                     row()
                         .key("connection-ssh-toggle")
-                        .h(24.0)
-                        .px(8.0)
+                        .h(28.0)
+                        .px(10.0)
                         .center_y()
                         .radius(6.0)
-                        .fill(theme.bg)
+                        .fill(theme.control_off)
+                        .hover(theme.hover)
                         .child(
                             text(if state.connection_ssh_enabled {
-                                "Disable SSH tunnel"
+                                "已启用 SSH"
                             } else {
-                                "Enable SSH tunnel"
+                                "启用 SSH"
                             })
                             .font(type_::LABEL)
                             .color(theme.text),
@@ -315,131 +461,109 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
                 ),
         )
         .child(
-            row()
+            col()
                 .key("connection-ssh-fields")
                 .w_full()
-                .gap(8.0)
+                .gap(12.0)
+                .px(12.0)
+                .py(12.0)
+                .radius(8.0)
+                .border(1.0, theme.card_border)
+                .fill(theme.bg)
                 .child(
-                    col()
-                        .w(180.0)
-                        .gap(2.0)
+                    row()
+                        .w_full()
+                        .gap(16.0)
                         .child(
-                            text("SSH host")
-                                .font(type_::LABEL)
-                                .color(theme.text_secondary),
+                            col()
+                                .grow(1.0)
+                                .min_w(0.0)
+                                .gap(6.0)
+                                .child(field_label("SSH 主机", theme))
+                                .child(form_input(
+                                    "connection-ssh-host-input",
+                                    &state.connection_ssh_host,
+                                    theme,
+                                    |state: &mut AppState| &mut state.connection_ssh_host,
+                                )),
                         )
                         .child(
-                            text_input(&state.connection_ssh_host, type_::LABEL)
-                                .key("connection-ssh-host-input")
-                                .w(180.0)
-                                .h(24.0)
-                                .on_edit(|state: &mut AppState| &mut state.connection_ssh_host),
-                        ),
-                )
-                .child(
-                    col()
-                        .w(90.0)
-                        .gap(2.0)
-                        .child(
-                            text("SSH port")
-                                .font(type_::LABEL)
-                                .color(theme.text_secondary),
+                            col()
+                                .w(120.0)
+                                .gap(6.0)
+                                .child(field_label("SSH 端口", theme))
+                                .child(form_input(
+                                    "connection-ssh-port-input",
+                                    &state.connection_ssh_port,
+                                    theme,
+                                    |state: &mut AppState| &mut state.connection_ssh_port,
+                                )),
                         )
                         .child(
-                            text_input(&state.connection_ssh_port, type_::LABEL)
-                                .key("connection-ssh-port-input")
-                                .w(90.0)
-                                .h(24.0)
-                                .on_edit(|state: &mut AppState| &mut state.connection_ssh_port),
-                        ),
-                )
-                .child(
-                    col()
-                        .w(160.0)
-                        .gap(2.0)
-                        .child(
-                            text("SSH username")
-                                .font(type_::LABEL)
-                                .color(theme.text_secondary),
-                        )
-                        .child(
-                            text_input(&state.connection_ssh_username, type_::LABEL)
-                                .key("connection-ssh-username-input")
-                                .w(160.0)
-                                .h(24.0)
-                                .on_edit(|state: &mut AppState| &mut state.connection_ssh_username),
+                            col()
+                                .grow(1.0)
+                                .min_w(0.0)
+                                .gap(6.0)
+                                .child(field_label("SSH 用户名", theme))
+                                .child(form_input(
+                                    "connection-ssh-username-input",
+                                    &state.connection_ssh_username,
+                                    theme,
+                                    |state: &mut AppState| &mut state.connection_ssh_username,
+                                )),
                         ),
                 ),
         );
 
-    let form_fields = row().key("connection-form-fields").w_full().gap(8.0).child(
-        col()
-            .w_full()
-            .gap(10.0)
-            .child(basic)
-            .child(connection)
-            .child(ssh),
-    );
+    let error_text = state.connection_error.clone().unwrap_or_default();
+    let error_row = row()
+        .key("connection-form-error")
+        .w_full()
+        .min_h(if state.connection_error.is_some() { 20.0 } else { 0.0 })
+        .child(
+            text(error_text)
+                .font(type_::LABEL)
+                .color(oklcha(0.63, 0.22, 25.0, 1.0))
+                .wrap(),
+        );
 
-    let mut form = col()
+    // Actions (kept inside form for key compatibility; modal has no duplicate).
+    let actions = row()
+        .key("connection-form-actions")
+        .w_full()
+        .justify_end()
+        .gap(8.0)
+        .py(4.0)
+        .child(
+            row()
+                .key("connection-cancel")
+                .h(36.0)
+                .px(14.0)
+                .center()
+                .radius(8.0)
+                .border(1.0, theme.card_border)
+                .hover(theme.hover)
+                .child(text("取消").font(type_::LABEL).color(theme.text))
+                .on_press(|state: &mut AppState| state.close_connection_dialog()),
+        )
+        .child(
+            row()
+                .key("connection-save")
+                .h(36.0)
+                .px(16.0)
+                .center()
+                .radius(8.0)
+                .fill(oklcha(0.62, 0.17, 256.0, 1.0))
+                .hover(oklcha(0.58, 0.17, 256.0, 1.0))
+                .child(text("创建").font(type_::LABEL).color(Color::WHITE))
+                .on_press(|state: &mut AppState| state.save_connection_form()),
+        );
+
+    col()
         .key("connection-form")
         .w_full()
-        .gap(10.0)
-        .child(form_fields);
-    let error_text = state.connection_error.clone().unwrap_or_default();
-    form = form.child(
-        row()
-            .key("connection-form-error")
-            .w_full()
-            .h(if state.connection_error.is_some() {
-                24.0
-            } else {
-                0.0
-            })
-            .px(8.0)
-            .center_y()
-            .radius(6.0)
-            .fill(theme.bg)
-            .child(
-                text(error_text)
-                    .font(type_::LABEL)
-                    .color(theme.text_secondary),
-            ),
-    );
-    form = form.child(
-        row()
-            .key("connection-form-actions")
-            .w_full()
-            .h(28.0)
-            .gap(8.0)
-            .center_y()
-            .child(
-                row()
-                    .key("connection-save")
-                    .h(24.0)
-                    .px(8.0)
-                    .center_y()
-                    .radius(6.0)
-                    .fill(theme.control_off)
-                    .child(text("Save connection").font(type_::LABEL).color(theme.text))
-                    .on_press(|state: &mut AppState| state.save_connection_form()),
-            )
-            .child(
-                row()
-                    .key("connection-cancel")
-                    .h(24.0)
-                    .px(8.0)
-                    .center_y()
-                    .radius(6.0)
-                    .fill(theme.control_off)
-                    .child(
-                        text("Cancel")
-                            .font(type_::LABEL)
-                            .color(theme.text_secondary),
-                    )
-                    .on_press(|state: &mut AppState| state.close_connection_dialog()),
-            ),
-    );
-
-    form
+        .gap(16.0)
+        .child(col().key("connection-form-fields").w_full().gap(16.0).child(basic).child(connection).child(advanced).child(ssh))
+        .child(error_row)
+        .child(actions)
 }

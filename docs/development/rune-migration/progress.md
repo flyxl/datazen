@@ -4,6 +4,7 @@
 - **状态**: L1–L7 已完成；A1 进行中（首页与导航器 Recent/All/过滤已落地，pinned/用户分组受契约限制）。A2 连接表单对话框化、A3 查询面板对齐、A4 表浏览对齐、A5 结果工作区对齐、A6 设置导航分组已合流主轨。第五阶段计划见 [plan-native-5.md](plan-native-5.md)。
 
 ## Completed Work (recent)
+- [x] 新建/导入连接窗口布局重构（本次提交）：`views/modals.rs`、`views/connections.rs` 重构为 React 对齐布局。新建连接：左侧数据库类型选择栏 + 右侧标题/可滚动表单/底部操作区，表单按两列网格排列基础与连接字段并保留高级/隧道区块结构；导入连接：对齐分享对话框导入模式的提示、文件选择、密码与预览/结果区域及底部操作。保持既有键与行为兼容（`connection-dialog*`、`connection-form*`、`connection-save`、`import-dialog*`、`import-choose-file`、`import-password-input`、`import-confirm` 等），能力受当前 `AppState`/`datazen-ui-api` 约束。（见 [testing/A1-connections-home.md](testing/A1-connections-home.md)、[testing/A2-connection-form-dialog.md](testing/A2-connection-form-dialog.md)）
 - [x] A1 导航器基础组件与 ConnectionNavigatorTree 集成/样式重构（`c0da43bd0`，修复见本次提交）：新增 `crates/datazen-ui/src/ui/{mod,theme,nav}.rs` 基础原语（主题度量/图标/搜索框/工具按钮/树 section-branch-leaf 行），重建 `navigator_panel` 与 `navigator_connections_tree`（Databases 标题栏、带搜索图标的过滤输入、Recent/All 分组头与连接行、对象树分支/叶子图标与缩进）并集成到页面；连接树分组头补充语义图标且可点击收起/展开（Recent/All，过滤时自动展开），保持既有 key 与交互（`navigator-filter-input`、`nav-group-*`、`nav-conn*`、`object-tree`/`tree-*`、`open-query` 等）。（见 [testing/A1-connections-home.md](testing/A1-connections-home.md)）
 - [x] A1 rail/弹窗对齐增量（`0aa7fa445`）：侧栏按 React 顺序重排并将 Settings/折叠按钮置于底部组；图标改为 lucide 语义；连接表单与导入改为 root modal layer（scrim + Escape，真浮层）。（见 [testing/A1-connections-home.md](testing/A1-connections-home.md)）
 - [x] A2 连接表单对话框化（`1e383c421`, `7e06bf48e`，合流主轨；见 [testing/A2-connection-form-dialog.md](testing/A2-connection-form-dialog.md)）
@@ -38,6 +39,7 @@ React 页面和组件保留。不删除、不改成空壳、不把现有入口�
 - [x] A4 表浏览对齐：行号 gutter、按表列宽持久化与回填、FK 面包屑、状态横幅、待提交条（`e041fc463`, `5ae657365`；测试报告 `testing/A4-table-browse.md`）
 
 ## Verification
+- 新建/导入连接窗口布局重构（本次提交）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **183 + 56 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
 - A1 导航器基础组件与 ConnectionNavigatorTree 集成/样式重构（`c0da43bd0` + 本次修复）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **183 + 56 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
 - 主轨集成（A2–A6 合流，含冲突解决）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui --offline --lib -- --test-threads=1` → **176 passed, 0 failed**；`CARGO_TARGET_DIR="$PWD/target" cargo check -p datazen-rune-host --offline` → exit 0（既有 warnings）。
 - A1 rail/弹窗对齐增量（`0aa7fa445`）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui --offline --lib -- --test-threads=1` → **183 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。

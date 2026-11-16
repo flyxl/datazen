@@ -18,6 +18,13 @@
 - **SSH 隧道（UI 对齐，非持久化）**：`connection_ssh_enabled`、`connection_ssh_host`、`connection_ssh_port`、`connection_ssh_username` 仅为对话框 UI 状态；区块明确标注 “UI only, not saved”。`ConnectionDraft` 无隧道字段，保存不读取/不写入隧道配置，不引入契约或持久化变更。
 - **兼容**：Connections 页 hero/卡片/最近查询/导入区块保留；连接卡片 `connection-{id}` 与打开行为不变；既有桌面适配器消息与导入流程不变。
 
+## 增量：新建连接窗口布局 React 对齐（本次提交）
+
+- **布局**：`views/modals.rs` 将连接表单对话框重构为 React `NewConnectionDialog` 风格的左右分栏——左侧数据库类型选择栏（基于 `available_engines()` 列表，点击写入 `connection_engine`）、右侧为标题栏 + 可滚动表单内容 + 底部操作区（测试连接占位、取消、保存由表单操作区承载）。
+- **表单**：`views/connections.rs` 将 `connection-form-fields` 重排为两列网格与分区：基础（名称、数据库类型）、连接字段（主机/地址、数据库、用户名、密码）、高级设置区块头、隧道/SSH 区块（启用切换与 SSH 主机/端口/用户名），并保留错误行与 `connection-form-actions`。
+- **键与行为**：保留 `connection-dialog*`、`connection-form*`、`connection-section-*`、各输入/切换键与 `save_connection_form`/关闭逻辑；`dialog-cancel` 可由对话框底部触发关闭。
+- **门禁**：`cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **183 + 56 passed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0。
+
 ## 测试
 
 | 测试 | 位置 | 覆盖 |

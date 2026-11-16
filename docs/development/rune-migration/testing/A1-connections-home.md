@@ -78,6 +78,16 @@
 - **门禁**：GR1 `cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **56 + 183 passed, 0 failed**；GR2/GR4 `cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。G1–G4 不适用（未改 `packages/frontend` / `packages/web`）。
 - **视觉取证**：release `datazen-rune --snap/--tree --size 1440x816`（含 `--script` 点击打开弹窗）核对 rail 顺序/底部组与导入/连接浮层居中及遮罩。
 
+## 增量：新建/导入连接窗口布局重构（React 对齐）
+
+- **提交**：本次提交（代码与文档同提交）。
+- **目标**：重构 Rune 中“新建连接”与“导入连接”窗口/对话框，使 UI 布局与 React 版本对齐（在当前 Rune 原语与状态/契约可表达范围内）。
+- **新建连接**（`views/modals.rs`、`views/connections.rs`）：采用左侧数据库类型选择栏 + 右侧内容区布局。右侧包含标题栏（标题 + 关闭）、可滚动表单区与底部操作区；表单区按 React `ConnectionFormBody` 结构组织为两列网格（连接名称/数据库类型、主机-地址/数据库、用户名/密码），并提供“高级设置”“隧道/SSH”区块与对应字段。数据库类型栏与表单引擎字段联动（`connection-engine-input` 仍保留并可编辑/由侧栏选择写入）。
+- **导入连接**（`views/modals.rs`、`views/connections.rs`）：对齐 React `ConnectionShareDialog`（导入模式）的结构：标题、提示文案、文件选择行（未选文件时为选择按钮，已选时显示文件名与更换）、密码输入区、预览/通知区域，以及底部“取消/导入连接”操作（`import-confirm` 置于底部操作区）。
+- **兼容性**：保留既有键与流程语义，避免破坏测试与交互——`connection-dialog`/`connection-dialog-title`/`connection-dialog-close`、`connection-form`/`connection-form-fields`/`connection-form-error`/`connection-form-actions`、`connection-section-basic|connection|ssh`、`connection-name-input`/`connection-engine-input`/`connection-address-input`/`connection-database-input`/`connection-username-input`/`connection-password-input`、`connection-ssh-toggle`/`connection-ssh-host-input` 等；`import-dialog`/`import-dialog-title`/`import-dialog-close`/`import-dialog-fields`、`import-choose-file`、`import-password-input`、`connection-import`/`import-preview`/`import-notice`、`import-confirm`、`dialog-cancel`。保存/导入行为仍走现有 `save_connection_form`、`begin_connections_import`/`confirm_connections_import`。
+- **限制**：未改 `packages/frontend`/`packages/web`、内核公开契约与 `datazen-ui-api`；React 中依赖驱动元数据/保存隧道/完整测试连接等未在当前 Rune 状态建模的能力仅做布局对齐或占位，不虚构持久化与宿主行为。
+- **门禁**：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **56 + 183 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。G1–G4 不适用。
+
 ## 增量：导航器基础组件与 ConnectionNavigatorTree 集成
 
 - **提交**：feat `c0da43bd0`，docs `e390028b4`；修复（分组图标与收起）见本次提交（代码与文档同提交）。
