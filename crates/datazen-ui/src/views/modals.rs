@@ -276,14 +276,17 @@ fn connection_dialog_layer(state: &AppState, theme: tok::Theme, dark: bool) -> E
             theme,
             |_state: &mut AppState| {},
         ))
-        .child(ghost_button(
+        .child(secondary_button(
             "dialog-cancel",
             "取消",
             theme,
             |state: &mut AppState| {
                 state.close_connection_dialog();
             },
-        ));
+        ))
+        .child(primary_button("connection-save", "保存", theme, |state: &mut AppState| {
+            state.save_connection_form();
+        }));
 
     let right = col()
         .grow(1.0)

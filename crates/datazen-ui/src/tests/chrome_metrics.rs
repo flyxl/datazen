@@ -401,3 +401,62 @@ use rune::{Env, Runtime};
             bar
         );
     }
+
+    #[test]
+    fn the_connection_and_import_dialogs_fit_the_minimum_window() {
+        // Both dialogs are larger than the 960x640 window's leftover page
+        // area, and the create/save action used to sit at the end of the
+        // scrolling form body instead of the always-visible footer.
+        for (dialog_key, footer_key, action_key, open) in [
+            ("connection-dialog", "connection-dialog-footer", "connection-save", 0),
+            ("import-dialog", "dialog-footer", "import-confirm", 1),
+        ] {
+            let mut rt = Runtime::new(
+                AppState::default(),
+                view,
+                (960.0, 640.0),
+                Env {
+                    system_dark: true,
+                    scale: 1.0,
+                },
+            );
+            if open == 0 {
+                rt.state.open_connection_dialog();
+            } else {
+                rt.state.open_import_dialog();
+            }
+            rt.frame(0.0);
+            let elements = rt.elements();
+            let rect = |key: &str| {
+                elements
+                    .iter()
+                    .find(|e| e.key.as_deref() == Some(key))
+                    .unwrap_or_else(|| panic!("{key} present"))
+                    .rect
+            };
+            let dialog = rect(dialog_key);
+            let footer = rect(footer_key);
+            let action = rect(action_key);
+            assert!(
+                dialog[0] >= -0.5
+                    && dialog[0] + dialog[2] <= 960.5
+                    && dialog[1] >= -0.5
+                    && dialog[1] + dialog[3] <= 640.5,
+                "{dialog_key}: {:?} leaves the 960x640 window",
+                dialog
+            );
+            assert!(
+                footer[1] + footer[3] <= dialog[1] + dialog[3] + 0.5
+                    && footer[1] >= dialog[1],
+                "{dialog_key}: footer {:?} leaves the dialog {:?}",
+                footer,
+                dialog
+            );
+            assert!(
+                action[1] >= footer[1] - 0.5 && action[1] + action[3] <= footer[1] + footer[3] + 0.5,
+                "{dialog_key}: {action_key} {:?} is outside the visible footer {:?}",
+                action,
+                footer
+            );
+        }
+    }

@@ -6,7 +6,7 @@ use super::*;
 
 use crate::state_def::AppState;
 use rune::tok::{self, type_};
-use rune::{col, oklcha, row, text, text_input, Color, El};
+use rune::{col, oklcha, row, text, text_input, El};
 use rune::{FileDialogOptions, Tx};
 
 /// The connections page: the home body. The connection form and the import
@@ -503,43 +503,10 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
                 .wrap(),
         );
 
-    // Actions (kept inside form for key compatibility; modal has no duplicate).
-    let actions = row()
-        .key("connection-form-actions")
-        .w_full()
-        .justify_end()
-        .gap(8.0)
-        .py(4.0)
-        .child(
-            row()
-                .key("connection-cancel")
-                .h(36.0)
-                .px(14.0)
-                .center()
-                .radius(8.0)
-                .border(1.0, theme.card_border)
-                .hover(theme.hover)
-                .child(text("取消").font(type_::LABEL).color(theme.text))
-                .on_press(|state: &mut AppState| state.close_connection_dialog()),
-        )
-        .child(
-            row()
-                .key("connection-save")
-                .h(36.0)
-                .px(16.0)
-                .center()
-                .radius(8.0)
-                .fill(oklcha(0.62, 0.17, 256.0, 1.0))
-                .hover(oklcha(0.58, 0.17, 256.0, 1.0))
-                .child(text("创建").font(type_::LABEL).color(Color::WHITE))
-                .on_press(|state: &mut AppState| state.save_connection_form()),
-        );
-
     col()
         .key("connection-form")
         .w_full()
         .gap(16.0)
         .child(col().key("connection-form-fields").w_full().gap(16.0).child(basic).child(connection).child(advanced).child(ssh))
         .child(error_row)
-        .child(actions)
 }
