@@ -4,6 +4,7 @@
 - **状态**: L1–L7 已完成；A1 进行中（首页与导航器 Recent/All/过滤已落地，pinned/用户分组受契约限制）。A2 连接表单对话框化、A3 查询面板对齐、A4 表浏览对齐、A5 结果工作区对齐、A6 设置导航分组已合流主轨。第五阶段计划见 [plan-native-5.md](plan-native-5.md)。
 
 ## Completed Work (recent)
+- [x] A1 导航器基础组件与 ConnectionNavigatorTree 集成/样式重构（`c0da43bd0`）：新增 `crates/datazen-ui/src/ui/{mod,theme,nav}.rs` 基础原语（主题度量/图标/搜索框/工具按钮/树 section-branch-leaf 行），重建 `navigator_panel` 与 `navigator_connections_tree`（Databases 标题栏、带搜索图标的过滤输入、Recent/All 分组头与连接行、对象树分支/叶子图标与缩进）并集成到页面，保持既有 key 与交互（`navigator-filter-input`、`nav-group-*`、`nav-conn*`、`object-tree`/`tree-*`、`open-query` 等）。（见 [testing/A1-connections-home.md](testing/A1-connections-home.md)）
 - [x] A1 rail/弹窗对齐增量（`0aa7fa445`）：侧栏按 React 顺序重排并将 Settings/折叠按钮置于底部组；图标改为 lucide 语义；连接表单与导入改为 root modal layer（scrim + Escape，真浮层）。（见 [testing/A1-connections-home.md](testing/A1-connections-home.md)）
 - [x] A2 连接表单对话框化（`1e383c421`, `7e06bf48e`，合流主轨；见 [testing/A2-connection-form-dialog.md](testing/A2-connection-form-dialog.md)）
 - [x] A3 查询面板对齐（`3630c95f7`, `020a62b22`，合流主轨；见 [testing/A3-query-panel.md](testing/A3-query-panel.md)）
@@ -37,6 +38,7 @@ React 页面和组件保留。不删除、不改成空壳、不把现有入口�
 - [x] A4 表浏览对齐：行号 gutter、按表列宽持久化与回填、FK 面包屑、状态横幅、待提交条（`e041fc463`, `5ae657365`；测试报告 `testing/A4-table-browse.md`）
 
 ## Verification
+- A1 导航器基础组件与 ConnectionNavigatorTree 集成/样式重构（`c0da43bd0`）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **183 + 56 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
 - 主轨集成（A2–A6 合流，含冲突解决）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui --offline --lib -- --test-threads=1` → **176 passed, 0 failed**；`CARGO_TARGET_DIR="$PWD/target" cargo check -p datazen-rune-host --offline` → exit 0（既有 warnings）。
 - A1 rail/弹窗对齐增量（`0aa7fa445`）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui --offline --lib -- --test-threads=1` → **183 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
 - 分支/轨道门禁（合流前）：A2 163 passed；A4 164 passed（含回归修复）；A3 169 passed（含 query_workspace）；A5 171 passed（含 data_grid find 命中测试）；A6 165 passed。

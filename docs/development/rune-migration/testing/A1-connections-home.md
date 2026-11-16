@@ -77,3 +77,18 @@
 - **新增测试**（`crates/datazen-ui/src/tests/rail_modals.rs`）：`the_rail_orders_sections_like_the_react_sidebar`、`the_rail_uses_lucide_panel_icons`、`the_import_dialog_is_a_modal_over_the_page`、`the_connection_dialog_is_a_modal_over_the_page`（含背景 inert 与 Escape/Cancel 关闭，弹窗入场后 settle 再指针交互）。
 - **门禁**：GR1 `cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **56 + 183 passed, 0 failed**；GR2/GR4 `cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。G1–G4 不适用（未改 `packages/frontend` / `packages/web`）。
 - **视觉取证**：release `datazen-rune --snap/--tree --size 1440x816`（含 `--script` 点击打开弹窗）核对 rail 顺序/底部组与导入/连接浮层居中及遮罩。
+
+## 增量：导航器基础组件与 ConnectionNavigatorTree 集成
+
+- **提交**：feat `c0da43bd0`，docs 本次提交
+- **目标**：按“先基础 UI 组件、再复杂组件”的方向，修复连接导航器样式并将重构后的 ConnectionNavigatorTree 集成到页面（`navigator_panel` / 主壳页面）。
+- **基础组件层（Rune 原语薄封装）**：新增 `crates/datazen-ui/src/ui/{mod,theme,nav}.rs`
+  - `theme`：导航器统一度量与状态色映射（行高/缩进/图标/圆角、hover/selected/前景层级，基于 `tok::Theme`）。
+  - `nav`：`search_field`（带搜索图标、保留 `navigator-filter-input` 键）、`icon_button_action`、`nav_section_header`、`nav_empty_row`、`nav_connection_row`、`nav_branch_row`、`nav_leaf_row` 等树/工具栏原语。
+  - `icons` 补齐 lucide 几何图标：`chevron-right/down`、`folder/folder-open`、`table`、`refresh-cw`、`layout` 等，供导航与操作行复用。
+- **ConnectionNavigatorTree / 导航器面板**（`views/navigation.rs`）
+  - 顶部改为 Databases 标题栏 + “New query” 图标按钮（保留 `open-query` 键）+ 带图标搜索框。
+  - 连接树保留并样式化 `Recent` / `All connections` 分组（`nav-group-recent` / `nav-group-all`）、空态与过滤行为，连接项改为图标 + 名称/引擎双行样式并支持当前连接高亮（仍使用 `nav-conn-*` / `nav-conn-recent-*` 键与原交互）。
+  - 对象树改为分支/叶子行原语（数据库/模式展开 chevron 与图标、表图标、缩进、计数标签），保留 `object-tree` / `tree-db-*` / `tree-schema-*` / `tree-table-*` / `object-tree-empty` 及展开/打开行为；底部操作行（刷新/ER/断开）统一为图标+文本样式。
+- **兼容性**：未改 `packages/frontend`/`packages/web`、内核契约与 `datazen-ui-api`；保留既有 navigator 相关 key 与测试契约。
+- **门禁**：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **56 + 183 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。G1–G4 不适用（未改 `packages/frontend` / `packages/web`）。
