@@ -67,3 +67,13 @@
 - **测试**：新增 3 项——`connections_home_without_connections_centers_the_empty_state`、`connections_home_filters_and_pages_the_card_list`（筛选软过滤、no-match、6 条分页/Show all）、`connection_cards_show_the_status_pill_and_the_connected_open_button`；既有 176 项（导入、表单、适配器横幅、连接打开等）保持兼容。
 - **门禁**：GR2 **179 passed / 0 failed**（`--test-threads=1`）；GR4 `cargo check -p datazen-rune-host --offline` 通过（8 个既有 warnings）。
 - **截图**：改版后空态 `rune-home-empty-v2.png`、落地页 `rune-home-landing-v2.png`（1440x816）已与 React 基准逐块比对：居中/两端对齐/卡列表结构一致；差异保留项——Recent queries 无数据、footer 仅一项快捷键（契约限制，诚实展示）。
+
+## 增量：侧栏 rail 对齐与真实弹窗层
+
+- **提交**：feat `0aa7fa445`，docs 本次提交
+- **侧栏（React `WorkspaceModeSidebar` 对齐）**：顶部分组顺序改为 Connections / Workflows / Dashboards / Workspace / Tools / Wapps；Settings 与折叠按钮移入底部组（`rail-bottom`，上方弹性占位），折叠按钮改为 lucide panel-left-close/open（展开态显示 "Collapse sidebar" 并可截断），图标与尺寸对齐 React 语义（16pt）。激活项改为 accent/20 底色 + accent 前景；展开态标签可截断。
+- **真实弹窗层**：新增 `views/modals.rs` 的 root modal layer（`modal_layer` 挂在 `datazen-root` 尾部）：全窗 scrim（`oklcha(0,0,256,0.5)`）+ 居中面板 + `.modal(false, dismiss)`，背景 rail/navigator/page inert，Escape 关闭。导入弹窗（460pt）承载格式提示、选文件、密码、预览/确认/结果；连接表单弹窗（700pt）承载分组字段与表单自带操作行。`connections_home` 移除内联导入条，按钮改为打开导入弹窗；`connection_list` 不再内联表单，改由 modal layer 呈现。
+- **状态与测试适配**：`AppState` 增加 `import_dialog_open`/`import_file`；`open_import_dialog`/`close_import_dialog` 管理导入旅程；`part_04::the_connections_page_imports_a_previewed_file` 适配“先开弹窗再选文件”流程（导入确认后 notice 仍保持可见，兼容既有断言）。
+- **新增测试**（`crates/datazen-ui/src/tests/part_11.rs`）：`the_rail_orders_sections_like_the_react_sidebar`、`the_rail_uses_lucide_panel_icons`、`the_import_dialog_is_a_modal_over_the_page`、`the_connection_dialog_is_a_modal_over_the_page`（含背景 inert 与 Escape/Cancel 关闭，弹窗入场后 settle 再指针交互）。
+- **门禁**：GR1 `cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **56 + 183 passed, 0 failed**；GR2/GR4 `cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。G1–G4 不适用（未改 `packages/frontend` / `packages/web`）。
+- **视觉取证**：release `datazen-rune --snap/--tree --size 1440x816`（含 `--script` 点击打开弹窗）核对 rail 顺序/底部组与导入/连接浮层居中及遮罩。

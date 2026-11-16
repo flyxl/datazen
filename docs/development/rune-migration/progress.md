@@ -4,6 +4,7 @@
 - **状态**: L1–L7 已完成；A1 进行中（首页与导航器 Recent/All/过滤已落地，pinned/用户分组受契约限制）。A2 连接表单对话框化、A3 查询面板对齐、A4 表浏览对齐、A5 结果工作区对齐、A6 设置导航分组已合流主轨。第五阶段计划见 [plan-native-5.md](plan-native-5.md)。
 
 ## Completed Work (recent)
+- [x] A1 rail/弹窗对齐增量（`0aa7fa445`）：侧栏按 React 顺序重排并将 Settings/折叠按钮置于底部组；图标改为 lucide 语义；连接表单与导入改为 root modal layer（scrim + Escape，真浮层）。（见 [testing/A1-connections-home.md](testing/A1-connections-home.md)）
 - [x] A2 连接表单对话框化（`1e383c421`, `7e06bf48e`，合流主轨；见 [testing/A2-connection-form-dialog.md](testing/A2-connection-form-dialog.md)）
 - [x] A3 查询面板对齐（`3630c95f7`, `020a62b22`，合流主轨；见 [testing/A3-query-panel.md](testing/A3-query-panel.md)）
 - [x] A4 表浏览对齐（`e041fc463`, `5ae657365`, `f8879f36c`，合流主轨；见 [testing/A4-table-browse.md](testing/A4-table-browse.md)）
@@ -37,6 +38,7 @@ React 页面和组件保留。不删除、不改成空壳、不把现有入口�
 
 ## Verification
 - 主轨集成（A2–A6 合流，含冲突解决）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui --offline --lib -- --test-threads=1` → **176 passed, 0 failed**；`CARGO_TARGET_DIR="$PWD/target" cargo check -p datazen-rune-host --offline` → exit 0（既有 warnings）。
+- A1 rail/弹窗对齐增量（`0aa7fa445`）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui --offline --lib -- --test-threads=1` → **183 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
 - 分支/轨道门禁（合流前）：A2 163 passed；A4 164 passed（含回归修复）；A3 169 passed（含 part_10）；A5 171 passed（含 data_grid find 命中测试）；A6 165 passed。
 - 历史基线（C3 收尾）：`cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1`：datazen-ui 113 passed、datazen-ui-api 54 passed。
 
