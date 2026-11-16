@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use rune::{El, GrowthSpec, ScrollPos, TextStyle, col, el, oklch, row, text, text_input};
 
 use super::{DataGrid, GUTTER_W, ROW_H};
+use crate::ui::centered_field_pad;
 
 /// Which grid a render call targets: the table page's or the query result's.
 /// The result keys are prefixed so both can be mounted in one frame.
@@ -366,6 +367,7 @@ fn filter_bar(state: &crate::AppState, ink: rune::Color, muted: rune::Color, wel
                 .key("filter-input")
                 .w(220.0)
                 .h(24.0)
+                .py(centered_field_pad(label_style(), 24.0))
                 .on_edit(|state: &mut crate::AppState| &mut state.filter_editor)
                 .on_submit(|state: &mut crate::AppState, tx| {
                     state.apply_filter();
@@ -629,6 +631,7 @@ fn cell(
                 .key(slot.key("grid-editor"))
                 .w((w - 16.0).max(24.0))
                 .h(ROW_H - 4.0)
+                .py(centered_field_pad(editor_font(), ROW_H - 4.0))
                 .on_edit(|state: &mut crate::AppState| &mut state.grid.editor)
                 .on_submit(|state: &mut crate::AppState, tx| {
                     state.commit_grid_edit();

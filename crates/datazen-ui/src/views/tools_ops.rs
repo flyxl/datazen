@@ -7,6 +7,7 @@ use crate::constants::*;
 use crate::icons::{self, section_icon};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
+use crate::ui::centered_field_pad;
 use crate::{splitter, sql_editor};
 use datazen_ui_api::{
     ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi,
@@ -38,6 +39,7 @@ pub(crate) fn value_search_tool(state: &AppState, theme: tok::Theme) -> El {
                         .key("value-search-input")
                         .w(220.0)
                         .h(24.0)
+                        .py(centered_field_pad(type_::LABEL, 24.0))
                         .on_edit(|state: &mut AppState| &mut state.value_search_value),
                 )
                 .child(

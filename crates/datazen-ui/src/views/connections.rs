@@ -5,6 +5,7 @@
 use super::*;
 
 use crate::state_def::AppState;
+use crate::ui::centered_field_pad;
 use rune::tok::{self, type_};
 use rune::{col, oklcha, row, text, text_input, El};
 use rune::{FileDialogOptions, Tx};
@@ -141,8 +142,8 @@ pub(crate) fn import_bar(state: &AppState, theme: tok::Theme) -> El {
                     .w_full()
                     .h(36.0)
                     .px(12.0)
+                    .py(centered_field_pad(type_::LABEL, 36.0))
                     .single_line()
-                    .center_y()
                     .radius(8.0)
                     .fill(theme.card)
                     .border(1.0, theme.card_border)
@@ -231,7 +232,7 @@ fn form_input(
         .w_full()
         .h(36.0)
         .px(12.0)
-        .center_y()
+        .py(centered_field_pad(type_::LABEL, 36.0))
         .radius(8.0)
         .fill(theme.card)
         .border(1.0, theme.card_border)

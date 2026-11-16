@@ -460,3 +460,30 @@ use rune::{Env, Runtime};
             );
         }
     }
+
+#[test]
+fn single_line_fields_put_their_text_in_the_middle() {
+    // Rune lays a field's text out from the content box's top edge, so a field
+    // taller than its line pins the text (and the caret) to the top. The shared
+    // helper hands the surplus back as symmetric padding; every single-line
+    // field calls it with its own height and font.
+    for (style, height) in [
+        (type_::LABEL, 24.0),
+        (type_::LABEL, 28.0),
+        (type_::LABEL, 36.0),
+        (rune::TextStyle::new(13.0, 400.0), 24.0),
+    ] {
+        let pad = crate::ui::centered_field_pad(style, height);
+        assert!(pad >= 0.0, "{height}: padding {pad} is negative");
+        assert!(
+            (pad * 2.0 + style.line_px() - height).abs() < 0.01,
+            "{height}: padding {pad} does not centre the {}-point line",
+            style.line_px()
+        );
+    }
+    // The two navigator/home search fields: 28 points tall, 15-point line.
+    assert_eq!(crate::ui::centered_field_pad(type_::LABEL, 28.0), 6.5);
+    // A field shorter than its line keeps its text at the top instead of
+    // asking for negative padding.
+    assert_eq!(crate::ui::centered_field_pad(type_::LABEL, 10.0), 0.0);
+}

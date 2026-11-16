@@ -13,6 +13,7 @@ use crate::icons::{
     ICON_SPARKLES, ICON_TERMINAL,
 };
 use crate::state_def::AppState;
+use crate::ui::centered_field_pad;
 use datazen_ui_api::ConnectionProfile;
 use rune::tok::{self, type_};
 use rune::{
@@ -324,8 +325,8 @@ fn home_header(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                         .key("home-connections-filter")
                         .grow(1.0)
                         .h(28.0)
+                        .py(centered_field_pad(type_::LABEL, 28.0))
                         .single_line()
-                        .center_y()
                         .placeholder("Filter connections…", theme.text_secondary),
                 ),
         )

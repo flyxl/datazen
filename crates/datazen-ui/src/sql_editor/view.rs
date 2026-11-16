@@ -2,6 +2,7 @@ use rune::{El, Ime, Key, KeyEvent, Span, TextEdit, TextStyle, Tx, col, oklch, ro
 
 use super::highlight::highlight_sql;
 use super::model::SqlEditor;
+use crate::ui::centered_field_pad;
 
 /// Editing surface width. The scroll viewport is narrower, so a long line moves sideways
 /// instead of wrapping. CodeMirror's `lineWrapping` off does this inside the line layout;
@@ -76,6 +77,7 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: boo
                         .key("sql-find-input")
                         .w(150.0)
                         .h(24.0)
+                        .py(centered_field_pad(editor_font(), 24.0))
                         .on_edit(|state: &mut crate::AppState| &mut state.sql.find_input)
                         .on_submit(|state: &mut crate::AppState, tx| {
                             state.sql.find_from_bar();
@@ -96,6 +98,7 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: boo
                         .key("sql-replace-input")
                         .w(150.0)
                         .h(24.0)
+                        .py(centered_field_pad(editor_font(), 24.0))
                         .on_edit(|state: &mut crate::AppState| &mut state.sql.replace_input)
                         .on_submit(|state: &mut crate::AppState, tx| {
                             state.sql.replace_current_from_bar();

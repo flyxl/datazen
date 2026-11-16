@@ -7,6 +7,7 @@ use crate::constants::*;
 use crate::icons::{self, section_icon};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
+use crate::ui::centered_field_pad;
 use crate::{splitter, sql_editor};
 use datazen_ui_api::{
     ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi,
@@ -271,6 +272,7 @@ pub(crate) fn column_drafts_section(state: &AppState, title: &str, theme: tok::T
                     .key("draft-name-input")
                     .w(140.0)
                     .h(24.0)
+                    .py(centered_field_pad(type_::LABEL, 24.0))
                     .on_edit(|state: &mut AppState| &mut state.draft_name),
             )
             .child(
@@ -278,6 +280,7 @@ pub(crate) fn column_drafts_section(state: &AppState, title: &str, theme: tok::T
                     .key("draft-type-input")
                     .w(110.0)
                     .h(24.0)
+                    .py(centered_field_pad(type_::LABEL, 24.0))
                     .on_edit(|state: &mut AppState| &mut state.draft_type),
             )
             .child(
