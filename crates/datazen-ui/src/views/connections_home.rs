@@ -323,6 +323,8 @@ fn home_header(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                         .key("home-connections-filter")
                         .grow(1.0)
                         .h(26.0)
+                        .single_line()
+                        .center_y()
                         .placeholder("Filter connections…", theme.text_secondary),
                 ),
         )

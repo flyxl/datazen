@@ -48,6 +48,7 @@ pub(crate) fn search_field(
         .grow(1.0)
         .min_w(0.0)
         .h(NAV_SEARCH_H)
+        .single_line()
         .center_y()
         .radius(NAV_RADIUS)
         .fill(Color::TRANSPARENT)
