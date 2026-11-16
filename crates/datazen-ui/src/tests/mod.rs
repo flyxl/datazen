@@ -48,14 +48,25 @@ pub(crate) fn glyph_ids(system: &mut rune::text::TextSystem, text: &str) -> Vec<
     ids
 }
 
-mod part_01;
-mod part_02;
-mod part_03;
-mod part_04;
-mod part_05;
-mod part_06;
-mod part_07;
-mod part_08;
-mod part_09;
-mod part_10;
-mod part_11;
+// Shell, navigation, connections home, data grid, fonts and rendering.
+mod shell_grid;
+// Query editing/results, undo/redo/copy/cancel, generation guards.
+mod query_results;
+// ER diagram, foreign-key views, column drafts.
+mod structure_er;
+// Export/import, backup, value search, favorites.
+mod io_tools;
+// Sync wizard, schema compare, transfer.
+mod sync_transfer;
+// Workspace tabs, host wiring, forms, settings page.
+mod workspace_tabs;
+// Structure/bars/inbound jobs and caches.
+mod structure_jobs;
+// Host job delivery.
+mod host_jobs;
+// Toolbar/status sizing, light theme, row numbers, column width.
+mod chrome_metrics;
+// A3 query workspace (editor/results/sidebar/tabs).
+mod query_workspace;
+// Rail alignment and modal dialogs.
+mod rail_modals;

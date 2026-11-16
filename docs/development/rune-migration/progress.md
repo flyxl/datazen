@@ -39,7 +39,7 @@ React 页面和组件保留。不删除、不改成空壳、不把现有入口�
 ## Verification
 - 主轨集成（A2–A6 合流，含冲突解决）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui --offline --lib -- --test-threads=1` → **176 passed, 0 failed**；`CARGO_TARGET_DIR="$PWD/target" cargo check -p datazen-rune-host --offline` → exit 0（既有 warnings）。
 - A1 rail/弹窗对齐增量（`0aa7fa445`）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui --offline --lib -- --test-threads=1` → **183 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
-- 分支/轨道门禁（合流前）：A2 163 passed；A4 164 passed（含回归修复）；A3 169 passed（含 part_10）；A5 171 passed（含 data_grid find 命中测试）；A6 165 passed。
+- 分支/轨道门禁（合流前）：A2 163 passed；A4 164 passed（含回归修复）；A3 169 passed（含 query_workspace）；A5 171 passed（含 data_grid find 命中测试）；A6 165 passed。
 - 历史基线（C3 收尾）：`cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1`：datazen-ui 113 passed、datazen-ui-api 54 passed。
 
 ## 收尾测量（C3）

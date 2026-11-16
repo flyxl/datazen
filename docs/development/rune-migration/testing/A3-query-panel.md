@@ -4,7 +4,7 @@
 
 - 分支：`feature/a3-query-panel`（基于已合流 `feat/rune-native-ui-migration`，含 A2/A6）
 - 任务：A3 查询面板对齐（`plan-native-5.md`）— 编辑器高度可拖持久化、工具栏动作、收藏/历史侧栏、结果多 tab（含 pin）
-- 改动面：`crates/datazen-ui`（`views/workspace.rs`、`workspace_state.rs`、`state_def.rs`、`types.rs`、`constants.rs`、`sql_editor/view.rs`、`data_grid/model.rs`、`tests/part_10.rs`、`tests/mod.rs`）。未改 `packages/frontend`、`packages/web`、内核公开契约、`SharedSettings` 与 `crates/datazen-rune-host`。
+- 改动面：`crates/datazen-ui`（`views/workspace.rs`、`workspace_state.rs`、`state_def.rs`、`types.rs`、`constants.rs`、`sql_editor/view.rs`、`data_grid/model.rs`、`tests/query_workspace.rs`、`tests/mod.rs`）。未改 `packages/frontend`、`packages/web`、内核公开契约、`SharedSettings` 与 `crates/datazen-rune-host`。
 
 ## 结论
 
@@ -37,11 +37,11 @@
 
 | 测试 | 位置 | 覆盖 |
 |---|---|---|
-| `a3_query_editor_height_split_persists_via_layout_setting` | `crates/datazen-ui/src/tests/part_10.rs` | `query-editor-height` 经 `Setting::Layout` 读写往返与默认值 |
-| `a3_multi_result_tabs_switch_and_pin_across_runs` | `crates/datazen-ui/src/tests/part_10.rs` | 多次执行生成多结果 tab、切换保留内容、pin 后跨新运行保留 |
-| `a3_query_workspace_renders_toolbar_sidebar_and_result_tabs` | `crates/datazen-ui/src/tests/part_10.rs` | 查询工具栏、侧栏与结果 tab 栏渲染 |
+| `a3_query_editor_height_split_persists_via_layout_setting` | `crates/datazen-ui/src/tests/query_workspace.rs` | `query-editor-height` 经 `Setting::Layout` 读写往返与默认值 |
+| `a3_multi_result_tabs_switch_and_pin_across_runs` | `crates/datazen-ui/src/tests/query_workspace.rs` | 多次执行生成多结果 tab、切换保留内容、pin 后跨新运行保留 |
+| `a3_query_workspace_renders_toolbar_sidebar_and_result_tabs` | `crates/datazen-ui/src/tests/query_workspace.rs` | 查询工具栏、侧栏与结果 tab 栏渲染 |
 
-回归修复验证：`tests::part_01::sql_editor_scrolls_a_surface_wider_than_the_viewport`、`tests::part_02::a_failed_run_keeps_the_previous_result` 在 GR2 全量中通过。
+回归修复验证：`tests::shell_grid::sql_editor_scrolls_a_surface_wider_than_the_viewport`、`tests::query_results::a_failed_run_keeps_the_previous_result` 在 GR2 全量中通过。
 
 ## 门禁
 

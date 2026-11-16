@@ -5,7 +5,7 @@
 - 分支：`feature/a2-conn-dialog`（基于 `feat/rune-native-ui-migration`）
 - 任务：A2 连接表单对话框化（分组标准字段 + SSH 隧道族，对齐 NewConnectionDialog；plan-native-5）。
 - 被测提交：`1e383c421`（feat）。
-- 改动面：`crates/datazen-ui/src/state_def.rs`、`crates/datazen-ui/src/connections_io_state.rs`、`crates/datazen-ui/src/views/connections.rs`、`crates/datazen-ui/src/tests/part_03.rs`。不改 `packages/frontend`、`packages/web`、内核公开契约与 `SharedSettings`。
+- 改动面：`crates/datazen-ui/src/state_def.rs`、`crates/datazen-ui/src/connections_io_state.rs`、`crates/datazen-ui/src/views/connections.rs`、`crates/datazen-ui/src/tests/structure_er.rs`。不改 `packages/frontend`、`packages/web`、内核公开契约与 `SharedSettings`。
 
 ## 结论
 
@@ -22,9 +22,9 @@
 
 | 测试 | 位置 | 覆盖 |
 |---|---|---|
-| `a_connection_form_save_needs_an_address`（适配） | `crates/datazen-ui/src/tests/part_03.rs` | 打开对话框、空地址保存被拒并显示错误、填写有效字段后保存成功并关闭对话框 |
-| `connection_dialog_renders_grouped_sections_and_ssh_ui`（新增） | `crates/datazen-ui/src/tests/part_03.rs` | New connection 入口、对话框与 Basic/Connection/SSH 分组及关键字段/切换渲染、关闭后不内联 |
-| 既有连接相关测试 | `crates/datazen-ui/src/tests/part_03.rs`、`part_04.rs`、`part_06.rs`、`part_08.rs` | 表单保存白名单/宿主路径、导入、连接页消息与导航等回归（`--lib connection` 11 passed） |
+| `a_connection_form_save_needs_an_address`（适配） | `crates/datazen-ui/src/tests/structure_er.rs` | 打开对话框、空地址保存被拒并显示错误、填写有效字段后保存成功并关闭对话框 |
+| `connection_dialog_renders_grouped_sections_and_ssh_ui`（新增） | `crates/datazen-ui/src/tests/structure_er.rs` | New connection 入口、对话框与 Basic/Connection/SSH 分组及关键字段/切换渲染、关闭后不内联 |
+| 既有连接相关测试 | `crates/datazen-ui/src/tests/structure_er.rs`、`io_tools.rs`、`workspace_tabs.rs`、`host_jobs.rs` | 表单保存白名单/宿主路径、导入、连接页消息与导航等回归（`--lib connection` 11 passed） |
 
 ## 门禁
 

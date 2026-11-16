@@ -15,11 +15,11 @@
 - **状态与待提交**：`status_banner` 聚合状态，`pending-changes-bar` 在 `dirty>0` 且可写时展示并承载 `commit-staged` / `rollback-staged` 交互键（兼容既有测试）。
 
 ## 测试
-- `tests::part_09::a4_row_number_gutter_renders_header_and_row_indices`：加载表页后断言 `head-rownum`/`rownum-0`/`rownum-1` 与文本 `#`、`1`、`2`。
-- `tests::part_09::a4_column_width_persistence_round_trips_per_table`：`set_table_column_width` 写入 layout、`grid.col_w` 即时生效、`reload_table_page` 后按持久化 key 回填。
+- `tests::chrome_metrics::a4_row_number_gutter_renders_header_and_row_indices`：加载表页后断言 `head-rownum`/`rownum-0`/`rownum-1` 与文本 `#`、`1`、`2`。
+- `tests::chrome_metrics::a4_column_width_persistence_round_trips_per_table`：`set_table_column_width` 写入 layout、`grid.col_w` 即时生效、`reload_table_page` 后按持久化 key 回填。
 
 ## 门禁
-- GR2：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui --offline --lib -- --test-threads=1` → **162 passed, 2 failed**（`part_02::commit_and_rollback_buttons_drive_the_staged_edits`、`part_06::a_wired_commit_lands_in_the_adapters_use_case_world` 仍失败；A4 新增用例与其余既有用例通过，待后续修复回归）。
+- GR2：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui --offline --lib -- --test-threads=1` → **162 passed, 2 failed**（`query_results::commit_and_rollback_buttons_drive_the_staged_edits`、`workspace_tabs::a_wired_commit_lands_in_the_adapters_use_case_world` 仍失败；A4 新增用例与其余既有用例通过，待后续修复回归）。
 - GR4：`CARGO_TARGET_DIR="$PWD/target" cargo check -p datazen-rune-host --offline` → 退出码 0（仅既有 warnings）。
 
 ## 备注
