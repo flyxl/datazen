@@ -4,16 +4,25 @@
 use super::*;
 
 use crate::constants::*;
-use crate::icons::{self, ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, section_icon};
+use crate::icons::{self, section_icon};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
 use crate::{splitter, sql_editor};
-use datazen_ui_api::{ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi};
-use rune::{FileDialogOptions, TextEdit, Tx};
+use datazen_ui_api::{
+    ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi,
+    Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi,
+};
 use rune::tok::{self, type_};
-use rune::{Color, Cx, El, col, oklch, row, text, text_input};
+use rune::{col, oklch, row, text, text_input, Color, Cx, El};
+use rune::{FileDialogOptions, TextEdit, Tx};
 
-pub(crate) fn er_view(state: &AppState, database: &str, schema: &str, theme: tok::Theme, dark: bool) -> El {
+pub(crate) fn er_view(
+    state: &AppState,
+    database: &str,
+    schema: &str,
+    theme: tok::Theme,
+    dark: bool,
+) -> El {
     let catalog = state.catalog();
     let tables: Vec<String> = catalog
         .databases
@@ -85,7 +94,11 @@ pub(crate) fn er_box(
     let collapsed = columns.is_some_and(|columns| columns.len() > 12);
     let table = table.to_owned();
     let drag_table = table.clone();
-    let box_fill = if dark { oklch(0.24, 0.03, 250.0) } else { oklch(0.96, 0.01, 250.0) };
+    let box_fill = if dark {
+        oklch(0.24, 0.03, 250.0)
+    } else {
+        oklch(0.96, 0.01, 250.0)
+    };
     let mut class_box = col()
         .key(format!("er-box-{table}"))
         .absolute(x, y)
@@ -101,31 +114,35 @@ pub(crate) fn er_box(
                 .font(type_::TITLE)
                 .color(theme.text),
         )
-        .on_drag(move |state: &mut AppState, drag: &mut rune::Drag, _: &mut Tx| {
-            match drag.phase {
+        .on_drag(
+            move |state: &mut AppState, drag: &mut rune::Drag, _: &mut Tx| match drag.phase {
                 rune::Phase::Down => {
                     state.er_drag = Some((drag_table.clone(), (x, y)));
                 }
                 rune::Phase::Move => {
                     if let Some((dragged, (start_x, start_y))) = &state.er_drag {
                         if *dragged == drag_table {
-                            state
-                                .er_positions
-                                .insert(drag_table.clone(), ((start_x + drag.dx).max(0.0), (start_y + drag.dy).max(0.0)));
+                            state.er_positions.insert(
+                                drag_table.clone(),
+                                ((start_x + drag.dx).max(0.0), (start_y + drag.dy).max(0.0)),
+                            );
                         }
                     }
                 }
                 rune::Phase::Up => {
                     state.er_drag = None;
                 }
-            }
-        });
+            },
+        );
     if collapsed {
         class_box = class_box.child(
-            text(format!("{} columns", columns.map_or(0, |columns| columns.len())))
-                .key(format!("er-collapsed-{table}"))
-                .font(type_::LABEL)
-                .color(theme.text_secondary),
+            text(format!(
+                "{} columns",
+                columns.map_or(0, |columns| columns.len())
+            ))
+            .key(format!("er-collapsed-{table}"))
+            .font(type_::LABEL)
+            .color(theme.text_secondary),
         );
     } else if let Some(columns) = columns {
         for (index, column) in columns.iter().enumerate() {
@@ -150,17 +167,17 @@ pub(crate) fn er_box(
 /// A table tab shows the view switcher above either the data grid or the DDL.
 pub(crate) fn structure_notice(state: &AppState, table: &str) -> Option<String> {
     match state.structures.get(table) {
-        None => Some(
-            "the table's structure is not loaded — switch the view or reopen the table".into(),
-        ),
-        Some(StructureState { loading: true, .. }) => {
-            Some("reading the table's structure…".into())
+        None => {
+            Some("the table's structure is not loaded — switch the view or reopen the table".into())
         }
-        Some(StructureState { error: Some(error), .. }) => Some(error.clone()),
+        Some(StructureState { loading: true, .. }) => Some("reading the table's structure…".into()),
+        Some(StructureState {
+            error: Some(error), ..
+        }) => Some(error.clone()),
         Some(StructureState { data: Some(_), .. }) => None,
-        Some(StructureState { data: None, .. }) => Some(
-            "the table's structure is not loaded — switch the view or reopen the table".into(),
-        ),
+        Some(StructureState { data: None, .. }) => {
+            Some("the table's structure is not loaded — switch the view or reopen the table".into())
+        }
     }
 }
 
@@ -173,7 +190,11 @@ pub(crate) fn notice_row(key: &str, sentence: &str, theme: tok::Theme) -> El {
         .h(28.0)
         .px(8.0)
         .center_y()
-        .child(text(sentence.to_owned()).font(type_::LABEL).color(theme.text_secondary))
+        .child(
+            text(sentence.to_owned())
+                .font(type_::LABEL)
+                .color(theme.text_secondary),
+        )
 }
 
 /// The column list: name, type, nullability — one row per column, plus the
@@ -238,54 +259,50 @@ pub(crate) fn columns_view(state: &AppState, title: &str, theme: tok::Theme) -> 
 /// from the official columns.
 pub(crate) fn column_drafts_section(state: &AppState, title: &str, theme: tok::Theme) -> El {
     let drafts = state.column_drafts.get(title).cloned().unwrap_or_default();
-    let mut section = col()
-        .key("column-drafts")
-        .w_full()
-        .gap(6.0)
-        .child(
-            row()
-                .key("draft-inputs")
-                .w_full()
-                .h(28.0)
-                .gap(8.0)
-                .center_y()
-                .child(
-                    text_input(&state.draft_name, type_::LABEL)
-                        .key("draft-name-input")
-                        .w(140.0)
-                        .h(24.0)
-                        .on_edit(|state: &mut AppState| &mut state.draft_name),
-                )
-                .child(
-                    text_input(&state.draft_type, type_::LABEL)
-                        .key("draft-type-input")
-                        .w(110.0)
-                        .h(24.0)
-                        .on_edit(|state: &mut AppState| &mut state.draft_type),
-                )
-                .child(
-                    row()
-                        .key("draft-add")
-                        .h(24.0)
-                        .px(8.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(theme.control_off)
-                        .child(text("+ Column").font(type_::LABEL).color(theme.text))
-                        .on_press(|state: &mut AppState| state.add_column_draft()),
-                )
-                .child(
-                    row()
-                        .key("draft-retype")
-                        .h(24.0)
-                        .px(8.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(theme.control_off)
-                        .child(text("Retype").font(type_::LABEL).color(theme.text))
-                        .on_press(|state: &mut AppState| state.add_retype_draft()),
-                ),
-        );
+    let mut section = col().key("column-drafts").w_full().gap(6.0).child(
+        row()
+            .key("draft-inputs")
+            .w_full()
+            .h(28.0)
+            .gap(8.0)
+            .center_y()
+            .child(
+                text_input(&state.draft_name, type_::LABEL)
+                    .key("draft-name-input")
+                    .w(140.0)
+                    .h(24.0)
+                    .on_edit(|state: &mut AppState| &mut state.draft_name),
+            )
+            .child(
+                text_input(&state.draft_type, type_::LABEL)
+                    .key("draft-type-input")
+                    .w(110.0)
+                    .h(24.0)
+                    .on_edit(|state: &mut AppState| &mut state.draft_type),
+            )
+            .child(
+                row()
+                    .key("draft-add")
+                    .h(24.0)
+                    .px(8.0)
+                    .center_y()
+                    .radius(6.0)
+                    .fill(theme.control_off)
+                    .child(text("+ Column").font(type_::LABEL).color(theme.text))
+                    .on_press(|state: &mut AppState| state.add_column_draft()),
+            )
+            .child(
+                row()
+                    .key("draft-retype")
+                    .h(24.0)
+                    .px(8.0)
+                    .center_y()
+                    .radius(6.0)
+                    .fill(theme.control_off)
+                    .child(text("Retype").font(type_::LABEL).color(theme.text))
+                    .on_press(|state: &mut AppState| state.add_retype_draft()),
+            ),
+    );
     for (index, draft) in drafts.iter().enumerate() {
         let label = match draft {
             ColumnDraft::AddColumn { name, sql_type } => format!("add {name} {sql_type}"),
@@ -436,11 +453,7 @@ pub(crate) fn foreign_keys_view(state: &AppState, title: &str, theme: tok::Theme
                 .center_y()
                 .child(text(value.to_owned()).font(type_::LABEL).color(theme.text))
         };
-        let references = format!(
-            "{} ({})",
-            key.target_table,
-            key.target_columns.join(", ")
-        );
+        let references = format!("{} ({})", key.target_table, key.target_columns.join(", "));
         list = list.child(
             row()
                 .key(format!("fk-row-{index}"))
@@ -471,7 +484,11 @@ pub(crate) fn ddl_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
             .py(8.0)
             .radius(8.0)
             .fill(theme.control_off)
-            .child(text(sentence).font(type_::LABEL).color(theme.text_secondary));
+            .child(
+                text(sentence)
+                    .font(type_::LABEL)
+                    .color(theme.text_secondary),
+            );
     }
     let ddl = state
         .structures
@@ -489,7 +506,11 @@ pub(crate) fn ddl_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
                 .radius(8.0)
                 .fill(theme.control_off);
             for line in ddl.lines() {
-                page = page.child(text(line.to_owned()).font(crate::sql_editor::editor_font()).color(theme.text));
+                page = page.child(
+                    text(line.to_owned())
+                        .font(crate::sql_editor::editor_font())
+                        .color(theme.text),
+                );
             }
             page
         }
@@ -501,7 +522,11 @@ pub(crate) fn ddl_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
             .py(8.0)
             .radius(8.0)
             .fill(theme.control_off)
-            .child(text("No DDL available for this table").font(type_::TITLE).color(theme.text))
+            .child(
+                text("No DDL available for this table")
+                    .font(type_::TITLE)
+                    .color(theme.text),
+            )
             .child(
                 text("The port returned an empty DDL string")
                     .font(type_::LABEL)

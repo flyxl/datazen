@@ -19,9 +19,9 @@ fn a_save_dialog_that_cannot_show_falls_back_to_the_default_directory() {
     runtime.pointer_down(x, y);
     runtime.pointer_up(x, y);
     runtime.frame(1.0);
-        runtime.state.set_settings_section("dataBrowsing");
-        runtime.settle_all();
-        runtime.frame(0.0);
+    runtime.state.set_settings_section("dataBrowsing");
+    runtime.settle_all();
+    runtime.frame(0.0);
     runtime.state.export_range = rune::TextEdit::new("customers");
 
     // The first press opens the dialog; a second press while it is open
@@ -81,9 +81,9 @@ fn browsing_picks_the_import_source() {
     runtime.pointer_down(x, y);
     runtime.pointer_up(x, y);
     runtime.frame(1.0);
-        runtime.state.set_settings_section("dataBrowsing");
-        runtime.settle_all();
-        runtime.frame(0.0);
+    runtime.state.set_settings_section("dataBrowsing");
+    runtime.settle_all();
+    runtime.frame(0.0);
     assert!(
         runtime.find("import-browse").is_some(),
         "the browse button is on step 1"
@@ -115,9 +115,9 @@ fn a_failed_export_shows_its_error_line_from_the_snapshot() {
     runtime.pointer_down(x, y);
     runtime.pointer_up(x, y);
     runtime.frame(1.0);
-        runtime.state.set_settings_section("dataBrowsing");
-        runtime.settle_all();
-        runtime.frame(0.0);
+    runtime.state.set_settings_section("dataBrowsing");
+    runtime.settle_all();
+    runtime.frame(0.0);
 
     // A range naming no table fails on the third snapshot.
     runtime.state.export_range = rune::TextEdit::new("no-such-table");
@@ -167,9 +167,9 @@ fn the_import_wizard_needs_a_target_to_move_on() {
     runtime.pointer_down(x, y);
     runtime.pointer_up(x, y);
     runtime.frame(1.0);
-        runtime.state.set_settings_section("dataBrowsing");
-        runtime.settle_all();
-        runtime.frame(0.0);
+    runtime.state.set_settings_section("dataBrowsing");
+    runtime.settle_all();
+    runtime.frame(0.0);
     assert!(runtime.find("import-step-1").is_some());
     assert!(runtime.find("import-step-2").is_none());
 
@@ -221,9 +221,9 @@ fn a_backup_page_stops_and_shows_stopped() {
     runtime.pointer_down(x, y);
     runtime.pointer_up(x, y);
     runtime.frame(1.0);
-        runtime.state.set_settings_section("dataBrowsing");
-        runtime.settle_all();
-        runtime.frame(0.0);
+    runtime.state.set_settings_section("dataBrowsing");
+    runtime.settle_all();
+    runtime.frame(0.0);
     assert!(runtime.find("backup-section").is_some());
 
     let (x, y) = runtime.find("backup-start").expect("start button");
@@ -606,12 +606,23 @@ fn the_connections_page_imports_a_previewed_file() {
         "the import button is on the page"
     );
 
-    // The button opens an Open dialog; the picked path parses. The
-    // password field serves the encrypted formats.
+    // The button opens the import dialog (the React share dialog); the
+    // password field serves the encrypted formats, and the dialog's own
+    // choose-file press asks for the file.
+    let (x, y) = runtime.find("import-connections").unwrap();
+    runtime.pointer_down(x, y);
+    runtime.pointer_up(x, y);
+    runtime.frame(0.0);
+    runtime.settle_all();
+    runtime.frame(0.0);
+    assert!(
+        runtime.find("import-dialog").is_some(),
+        "the import dialog is up, not an inline bar"
+    );
     runtime.state.import_password = rune::TextEdit::new("import-password");
     runtime.settle_all();
     runtime.frame(0.0);
-    let (x, y) = runtime.find("import-connections").unwrap();
+    let (x, y) = runtime.find("import-choose-file").unwrap();
     runtime.pointer_down(x, y);
     runtime.pointer_up(x, y);
     runtime.frame(0.0);

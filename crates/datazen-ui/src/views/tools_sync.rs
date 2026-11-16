@@ -4,14 +4,17 @@
 use super::*;
 
 use crate::constants::*;
-use crate::icons::{self, ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, section_icon};
+use crate::icons::{self, section_icon};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
 use crate::{splitter, sql_editor};
-use datazen_ui_api::{ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi};
-use rune::{FileDialogOptions, TextEdit, Tx};
+use datazen_ui_api::{
+    ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi,
+    Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi,
+};
 use rune::tok::{self, type_};
-use rune::{Color, Cx, El, col, oklch, row, text, text_input};
+use rune::{col, oklch, row, text, text_input, Color, Cx, El};
+use rune::{FileDialogOptions, TextEdit, Tx};
 
 pub(crate) fn tools_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let entry = |key: &str, label: &str, tool: Tool, active: bool| {
@@ -21,7 +24,11 @@ pub(crate) fn tools_page(state: &AppState, theme: tok::Theme, dark: bool) -> El 
             .px(10.0)
             .center_y()
             .radius(6.0)
-            .fill(if active { tok::accent(0, true) } else { theme.control_off })
+            .fill(if active {
+                tok::accent(0, true)
+            } else {
+                theme.control_off
+            })
             .child(text(label).font(type_::LABEL).color(theme.text))
             .on_press(move |state: &mut AppState| state.set_tool(tool))
     };
@@ -36,11 +43,35 @@ pub(crate) fn tools_page(state: &AppState, theme: tok::Theme, dark: bool) -> El 
                 .h(28.0)
                 .gap(6.0)
                 .center_y()
-                .child(text("Data tools".to_owned()).font(type_::TITLE).color(theme.text))
-                .child(entry("tool-sync", "Sync", Tool::Sync, state.tool == Tool::Sync))
-                .child(entry("tool-compare", "Compare", Tool::Compare, state.tool == Tool::Compare))
-                .child(entry("tool-transfer", "Transfer", Tool::Transfer, state.tool == Tool::Transfer))
-                .child(entry("tool-search", "Search values", Tool::ValueSearch, state.tool == Tool::ValueSearch)),
+                .child(
+                    text("Data tools".to_owned())
+                        .font(type_::TITLE)
+                        .color(theme.text),
+                )
+                .child(entry(
+                    "tool-sync",
+                    "Sync",
+                    Tool::Sync,
+                    state.tool == Tool::Sync,
+                ))
+                .child(entry(
+                    "tool-compare",
+                    "Compare",
+                    Tool::Compare,
+                    state.tool == Tool::Compare,
+                ))
+                .child(entry(
+                    "tool-transfer",
+                    "Transfer",
+                    Tool::Transfer,
+                    state.tool == Tool::Transfer,
+                ))
+                .child(entry(
+                    "tool-search",
+                    "Search values",
+                    Tool::ValueSearch,
+                    state.tool == Tool::ValueSearch,
+                )),
         )
         .child(match state.tool {
             Tool::Sync => sync_tool(state, theme, dark),
@@ -52,8 +83,8 @@ pub(crate) fn tools_page(state: &AppState, theme: tok::Theme, dark: bool) -> El 
 pub(crate) fn sync_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let mut section = col().key("sync-tool").w_full().gap(6.0);
     match state.sync_step {
-        0 => section = section
-            .child(
+        0 => {
+            section = section.child(
                 row()
                     .key("sync-step-1")
                     .w_full()
@@ -101,7 +132,8 @@ pub(crate) fn sync_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                             .child(text("Next").font(type_::LABEL).color(theme.text))
                             .on_press(|state: &mut AppState| state.sync_next_endpoints()),
                     ),
-            ),
+            )
+        }
         1 => {
             section = section.child(
                 row()
@@ -126,54 +158,56 @@ pub(crate) fn sync_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                         .px(8.0)
                         .center_y()
                         .radius(6.0)
-                        .fill(if selected { tok::accent(0, true) } else { theme.control_off })
+                        .fill(if selected {
+                            tok::accent(0, true)
+                        } else {
+                            theme.control_off
+                        })
                         .child(text(table.clone()).font(type_::LABEL).color(theme.text))
                         .on_press(move |state: &mut AppState| state.toggle_sync_table(&table)),
                 );
             }
-            section = section
-                .child(tables)
-                .child(
-                    row()
-                        .key("sync-table-controls")
-                        .w_full()
-                        .h(28.0)
-                        .gap(8.0)
-                        .center_y()
-                        .child(
-                            row()
-                                .key("sync-select-all")
-                                .h(24.0)
-                                .px(8.0)
-                                .center_y()
-                                .radius(6.0)
-                                .fill(theme.control_off)
-                                .child(text("Select all").font(type_::LABEL).color(theme.text))
-                                .on_press(|state: &mut AppState| state.sync_select_all()),
-                        )
-                        .child(
-                            row()
-                                .key("sync-clear")
-                                .h(24.0)
-                                .px(8.0)
-                                .center_y()
-                                .radius(6.0)
-                                .fill(theme.control_off)
-                                .child(text("Clear").font(type_::LABEL).color(theme.text))
-                                .on_press(|state: &mut AppState| state.sync_clear_tables()),
-                        )
-                        .child(
-                            row()
-                                .key("sync-tables-next")
-                                .h(24.0)
-                                .px(8.0)
-                                .center_y()
-                                .radius(6.0)
-                                .fill(theme.control_off)
-                                .child(text("Next").font(type_::LABEL).color(theme.text))
-                                .on_press(|state: &mut AppState| state.sync_next_tables()),
-                        ),
-                );
+            section = section.child(tables).child(
+                row()
+                    .key("sync-table-controls")
+                    .w_full()
+                    .h(28.0)
+                    .gap(8.0)
+                    .center_y()
+                    .child(
+                        row()
+                            .key("sync-select-all")
+                            .h(24.0)
+                            .px(8.0)
+                            .center_y()
+                            .radius(6.0)
+                            .fill(theme.control_off)
+                            .child(text("Select all").font(type_::LABEL).color(theme.text))
+                            .on_press(|state: &mut AppState| state.sync_select_all()),
+                    )
+                    .child(
+                        row()
+                            .key("sync-clear")
+                            .h(24.0)
+                            .px(8.0)
+                            .center_y()
+                            .radius(6.0)
+                            .fill(theme.control_off)
+                            .child(text("Clear").font(type_::LABEL).color(theme.text))
+                            .on_press(|state: &mut AppState| state.sync_clear_tables()),
+                    )
+                    .child(
+                        row()
+                            .key("sync-tables-next")
+                            .h(24.0)
+                            .px(8.0)
+                            .center_y()
+                            .radius(6.0)
+                            .fill(theme.control_off)
+                            .child(text("Next").font(type_::LABEL).color(theme.text))
+                            .on_press(|state: &mut AppState| state.sync_next_tables()),
+                    ),
+            );
         }
         2 => {
             section = section.child(
@@ -199,7 +233,11 @@ pub(crate) fn sync_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                         .px(8.0)
                         .center_y()
                         .radius(6.0)
-                        .fill(if on { tok::accent(0, true) } else { theme.control_off })
+                        .fill(if on {
+                            tok::accent(0, true)
+                        } else {
+                            theme.control_off
+                        })
                         .child(
                             text(format!("{}: {}", if on { "on" } else { "off" }, label))
                                 .font(type_::LABEL)
@@ -208,20 +246,18 @@ pub(crate) fn sync_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                         .on_press(move |state: &mut AppState| state.toggle_sync_option(index)),
                 );
             }
-            section = section
-                .child(options)
-                .child(
-                    row()
-                        .key("sync-preview-next")
-                        .w(120.0)
-                        .h(24.0)
-                        .px(8.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(theme.control_off)
-                        .child(text("Preview").font(type_::LABEL).color(theme.text))
-                        .on_press(|state: &mut AppState| state.sync_show_preview()),
-                );
+            section = section.child(options).child(
+                row()
+                    .key("sync-preview-next")
+                    .w(120.0)
+                    .h(24.0)
+                    .px(8.0)
+                    .center_y()
+                    .radius(6.0)
+                    .fill(theme.control_off)
+                    .child(text("Preview").font(type_::LABEL).color(theme.text))
+                    .on_press(|state: &mut AppState| state.sync_show_preview()),
+            );
         }
         3 => {
             section = section.child(
@@ -280,18 +316,20 @@ pub(crate) fn sync_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 section = section.child(progress_panel(snapshot, "sync", theme));
             }
         }
-        _ => section = section.child(
-            row()
-                .key("sync-step-1-done")
-                .w_full()
-                .h(24.0)
-                .center_y()
-                .child(
-                    text(format!("{} → {}", state.sync_source, state.sync_target))
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                ),
-        ),
+        _ => {
+            section = section.child(
+                row()
+                    .key("sync-step-1-done")
+                    .w_full()
+                    .h(24.0)
+                    .center_y()
+                    .child(
+                        text(format!("{} → {}", state.sync_source, state.sync_target))
+                            .font(type_::LABEL)
+                            .color(theme.text_secondary),
+                    ),
+            )
+        }
     }
     if let Some(error) = &state.sync_error {
         section = section.child(
@@ -303,7 +341,11 @@ pub(crate) fn sync_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 .center_y()
                 .radius(6.0)
                 .fill(theme.control_off)
-                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+                .child(
+                    text(error.clone())
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
         );
     }
     section

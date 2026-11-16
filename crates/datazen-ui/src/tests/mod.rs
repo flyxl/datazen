@@ -27,7 +27,8 @@ pub(crate) fn answer_save_dialog(rt: &mut Runtime<AppState>, path: Option<&str>)
     rt.frame(0.0);
     let (kind, _) = rt.file_dialog().expect("the press asked for a save dialog");
     assert_eq!(kind, rune::FileDialogKind::Save);
-    rt.resolve_file_dialog(path.map(std::path::PathBuf::from)).expect("the dialog answers");
+    rt.resolve_file_dialog(path.map(std::path::PathBuf::from))
+        .expect("the dialog answers");
     rt.frame(0.0);
 }
 
@@ -57,3 +58,4 @@ mod part_07;
 mod part_08;
 mod part_09;
 mod part_10;
+mod part_11;

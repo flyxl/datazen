@@ -4,14 +4,17 @@
 use super::*;
 
 use crate::constants::*;
-use crate::icons::{self, ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, section_icon};
+use crate::icons::{self, section_icon};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
 use crate::{splitter, sql_editor};
-use datazen_ui_api::{ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi};
-use rune::{FileDialogOptions, TextEdit, Tx};
+use datazen_ui_api::{
+    ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi,
+    Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi,
+};
 use rune::tok::{self, type_};
-use rune::{Color, Cx, El, col, oklch, row, text, text_input};
+use rune::{col, oklch, row, text, text_input, Color, Cx, El};
+use rune::{FileDialogOptions, TextEdit, Tx};
 
 pub(crate) fn wapps_page(theme: tok::Theme) -> El {
     let entry = |key: &'static str, title: &'static str, body: &'static str| {
@@ -61,11 +64,11 @@ pub(crate) fn wapps_page(theme: tok::Theme) -> El {
 /// The workflows page: the list, sorted by name, and the step editor.
 pub(crate) fn workflows_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let workflows = state.host_workflows();
-    let mut page = col()
-        .key("workflows-page")
-        .w_full()
-        .gap(6.0)
-        .child(text("Workflows".to_owned()).font(type_::TITLE).color(theme.text));
+    let mut page = col().key("workflows-page").w_full().gap(6.0).child(
+        text("Workflows".to_owned())
+            .font(type_::TITLE)
+            .color(theme.text),
+    );
     for workflow in &workflows {
         let name = workflow.name.clone();
         page = page.child(
@@ -78,9 +81,13 @@ pub(crate) fn workflows_page(state: &AppState, theme: tok::Theme, dark: bool) ->
                 .radius(6.0)
                 .fill(theme.control_off)
                 .child(
-                    text(format!("{} · {} steps", workflow.name, workflow.steps.len()))
-                        .font(type_::LABEL)
-                        .color(theme.text),
+                    text(format!(
+                        "{} · {} steps",
+                        workflow.name,
+                        workflow.steps.len()
+                    ))
+                    .font(type_::LABEL)
+                    .color(theme.text),
                 )
                 .on_press(move |state: &mut AppState| state.edit_workflow(&name)),
         );
@@ -131,7 +138,11 @@ pub(crate) fn workflows_page(state: &AppState, theme: tok::Theme, dark: bool) ->
                             .center_y()
                             .radius(4.0)
                             .fill(theme.control_off)
-                            .child(text("Close".to_owned()).font(type_::LABEL).color(theme.text_secondary))
+                            .child(
+                                text("Close".to_owned())
+                                    .font(type_::LABEL)
+                                    .color(theme.text_secondary),
+                            )
                             .on_press(|state: &mut AppState| state.close_workflow_editor()),
                     ),
             );
@@ -143,7 +154,11 @@ pub(crate) fn workflows_page(state: &AppState, theme: tok::Theme, dark: bool) ->
                     .h(24.0)
                     .gap(6.0)
                     .center_y()
-                    .child(text(step.clone()).font(type_::LABEL).color(theme.text_secondary))
+                    .child(
+                        text(step.clone())
+                            .font(type_::LABEL)
+                            .color(theme.text_secondary),
+                    )
                     .child(
                         row()
                             .key(format!("step-up-{index}"))
@@ -153,7 +168,9 @@ pub(crate) fn workflows_page(state: &AppState, theme: tok::Theme, dark: bool) ->
                             .radius(4.0)
                             .fill(theme.control_off)
                             .child(text("up".to_owned()).font(type_::LABEL).color(theme.text))
-                            .on_press(move |state: &mut AppState| state.move_workflow_step(index, true)),
+                            .on_press(move |state: &mut AppState| {
+                                state.move_workflow_step(index, true)
+                            }),
                     )
                     .child(
                         row()
@@ -164,7 +181,9 @@ pub(crate) fn workflows_page(state: &AppState, theme: tok::Theme, dark: bool) ->
                             .radius(4.0)
                             .fill(theme.control_off)
                             .child(text("down".to_owned()).font(type_::LABEL).color(theme.text))
-                            .on_press(move |state: &mut AppState| state.move_workflow_step(index, false)),
+                            .on_press(move |state: &mut AppState| {
+                                state.move_workflow_step(index, false)
+                            }),
                     ),
             );
         }
@@ -194,7 +213,10 @@ pub(crate) fn workflows_page(state: &AppState, theme: tok::Theme, dark: bool) ->
                         .center_y()
                         .child(
                             row()
-                                .key(format!("run-{}-{index}", if result.ok { "ok" } else { "fail" }))
+                                .key(format!(
+                                    "run-{}-{index}",
+                                    if result.ok { "ok" } else { "fail" }
+                                ))
                                 .w(10.0)
                                 .h(10.0)
                                 .radius(5.0)
@@ -229,7 +251,11 @@ pub(crate) fn dashboards_page(state: &AppState, theme: tok::Theme) -> El {
         .key("dashboards-page")
         .w_full()
         .gap(8.0)
-        .child(text("Dashboards".to_owned()).font(type_::TITLE).color(theme.text))
+        .child(
+            text("Dashboards".to_owned())
+                .font(type_::TITLE)
+                .color(theme.text),
+        )
         .child(
             row()
                 .key("widget-form")
@@ -284,7 +310,11 @@ pub(crate) fn dashboards_page(state: &AppState, theme: tok::Theme) -> El {
                 .center_y()
                 .radius(6.0)
                 .fill(theme.control_off)
-                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+                .child(
+                    text(error.clone())
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
         );
     }
     if widgets.is_empty() {
@@ -297,7 +327,11 @@ pub(crate) fn dashboards_page(state: &AppState, theme: tok::Theme) -> El {
                 .py(8.0)
                 .radius(8.0)
                 .fill(theme.control_off)
-                .child(text("No widgets yet".to_owned()).font(type_::TITLE).color(theme.text))
+                .child(
+                    text("No widgets yet".to_owned())
+                        .font(type_::TITLE)
+                        .color(theme.text),
+                )
                 .child(
                     text("The widget form arrives with the next task")
                         .font(type_::LABEL)
@@ -322,9 +356,12 @@ pub(crate) fn dashboards_page(state: &AppState, theme: tok::Theme) -> El {
                         .h(24.0)
                         .center_y()
                         .child(
-                            text(format!("#{} · {} · {}", widget.id, widget.title, widget.kind))
-                                .font(type_::LABEL)
-                                .color(theme.text),
+                            text(format!(
+                                "#{} · {} · {}",
+                                widget.id, widget.title, widget.kind
+                            ))
+                            .font(type_::LABEL)
+                            .color(theme.text),
                         ),
                 )
                 .child(bar_chart(state, widget.id, theme)),
@@ -344,7 +381,9 @@ pub(crate) fn bar_chart(state: &AppState, id: u64, theme: tok::Theme) -> El {
         Some(WidgetBarsState { loading: true, .. }) => {
             Some("reading the widget's data…".to_owned())
         }
-        Some(WidgetBarsState { error: Some(error), .. }) => Some(error.clone()),
+        Some(WidgetBarsState {
+            error: Some(error), ..
+        }) => Some(error.clone()),
         Some(WidgetBarsState { bars: Some(_), .. }) => None,
         Some(WidgetBarsState { bars: None, .. }) => {
             Some("the widget's data is not loaded — refresh the page".to_owned())
@@ -357,14 +396,23 @@ pub(crate) fn bar_chart(state: &AppState, id: u64, theme: tok::Theme) -> El {
             .h(120.0)
             .px(8.0)
             .center_y()
-            .child(text(sentence).font(type_::LABEL).color(theme.text_secondary));
+            .child(
+                text(sentence)
+                    .font(type_::LABEL)
+                    .color(theme.text_secondary),
+            );
     }
     let bars = state
         .widget_bars
         .get(&id)
         .and_then(|entry| entry.bars.clone())
         .unwrap_or_default();
-    let max = bars.iter().map(|(_, value)| *value).max().unwrap_or(1).max(1);
+    let max = bars
+        .iter()
+        .map(|(_, value)| *value)
+        .max()
+        .unwrap_or(1)
+        .max(1);
     let mut chart = row()
         .key(format!("widget-chart-{id}"))
         .w_full()
@@ -408,7 +456,11 @@ pub(crate) fn workflow_yaml(name: &str, steps: &[String]) -> String {
     out
 }
 pub(crate) fn next_connection(workspace: &MemoryWorkspace, current: &str) -> String {
-    let ids: Vec<String> = workspace.connections().iter().map(|profile| profile.id.clone()).collect();
+    let ids: Vec<String> = workspace
+        .connections()
+        .iter()
+        .map(|profile| profile.id.clone())
+        .collect();
     match ids.iter().position(|id| id == current) {
         Some(index) => ids[(index + 1) % ids.len()].clone(),
         None => ids.first().cloned().unwrap_or_else(|| current.to_owned()),

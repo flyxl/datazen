@@ -122,8 +122,12 @@ pub struct AppState {
     pub(crate) connection_search: TextEdit,
     /// A1: the connections card list's expanded state (show all / show less).
     pub(crate) connections_show_all: bool,
-    /// The connection form's fields and its last rejected save.
+    /// The connection form dialog is open over the home.
     pub(crate) connection_dialog_open: bool,
+    /// The import dialog (the React share dialog's import mode) is open.
+    pub(crate) import_dialog_open: bool,
+    /// The export file the import dialog picked (None until chosen).
+    pub(crate) import_file: Option<String>,
     pub(crate) connection_name: TextEdit,
     pub(crate) connection_engine: TextEdit,
     pub(crate) connection_address: TextEdit,
@@ -306,6 +310,8 @@ impl Default for AppState {
             connection_search: TextEdit::new(String::new()),
             connections_show_all: false,
             connection_dialog_open: false,
+            import_dialog_open: false,
+            import_file: None,
             connection_name: TextEdit::new(String::new()),
             connection_engine: TextEdit::new(String::new()),
             connection_address: TextEdit::new(String::new()),

@@ -4,20 +4,31 @@
 use super::*;
 
 use crate::constants::*;
-use crate::icons::{self, ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, section_icon};
+use crate::icons::{self, section_icon, ICON_PANEL_LEFT_CLOSE, ICON_PANEL_LEFT_OPEN};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
 use crate::{splitter, sql_editor};
-use datazen_ui_api::{ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi};
-use rune::{FileDialogOptions, TextEdit, Tx};
+use datazen_ui_api::{
+    ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi,
+    Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi,
+};
 use rune::tok::{self, type_};
-use rune::{Color, Cx, El, col, oklch, row, text, text_input};
+use rune::{col, oklch, row, text, text_input, Color, Cx, El};
+use rune::{FileDialogOptions, TextEdit, Tx};
 
 pub(crate) fn rail_item(state: &AppState, section: Section, expanded: bool, dark: bool) -> El {
     let theme = tok::theme(dark);
     let selected = state.active == section;
-    let bg = if selected { tok::accent(0, dark) } else { Color::TRANSPARENT };
-    let fg = if selected { theme.text } else { theme.text_secondary };
+    let bg = if selected {
+        tok::accent(0, dark).alpha(0.2)
+    } else {
+        Color::TRANSPARENT
+    };
+    let fg = if selected {
+        tok::accent(0, dark)
+    } else {
+        theme.text_secondary
+    };
     let mut item = row()
         .key(format!("rail-{}", section.key()))
         .w_full()
@@ -30,34 +41,89 @@ pub(crate) fn rail_item(state: &AppState, section: Section, expanded: bool, dark
         .role("tab")
         .label(section.label())
         .on_press(move |state: &mut AppState| state.select(section));
+    if !selected {
+        item = item.hover(theme.hover);
+    }
     if expanded {
         item = item
-            .child(rune::icon(section_icon(section), 18.0).color(fg))
-            .child(text(section.label()).font(type_::LABEL).color(fg));
+            .child(rune::icon(section_icon(section), 16.0).color(fg))
+            .child(
+                text(section.label())
+                    .font(type_::LABEL)
+                    .color(fg)
+                    .grow(1.0)
+                    .min_w(0.0)
+                    .truncate(),
+            );
     } else {
-        item = item.justify_center().child(rune::icon(section_icon(section), 18.0).color(fg));
+        item = item
+            .justify_center()
+            .child(rune::icon(section_icon(section), 16.0).color(fg));
     }
     item
 }
+
 pub(crate) fn rail_view(state: &AppState, dark: bool) -> El {
     let theme = tok::theme(dark);
     let expanded = state.sidebar_expanded();
     let width = state.sidebar_rail_width() as f32;
+    // The React sidebar's top group (WorkspaceModeSidebar): databases,
+    // workflows, dashboards, workspace pages, extensions — Tools rides after
+    // the React five, and Settings sits in the bottom group over the toggle.
     let mut items = col().w_full().gap(4.0);
-    for section in Section::ALL {
+    for section in [
+        Section::Connections,
+        Section::Workflows,
+        Section::Dashboards,
+        Section::Workspace,
+        Section::Tools,
+        Section::Wapps,
+    ] {
         items = items.child(rail_item(state, section, expanded, dark));
     }
-    let toggle_icon = if expanded { &ICON_CHEVRON_LEFT } else { &ICON_CHEVRON_RIGHT };
+    let toggle_icon = if expanded {
+        &ICON_PANEL_LEFT_CLOSE
+    } else {
+        &ICON_PANEL_LEFT_OPEN
+    };
     let toggle = row()
         .key("rail-toggle")
         .w_full()
-        .h(32.0)
-        .center()
+        .h(40.0)
         .radius(8.0)
-        .fill(theme.control_off)
-        .label(if expanded { "Collapse sidebar" } else { "Expand sidebar" })
-        .on_press(|state: &mut AppState| state.toggle_sidebar_expanded())
-        .child(rune::icon(toggle_icon, 14.0).color(theme.text_secondary));
+        .hover(theme.hover)
+        .label(if expanded {
+            "Collapse sidebar"
+        } else {
+            "Expand sidebar"
+        })
+        .on_press(|state: &mut AppState| state.toggle_sidebar_expanded());
+    let toggle = if expanded {
+        toggle
+            .px(12.0)
+            .gap(10.0)
+            .center_y()
+            .child(rune::icon(toggle_icon, 16.0).color(theme.text_secondary))
+            .child(
+                text("Collapse sidebar")
+                    .font(type_::LABEL)
+                    .color(theme.text_secondary)
+                    .grow(1.0)
+                    .min_w(0.0)
+                    .truncate(),
+            )
+    } else {
+        toggle
+            .justify_center()
+            .center_y()
+            .child(rune::icon(toggle_icon, 16.0).color(theme.text_secondary))
+    };
+    let bottom = col()
+        .key("rail-bottom")
+        .w_full()
+        .gap(4.0)
+        .child(rail_item(state, Section::Settings, expanded, dark))
+        .child(toggle);
     col()
         .key("datazen-rail")
         .w(width)
@@ -68,7 +134,7 @@ pub(crate) fn rail_view(state: &AppState, dark: bool) -> El {
         .fill(theme.bg)
         .child(items)
         .child(col().w_full().grow(1.0))
-        .child(toggle)
+        .child(bottom)
 }
 pub(crate) fn content_toolbar(state: &AppState, theme: tok::Theme) -> El {
     let mut bar = row()
@@ -136,7 +202,11 @@ pub(crate) fn tab_strip(state: &AppState, theme: tok::Theme) -> El {
     for tab in state.tabs.tabs() {
         let id = tab.id;
         let selected = state.tabs.selected().is_some_and(|open| open.id == id);
-        let underline = if selected { tok::accent(0, true) } else { Color::TRANSPARENT };
+        let underline = if selected {
+            tok::accent(0, true)
+        } else {
+            Color::TRANSPARENT
+        };
         let tab_item = row()
             .key(format!("tab-{id}"))
             .role("tab")
@@ -146,7 +216,11 @@ pub(crate) fn tab_strip(state: &AppState, theme: tok::Theme) -> El {
             .px(12.0)
             .gap(8.0)
             .center_y()
-            .fill(if selected { theme.control_off } else { theme.bg })
+            .fill(if selected {
+                theme.control_off
+            } else {
+                theme.bg
+            })
             .on_press(move |state: &mut AppState| {
                 state.select_tab(id);
             })
@@ -260,33 +334,30 @@ pub(crate) fn content_status_bar(state: &AppState, theme: tok::Theme) -> El {
                         .fill(dot),
                 )
                 .child(
-                    text(if connected { "Connected" } else { "Disconnected" })
-                        .key("status-connection-label")
-                        .font(type_::LABEL)
-                        .color(theme.text),
+                    text(if connected {
+                        "Connected"
+                    } else {
+                        "Disconnected"
+                    })
+                    .key("status-connection-label")
+                    .font(type_::LABEL)
+                    .color(theme.text),
                 ),
         )
         .child(
-            row()
-                .grow(1.0)
-                .center_y()
-                .justify_center()
-                .child(
-                    text(center_text)
-                        .key("status-context")
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                ),
+            row().grow(1.0).center_y().justify_center().child(
+                text(center_text)
+                    .key("status-context")
+                    .font(type_::LABEL)
+                    .color(theme.text_secondary),
+            ),
         )
         .child(
-            row()
-                .gap(8.0)
-                .center_y()
-                .child(
-                    text("⌘N New query · ⌘W Close")
-                        .key("status-shortcuts")
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                ),
+            row().gap(8.0).center_y().child(
+                text("⌘N New query · ⌘W Close")
+                    .key("status-shortcuts")
+                    .font(type_::LABEL)
+                    .color(theme.text_secondary),
+            ),
         )
 }

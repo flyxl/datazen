@@ -4,7 +4,7 @@
 use super::*;
 
 use crate::constants::*;
-use crate::icons::{self, section_icon, ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT};
+use crate::icons::{self, section_icon};
 use crate::settings_state::{SettingsSectionDef, SETTINGS_NAV_GROUPS, SETTINGS_SECTIONS};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};

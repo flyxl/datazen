@@ -4,14 +4,17 @@
 use super::*;
 
 use crate::constants::*;
-use crate::icons::{self, ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, section_icon};
+use crate::icons::{self, section_icon};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
 use crate::{splitter, sql_editor};
-use datazen_ui_api::{ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi};
-use rune::{FileDialogOptions, TextEdit, Tx};
+use datazen_ui_api::{
+    ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi,
+    Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi,
+};
 use rune::tok::{self, type_};
-use rune::{Color, Cx, El, col, oklch, row, text, text_input};
+use rune::{col, oklch, row, text, text_input, Color, Cx, El};
+use rune::{FileDialogOptions, TextEdit, Tx};
 
 pub(crate) fn navigator_connections_tree(state: &AppState, theme: tok::Theme) -> El {
     let filter = state.navigator_filter.text.trim().to_lowercase();
@@ -56,9 +59,13 @@ pub(crate) fn navigator_connections_tree(state: &AppState, theme: tok::Theme) ->
                 .px(8.0)
                 .center_y()
                 .child(
-                    text(if filter.is_empty() { "No recent connections" } else { "No matches" })
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
+                    text(if filter.is_empty() {
+                        "No recent connections"
+                    } else {
+                        "No matches"
+                    })
+                    .font(type_::LABEL)
+                    .color(theme.text_secondary),
                 ),
         );
     } else {
@@ -96,9 +103,13 @@ pub(crate) fn navigator_connections_tree(state: &AppState, theme: tok::Theme) ->
                 .px(8.0)
                 .center_y()
                 .child(
-                    text(if filter.is_empty() { "No connections" } else { "No matches" })
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
+                    text(if filter.is_empty() {
+                        "No connections"
+                    } else {
+                        "No matches"
+                    })
+                    .font(type_::LABEL)
+                    .color(theme.text_secondary),
                 ),
         );
     } else {
@@ -259,7 +270,11 @@ pub(crate) fn object_tree(state: &AppState, theme: tok::Theme) -> El {
         );
     }
     let count = rows.len() as f32;
-    let height = if count == 0.0 { 0.0 } else { count * 28.0 + (count - 1.0) * 4.0 };
+    let height = if count == 0.0 {
+        0.0
+    } else {
+        count * 28.0 + (count - 1.0) * 4.0
+    };
     let mut tree = col().key("object-tree").w_full().h(height).gap(4.0);
     for row in rows {
         tree = tree.child(row);

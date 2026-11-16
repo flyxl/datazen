@@ -1,9 +1,12 @@
 //! Root view and application bootstrap.
 
+use crate::constants::*;
 use crate::state_def::AppState;
 use crate::types::Section;
-use crate::constants::*;
-use crate::views::{content_status_bar, content_toolbar, navigator_panel, page_body, rail_view, tab_strip, query_selected};
+use crate::views::{
+    content_status_bar, content_toolbar, modal_layer, navigator_panel, page_body, query_selected,
+    rail_view, tab_strip,
+};
 use crate::{splitter, sql_editor};
 
 use datazen_ui_api::UnimplementedAdapter;
@@ -11,7 +14,7 @@ use datazen_ui_api::UnimplementedAdapter;
 use datazen_ui_api::UseCaseAdapter;
 use datazen_ui_api::{DesktopAdapter, Setting};
 use rune::tok::{self, type_};
-use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, Titlebar, Tx, col, row, text};
+use rune::{col, row, text, App, AppSpec, Cx, El, Ime, Key, KeyEvent, Titlebar, Tx};
 
 pub(crate) fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
     let dark = state
@@ -123,6 +126,7 @@ pub(crate) fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
         })
         .child(titlebar)
         .child(body)
+        .children(modal_layer(state, theme))
 }
 
 /// The app's window chrome (L3): self-drawn 40pt titlebar and a minimum size
@@ -243,7 +247,11 @@ pub(crate) fn app_poll(state: &mut AppState, _: f64, _: &mut Tx) -> bool {
         return dirty;
     }
     if query_selected(state) {
-        return dirty || state.result_grid.as_mut().is_some_and(|grid| grid.sync_scroll());
+        return dirty
+            || state
+                .result_grid
+                .as_mut()
+                .is_some_and(|grid| grid.sync_scroll());
     }
     dirty || (state.grid.has_page() && state.grid.sync_scroll())
 }
@@ -252,7 +260,9 @@ pub(crate) fn app_ime(state: &mut AppState, ev: &Ime, _: &mut Tx) -> bool {
     if state.active == Section::Workflows && state.workflow_editing.is_some() {
         return crate::sql_editor::on_ime(&mut state.workflow_yaml, ev);
     }
-    state.active == Section::Workspace && query_selected(state) && crate::sql_editor::on_ime(&mut state.sql, ev)
+    state.active == Section::Workspace
+        && query_selected(state)
+        && crate::sql_editor::on_ime(&mut state.sql, ev)
 }
 
 /// WebAssembly entrypoint consumed by wasm-bindgen.

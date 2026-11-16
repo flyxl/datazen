@@ -4,21 +4,28 @@
 use super::*;
 
 use crate::constants::*;
-use crate::icons::{self, ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, section_icon};
+use crate::icons::{self, section_icon};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
 use crate::{splitter, sql_editor};
-use datazen_ui_api::{ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi};
-use rune::{FileDialogOptions, TextEdit, Tx};
+use datazen_ui_api::{
+    ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi,
+    Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi,
+};
 use rune::tok::{self, type_};
-use rune::{Color, Cx, El, col, oklch, row, text, text_input};
+use rune::{col, oklch, row, text, text_input, Color, Cx, El};
+use rune::{FileDialogOptions, TextEdit, Tx};
 
 pub(crate) fn value_search_tool(state: &AppState, theme: tok::Theme) -> El {
     let mut section = col()
         .key("value-search-tool")
         .w_full()
         .gap(8.0)
-        .child(text("Value search".to_owned()).font(type_::TITLE).color(theme.text))
+        .child(
+            text("Value search".to_owned())
+                .font(type_::TITLE)
+                .color(theme.text),
+        )
         .child(
             row()
                 .key("value-search-form")
@@ -56,7 +63,11 @@ pub(crate) fn value_search_tool(state: &AppState, theme: tok::Theme) -> El {
                         .center_y()
                         .radius(6.0)
                         .fill(theme.control_off)
-                        .child(text("Search".to_owned()).font(type_::LABEL).color(theme.text))
+                        .child(
+                            text("Search".to_owned())
+                                .font(type_::LABEL)
+                                .color(theme.text),
+                        )
                         .on_press(|state: &mut AppState| state.begin_value_search()),
                 )
                 .child(
@@ -67,7 +78,11 @@ pub(crate) fn value_search_tool(state: &AppState, theme: tok::Theme) -> El {
                         .center_y()
                         .radius(6.0)
                         .fill(theme.control_off)
-                        .child(text("Cancel".to_owned()).font(type_::LABEL).color(theme.text))
+                        .child(
+                            text("Cancel".to_owned())
+                                .font(type_::LABEL)
+                                .color(theme.text),
+                        )
                         .on_press(|state: &mut AppState| state.cancel_value_search()),
                 ),
         );
@@ -78,7 +93,11 @@ pub(crate) fn value_search_tool(state: &AppState, theme: tok::Theme) -> El {
                 .w_full()
                 .h(20.0)
                 .center_y()
-                .child(text("Searching…".to_owned()).font(type_::LABEL).color(theme.text_secondary)),
+                .child(
+                    text("Searching…".to_owned())
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
         );
     }
     if let Some(error) = &state.value_search_error {
@@ -91,7 +110,11 @@ pub(crate) fn value_search_tool(state: &AppState, theme: tok::Theme) -> El {
                 .center_y()
                 .radius(6.0)
                 .fill(theme.control_off)
-                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+                .child(
+                    text(error.clone())
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
         );
     }
     if !state.value_search_hits.is_empty() {
@@ -250,7 +273,10 @@ pub(crate) fn transfer_tool(state: &AppState, theme: tok::Theme) -> El {
                 ),
         );
     }
-    for (side, key) in [(true, "transfer-unmapped-left"), (false, "transfer-unmapped-right")] {
+    for (side, key) in [
+        (true, "transfer-unmapped-left"),
+        (false, "transfer-unmapped-right"),
+    ] {
         let label = if side { "left" } else { "right" };
         let unmapped = state.transfer_unmapped(side);
         let mut block = col()
@@ -278,7 +304,11 @@ pub(crate) fn transfer_tool(state: &AppState, theme: tok::Theme) -> El {
                 .h(28.0)
                 .gap(8.0)
                 .center_y()
-                .child(text("Transfer now?".to_owned()).font(type_::LABEL).color(theme.text))
+                .child(
+                    text("Transfer now?".to_owned())
+                        .font(type_::LABEL)
+                        .color(theme.text),
+                )
                 .child(
                     row()
                         .key("transfer-yes")
@@ -287,7 +317,11 @@ pub(crate) fn transfer_tool(state: &AppState, theme: tok::Theme) -> El {
                         .center_y()
                         .radius(6.0)
                         .fill(theme.control_off)
-                        .child(text("Confirm".to_owned()).font(type_::LABEL).color(theme.text))
+                        .child(
+                            text("Confirm".to_owned())
+                                .font(type_::LABEL)
+                                .color(theme.text),
+                        )
                         .on_press(|state: &mut AppState| state.confirm_transfer()),
                 )
                 .child(
@@ -298,7 +332,11 @@ pub(crate) fn transfer_tool(state: &AppState, theme: tok::Theme) -> El {
                         .center_y()
                         .radius(6.0)
                         .fill(theme.control_off)
-                        .child(text("Cancel".to_owned()).font(type_::LABEL).color(theme.text_secondary))
+                        .child(
+                            text("Cancel".to_owned())
+                                .font(type_::LABEL)
+                                .color(theme.text_secondary),
+                        )
                         .on_press(|state: &mut AppState| state.cancel_transfer()),
                 ),
         );
@@ -312,7 +350,11 @@ pub(crate) fn transfer_tool(state: &AppState, theme: tok::Theme) -> El {
                 .center_y()
                 .radius(6.0)
                 .fill(theme.control_off)
-                .child(text("Transfer".to_owned()).font(type_::LABEL).color(theme.text))
+                .child(
+                    text("Transfer".to_owned())
+                        .font(type_::LABEL)
+                        .color(theme.text),
+                )
                 .on_press(|state: &mut AppState| state.begin_transfer_confirm()),
         );
     }
@@ -326,7 +368,11 @@ pub(crate) fn transfer_tool(state: &AppState, theme: tok::Theme) -> El {
                 .center_y()
                 .radius(6.0)
                 .fill(theme.control_off)
-                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+                .child(
+                    text(error.clone())
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
         );
     }
     if let Some(job) = state.transfer_job {
@@ -339,7 +385,11 @@ pub(crate) fn transfer_tool(state: &AppState, theme: tok::Theme) -> El {
                 .center_y()
                 .radius(6.0)
                 .fill(theme.control_off)
-                .child(text(format!("job #{job}")).font(type_::LABEL).color(theme.text_secondary))
+                .child(
+                    text(format!("job #{job}"))
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                )
                 .child(
                     row()
                         .key("transfer-refresh")
@@ -361,50 +411,48 @@ pub(crate) fn transfer_tool(state: &AppState, theme: tok::Theme) -> El {
 
 /// The structure comparison. Step 1: the objects, same names marked.
 pub(crate) fn compare_tool(state: &AppState, theme: tok::Theme) -> El {
-    let objects = state.workspace.compare_objects(&state.compare_source, &state.compare_target)
+    let objects = state
+        .workspace
+        .compare_objects(&state.compare_source, &state.compare_target)
         .unwrap_or_default();
-    let mut section = col()
-        .key("compare-tool")
-        .w_full()
-        .gap(6.0)
-        .child(
-            row()
-                .key("compare-endpoints")
-                .w_full()
-                .h(28.0)
-                .gap(8.0)
-                .center_y()
-                .child(
-                    row()
-                        .key("compare-source")
-                        .h(24.0)
-                        .px(8.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(theme.control_off)
-                        .child(
-                            text(format!("source: {}", state.compare_source))
-                                .font(type_::LABEL)
-                                .color(theme.text),
-                        )
-                        .on_press(|state: &mut AppState| state.cycle_compare_source()),
-                )
-                .child(
-                    row()
-                        .key("compare-target")
-                        .h(24.0)
-                        .px(8.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(theme.control_off)
-                        .child(
-                            text(format!("target: {}", state.compare_target))
-                                .font(type_::LABEL)
-                                .color(theme.text),
-                        )
-                        .on_press(|state: &mut AppState| state.cycle_compare_target()),
-                ),
-        );
+    let mut section = col().key("compare-tool").w_full().gap(6.0).child(
+        row()
+            .key("compare-endpoints")
+            .w_full()
+            .h(28.0)
+            .gap(8.0)
+            .center_y()
+            .child(
+                row()
+                    .key("compare-source")
+                    .h(24.0)
+                    .px(8.0)
+                    .center_y()
+                    .radius(6.0)
+                    .fill(theme.control_off)
+                    .child(
+                        text(format!("source: {}", state.compare_source))
+                            .font(type_::LABEL)
+                            .color(theme.text),
+                    )
+                    .on_press(|state: &mut AppState| state.cycle_compare_source()),
+            )
+            .child(
+                row()
+                    .key("compare-target")
+                    .h(24.0)
+                    .px(8.0)
+                    .center_y()
+                    .radius(6.0)
+                    .fill(theme.control_off)
+                    .child(
+                        text(format!("target: {}", state.compare_target))
+                            .font(type_::LABEL)
+                            .color(theme.text),
+                    )
+                    .on_press(|state: &mut AppState| state.cycle_compare_target()),
+            ),
+    );
     let mut list = col().key("compare-objects").w_full().gap(4.0);
     for object in &objects {
         let mark = if object.present_on_target {
@@ -415,7 +463,11 @@ pub(crate) fn compare_tool(state: &AppState, theme: tok::Theme) -> El {
         let label = format!(
             "{} {}",
             object.name,
-            if object.present_on_target { "= both ends" } else { "= source only" }
+            if object.present_on_target {
+                "= both ends"
+            } else {
+                "= source only"
+            }
         );
         list = list.child(
             row()
@@ -437,7 +489,10 @@ pub(crate) fn compare_tool(state: &AppState, theme: tok::Theme) -> El {
         );
     }
     // The plan text: the port's string verbatim; an empty plan has its own state.
-    match state.workspace.compare_plan(&state.compare_source, &state.compare_target) {
+    match state
+        .workspace
+        .compare_plan(&state.compare_source, &state.compare_target)
+    {
         Ok(plan) if !plan.is_empty() => {
             let mut block = col()
                 .key("compare-plan")
@@ -456,21 +511,23 @@ pub(crate) fn compare_tool(state: &AppState, theme: tok::Theme) -> El {
             }
             section = section.child(block);
         }
-        Ok(_) => section = section.child(
-            row()
-                .key("compare-plan-empty")
-                .w_full()
-                .h(40.0)
-                .px(12.0)
-                .center_y()
-                .radius(8.0)
-                .fill(theme.control_off)
-                .child(
-                    text("No differences".to_owned())
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                ),
-        ),
+        Ok(_) => {
+            section = section.child(
+                row()
+                    .key("compare-plan-empty")
+                    .w_full()
+                    .h(40.0)
+                    .px(12.0)
+                    .center_y()
+                    .radius(8.0)
+                    .fill(theme.control_off)
+                    .child(
+                        text("No differences".to_owned())
+                            .font(type_::LABEL)
+                            .color(theme.text_secondary),
+                    ),
+            )
+        }
         Err(_) => {}
     }
     // D8: apply the plan; the progress reuses the snapshot panel.
@@ -514,7 +571,11 @@ pub(crate) fn compare_tool(state: &AppState, theme: tok::Theme) -> El {
                 .center_y()
                 .radius(6.0)
                 .fill(theme.control_off)
-                .child(text(error.clone()).font(type_::LABEL).color(theme.text_secondary)),
+                .child(
+                    text(error.clone())
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
         );
     }
     if let Some(snapshot) = &state.compare_snapshot {

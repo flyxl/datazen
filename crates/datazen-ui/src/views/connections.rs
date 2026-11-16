@@ -6,16 +6,13 @@ use super::*;
 
 use crate::state_def::AppState;
 use rune::tok::{self, type_};
-use rune::{FileDialogOptions, Tx};
 use rune::{col, row, text, text_input, El};
+use rune::{FileDialogOptions, Tx};
 
-/// The connections page: the home body with the form dialog over it.
+/// The connections page: the home body. The connection form and the import
+/// dialog float over it from the root modal layer (`views/modals.rs`).
 pub(crate) fn connection_list(state: &AppState, theme: tok::Theme, dark: bool) -> El {
-    let mut page = connections_home(state, theme, dark);
-    if state.connection_dialog_open {
-        page = page.child(connection_form_dialog(state, theme));
-    }
-    page
+    connections_home(state, theme, dark)
 }
 
 /// T7: an Open dialog picks the export file; the host reads and parses it.
@@ -70,20 +67,16 @@ pub(crate) fn import_bar(state: &AppState, theme: tok::Theme) -> El {
             ),
     );
     if let Some(preview) = &state.import_preview {
-        let mut panel = col()
-            .key("import-preview")
-            .w_full()
-            .gap(4.0)
-            .child(
-                text(format!(
-                    "{} · {} connections",
-                    preview.format,
-                    preview.connections.len()
-                ))
-                .key("import-preview-title")
-                .font(type_::LABEL)
-                .color(theme.text),
-            );
+        let mut panel = col().key("import-preview").w_full().gap(4.0).child(
+            text(format!(
+                "{} · {} connections",
+                preview.format,
+                preview.connections.len()
+            ))
+            .key("import-preview-title")
+            .font(type_::LABEL)
+            .color(theme.text),
+        );
         for (index, connection) in preview.connections.iter().enumerate() {
             panel = panel.child(
                 row()
@@ -113,12 +106,9 @@ pub(crate) fn import_bar(state: &AppState, theme: tok::Theme) -> El {
                 .radius(6.0)
                 .fill(theme.control_off)
                 .child(
-                    text(format!(
-                        "Import {} connections",
-                        preview.connections.len()
-                    ))
-                    .font(type_::LABEL)
-                    .color(theme.text),
+                    text(format!("Import {} connections", preview.connections.len()))
+                        .font(type_::LABEL)
+                        .color(theme.text),
                 )
                 .on_press(|state: &mut AppState| state.confirm_connections_import()),
         );
@@ -134,48 +124,20 @@ pub(crate) fn import_bar(state: &AppState, theme: tok::Theme) -> El {
                 .center_y()
                 .radius(6.0)
                 .fill(theme.control_off)
-                .child(text(notice.clone()).font(type_::LABEL).color(theme.text_secondary)),
+                .child(
+                    text(notice.clone())
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                ),
         );
     }
     import
 }
 
-fn connection_form_dialog(state: &AppState, theme: tok::Theme) -> El {
-    let mut dialog = col()
-        .key("connection-dialog")
-        .w_full()
-        .gap(10.0)
-        .px(12.0)
-        .py(10.0)
-        .radius(10.0)
-        .fill(theme.control_off)
-        .child(
-            row()
-                .key("connection-dialog-header")
-                .w_full()
-                .h(28.0)
-                .center_y()
-                .gap(8.0)
-                .child(
-                    text("New connection")
-                        .key("connection-dialog-title")
-                        .font(type_::LABEL)
-                        .color(theme.text),
-                )
-                .child(row().grow(1.0))
-                .child(
-                    row()
-                        .key("connection-dialog-close")
-                        .h(24.0)
-                        .px(8.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(theme.bg)
-                        .child(text("Close").font(type_::LABEL).color(theme.text_secondary))
-                        .on_press(|state: &mut AppState| state.close_connection_dialog()),
-                ),
-        );
-
+/// The connection form fields (React connection dialog body): basic,
+/// connection and SSH sections, the error row and the actions. Floats inside
+/// the modal panel (`views/modals.rs`) — no outer dialog chrome here.
+pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El {
     let basic = col()
         .key("connection-section-basic")
         .w_full()
@@ -208,7 +170,11 @@ fn connection_form_dialog(state: &AppState, theme: tok::Theme) -> El {
                     col()
                         .w(140.0)
                         .gap(2.0)
-                        .child(text("Engine").font(type_::LABEL).color(theme.text_secondary))
+                        .child(
+                            text("Engine")
+                                .font(type_::LABEL)
+                                .color(theme.text_secondary),
+                        )
                         .child(
                             text_input(&state.connection_engine, type_::LABEL)
                                 .key("connection-engine-input")
@@ -238,7 +204,11 @@ fn connection_form_dialog(state: &AppState, theme: tok::Theme) -> El {
                     col()
                         .w(200.0)
                         .gap(2.0)
-                        .child(text("Address").font(type_::LABEL).color(theme.text_secondary))
+                        .child(
+                            text("Address")
+                                .font(type_::LABEL)
+                                .color(theme.text_secondary),
+                        )
                         .child(
                             text_input(&state.connection_address, type_::LABEL)
                                 .key("connection-address-input")
@@ -251,7 +221,11 @@ fn connection_form_dialog(state: &AppState, theme: tok::Theme) -> El {
                     col()
                         .w(140.0)
                         .gap(2.0)
-                        .child(text("Database").font(type_::LABEL).color(theme.text_secondary))
+                        .child(
+                            text("Database")
+                                .font(type_::LABEL)
+                                .color(theme.text_secondary),
+                        )
                         .child(
                             text_input(&state.connection_database, type_::LABEL)
                                 .key("connection-database-input")
@@ -264,7 +238,11 @@ fn connection_form_dialog(state: &AppState, theme: tok::Theme) -> El {
                     col()
                         .w(140.0)
                         .gap(2.0)
-                        .child(text("Username").font(type_::LABEL).color(theme.text_secondary))
+                        .child(
+                            text("Username")
+                                .font(type_::LABEL)
+                                .color(theme.text_secondary),
+                        )
                         .child(
                             text_input(&state.connection_username, type_::LABEL)
                                 .key("connection-username-input")
@@ -277,7 +255,11 @@ fn connection_form_dialog(state: &AppState, theme: tok::Theme) -> El {
                     col()
                         .w(140.0)
                         .gap(2.0)
-                        .child(text("Password").font(type_::LABEL).color(theme.text_secondary))
+                        .child(
+                            text("Password")
+                                .font(type_::LABEL)
+                                .color(theme.text_secondary),
+                        )
                         .child(
                             text_input(&state.connection_password, type_::LABEL)
                                 .key("connection-password-input")
@@ -318,7 +300,15 @@ fn connection_form_dialog(state: &AppState, theme: tok::Theme) -> El {
                         .center_y()
                         .radius(6.0)
                         .fill(theme.bg)
-                        .child(text(if state.connection_ssh_enabled { "Disable SSH tunnel" } else { "Enable SSH tunnel" }).font(type_::LABEL).color(theme.text))
+                        .child(
+                            text(if state.connection_ssh_enabled {
+                                "Disable SSH tunnel"
+                            } else {
+                                "Enable SSH tunnel"
+                            })
+                            .font(type_::LABEL)
+                            .color(theme.text),
+                        )
                         .on_press(|state: &mut AppState| {
                             state.connection_ssh_enabled = !state.connection_ssh_enabled;
                         }),
@@ -333,7 +323,11 @@ fn connection_form_dialog(state: &AppState, theme: tok::Theme) -> El {
                     col()
                         .w(180.0)
                         .gap(2.0)
-                        .child(text("SSH host").font(type_::LABEL).color(theme.text_secondary))
+                        .child(
+                            text("SSH host")
+                                .font(type_::LABEL)
+                                .color(theme.text_secondary),
+                        )
                         .child(
                             text_input(&state.connection_ssh_host, type_::LABEL)
                                 .key("connection-ssh-host-input")
@@ -346,7 +340,11 @@ fn connection_form_dialog(state: &AppState, theme: tok::Theme) -> El {
                     col()
                         .w(90.0)
                         .gap(2.0)
-                        .child(text("SSH port").font(type_::LABEL).color(theme.text_secondary))
+                        .child(
+                            text("SSH port")
+                                .font(type_::LABEL)
+                                .color(theme.text_secondary),
+                        )
                         .child(
                             text_input(&state.connection_ssh_port, type_::LABEL)
                                 .key("connection-ssh-port-input")
@@ -359,7 +357,11 @@ fn connection_form_dialog(state: &AppState, theme: tok::Theme) -> El {
                     col()
                         .w(160.0)
                         .gap(2.0)
-                        .child(text("SSH username").font(type_::LABEL).color(theme.text_secondary))
+                        .child(
+                            text("SSH username")
+                                .font(type_::LABEL)
+                                .color(theme.text_secondary),
+                        )
                         .child(
                             text_input(&state.connection_ssh_username, type_::LABEL)
                                 .key("connection-ssh-username-input")
@@ -370,24 +372,39 @@ fn connection_form_dialog(state: &AppState, theme: tok::Theme) -> El {
                 ),
         );
 
-    let form_fields = row()
-        .key("connection-form-fields")
-        .w_full()
-        .gap(8.0)
-        .child(col().w_full().gap(10.0).child(basic).child(connection).child(ssh));
+    let form_fields = row().key("connection-form-fields").w_full().gap(8.0).child(
+        col()
+            .w_full()
+            .gap(10.0)
+            .child(basic)
+            .child(connection)
+            .child(ssh),
+    );
 
-    let mut form = col().key("connection-form").w_full().gap(10.0).child(form_fields);
+    let mut form = col()
+        .key("connection-form")
+        .w_full()
+        .gap(10.0)
+        .child(form_fields);
     let error_text = state.connection_error.clone().unwrap_or_default();
     form = form.child(
         row()
             .key("connection-form-error")
             .w_full()
-            .h(if state.connection_error.is_some() { 24.0 } else { 0.0 })
+            .h(if state.connection_error.is_some() {
+                24.0
+            } else {
+                0.0
+            })
             .px(8.0)
             .center_y()
             .radius(6.0)
             .fill(theme.bg)
-            .child(text(error_text).font(type_::LABEL).color(theme.text_secondary)),
+            .child(
+                text(error_text)
+                    .font(type_::LABEL)
+                    .color(theme.text_secondary),
+            ),
     );
     form = form.child(
         row()
@@ -403,7 +420,7 @@ fn connection_form_dialog(state: &AppState, theme: tok::Theme) -> El {
                     .px(8.0)
                     .center_y()
                     .radius(6.0)
-                    .fill(theme.bg)
+                    .fill(theme.control_off)
                     .child(text("Save connection").font(type_::LABEL).color(theme.text))
                     .on_press(|state: &mut AppState| state.save_connection_form()),
             )
@@ -414,11 +431,15 @@ fn connection_form_dialog(state: &AppState, theme: tok::Theme) -> El {
                     .px(8.0)
                     .center_y()
                     .radius(6.0)
-                    .fill(theme.bg)
-                    .child(text("Cancel").font(type_::LABEL).color(theme.text_secondary))
+                    .fill(theme.control_off)
+                    .child(
+                        text("Cancel")
+                            .font(type_::LABEL)
+                            .color(theme.text_secondary),
+                    )
                     .on_press(|state: &mut AppState| state.close_connection_dialog()),
             ),
     );
 
-    dialog.child(form)
+    form
 }

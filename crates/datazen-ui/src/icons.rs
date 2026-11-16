@@ -2,72 +2,76 @@
 
 use crate::types::Section;
 
-// L4: lucide-semantic rail icons (24x24, stroke outline, currentColor).
+// Lucide-semantic icons (24x24, stroke outline, currentColor).
 pub(crate) static ICON_CONNECTIONS: rune::Icon = rune::Icon {
-    name: "rail-connections",
+    name: "database",
     view: 24.0,
-    body: r#"<ellipse cx="12" cy="5" rx="9" ry="3" stroke="currentColor" stroke-width="2" fill="none"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5" stroke="currentColor" stroke-width="2" fill="none"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3" stroke="currentColor" stroke-width="2" fill="none"/>"#,
-};
-pub(crate) static ICON_WORKSPACE: rune::Icon = rune::Icon {
-    name: "rail-workspace",
-    view: 24.0,
-    body: r#"<rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M3 9h18M9 21V9" stroke="currentColor" stroke-width="2" fill="none"/>"#,
-};
-pub(crate) static ICON_SETTINGS: rune::Icon = rune::Icon {
-    name: "rail-settings",
-    view: 24.0,
-    body: r#"<circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" fill="none"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6c.32 0 .63-.12.87-.33.3-.27.49-.65.52-1.06V3a2 2 0 1 1 4 0v.09c.03.41.22.79.52 1.06.24.21.55.33.87.33.65 0 1.26-.38 1.54-.97l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06c-.43.46-.55 1.13-.33 1.71.19.5.6.88 1.12 1.03H21a2 2 0 1 1 0 4h-.09c-.41.03-.79.22-1.06.52-.21.24-.33.55-.33.87z" stroke="currentColor" stroke-width="2" fill="none"/>"#,
-};
-pub(crate) static ICON_TOOLS: rune::Icon = rune::Icon {
-    name: "rail-tools",
-    view: 24.0,
-    body: r#"<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>"#,
-};
-pub(crate) static ICON_DASHBOARDS: rune::Icon = rune::Icon {
-    name: "rail-dashboards",
-    view: 24.0,
-    body: r#"<path d="M3 3v18h18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><rect x="7" y="12" width="3" height="6" rx="1" stroke="currentColor" stroke-width="2" fill="none"/><rect x="12" y="9" width="3" height="9" rx="1" stroke="currentColor" stroke-width="2" fill="none"/><rect x="17" y="6" width="3" height="12" rx="1" stroke="currentColor" stroke-width="2" fill="none"/>"#,
+    body: "<ellipse stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"12\" cy=\"5\" rx=\"9\" ry=\"3\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 5V19A9 3 0 0 0 21 19V5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 12A9 3 0 0 0 21 12\"/>",
 };
 pub(crate) static ICON_WORKFLOWS: rune::Icon = rune::Icon {
-    name: "rail-workflows",
+    name: "workflow",
     view: 24.0,
-    body: r#"<rect x="3" y="3" width="6" height="6" rx="1" stroke="currentColor" stroke-width="2" fill="none"/><rect x="15" y="3" width="6" height="6" rx="1" stroke="currentColor" stroke-width="2" fill="none"/><rect x="9" y="15" width="6" height="6" rx="1" stroke="currentColor" stroke-width="2" fill="none"/><path d="M6 9v3a1 1 0 0 0 1 1h4M18 9v3a1 1 0 0 1-1 1h-4M12 13v2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>"#,
+    body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"8\" height=\"8\" x=\"3\" y=\"3\" rx=\"2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M7 11v4a2 2 0 0 0 2 2h4\"/><rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"8\" height=\"8\" x=\"13\" y=\"13\" rx=\"2\"/>",
+};
+pub(crate) static ICON_DASHBOARDS: rune::Icon = rune::Icon {
+    name: "gauge",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m12 14 4-4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3.34 19a10 10 0 1 1 17.32 0\"/>",
+};
+pub(crate) static ICON_WORKSPACE: rune::Icon = rune::Icon {
+    name: "layout-grid",
+    view: 24.0,
+    body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"7\" height=\"7\" x=\"3\" y=\"3\" rx=\"1\"/><rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"7\" height=\"7\" x=\"14\" y=\"3\" rx=\"1\"/><rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"7\" height=\"7\" x=\"14\" y=\"14\" rx=\"1\"/><rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"7\" height=\"7\" x=\"3\" y=\"14\" rx=\"1\"/>",
 };
 pub(crate) static ICON_WAPPS: rune::Icon = rune::Icon {
-    name: "rail-wapps",
+    name: "puzzle",
     view: 24.0,
-    body: r#"<rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2" fill="none"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2" fill="none"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2" fill="none"/><path d="M14 17.5h7M17.5 14v7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>"#,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15.39 4.39a1 1 0 0 0 1.68-.474 2.5 2.5 0 1 1 3.014 3.015 1 1 0 0 0-.474 1.68l1.683 1.682a2.414 2.414 0 0 1 0 3.414L19.61 15.39a1 1 0 0 1-1.68-.474 2.5 2.5 0 1 0-3.014 3.015 1 1 0 0 1 .474 1.68l-1.683 1.682a2.414 2.414 0 0 1-3.414 0L8.61 19.61a1 1 0 0 0-1.68.474 2.5 2.5 0 1 1-3.014-3.015 1 1 0 0 0 .474-1.68l-1.683-1.682a2.414 2.414 0 0 1 0-3.414L4.39 8.61a1 1 0 0 1 1.68.474 2.5 2.5 0 1 0 3.014-3.015 1 1 0 0 1-.474-1.68l1.683-1.682a2.414 2.414 0 0 1 3.414 0z\"/>",
 };
-pub(crate) static ICON_CHEVRON_LEFT: rune::Icon = rune::Icon {
-    name: "rail-collapse",
-    view: 16.0,
-    body: r#"<path d="M10 4L6 8l4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>"#,
+pub(crate) static ICON_SETTINGS: rune::Icon = rune::Icon {
+    name: "settings",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"12\" cy=\"12\" r=\"3\"/>",
 };
-pub(crate) static ICON_CHEVRON_RIGHT: rune::Icon = rune::Icon {
-    name: "rail-expand",
-    view: 16.0,
-    body: r#"<path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>"#,
+pub(crate) static ICON_TOOLS: rune::Icon = rune::Icon {
+    name: "wrench",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z\"/>",
 };
-// A1: home-surface icons (lucide semantics, 24x24, currentColor).
+pub(crate) static ICON_PANEL_LEFT_CLOSE: rune::Icon = rune::Icon {
+    name: "panel-left-close",
+    view: 24.0,
+    body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9 3v18\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m16 15-3-3 3-3\"/>",
+};
+pub(crate) static ICON_PANEL_LEFT_OPEN: rune::Icon = rune::Icon {
+    name: "panel-left-open",
+    view: 24.0,
+    body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9 3v18\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m14 9 3 3-3 3\"/>",
+};
+pub(crate) static ICON_X: rune::Icon = rune::Icon {
+    name: "x",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M18 6 6 18\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m6 6 12 12\"/>",
+};
 pub(crate) static ICON_SEARCH: rune::Icon = rune::Icon {
     name: "search",
     view: 24.0,
-    body: r#"<circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" fill="none"/><path d="M16.5 16.5L21 21" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>"#,
+    body: "<circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"11\" cy=\"11\" r=\"8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m21 21-4.3-4.3\"/>",
 };
 pub(crate) static ICON_DOWNLOAD: rune::Icon = rune::Icon {
     name: "download",
     view: 24.0,
-    body: r#"<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>"#,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"7 10 12 15 17 10\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"12\" x2=\"12\" y1=\"15\" y2=\"3\"/>",
 };
 pub(crate) static ICON_PLUS: rune::Icon = rune::Icon {
     name: "plus",
     view: 24.0,
-    body: r#"<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>"#,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5 12h14\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 5v14\"/>",
 };
 pub(crate) static ICON_CLOCK: rune::Icon = rune::Icon {
     name: "clock",
     view: 24.0,
-    body: r#"<circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>"#,
+    body: "<circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"12\" cy=\"12\" r=\"10\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"12 6 12 12 16 14\"/>",
 };
 
 pub(crate) fn section_icon(section: Section) -> &'static rune::Icon {

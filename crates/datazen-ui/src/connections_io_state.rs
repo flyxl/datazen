@@ -1,25 +1,25 @@
 //! AppState method implementations.
 
 #![allow(unused_imports)]
-use crate::state_def::*;
-use crate::views::{next_connection, workflow_yaml};
 use crate::constants::*;
 use crate::data_grid::DataGrid;
 use crate::sql_editor::SqlEditor;
+use crate::state_def::*;
 use crate::types::{Section, TableView, Tool};
+use crate::views::{next_connection, workflow_yaml};
 use crate::{icons, splitter};
-use datazen_ui_api::{
-    AdapterDelivery, AdapterJob, Catalog, ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile,
-    DashboardWidget, DESKTOP_NOT_IMPLEMENTED, DesktopAdapter, MemoryWorkspace, ProgressSnapshot,
-    QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, UnimplementedAdapter, Workflow,
-    WorkflowStepResult, WorkspaceApi,
-};
 #[cfg(not(target_arch = "wasm32"))]
 use datazen_ui_api::UseCaseAdapter;
+use datazen_ui_api::{
+    AdapterDelivery, AdapterJob, Catalog, ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile,
+    DashboardWidget, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting,
+    SettingsApi, TabKind, TablePage, Tabs, UnimplementedAdapter, Workflow, WorkflowStepResult,
+    WorkspaceApi, DESKTOP_NOT_IMPLEMENTED,
+};
 use rune::tok::{self, type_};
 use rune::{
-    App, AppSpec, Color, Cx, El, FileDialogOptions, FileDialogResult, Ime, Key, KeyEvent,
-    TextEdit, Titlebar, Tx, col, oklch, row, text, text_input,
+    col, oklch, row, text, text_input, App, AppSpec, Color, Cx, El, FileDialogOptions,
+    FileDialogResult, Ime, Key, KeyEvent, TextEdit, Titlebar, Tx,
 };
 
 impl AppState {
@@ -109,12 +109,12 @@ impl AppState {
     /// Parse a picked import file (T7): the preview before anything is
     /// saved. The host is the side with filesystem rights.
     pub(crate) fn begin_connections_import(&mut self, path: &str) {
+        self.import_file = Some(path.to_owned());
         let password = self.import_password.text.clone();
         match self.desktop.parse_connections_import(path, &password) {
             Ok(preview) if preview.connections.is_empty() => {
                 self.import_preview = None;
-                self.import_notice =
-                    Some("the import file carries no connections".into());
+                self.import_notice = Some("the import file carries no connections".into());
             }
             Ok(preview) => {
                 self.import_preview = Some(preview);
@@ -134,7 +134,9 @@ impl AppState {
     /// Save the previewed import (T7): names already in the store are
     /// skipped; the notice counts what landed.
     pub(crate) fn confirm_connections_import(&mut self) {
-        let Some(preview) = self.import_preview.take() else { return };
+        let Some(preview) = self.import_preview.take() else {
+            return;
+        };
         match self.desktop.confirm_import(preview.handle) {
             Ok(landed) => {
                 self.import_notice = Some(format!("{landed} connections imported"));
@@ -144,10 +146,22 @@ impl AppState {
         }
     }
 
-    /// Drop the preview (T7).
-    pub(crate) fn cancel_connections_import(&mut self) {
+    /// The import modal (the React share dialog's import mode): opening it
+    /// starts from a clean slate; closing drops the journey's picks.
+    pub(crate) fn open_import_dialog(&mut self) {
+        self.import_dialog_open = true;
+        self.import_file = None;
         self.import_preview = None;
         self.import_notice = None;
+        self.import_password = TextEdit::new(String::new());
+    }
+
+    pub(crate) fn close_import_dialog(&mut self) {
+        self.import_dialog_open = false;
+        self.import_file = None;
+        self.import_preview = None;
+        self.import_notice = None;
+        self.import_password = TextEdit::new(String::new());
     }
 
     /// The outbound foreign key of the focused cell's column (T5), with the
@@ -176,7 +190,11 @@ impl AppState {
             ..Default::default()
         }
         .filter(
-            if format == "csv" { "CSV files" } else { "JSON files" },
+            if format == "csv" {
+                "CSV files"
+            } else {
+                "JSON files"
+            },
             &[format.as_str()],
         );
         tx.save_file(options, move |state: &mut AppState, result, _| {
@@ -204,7 +222,9 @@ impl AppState {
                 )),
             ),
         };
-        let started = self.desktop.start_export(&table, &format, &range, path.as_deref());
+        let started = self
+            .desktop
+            .start_export(&table, &format, &range, path.as_deref());
         let job = match started {
             Ok(job) => Some(job),
             Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {

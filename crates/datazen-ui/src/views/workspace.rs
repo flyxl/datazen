@@ -4,14 +4,17 @@
 use super::*;
 
 use crate::constants::*;
-use crate::icons::{self, ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, section_icon};
+use crate::icons::{self, section_icon};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{ResultView, Section, TableView, Tool};
 use crate::{splitter, sql_editor};
-use datazen_ui_api::{ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi};
-use rune::{FileDialogOptions, TextEdit, Tx};
+use datazen_ui_api::{
+    ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi,
+    Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi,
+};
 use rune::tok::{self, type_};
-use rune::{Color, Cx, El, col, oklch, row, text, text_input};
+use rune::{col, oklch, row, text, text_input, Color, Cx, El};
+use rune::{FileDialogOptions, TextEdit, Tx};
 
 pub(crate) fn page_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     match state.active {
@@ -58,17 +61,29 @@ pub(crate) fn workspace_empty(theme: tok::Theme) -> El {
         .fill(theme.control_off)
         .child(text("No tab open").font(type_::TITLE).color(theme.text))
         .child(
-            text("Open a table from the session object tree, or start a new query from the sidebar.")
-                .font(type_::LABEL)
-                .color(theme.text_secondary)
-                .w_full(),
+            text(
+                "Open a table from the session object tree, or start a new query from the sidebar.",
+            )
+            .font(type_::LABEL)
+            .color(theme.text_secondary)
+            .w_full(),
         )
 }
 pub(crate) fn table_workspace(state: &AppState, theme: tok::Theme, dark: bool) -> El {
-    let title = state.tabs.selected().map(|tab| tab.title.clone()).unwrap_or_default();
+    let title = state
+        .tabs
+        .selected()
+        .map(|tab| tab.title.clone())
+        .unwrap_or_default();
     let _ = &title;
     let body = match state.table_view {
-        TableView::Data => crate::data_grid::panel(state, theme.text, theme.text_secondary, theme.control_off, dark),
+        TableView::Data => crate::data_grid::panel(
+            state,
+            theme.text,
+            theme.text_secondary,
+            theme.control_off,
+            dark,
+        ),
         TableView::Ddl => ddl_view(state, &title, theme),
         TableView::Columns => columns_view(state, &title, theme),
         TableView::Indexes => indexes_view(state, &title, theme),
@@ -89,7 +104,11 @@ pub(crate) fn view_switcher(state: &AppState, theme: tok::Theme) -> El {
             .px(10.0)
             .center_y()
             .radius(6.0)
-            .fill(if active { tok::accent(0, true) } else { theme.control_off })
+            .fill(if active {
+                tok::accent(0, true)
+            } else {
+                theme.control_off
+            })
             .child(text(label).font(type_::LABEL).color(theme.text))
             .on_press(move |state: &mut AppState| state.set_table_view(view))
     };
@@ -99,27 +118,46 @@ pub(crate) fn view_switcher(state: &AppState, theme: tok::Theme) -> El {
         .h(28.0)
         .gap(6.0)
         .center_y()
-        .child(entry("view-data", "Data", TableView::Data, state.table_view == TableView::Data))
-        .child(entry("view-columns", "Columns", TableView::Columns, state.table_view == TableView::Columns))
-        .child(entry("view-indexes", "Indexes", TableView::Indexes, state.table_view == TableView::Indexes))
-        .child(entry("view-fks", "Foreign keys", TableView::ForeignKeys, state.table_view == TableView::ForeignKeys))
-        .child(entry("view-ddl", "DDL", TableView::Ddl, state.table_view == TableView::Ddl))
+        .child(entry(
+            "view-data",
+            "Data",
+            TableView::Data,
+            state.table_view == TableView::Data,
+        ))
+        .child(entry(
+            "view-columns",
+            "Columns",
+            TableView::Columns,
+            state.table_view == TableView::Columns,
+        ))
+        .child(entry(
+            "view-indexes",
+            "Indexes",
+            TableView::Indexes,
+            state.table_view == TableView::Indexes,
+        ))
+        .child(entry(
+            "view-fks",
+            "Foreign keys",
+            TableView::ForeignKeys,
+            state.table_view == TableView::ForeignKeys,
+        ))
+        .child(entry(
+            "view-ddl",
+            "DDL",
+            TableView::Ddl,
+            state.table_view == TableView::Ddl,
+        ))
 }
 
 /// E1: the honest state of one table's structure read — a read in flight,
 /// its failure sentence, or the "not loaded" hint for an entry that never
 /// landed. None when the four segments are there to draw.
 pub(crate) fn query_workspace(state: &AppState, theme: tok::Theme, dark: bool) -> El {
-    let sidebar_w = splitter::splitter_size(
-        state,
-        QUERY_SIDEBAR_WIDTH_KEY,
-        QUERY_SIDEBAR_WIDTH_DEFAULT,
-    ) as f32;
-    let editor_h = splitter::splitter_size(
-        state,
-        QUERY_EDITOR_HEIGHT_KEY,
-        QUERY_EDITOR_HEIGHT_DEFAULT,
-    ) as f32;
+    let sidebar_w =
+        splitter::splitter_size(state, QUERY_SIDEBAR_WIDTH_KEY, QUERY_SIDEBAR_WIDTH_DEFAULT) as f32;
+    let editor_h =
+        splitter::splitter_size(state, QUERY_EDITOR_HEIGHT_KEY, QUERY_EDITOR_HEIGHT_DEFAULT) as f32;
 
     let sidebar = query_sidebar(state, theme);
     let sidebar_split = splitter::splitter_handle(
@@ -137,16 +175,19 @@ pub(crate) fn query_workspace(state: &AppState, theme: tok::Theme, dark: bool) -
             .w_full()
             .h(20.0)
             .center_y()
-            .child(text("Running…".to_owned()).font(type_::LABEL).color(theme.text_secondary))
+            .child(
+                text("Running…".to_owned())
+                    .font(type_::LABEL)
+                    .color(theme.text_secondary),
+            )
     });
 
     let notice = state.query_notice.as_ref().map(|msg| {
-        row()
-            .key("query-notice")
-            .w_full()
-            .h(20.0)
-            .center_y()
-            .child(text(msg.clone()).font(type_::LABEL).color(theme.text_secondary))
+        row().key("query-notice").w_full().h(20.0).center_y().child(
+            text(msg.clone())
+                .font(type_::LABEL)
+                .color(theme.text_secondary),
+        )
     });
 
     let result_tabs = query_result_tabs_bar(state, theme);
@@ -160,7 +201,11 @@ pub(crate) fn query_workspace(state: &AppState, theme: tok::Theme, dark: bool) -
             .py(8.0)
             .radius(8.0)
             .fill(theme.control_off)
-            .child(text("No results").font(type_::LABEL).color(theme.text_secondary)),
+            .child(
+                text("No results")
+                    .font(type_::LABEL)
+                    .color(theme.text_secondary),
+            ),
     };
 
     let editor_split = splitter::splitter_handle(
@@ -202,7 +247,13 @@ pub(crate) fn query_workspace(state: &AppState, theme: tok::Theme, dark: bool) -
         .w_full()
         .h_full()
         .gap(0.0)
-        .child(col().key("query-sidebar-pane").w(sidebar_w).h_full().child(sidebar))
+        .child(
+            col()
+                .key("query-sidebar-pane")
+                .w(sidebar_w)
+                .h_full()
+                .child(sidebar),
+        )
         .child(sidebar_split)
         .child(main)
 }
@@ -226,12 +277,30 @@ pub(crate) fn query_toolbar(_state: &AppState, theme: tok::Theme) -> El {
         .gap(6.0)
         .center_y()
         .child(toolbar_button("sql-run", "Run", theme).on_press(|s: &mut AppState| s.run_query()))
-        .child(toolbar_button("sql-cancel", "Cancel", theme).on_press(|s: &mut AppState| s.cancel_query()))
-        .child(toolbar_button("sql-format", "Format", theme).on_press(|s: &mut AppState| s.format_query()))
-        .child(toolbar_button("sql-explain", "Explain", theme).on_press(|s: &mut AppState| s.explain_query()))
-        .child(toolbar_button("sql-tx-begin", "Begin", theme).on_press(|s: &mut AppState| s.query_transaction("Begin transaction")))
-        .child(toolbar_button("sql-tx-commit", "Commit", theme).on_press(|s: &mut AppState| s.query_transaction("Commit")))
-        .child(toolbar_button("sql-tx-rollback", "Rollback", theme).on_press(|s: &mut AppState| s.query_transaction("Rollback")))
+        .child(
+            toolbar_button("sql-cancel", "Cancel", theme)
+                .on_press(|s: &mut AppState| s.cancel_query()),
+        )
+        .child(
+            toolbar_button("sql-format", "Format", theme)
+                .on_press(|s: &mut AppState| s.format_query()),
+        )
+        .child(
+            toolbar_button("sql-explain", "Explain", theme)
+                .on_press(|s: &mut AppState| s.explain_query()),
+        )
+        .child(
+            toolbar_button("sql-tx-begin", "Begin", theme)
+                .on_press(|s: &mut AppState| s.query_transaction("Begin transaction")),
+        )
+        .child(
+            toolbar_button("sql-tx-commit", "Commit", theme)
+                .on_press(|s: &mut AppState| s.query_transaction("Commit")),
+        )
+        .child(
+            toolbar_button("sql-tx-rollback", "Rollback", theme)
+                .on_press(|s: &mut AppState| s.query_transaction("Rollback")),
+        )
         .child(
             text("Command+Enter runs the statement at the cursor")
                 .font(type_::LABEL)
@@ -272,7 +341,11 @@ fn query_result_tabs_bar(state: &AppState, theme: tok::Theme) -> El {
                 .gap(6.0)
                 .center_y()
                 .radius(6.0)
-                .fill(if selected { theme.card } else { theme.control_off })
+                .fill(if selected {
+                    theme.card
+                } else {
+                    theme.control_off
+                })
                 .child(text(label).font(type_::LABEL).color(theme.text))
                 .child(
                     text(if tab.pinned { "Unpin" } else { "Pin" })
@@ -299,18 +372,34 @@ fn query_result_tabs_bar(state: &AppState, theme: tok::Theme) -> El {
 }
 
 fn query_sidebar(state: &AppState, theme: tok::Theme) -> El {
-    let mut tabs = row().key("query-sidebar-tabs").w_full().h(28.0).gap(4.0).center_y();
+    let mut tabs = row()
+        .key("query-sidebar-tabs")
+        .w_full()
+        .h(28.0)
+        .gap(4.0)
+        .center_y();
     for panel in crate::types::QuerySidebarPanel::ALL {
         let active = state.query_sidebar_panel == panel;
         tabs = tabs.child(
             row()
-                .key(format!("query-sidebar-tab-{}", panel.label().to_lowercase()))
+                .key(format!(
+                    "query-sidebar-tab-{}",
+                    panel.label().to_lowercase()
+                ))
                 .h(22.0)
                 .px(8.0)
                 .center_y()
                 .radius(6.0)
-                .fill(if active { theme.card } else { theme.control_off })
-                .child(text(panel.label().to_owned()).font(type_::LABEL).color(theme.text))
+                .fill(if active {
+                    theme.card
+                } else {
+                    theme.control_off
+                })
+                .child(
+                    text(panel.label().to_owned())
+                        .font(type_::LABEL)
+                        .color(theme.text),
+                )
                 .on_press(move |s: &mut AppState| s.query_sidebar_panel = panel),
         );
     }
@@ -335,16 +424,12 @@ fn query_sidebar(state: &AppState, theme: tok::Theme) -> El {
 }
 
 fn query_history_panel(theme: tok::Theme) -> El {
-    col()
-        .key("query-history-panel")
-        .w_full()
-        .gap(6.0)
-        .child(
-            text("Query history is not exposed to the Rune UI in this host.")
-                .font(type_::LABEL)
-                .color(theme.text_secondary)
-                .w_full(),
-        )
+    col().key("query-history-panel").w_full().gap(6.0).child(
+        text("Query history is not exposed to the Rune UI in this host.")
+            .font(type_::LABEL)
+            .color(theme.text_secondary)
+            .w_full(),
+    )
 }
 
 fn query_favorites_panel(state: &AppState, theme: tok::Theme) -> El {
@@ -409,7 +494,12 @@ fn query_snippets_panel(state: &AppState, theme: tok::Theme) -> El {
 }
 
 /// A5: the result workspace — table/chart toggle, find bar, status and body.
-fn result_workspace(state: &AppState, grid: &crate::data_grid::DataGrid, theme: tok::Theme, dark: bool) -> El {
+fn result_workspace(
+    state: &AppState,
+    grid: &crate::data_grid::DataGrid,
+    theme: tok::Theme,
+    dark: bool,
+) -> El {
     let toggle = result_view_toggle(state, theme);
     let find_bar = result_find_bar(state, grid, theme);
     let status = result_status_bar(state, grid, theme);
@@ -442,7 +532,11 @@ fn result_view_toggle(state: &AppState, theme: tok::Theme) -> El {
             .px(10.0)
             .center_y()
             .radius(6.0)
-            .fill(if active { tok::accent(0, true) } else { theme.control_off })
+            .fill(if active {
+                tok::accent(0, true)
+            } else {
+                theme.control_off
+            })
             .child(text(label).font(type_::LABEL).color(theme.text))
             .on_press(move |state: &mut AppState| state.set_result_view(view))
     };
@@ -543,7 +637,13 @@ fn result_status_bar(state: &AppState, grid: &crate::data_grid::DataGrid, theme:
         "Ready".to_owned()
     };
     let (r0, r1, c0, c1) = grid.rect();
-    let selection = if grid.focus() == (0, 0) && grid.anchor == (0, 0) && r0 == 0 && r1 == 0 && c0 == 0 && c1 == 0 {
+    let selection = if grid.focus() == (0, 0)
+        && grid.anchor == (0, 0)
+        && r0 == 0
+        && r1 == 0
+        && c0 == 0
+        && c1 == 0
+    {
         // no explicit multi-selection info beyond focus; show focus cell
         let (fr, fc) = grid.focus();
         format!("r{fr}c{fc}")
@@ -597,7 +697,11 @@ fn result_chart_bars(grid: &crate::data_grid::DataGrid) -> Option<Vec<(String, u
             format!("r{r}")
         } else {
             let v = grid.cell(r, label_col);
-            if v.is_empty() { format!("r{r}") } else { v }
+            if v.is_empty() {
+                format!("r{r}")
+            } else {
+                v
+            }
         };
         let value = grid
             .cell(r, value_col)
@@ -628,7 +732,12 @@ fn result_chart_view(grid: &crate::data_grid::DataGrid, theme: tok::Theme) -> El
                     .color(theme.text_secondary),
             );
     };
-    let max = bars.iter().map(|(_, value)| *value).max().unwrap_or(1).max(1);
+    let max = bars
+        .iter()
+        .map(|(_, value)| *value)
+        .max()
+        .unwrap_or(1)
+        .max(1);
     let mut chart = row()
         .key("result-chart")
         .w_full()
@@ -675,5 +784,8 @@ fn result_chart_view(grid: &crate::data_grid::DataGrid, theme: tok::Theme) -> El
 }
 
 pub(crate) fn query_selected(state: &AppState) -> bool {
-    state.tabs.selected().is_some_and(|tab| tab.kind == TabKind::Query)
+    state
+        .tabs
+        .selected()
+        .is_some_and(|tab| tab.kind == TabKind::Query)
 }

@@ -3,8 +3,10 @@
 //! header row with filter / import / new-connection actions, the bordered
 //! card list with status pills and connect buttons, show-all paging, and the
 //! recent-queries card. Zero connections renders the centered empty state.
-//! Interaction keys (`connection-{id}`, `connection-new`, `import-*`, the
-//! recent keys) are the ones the existing tests and flows press.
+//! Import and the connection form ride the root's modal layer
+//! (`views/modals.rs`); the interaction keys (`connection-{id}`,
+//! `connection-new`, `import-*`, the recent keys) are the ones the existing
+//! tests and flows press.
 
 use super::*;
 
@@ -13,8 +15,8 @@ use crate::state_def::AppState;
 use datazen_ui_api::ConnectionProfile;
 use rune::tok::{self, type_};
 use rune::{
-    Align, Color, El, ScrollSpec, Span, TextCase, TextStyle, col, icon, oklch, oklcha, rich, row,
-    text, text_input,
+    col, icon, oklch, oklcha, rich, row, text, text_input, Align, Color, El, ScrollSpec, Span,
+    TextCase, TextStyle,
 };
 
 /// How many cards render before the show-all row appears (React `COLLAPSED_COUNT`).
@@ -22,9 +24,9 @@ const COLLAPSED_COUNT: usize = 6;
 /// The centered content column's width (React `max-w-5xl`).
 const CONTENT_WIDTH: f32 = 1008.0;
 
-/// The connections page body: banners, the centered empty state or the
-/// landing, and the import bar. The form dialog rides on top in
-/// `connection_list` (`views/connections.rs`).
+/// The connections page body: banners, and the centered empty state or the
+/// landing. The connection form and import dialogs ride the root modal layer
+/// (`views/modals.rs`).
 pub(crate) fn connections_home(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let connections = state.visible_connections();
     if connections.is_empty() {
@@ -142,7 +144,7 @@ fn empty_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                                     .font(type_::LABEL)
                                     .color(theme.text),
                             )
-                            .on_press_tx(import_press),
+                            .on_press(|state: &mut AppState| state.open_import_dialog()),
                     )
                     .child(
                         row()
@@ -163,19 +165,11 @@ fn empty_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                     ),
             ),
     )
-    // The import surface sits under the card, centered to match it; the
-    // landing keeps the full-width bar at the column's edge.
-    .child(
-        row()
-            .key("connections-empty-import-bar")
-            .w_full()
-            .justify_center()
-            .child(import_bar(state, theme)),
-    )
 }
 
-/// React State 3: the landing — hero, header row, card list, recent queries,
-/// the import bar and the shortcut footer, inside a centered scroll column.
+/// React State 3: the landing — hero, header row, card list, recent queries
+/// and the shortcut footer, inside a centered scroll column. Import runs in
+/// the modal dialog (the React share dialog), not an inline bar.
 fn landing(
     state: &AppState,
     theme: tok::Theme,
@@ -191,7 +185,9 @@ fn landing(
         .self_center()
         .gap(20.0)
         .pb(4.0)
-        .scroll(ScrollSpec { stick_bottom: false });
+        .scroll(ScrollSpec {
+            stick_bottom: false,
+        });
     for banner in banners(state, theme) {
         page = page.child(banner);
     }
@@ -199,7 +195,6 @@ fn landing(
         .child(home_header(state, theme, dark))
         .child(connection_cards(state, theme, dark, &connections))
         .child(recent_queries_card(theme))
-        .child(import_bar(state, theme))
         .child(shortcut_footer(theme))
 }
 
@@ -248,8 +243,16 @@ fn home_hero(
 
 /// "N connections · M engine types" with the numbers bold (React's `<b>` runs).
 fn counts_line(connection_count: usize, engine_count: usize, strong: Color) -> (String, Vec<Span>) {
-    let connection_word = if connection_count == 1 { "connection" } else { "connections" };
-    let engine_word = if engine_count == 1 { "engine type" } else { "engine types" };
+    let connection_word = if connection_count == 1 {
+        "connection"
+    } else {
+        "connections"
+    };
+    let engine_word = if engine_count == 1 {
+        "engine type"
+    } else {
+        "engine types"
+    };
     let line = format!("{connection_count} {connection_word} · {engine_count} {engine_word}");
     let mut spans = Vec::new();
     if let Some(after) = line.find(' ') {
@@ -320,8 +323,12 @@ fn home_header(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 .border(1.0, theme.card_border)
                 .label("Import connections")
                 .child(icon(&ICON_DOWNLOAD, 13.0).color(theme.text_secondary))
-                .child(text("Import connections…").font(type_::LABEL).color(theme.text))
-                .on_press_tx(import_press),
+                .child(
+                    text("Import connections…")
+                        .font(type_::LABEL)
+                        .color(theme.text),
+                )
+                .on_press(|state: &mut AppState| state.open_import_dialog()),
         )
         .child(
             row()
@@ -364,10 +371,7 @@ fn connection_cards(
         COLLAPSED_COUNT
     };
 
-    let mut section = col()
-        .key("connections-cards-section")
-        .w_full()
-        .gap(6.0);
+    let mut section = col().key("connections-cards-section").w_full().gap(6.0);
     let mut cards = col()
         .key("connections-card-list")
         .w_full()
@@ -483,8 +487,16 @@ fn paging_row(state: &AppState, theme: tok::Theme, visible_count: usize, total: 
                 .px(8.0)
                 .center_y()
                 .radius(6.0)
-                .label(if state.connections_show_all { "Show less" } else { "Show all" })
-                .child(text(show_all_label).font(type_::LABEL).color(tok::accent(0, true)))
+                .label(if state.connections_show_all {
+                    "Show less"
+                } else {
+                    "Show all"
+                })
+                .child(
+                    text(show_all_label)
+                        .font(type_::LABEL)
+                        .color(tok::accent(0, true)),
+                )
                 .on_press(|state: &mut AppState| {
                     state.connections_show_all = !state.connections_show_all;
                 }),
@@ -589,7 +601,10 @@ fn shortcut_footer(theme: tok::Theme) -> El {
 fn status_pill(state: &AppState, theme: tok::Theme, dark: bool, id: &str) -> El {
     let open = state.connection_is_open(id);
     let connecting = state.connect_loading.is_some()
-        && state.recent_connection_ids.first().is_some_and(|first| first == id);
+        && state
+            .recent_connection_ids
+            .first()
+            .is_some_and(|first| first == id);
     let (bg, fg, dot, label) = if open {
         (
             oklcha(if dark { 0.7 } else { 0.55 }, 0.16, 152.0, 0.16),
@@ -634,7 +649,12 @@ fn status_pill(state: &AppState, theme: tok::Theme, dark: bool, id: &str) -> El 
 fn engine_badge(id: &str, engine: &str, theme: tok::Theme, dark: bool, size: f32) -> El {
     let hue = engine_hue(engine);
     let fill = oklch(if dark { 0.5 } else { 0.58 }, 0.12, hue);
-    let initial = engine.chars().next().unwrap_or('?').to_uppercase().to_string();
+    let initial = engine
+        .chars()
+        .next()
+        .unwrap_or('?')
+        .to_uppercase()
+        .to_string();
     row()
         .key(format!("conn-badge-{id}"))
         .size(size, size)
