@@ -1,7 +1,7 @@
 ## Current Task
 - **任务**: A1 收口与全局视觉/交互对齐验证（plan-native-5）— A2–A6 已合流主轨，待统一门禁、契约内收尾与逐页视觉一致性校验
 - **负责人**: Coder Agent
-- **状态**: L1–L7 已完成；A1 进行中（首页与导航器 Recent/All/过滤已落地，pinned/用户分组受契约限制）。A2 连接表单对话框化、A3 查询面板对齐、A4 表浏览对齐、A5 结果工作区对齐、A6 设置导航分组已合流主轨。第五阶段计划见 [plan-native-5.md](plan-native-5.md)。逐页 bounds 扫描（headless `--snap/--tree`，1440×816 与 960×640、dark/light）已在本次收口；A1 仍余契约受限的 pinned/用户分组。
+- **状态**: L1–L7 已完成；A1 进行中（首页与导航器 Recent/All/过滤已落地；单行输入框文字已统一垂直居中，覆盖首页搜索、设置、仪表盘、网格与 SQL 编辑器查找栏；pinned/用户分组受契约限制）。A2 连接表单对话框化、A3 查询面板对齐、A4 表浏览对齐、A5 结果工作区对齐、A6 设置导航分组已合流主轨。第五阶段计划见 [plan-native-5.md](plan-native-5.md)。逐页 bounds 扫描（headless `--snap/--tree`，1440×816 与 960×640、dark/light）已在本次收口；A1 仍余契约受限的 pinned/用户分组。
 
 ## Completed Work (recent)
 - [x] 新建/导入连接窗口布局重构（本次提交）：`views/modals.rs`、`views/connections.rs` 重构为 React 对齐布局。新建连接：左侧数据库类型选择栏 + 右侧标题/可滚动表单/底部操作区，表单按两列网格排列基础与连接字段并保留高级/隧道区块结构；导入连接：对齐分享对话框导入模式的提示、文件选择、密码与预览/结果区域及底部操作。保持既有键与行为兼容（`connection-dialog*`、`connection-form*`、`connection-save`、`import-dialog*`、`import-choose-file`、`import-password-input`、`import-confirm` 等），能力受当前 `AppState`/`datazen-ui-api` 约束。（见 [testing/A1-connections-home.md](testing/A1-connections-home.md)、[testing/A2-connection-form-dialog.md](testing/A2-connection-form-dialog.md)）
@@ -39,6 +39,7 @@ React 页面和组件保留。不删除、不改成空壳、不把现有入口�
 - [x] A4 表浏览对齐：行号 gutter、按表列宽持久化与回填、FK 面包屑、状态横幅、待提交条（`e041fc463`, `5ae657365`；测试报告 `testing/A4-table-browse.md`）
 
 ## Verification
+- 单行输入框居中（本次）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **56 + 189 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
 - 最小窗口布局收口（本次）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **56 + 187 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
 - 新建/导入连接窗口布局重构（本次提交）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **183 + 56 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
 - A1 导航器基础组件与 ConnectionNavigatorTree 集成/样式重构（`c0da43bd0` + 本次修复）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **183 + 56 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
@@ -109,3 +110,11 @@ React 页面和组件保留。不删除、不改成空壳、不把现有入口�
 - **修复**：`views/connections.rs` 移除表单内动作行；`views/modals.rs` 页脚按 React 顺序改为测试连接/取消/保存（保存主按钮复用 `save_connection_form`，键 `connection-save` 保留，文案「保存」）。动作行移出后表单高 433pt，960 与 1440 下均无需滚动即可看全字段。
 - **测试**：新增 `chrome_metrics::the_connection_and_import_dialogs_fit_the_minimum_window`（960x640 下两种对话框在窗内、页脚与主按钮可见），已反向验证。
 - **门禁**：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **56 + 188 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
+
+## 增量：单行输入框文字垂直居中（本次）
+
+- **问题**：Rune 的 `text_input` 把行盒从内容盒顶边开始排，`.center_y()` 只作用于子元素（`AlignItems::CENTER`），因此凡是给输入框设了固定高度（`.h(24|28|36)`）的字段，文字与光标都贴着顶边。首页两个搜索框最明显：1440×816 实测 `navigator-filter-input` 文字墨迹 92.5..101.5、中心 97.0，而盒中心 104.0（高 7pt）；`home-connections-filter` 同病（238.25 vs 245.25）。此前的 `8e81314ed`（加 `single_line`）、`ae18d90ec`（高度改 20）、`3e9a3f897`（改回 28）只动了高度，都没能动文字位置。
+- **修复**：新增共享助手 `crates/datazen-ui/src/ui/mod.rs::centered_field_pad(style, height)` = `((height - style.line_px()) / 2.0).max(0.0)`（`TextStyle::line_px()` 见 `vendor/rune/crates/rune/src/tok.rs:131`，`type_::LABEL` 12pt → 15pt 行高），把余量对称地还给上下内边距：文字居中，同时整个字段仍是完整命中区（不像把字段压到行高那样只剩 15pt 可点）。
+- **覆盖**：全部 22 处 `text_input` 调用改为 `.py(centered_field_pad(<style>, <height>))` 并去掉无效的 `.center_y()`——`ui/nav.rs` 导航器搜索、`views/connections_home.rs` 首页筛选、`views/connections.rs` 连接表单/导入密码（36pt）、`views/settings.rs` 8 个设置输入、`views/structure.rs` 草稿名/类型、`views/dashboards_workflows.rs` widget 标题/查询、`views/workspace.rs` 结果查找、`views/tools_ops.rs` 值搜索、`data_grid/view.rs` 过滤与单元格编辑、`sql_editor/view.rs` 查找/替换。
+- **实测**（1440×816 dark，headless `--snap` + 像素行分布，2 倍缩放）：导航器搜索文字中心 103.75（盒 104.0）、首页筛选 244.75（245.25）、widget 标题 182.25（182.25）、设置页大小 215.75（216.0）、连接对话框名称 221.0（221.0），均在 0.5pt 内；修复前两处搜索框偏 7pt。
+- **回归测试**（`crates/datazen-ui/src/tests/chrome_metrics.rs`）：`single_line_fields_put_their_text_in_the_middle` 断言助手在 24/28/36pt 与 13pt 字体下都满足 `2*pad + line_px == height`、不会给出负内边距、且 LABEL@28 恰为 6.5。

@@ -134,3 +134,13 @@
 - **结果**：960×640（light）下首页横向零越界；1440×816 布局不变（旧断言、键与交互全部保持）。
 - **测试**：`chrome_metrics::every_section_keeps_its_controls_inside_the_minimum_window_width` 覆盖 Connections 页及全站六页；已反向验证（去掉 header 的 `flex_wrap` 后该测试失败）。
 - **门禁**：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **56 + 187 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
+
+## 增量：单行输入框文字垂直居中（本次）
+
+- **现象**：首页两个搜索框的文字都贴在盒子顶边（导航器 `Search…`、连接区 `Filter connections…`）。1440×816、dark、headless 截图按行统计墨迹：`navigator-filter-input`（rect [150,90,224,28]）墨迹 92.5..101.5、中心 97.0，盒中心 104.0，偏上 7pt；`home-connections-filter`（rect [901,231.25,183,28]）墨迹 233.5..243、中心 238.25，盒中心 245.25，同样偏上 7pt。图标（中心 104 / 245.25）与文字不齐，肉眼即“没居中”。
+- **根因**：`text_input` 是单个 text 元素（TEXTBOX role），行盒从内容盒顶边开始排；`.center_y()` 设置的是父级 `AlignItems::CENTER`，只影响子元素，不会让自身文字居中。此前 `8e81314ed`/`ae18d90ec`/`3e9a3f897` 三次调高度都没有改变这一点。
+- **修复**：`crates/datazen-ui/src/ui/mod.rs` 增加 `centered_field_pad(style, height)`（`((height - style.line_px()) / 2.0).max(0.0)`），两处搜索框改为 `.py(centered_field_pad(type_::LABEL, 28.0))` 并删掉无效的 `.center_y()`；同一助手也铺到其余固定高度的单行输入（设置页、连接表单/导入密码、仪表盘 widget、结构草稿、工作区结果查找、值搜索、网格过滤与单元格编辑、SQL 查找/替换），避免同类问题逐页复发。
+- **结果**（同口径实测，输入文字/占位符墨迹中心 vs 盒中心）：导航器搜索 −0.25pt、首页筛选 −0.5pt、widget 标题 0.00pt、设置页大小 −0.25pt、连接对话框名称 0.00pt；字段矩形与命中区不变（28pt 仍是 28pt），空格子依然整块可点。
+- **备选与取舍**：曾试“输入不设高度、靠父 row 的 `center_y` 居中”（rune-knobs 的缺省写法），文字偏差 0.5pt 但命中区只剩 15pt 高；也试固定 28pt + 硬编码 `py(6.0)`，偏差 1pt 且把字体度量写死。最终用按行高计算的对称内边距：零硬编码、命中区完整、偏差 ≤0.5pt。
+- **测试**：`chrome_metrics::single_line_fields_put_their_text_in_the_middle`（24/28/36pt 与 13pt 字体下 `2*pad + line_px == height`、不产生负内边距、LABEL@28 为 6.5）。
+- **门禁**：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **56 + 189 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
