@@ -274,6 +274,7 @@ pub(crate) fn dashboards_page(state: &AppState, theme: tok::Theme) -> El {
                     text_input(&state.widget_query, type_::LABEL).single_line()
                         .key("widget-query-input")
                         .w(260.0)
+                        .shrink()
                         .h(24.0)
                         .on_edit(|state: &mut AppState| &mut state.widget_query),
                 )

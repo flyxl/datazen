@@ -53,11 +53,15 @@ pub(crate) fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
         .gap(12.0)
         .fill(theme.bg)
         .child(
+            // The label takes the leftover room, not the whole band: a
+            // `w_full` label measures the padding box and pushes the trailing
+            // controls past the window's right edge.
             text(state.active.label())
                 .key("datazen-titlebar-label")
                 .font(type_::TITLE)
                 .color(theme.text)
-                .w_full(),
+                .grow(1.0)
+                .min_w(0.0),
         )
         .child(
             row()

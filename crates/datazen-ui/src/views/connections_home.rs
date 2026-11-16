@@ -299,6 +299,7 @@ fn home_header(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .w_full()
         .gap(8.0)
         .center_y()
+        .flex_wrap()
         .child(
             text("Your connections")
                 .key("connections-section-title")
@@ -630,6 +631,7 @@ fn mcp_promo_bar(theme: tok::Theme, dark: bool) -> El {
         )
         .child(
             col()
+                .grow(1.0)
                 .min_w(0.0)
                 .gap(2.0)
                 .child(
@@ -640,10 +642,11 @@ fn mcp_promo_bar(theme: tok::Theme, dark: bool) -> El {
                 .child(
                     text("Connect AI agents to your local databases via MCP.")
                         .font(type_::LABEL)
-                        .color(theme.text_secondary),
+                        .color(theme.text_secondary)
+                        .wrap()
+                        .max_lines(2),
                 ),
         )
-        .child(col().grow(1.0))
         .child(
             row()
                 .h(30.0)
@@ -684,6 +687,7 @@ fn shortcut_footer(theme: tok::Theme) -> El {
         .gap(18.0)
         .justify_center()
         .center_y()
+        .flex_wrap()
         .child(shortcut_hint("connections-shortcut-key", "⌘↩", "Run query", theme))
         .child(shortcut_hint("connections-shortcut-save", "⌘S", "Save query", theme))
         .child(shortcut_hint("connections-shortcut-format", "⇧⌥F", "Format SQL", theme))

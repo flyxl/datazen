@@ -22,10 +22,16 @@ use rune::{FileDialogOptions, TextEdit, Tx};
 /// navigation switching is observable and addressable.
 pub(crate) fn settings_page(state: &AppState, theme: tok::Theme) -> El {
     let active = state.settings_section();
+    // The page is one row of the page column, which also holds the content
+    // toolbar, the tab strip and the status bar: `h_full` measured the whole
+    // column (the padding box) and pushed the status bar past the window's
+    // bottom edge. A grown leftover keeps the page inside its slot.
     row()
         .key("settings-page")
         .w_full()
-        .h_full()
+        .grow(1.0)
+        .min_h(0.0)
+        .min_w(0.0)
         .gap(0.0)
         .child(settings_nav(state, theme, active))
         .child(settings_content(state, theme, active))
@@ -203,9 +209,10 @@ fn data_browsing_section(state: &AppState, theme: tok::Theme) -> El {
             row()
                 .key("settings-data")
                 .w_full()
-                .h(32.0)
+                .min_h(32.0)
                 .gap(8.0)
                 .center_y()
+                .flex_wrap()
                 .child(
                     text(format!("Rows per page: {page_size}"))
                         .font(type_::LABEL)
@@ -291,7 +298,9 @@ fn placeholder_section(id: &str, label: &str, theme: tok::Theme) -> El {
                 "{label} settings are not available in this Rune build yet."
             ))
             .font(type_::LABEL)
-            .color(theme.text_secondary),
+            .color(theme.text_secondary)
+            .w_full()
+            .wrap(),
         )
 }
 
@@ -330,9 +339,10 @@ fn snippets_section(state: &AppState, theme: tok::Theme) -> El {
             row()
                 .key("snippet-form")
                 .w_full()
-                .h(28.0)
+                .min_h(28.0)
                 .gap(8.0)
                 .center_y()
+                .flex_wrap()
                 .child(
                     text_input(&state.snippet_name, type_::LABEL).single_line()
                         .key("snippet-name-input")
@@ -344,6 +354,7 @@ fn snippets_section(state: &AppState, theme: tok::Theme) -> El {
                     text_input(&state.snippet_sql, type_::LABEL).single_line()
                         .key("snippet-sql-input")
                         .w(280.0)
+                        .min_w(0.0)
                         .h(24.0)
                         .on_edit(|state: &mut AppState| &mut state.snippet_sql),
                 )
@@ -452,7 +463,8 @@ pub(crate) fn favorites_section(state: &AppState, theme: tok::Theme) -> El {
                 .child(
                     text_input(&state.favorite_title, type_::LABEL).single_line()
                         .key("favorite-title-input")
-                        .w(200.0)
+                        .grow(1.0)
+                        .min_w(0.0)
                         .h(24.0)
                         .on_edit(|state: &mut AppState| &mut state.favorite_title),
                 )
@@ -658,9 +670,10 @@ pub(crate) fn import_section(state: &AppState, theme: tok::Theme) -> El {
             row()
                 .key("import-step-1")
                 .w_full()
-                .h(28.0)
+                .min_h(28.0)
                 .gap(8.0)
                 .center_y()
+                .flex_wrap()
                 .child(
                     text("Step 1 · Source".to_owned())
                         .font(type_::LABEL)
@@ -811,9 +824,10 @@ pub(crate) fn export_section(state: &AppState, theme: tok::Theme) -> El {
             row()
                 .key("export-form")
                 .w_full()
-                .h(28.0)
+                .min_h(28.0)
                 .gap(8.0)
                 .center_y()
+                .flex_wrap()
                 .child(
                     row()
                         .key("export-format")

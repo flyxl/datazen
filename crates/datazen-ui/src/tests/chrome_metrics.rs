@@ -239,3 +239,165 @@ use rune::{Env, Runtime};
             "reloaded page reapplies persisted column width"
         );
     }
+
+    #[test]
+    fn the_titlebar_keeps_its_theme_toggle_inside_the_window() {
+        // L3 regression: the section label is a grown leftover, not a
+        // `w_full` band. A full-width label measures the padding box and
+        // lays the trailing toggle out past the right edge — at every
+        // window width, including the 960pt minimum.
+        for (width, height) in [(1440.0, 900.0), (960.0, 640.0)] {
+            let env = Env {
+                system_dark: true,
+                scale: 1.0,
+            };
+            let mut rt = Runtime::new(AppState::default(), view, (width, height), env);
+            rt.frame(0.0);
+            let elements = rt.elements();
+            let titlebar = elements
+                .iter()
+                .find(|e| e.key.as_deref() == Some("datazen-titlebar"))
+                .expect("titlebar band");
+            assert!(
+                (titlebar.rect[3] - 40.0).abs() < 1.0,
+                "{width}: titlebar height {}, want 40",
+                titlebar.rect[3]
+            );
+            let label = elements
+                .iter()
+                .find(|e| e.key.as_deref() == Some("datazen-titlebar-label"))
+                .expect("section label");
+            let toggle = elements
+                .iter()
+                .find(|e| e.key.as_deref() == Some("datazen-theme-toggle"))
+                .expect("theme toggle");
+            assert!(
+                toggle.rect[0] + toggle.rect[2] <= width + 0.5,
+                "{width}: theme toggle {:?} hangs past the right edge",
+                toggle.rect
+            );
+            assert!(
+                toggle.rect[0] >= width * 0.5,
+                "{width}: theme toggle {:?} is not at the trailing edge",
+                toggle.rect
+            );
+            assert!(
+                label.rect[0] + label.rect[2] <= toggle.rect[0] + 0.5,
+                "{width}: label {:?} overlaps the toggle {:?}",
+                label.rect,
+                toggle.rect
+            );
+            assert!(
+                label.rect[0] >= 12.0,
+                "{width}: label {:?} ignores the leading inset",
+                label.rect
+            );
+        }
+    }
+
+    #[test]
+    fn every_section_keeps_its_controls_inside_the_minimum_window_width() {
+        // L3 pins the window at 960x640. There the rail (112) and navigator
+        // (280) leave 567 for the page and ~471 inside its padding, so header
+        // action rows, settings label/control pairs and the dashboard form
+        // used to push their last control past the right edge. Nothing may
+        // leave the window horizontally (taller scroll content is fine).
+        for section in [
+            Section::Connections,
+            Section::Workspace,
+            Section::Dashboards,
+            Section::Workflows,
+            Section::Wapps,
+            Section::Settings,
+        ] {
+            let mut rt = Runtime::new(
+                AppState::default(),
+                view,
+                (960.0, 640.0),
+                Env {
+                    system_dark: true,
+                    scale: 1.0,
+                },
+            );
+            rt.state.active = section;
+            rt.frame(0.0);
+            for e in rt.elements() {
+                let [x, _, w, _] = e.rect;
+                assert!(
+                    x >= -0.5 && x + w <= 960.5,
+                    "{section:?}: {:?} {:?} hangs past the right edge",
+                    e.key,
+                    e.rect
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn every_settings_section_keeps_its_rows_inside_the_minimum_window() {
+        use crate::settings_state::SETTINGS_SECTIONS;
+        for def in SETTINGS_SECTIONS {
+            let mut rt = Runtime::new(
+                AppState::default(),
+                view,
+                (960.0, 640.0),
+                Env {
+                    system_dark: true,
+                    scale: 1.0,
+                },
+            );
+            rt.state.active = Section::Settings;
+            rt.state.set_settings_section(def.id);
+            rt.frame(0.0);
+            let content = rt
+                .elements()
+                .into_iter()
+                .find(|e| e.key.as_deref() == Some(&format!("settings-content-{}", def.id)))
+                .unwrap_or_else(|| panic!("{}: content column", def.id));
+            assert!(
+                content.rect[0] + content.rect[2] <= 960.5,
+                "{}: content {:?} hangs past the right edge",
+                def.id,
+                content.rect
+            );
+        }
+    }
+
+    #[test]
+    fn the_settings_page_ends_above_the_status_bar() {
+        // The page is one row of the page column, next to the toolbar and the
+        // status bar: measuring it against the whole column (h_full) pushed
+        // the status bar out of the window.
+        let mut rt = Runtime::new(
+            AppState::default(),
+            view,
+            (960.0, 640.0),
+            Env {
+                system_dark: true,
+                scale: 1.0,
+            },
+        );
+        rt.state.active = Section::Settings;
+        rt.frame(0.0);
+        let elements = rt.elements();
+        let rect = |key: &str| {
+            elements
+                .iter()
+                .find(|e| e.key.as_deref() == Some(key))
+                .unwrap_or_else(|| panic!("{key} present"))
+                .rect
+        };
+        let page = rect("settings-page");
+        let bar = rect("content-status-bar");
+        assert!(
+            page[1] + page[3] <= bar[1] + 0.5,
+            "settings page {:?} overlaps the status bar {:?}",
+            page,
+            bar
+        );
+        assert!(
+            bar[1] + bar[3] <= 640.5,
+            "status bar {:?} leaves the 640pt window",
+            bar
+        );
+    }
