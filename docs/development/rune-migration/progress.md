@@ -67,3 +67,13 @@ React 页面和组件保留。不删除、不改成空壳、不把现有入口�
   - 图标：补充 `ICON_PLAY`、`ICON_COPY`、`ICON_TERMINAL`、`ICON_SPARKLES`。
 - **限制**：未改 `packages/frontend`/`packages/web`、内核契约与 `datazen-ui-api`；`ConnectionProfile` 无 host/port/group、无真实 query history/MCP 配置来源，相关内容以现有数据与诚实占位呈现。
 - **门禁**：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **56 + 183 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。本环境无法抓取运行中 GUI 截图（display capture 不可用），以本地参考图与 React 实现对齐。
+
+## 增量：主窗口左侧功能栏对齐 React（本次）
+
+- **目标**：对齐 React `WorkspaceModeSidebar` 左侧主导航栏（`Databases / Workflow / Dashboard / Workspace / Extensions`，底部 `Settings` + 折叠）。
+- **改动**：`crates/datazen-ui/src/views/chrome.rs`、`crates/datazen-ui/src/types.rs`、`crates/datazen-ui/src/tests/{rail_modals.rs,host_jobs.rs,shell_grid.rs,io_tools.rs,sync_transfer.rs}`、`docs/development/rune-migration/testing/A1-connections-home.md`
+  - Rail 顶部改为 React 顺序与标签：`Databases`、`Workflow`、`Dashboard`、`Workspace`、`Extensions`；底部为 `Settings` 与折叠按钮；移除非 React 主侧栏项 `Tools` 的 rail 入口（`Section::Tools` 功能仍保留在代码中，但不再显示在主 rail）。
+  - `Section::label()` 对齐主导航展示文案（`Connections→Databases`、`Workflows→Workflow`、`Dashboards→Dashboard`、`Wapps→Extensions`）。
+  - Rail 视觉细化：去圆角项样式、紧凑分组间距、卡片底色与右侧边框，贴近 React 侧栏观感。
+  - 测试适配：更新 rail 顺序/图标/存在性断言；原依赖 `rail-tools` 点击进入 Tools 的用例改为 `state.select(Section::Tools)` 以保持行为覆盖。
+- **门禁**：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **183 + 56 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。

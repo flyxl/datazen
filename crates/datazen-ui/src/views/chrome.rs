@@ -36,7 +36,7 @@ pub(crate) fn rail_item(state: &AppState, section: Section, expanded: bool, dark
         .px(if expanded { 12.0 } else { 0.0 })
         .center_y()
         .gap(if expanded { 10.0 } else { 0.0 })
-        .radius(8.0)
+        .radius(0.0)
         .fill(bg)
         .role("tab")
         .label(section.label())
@@ -67,16 +67,14 @@ pub(crate) fn rail_view(state: &AppState, dark: bool) -> El {
     let theme = tok::theme(dark);
     let expanded = state.sidebar_expanded();
     let width = state.sidebar_rail_width() as f32;
-    // The React sidebar's top group (WorkspaceModeSidebar): databases,
-    // workflows, dashboards, workspace pages, extensions — Tools rides after
-    // the React five, and Settings sits in the bottom group over the toggle.
-    let mut items = col().w_full().gap(4.0);
+    // React WorkspaceModeSidebar top group: Databases, Workflow, Dashboard,
+    // Workspace, Extensions.
+    let mut items = col().w_full().gap(2.0);
     for section in [
         Section::Connections,
         Section::Workflows,
         Section::Dashboards,
         Section::Workspace,
-        Section::Tools,
         Section::Wapps,
     ] {
         items = items.child(rail_item(state, section, expanded, dark));
@@ -90,7 +88,7 @@ pub(crate) fn rail_view(state: &AppState, dark: bool) -> El {
         .key("rail-toggle")
         .w_full()
         .h(40.0)
-        .radius(8.0)
+        .radius(0.0)
         .hover(theme.hover)
         .label(if expanded {
             "Collapse sidebar"
@@ -121,17 +119,17 @@ pub(crate) fn rail_view(state: &AppState, dark: bool) -> El {
     let bottom = col()
         .key("rail-bottom")
         .w_full()
-        .gap(4.0)
+        .gap(2.0)
         .child(rail_item(state, Section::Settings, expanded, dark))
         .child(toggle);
     col()
         .key("datazen-rail")
         .w(width)
         .h_full()
-        .px(4.0)
-        .py(8.0)
-        .gap(8.0)
-        .fill(theme.bg)
+        .py(0.0)
+        .gap(0.0)
+        .fill(theme.card)
+        .border_sides([0.0, 1.0, 0.0, 0.0], theme.card_border)
         .child(items)
         .child(col().w_full().grow(1.0))
         .child(bottom)

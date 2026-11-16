@@ -257,7 +257,7 @@ use rune::{Env, Runtime};
         let tree = runtime.accessibility_json();
         let nav = find(&tree, "rail-wapps").expect("the sidebar lists the area");
         assert_eq!(nav["role"], "tab");
-        assert_eq!(nav["name"], "WAPPS");
+        assert_eq!(nav["name"], "Extensions");
 
         let page = find(&tree, "wapps-page").expect("the page is in the tree");
         assert!(find(&tree, "wapps-pending").is_some(), "the WAPPS entry is mounted");
@@ -268,7 +268,10 @@ use rune::{Env, Runtime};
         names(page, &mut texts);
         let joined = texts.join(" | ");
         assert!(joined.contains("Not yet migrated"), "the page says it: {joined}");
-        assert!(joined.contains("The React page is still there"), "WAPPS points at React: {joined}");
+        assert!(
+            joined.contains("The React page is still there"),
+            "extensions entry points at React: {joined}"
+        );
         assert!(joined.contains("The React wizard is still there"), "onboarding points at React: {joined}");
         assert!(joined.contains("do not go into Rune"), "WAPP iframes stay out: {joined}");
 
@@ -313,10 +316,18 @@ use rune::{Env, Runtime};
         runtime.frame(0.0);
 
         assert!(runtime.find("datazen-root").is_some());
-        for section in Section::ALL {
+        for section in [
+            Section::Connections,
+            Section::Workflows,
+            Section::Dashboards,
+            Section::Workspace,
+            Section::Wapps,
+            Section::Settings,
+        ] {
             let id = format!("rail-{}", section.key());
             assert!(runtime.find(&id).is_some(), "missing navigation node: {id}");
         }
+        assert!(runtime.find("rail-tools").is_none(), "tools not on the main rail");
     }
 
     #[test]
@@ -506,16 +517,25 @@ use rune::{Env, Runtime};
     }
 
     #[test]
-    fn the_sidebar_lists_only_connections_workspace_and_settings() {
+    fn the_sidebar_lists_the_primary_sections() {
         let mut runtime = runtime();
         runtime.frame(0.0);
 
-        for key in ["connections", "workspace", "settings"] {
+        for key in [
+            "connections",
+            "workflows",
+            "dashboards",
+            "workspace",
+            "wapps",
+            "settings",
+        ] {
             let id = format!("rail-{key}");
             assert!(runtime.find(&id).is_some(), "missing navigation node: {id}");
         }
-        // Three of the four old placeholder pages are gone for good; workflows
-        // returned as a real page with the W series.
+        assert!(
+            runtime.find("rail-tools").is_none(),
+            "tools is not part of the React-aligned main rail"
+        );
         for key in ["sql-editor", "data-browser", "schema"] {
             let id = format!("rail-{key}");
             assert!(runtime.find(&id).is_none(), "{id} is not a product page anymore");

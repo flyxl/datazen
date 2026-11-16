@@ -8,16 +8,15 @@ fn the_rail_orders_sections_like_the_react_sidebar() {
     let mut runtime = runtime();
     runtime.frame(0.0);
 
-    // The top group sits in the React sidebar's order: databases,
-    // workflows, dashboards, workspace pages — then Tools and the
-    // extensions entry — each under the one above it.
+    // The top group follows React WorkspaceModeSidebar: Databases, Workflow,
+    // Dashboard, Workspace, Extensions; Settings and the toggle sit in the
+    // bottom group.
     let mut previous_y = f32::NEG_INFINITY;
     for section in [
         Section::Connections,
         Section::Workflows,
         Section::Dashboards,
         Section::Workspace,
-        Section::Tools,
         Section::Wapps,
     ] {
         let id = format!("rail-{}", section.key());
@@ -30,12 +29,10 @@ fn the_rail_orders_sections_like_the_react_sidebar() {
         previous_y = y;
     }
 
-    // Settings left the top group: it is the bottom group's first row, and
-    // the collapse toggle is the rail's last row under it.
     let (_, wapps_y) = runtime.find("rail-wapps").expect("the extensions entry");
     let (_, settings_y) = runtime.find("rail-settings").expect("the settings entry");
     let (_, toggle_y) = runtime.find("rail-toggle").expect("the collapse toggle");
-    assert!(settings_y > wapps_y, "settings is not in the top group");
+    assert!(settings_y > wapps_y, "settings is in the bottom group");
     assert!(
         toggle_y > settings_y,
         "the toggle is under settings: settings {settings_y}, toggle {toggle_y}"
@@ -44,10 +41,9 @@ fn the_rail_orders_sections_like_the_react_sidebar() {
 
 #[test]
 fn the_rail_icons_are_the_react_lucide_set() {
-    // The rail draws the React sidebar's lucide icons, one per section, and
-    // the toggle draws lucide's panel icons — the same picture at the same
-    // spots (WorkspaceModeSidebar's Database/Workflow/Gauge/LayoutGrid/
-    // Puzzle/Settings/PanelLeft*).
+    // The rail draws React-aligned lucide icons for the primary sections and
+    // the toggle (WorkspaceModeSidebar: Database/Workflow/Gauge/LayoutGrid/
+    // Puzzle/Settings/PanelLeft*). Tools keeps its wrench icon.
     assert_eq!(
         crate::icons::section_icon(Section::Connections).name,
         "database"
@@ -64,8 +60,8 @@ fn the_rail_icons_are_the_react_lucide_set() {
         crate::icons::section_icon(Section::Workspace).name,
         "layout-grid"
     );
-    assert_eq!(crate::icons::section_icon(Section::Tools).name, "wrench");
     assert_eq!(crate::icons::section_icon(Section::Wapps).name, "puzzle");
+    assert_eq!(crate::icons::section_icon(Section::Tools).name, "wrench");
     assert_eq!(
         crate::icons::section_icon(Section::Settings).name,
         "settings"

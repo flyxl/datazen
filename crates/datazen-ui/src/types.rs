@@ -47,13 +47,14 @@ impl Section {
 
     pub(crate) const fn label(self) -> &'static str {
         match self {
-            Self::Connections => "Connections",
+            // Align rail/main navigation labels with the React sidebar.
+            Self::Connections => "Databases",
             Self::Workspace => "Workspace",
             Self::Settings => "Settings",
             Self::Tools => "Tools",
-            Self::Dashboards => "Dashboards",
-            Self::Workflows => "Workflows",
-            Self::Wapps => "WAPPS",
+            Self::Dashboards => "Dashboard",
+            Self::Workflows => "Workflow",
+            Self::Wapps => "Extensions",
         }
     }
 }

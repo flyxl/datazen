@@ -290,9 +290,7 @@ fn a_value_search_lists_hits_and_a_hit_locates_the_table_with_a_filter() {
         });
 
     // Tools page, the search tab.
-    let (x, y) = runtime.find("rail-tools").unwrap();
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
+    runtime.state.select(crate::types::Section::Tools);
     runtime.frame(1.0);
     let (x, y) = runtime.find("tool-search").expect("the search tab");
     runtime.pointer_down(x, y);
@@ -357,10 +355,10 @@ fn a_value_search_lists_hits_and_a_hit_locates_the_table_with_a_filter() {
 
     // Cancel while in flight: the delivery lands nowhere.
     runtime.state.value_search_value = rune::TextEdit::new("again");
-    let (x, y) = runtime.find("rail-tools").unwrap();
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
+    runtime.state.select(crate::types::Section::Tools);
+    runtime.frame(0.0);
     runtime.frame(1.0);
+    runtime.frame(0.0);
     let (x, y) = runtime.find("value-search-start").unwrap();
     runtime.pointer_down(x, y);
     runtime.pointer_up(x, y);

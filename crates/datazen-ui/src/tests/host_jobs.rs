@@ -530,10 +530,21 @@ use rune::{Env, Runtime};
         rt.frame(0.0);
         let keys: Vec<String> = rt.elements().iter().filter_map(|e| e.key.clone()).collect();
         assert!(keys.iter().any(|k| k == "datazen-rail"), "rail present: {keys:?}");
-        for section in Section::ALL {
+        for section in [
+            Section::Connections,
+            Section::Workflows,
+            Section::Dashboards,
+            Section::Workspace,
+            Section::Wapps,
+            Section::Settings,
+        ] {
             let id = format!("rail-{}", section.key());
             assert!(keys.iter().any(|k| k == &id), "missing rail item: {id}");
         }
+        assert!(
+            !keys.iter().any(|k| k == "rail-tools"),
+            "tools is not on the React-aligned rail"
+        );
         assert!(keys.iter().any(|k| k == "rail-toggle"), "collapse toggle present");
         assert!(!keys.iter().any(|k| k == "datazen-sidebar"), "old sidebar is gone");
 

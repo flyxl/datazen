@@ -113,3 +113,10 @@
   - 新增 `home-mcp-promo-bar` MCP 宣传条与多快捷键提示 footer（保留 `connections-shortcut-footer` 根键）；无真实数据/能力时为诚实占位。
 - **兼容性**：保留 `connection-list`、`connections-home-*`、`connections-card-list`、`connection-{id}`、`conn-status-*`、`conn-open-*`、`connections-show-all`、`connections-no-match`、`home-connections-filter`、`import-connections`、`connection-new`、`connections-empty`/`connections-create-first`、`connections-recent-*` 等既有键与交互。
 - **门禁**：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **56 + 183 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
+
+## 增量：主窗口左侧功能栏对齐 React（本次）
+
+- **范围**：主窗口最左侧 rail（React `WorkspaceModeSidebar` 对齐）。
+- **改动**：顶部 `Databases / Workflow / Dashboard / Workspace / Extensions`，底部 `Settings` + 折叠按钮；`Section` 主导航标签对齐 React；移除 rail 中的 `Tools` 入口（非 React 主侧栏项，功能保留于 `Section::Tools`）。样式按 React 侧栏做紧凑化（项高度/图标尺寸/激活态/分组与边框）。
+- **测试**：更新 rail 相关断言（顺序、主项存在性、移除 `rail-tools`），并将依赖 rail 点击进入 Tools 的测试改为状态选择以维持覆盖。
+- **门禁**：`cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **183 + 56 passed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
