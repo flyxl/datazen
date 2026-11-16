@@ -126,3 +126,11 @@
 - **修复**：导航器搜索输入文本与图标垂直居中对齐；导航器与主内容区分割线改为细线（贴近 React）；无会话时隐藏对象树分割线/对象树/会话操作区，避免多余 “No objects” 提示。
 - **测试调整**：`host_jobs::the_navigator_panel_holds_the_tree_and_persists_width` 在有会话/catalog 上下文下断言对象树；`workspace_tabs::clicking_a_session_table_opens_a_table_tab` 调整为连接后出现对象树。
 - **门禁**：`cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **183 + 56 passed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
+
+## 增量：最小窗口（960×640）布局收口（本次）
+
+- **问题**：L3 的最小窗口为 960×640；此时 rail 112 + navigator 280 + splitter 后页面仅 567 宽（页内 padding 后约 471）。首页 `connections-header`（筛选 220 + Import + New connection）、`connections-shortcut-footer` 与 `home-mcp-promo-bar` 的固定宽度子项把最后控件推到窗口右缘之外（headless `--tree` 实测 `connection-new` 右缘 1101、footer 项右缘至 979）。
+- **修复**：`connections-header` 与 `connections-shortcut-footer` 改 `flex_wrap`（窄窗自动换行）；MCP promo 文案列 `grow(1.0)`、副标题 `wrap().max_lines(2)`，移除多余的 grow 占位（原占位与文案列平分剩余宽度，把副标题挤成窄柱）。
+- **结果**：960×640（light）下首页横向零越界；1440×816 布局不变（旧断言、键与交互全部保持）。
+- **测试**：`chrome_metrics::every_section_keeps_its_controls_inside_the_minimum_window_width` 覆盖 Connections 页及全站六页；已反向验证（去掉 header 的 `flex_wrap` 后该测试失败）。
+- **门禁**：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **56 + 187 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。

@@ -1,7 +1,7 @@
 ## Current Task
 - **任务**: A1 收口与全局视觉/交互对齐验证（plan-native-5）— A2–A6 已合流主轨，待统一门禁、契约内收尾与逐页视觉一致性校验
 - **负责人**: Coder Agent
-- **状态**: L1–L7 已完成；A1 进行中（首页与导航器 Recent/All/过滤已落地，pinned/用户分组受契约限制）。A2 连接表单对话框化、A3 查询面板对齐、A4 表浏览对齐、A5 结果工作区对齐、A6 设置导航分组已合流主轨。第五阶段计划见 [plan-native-5.md](plan-native-5.md)。
+- **状态**: L1–L7 已完成；A1 进行中（首页与导航器 Recent/All/过滤已落地，pinned/用户分组受契约限制）。A2 连接表单对话框化、A3 查询面板对齐、A4 表浏览对齐、A5 结果工作区对齐、A6 设置导航分组已合流主轨。第五阶段计划见 [plan-native-5.md](plan-native-5.md)。逐页 bounds 扫描（headless `--snap/--tree`，1440×816 与 960×640、dark/light）已在本次收口；A1 仍余契约受限的 pinned/用户分组。
 
 ## Completed Work (recent)
 - [x] 新建/导入连接窗口布局重构（本次提交）：`views/modals.rs`、`views/connections.rs` 重构为 React 对齐布局。新建连接：左侧数据库类型选择栏 + 右侧标题/可滚动表单/底部操作区，表单按两列网格排列基础与连接字段并保留高级/隧道区块结构；导入连接：对齐分享对话框导入模式的提示、文件选择、密码与预览/结果区域及底部操作。保持既有键与行为兼容（`connection-dialog*`、`connection-form*`、`connection-save`、`import-dialog*`、`import-choose-file`、`import-password-input`、`import-confirm` 等），能力受当前 `AppState`/`datazen-ui-api` 约束。（见 [testing/A1-connections-home.md](testing/A1-connections-home.md)、[testing/A2-connection-form-dialog.md](testing/A2-connection-form-dialog.md)）
@@ -39,6 +39,7 @@ React 页面和组件保留。不删除、不改成空壳、不把现有入口�
 - [x] A4 表浏览对齐：行号 gutter、按表列宽持久化与回填、FK 面包屑、状态横幅、待提交条（`e041fc463`, `5ae657365`；测试报告 `testing/A4-table-browse.md`）
 
 ## Verification
+- 最小窗口布局收口（本次）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **56 + 187 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
 - 新建/导入连接窗口布局重构（本次提交）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **183 + 56 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
 - A1 导航器基础组件与 ConnectionNavigatorTree 集成/样式重构（`c0da43bd0` + 本次修复）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **183 + 56 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
 - 主轨集成（A2–A6 合流，含冲突解决）：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui --offline --lib -- --test-threads=1` → **176 passed, 0 failed**；`CARGO_TARGET_DIR="$PWD/target" cargo check -p datazen-rune-host --offline` → exit 0（既有 warnings）。
@@ -90,3 +91,14 @@ React 页面和组件保留。不删除、不改成空壳、不把现有入口�
 ## 增量：连接/导航搜索框垂直对齐微调（本次）
 - 左侧导航 `Search…`（`navigator-filter-input`）与首页 `Filter connections…`（`home-connections-filter`）改为单行输入，并将输入框高度收敛到居中容器内（`h(20)` + `center_y`），以改善文字与搜索图标的垂直对齐。
 - 门禁：`cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **183 + 56 passed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
+
+## 增量：最小窗口布局收口（本次）
+
+- **取证方式**：headless `./target/debug/datazen-rune --snap/--tree/--size/--theme/--script/--at`（截图 + 元素树 + 按 key 的点击脚本），在 1440×816 与最小窗口 960×640、dark/light 两套主题下逐页（connections/workflows/dashboards/workspace/wapps/settings）与逐 section（settings 12 个 section）扫描元素 bounds，比对整窗宽高找越界节点。
+- **修复**：
+  - `crates/datazen-ui/src/app.rs`：标题栏 label `w_full` → `grow(1.0).min_w(0.0)`，主题切换按钮不再被推出窗口右缘。
+  - `crates/datazen-ui/src/views/settings.rs`：`settings_page` 由 `h_full` 改 `grow(1.0).min_h(0.0).min_w(0.0)`（原先按整列 padding box 测量，把 `content-status-bar` 推出窗口底部）；settings 的 label/控件行（`settings-data`/`export-form`/`import-step-1`/`snippet-form`）在窄窗换行，placeholder 文案 `wrap`，favorite 名称框改为 `grow`，snippet SQL 框允许收缩。
+  - `crates/datazen-ui/src/views/connections_home.rs`：960 宽下 header 动作行、快捷键 footer 允许换行；MCP promo 的文案列 `grow` 且副标题 `wrap().max_lines(2)`，去掉多余的 grow 占位。
+  - `crates/datazen-ui/src/views/dashboards_workflows.rs`：widget 查询输入 `.shrink()`，960 宽下 Refresh 不再越界。
+- **回归测试**（`crates/datazen-ui/src/tests/chrome_metrics.rs`）：`the_titlebar_keeps_its_theme_toggle_inside_the_window`（标题栏两档窗口）、`every_section_keeps_its_controls_inside_the_minimum_window_width`（六页 × 960×640 横向不越界）、`every_settings_section_keeps_its_rows_inside_the_minimum_window`（12 个 section 内容列不越界）、`the_settings_page_ends_above_the_status_bar`（页底不压状态栏）。前两条修复均已反向验证：回退对应源码后测试失败、恢复后通过。
+- **结果**：1440×816 与 960×640（含 light 主题）下，六页与 settings 全部 section 无横向越界；settings 页在 1440×816 收在 144..736、状态栏 752..792，全部内容在窗内；960×640 下仅连接首页滚动内容（MCP 条与快捷键 footer）低于可视区，由 `connection-list` 滚动到达，属预期。

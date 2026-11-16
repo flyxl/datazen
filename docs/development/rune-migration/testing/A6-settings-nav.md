@@ -47,3 +47,11 @@ Existing Rune settings functionality preserved and mapped:
 
 - GR2: `CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui --offline --lib -- --test-threads=1` — recorded in commit/report output.
 - GR4: not applicable (no `datazen-rune-host` changes).
+
+## 增量：页高与最小窗口布局（本次）
+
+- **问题 1（页高）**：`settings_page` 用 `h_full` 测量的是 page 列的 padding box（728pt），而该列还要放 48pt toolbar、16pt 间距与 40pt 状态栏，结果页面高 728、底缘到 872，`content-status-bar` 被推到 y=888 出窗。改为 `grow(1.0).min_h(0.0).min_w(0.0)` 后页面收在 144..736、状态栏 752..792。
+- **问题 2（最小窗口）**：960×640 下内容列仅 363pt 宽，`settings-data`/`export-form`/`import-step-1`/`snippet-form` 的固定宽度控件、placeholder 长文案、favorite 名称框把内容列撑到 365–595pt。处理：上述行 `flex_wrap`（`h` 改 `min_h`，窄窗换行不增高裁切）、placeholder 文案 `w_full().wrap()`、favorite 名称 `grow(1.0).min_w(0.0)`、snippet SQL 框 `min_w(0.0)`。
+- **结果**：1440×816 与 960×640（含 light）下 12 个 section 内容列均无横向越界；1440 布局与键不变。
+- **测试**：`chrome_metrics::every_settings_section_keeps_its_rows_inside_the_minimum_window`、`chrome_metrics::the_settings_page_ends_above_the_status_bar`；均已反向验证（回退 `h_full` 后第二条失败）。
+- **门禁**：同 A1 增量（56 + 187 passed）；GR4 exit 0（既有 warnings）。
