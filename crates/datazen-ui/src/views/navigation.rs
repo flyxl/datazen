@@ -62,7 +62,6 @@ pub(crate) fn navigator_connections_tree(state: &AppState, theme: tok::Theme, da
             "Recent",
             recent.len(),
             recent_expanded,
-            &icons::ICON_CLOCK,
             theme,
         )
         .on_press(|state: &mut AppState| state.toggle_expand("nav:recent")),
@@ -107,7 +106,6 @@ pub(crate) fn navigator_connections_tree(state: &AppState, theme: tok::Theme, da
             "All connections",
             all.len(),
             all_expanded,
-            &icons::ICON_CONNECTIONS,
             theme,
         )
         .on_press(|state: &mut AppState| state.toggle_expand("nav:all")),

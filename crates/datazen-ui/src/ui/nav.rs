@@ -71,7 +71,6 @@ pub(crate) fn nav_section_header(
     label: &str,
     count: usize,
     expanded: bool,
-    icon: &'static Icon,
     theme: tok::Theme,
 ) -> El {
     let chevron = if expanded {
@@ -79,6 +78,13 @@ pub(crate) fn nav_section_header(
     } else {
         &crate::icons::ICON_CHEVRON_RIGHT
     };
+    let folder = if expanded {
+        &crate::icons::ICON_FOLDER_OPEN
+    } else {
+        &crate::icons::ICON_FOLDER
+    };
+    // React navigator section/group headers use an amber folder icon.
+    let folder_color = rune::oklcha(0.78, 0.15, 80.0, 1.0);
     row()
         .key(key.to_owned())
         .w_full()
@@ -89,7 +95,7 @@ pub(crate) fn nav_section_header(
         .radius(NAV_RADIUS)
         .hover(theme.hover)
         .child(rune::icon(chevron, NAV_CHEVRON).color(theme.text_secondary))
-        .child(rune::icon(icon, NAV_ICON).color(theme.text_secondary))
+        .child(rune::icon(folder, NAV_ICON).color(folder_color))
         .child(
             text(label.to_uppercase())
                 .font(type_::LABEL)

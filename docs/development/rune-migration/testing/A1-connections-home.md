@@ -88,7 +88,7 @@
   - `icons` 补齐 lucide 几何图标：`chevron-right/down`、`folder/folder-open`、`table`、`refresh-cw`、`layout` 等，供导航与操作行复用。
 - **ConnectionNavigatorTree / 导航器面板**（`views/navigation.rs`）
   - 顶部改为 Databases 标题栏 + “New query” 图标按钮（保留 `open-query` 键）+ 带图标搜索框。
-  - 连接树保留并样式化 `Recent` / `All connections` 分组（`nav-group-recent` / `nav-group-all`）：分组头带 chevron + 语义图标（Recent=clock，All=database）+ 计数，**可点击收起/展开**（UI 折叠态复用 `AppState.collapsed`，`nav:recent`/`nav:all`；过滤时自动展开）；空态与过滤行为保留，连接项为图标 + 名称/引擎双行样式并支持当前连接高亮（仍使用 `nav-conn-*` / `nav-conn-recent-*` 键与原交互）。
+  - 连接树保留并样式化 `Recent` / `All connections` 分组（`nav-group-recent` / `nav-group-all`）：分组头带 chevron + amber 文件夹图标（按展开态 open/closed，对齐 React section/group）+ 计数，**可点击收起/展开**（UI 折叠态复用 `AppState.collapsed`，`nav:recent`/`nav:all`；过滤时自动展开）；空态与过滤行为保留，连接项为图标 + 名称/引擎双行样式并支持当前连接高亮（仍使用 `nav-conn-*` / `nav-conn-recent-*` 键与原交互）。
   - 对象树改为分支/叶子行原语（数据库/模式展开 chevron 与图标、表图标、缩进、计数标签），保留 `object-tree` / `tree-db-*` / `tree-schema-*` / `tree-table-*` / `object-tree-empty` 及展开/打开行为；底部操作行（刷新/ER/断开）统一为图标+文本样式。
 - **兼容性**：未改 `packages/frontend`/`packages/web`、内核契约与 `datazen-ui-api`；保留既有 navigator 相关 key 与测试契约。
 - **门禁**：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **56 + 183 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。G1–G4 不适用（未改 `packages/frontend` / `packages/web`）。
