@@ -122,3 +122,13 @@ React 页面和组件保留。不删除、不改成空壳、不把现有入口�
 - **修复：首页 Filter connections 拿不到焦点（本次）**：`TextField` 是否可聚焦取决于调用方有没有给 `on_edit`——rune 的 `can_focus`（`vendor/rune/crates/rune/src/runtime/input/focus.rs:107`）要求输入自带 `access`，而 `access` 只由 `El::on_edit` 写入（`vendor/rune/crates/rune/src/el/text.rs:585`）。`home-connections-filter` 从 A1 起就没绑 `on_edit`（`4d5141f59` 时已如此，非组件重构引入），所以点击落不下光标、键入进不了 `state.connection_search`。现已补绑定；组件内加 `debug_assert!` 兜住同类漏绑（测试期即报「a text field without on_edit cannot take focus」）。
 - **回归测试**：`tests/shell_grid::the_home_filter_takes_a_caret_from_a_click`（点击框 → `rt.paste("replica")` → 断言 `connection_search` 收到文本、只剩 `connection-replica` 卡片），已反向验证：去掉 `on_edit` 后该断言失败（`left: "" right: "replica"`）。headless 复验：`--script` 点框后 `{"type":"type","text":"replica"}`，tree 中该节点 `focusable: true`、文本为 `replica`、卡片只剩 `connection-replica`。
 - **为什么不用 rune-kit 的现成组件**：kit 的分层是 `crates/rune`（通用原语）+ `rune-kit`（token schema `Kit`: Palette/Elevation/Type/Radius/Motion/Glyphs + 组件），组件一律「结构体 + 链式 setter + `.build(&k)`」，尺寸/圆角/字体全由 `Kit` 的语义 token 决定（`Button` 见 `vendor/rune/crates/rune-kit/src/actions.rs:198,317`，`TextInput` 见 `vendor/rune/crates/rune-kit/src/text_input.rs:126,300`）。DataZen 的 `crates/datazen-ui` 只依赖 `rune` 核心、主题仍是自有的 `tok::Theme`，直接引入 kit 等于把全站换到 `Kit` token 体系，超出 A 系列范围；因此只借形状、不借依赖。另外 kit 的 `TextInput` 是「外层 row 定高 + 内层无高 `text_input` 靠 `center_y` 居中」，上下留白落在外层容器上（该处不可点击），本仓库既有测试会在字段任意位置点击，故内部改用等价的内边距方案，实测偏差 ≤0.5pt 且命中区完整。
+
+## 基座策略：新页面与新组件走 rune-kit（2026-11-16，用户指示）
+
+- **策略**：此后新增的页面与组件一律以 `rune-kit` 为基座（`Kit` 语义 token + kit 组件，结构体 + 链式 setter + `.build(&kit)`），不再在 `ui/` 里手写一次性控件；既有 `ui/{theme,nav,field}.rs` 保留，等对应 kit 组件落地后逐个替换。
+- **实测阻碍（本次）**：把 `rune-kit` 作为 path 依赖加入 `crates/datazen-ui` 后，`cargo check -p datazen-ui` 在依赖解析阶段失败：
+  - `vendor/rune/crates/rune-kit/Cargo.toml` 的 dev-dependencies 会一并进入解析图（`rune-ref` → `gungraun = "=0.20.0"`、`resvg 0.45`、`rune-theme-opencode`）；
+  - `rune-highlights`（kit 的非可选依赖）的 build-dependency `wasmparser 0.245.1` 不在本机 registry 缓存，在线解析时写入 `~/.cargo/registry/cache` 被沙箱拒绝（`Operation not permitted (os error 1)`）。
+  - 试验改动已回滚，工作树回到 `a3fe93ea0`（`Cargo.toml`/`Cargo.lock` 未留改动）。
+- **待选路线**：① 在可写环境（或 CI）预取上述 crate 后真依赖 `rune-kit`；② 在本仓库同源复制要用到的 kit 模块（`kit.rs` 346 行、`actions.rs` 529、`text_input.rs` 682、`badge.rs` 82、`card.rs` 93、`field.rs` 84、`list.rs` 232，合计约 2.0K 行），API 与 kit 保持一致，依赖可解析后再换回 `rune_kit::*` import。
+- **React → Rune 逐文件迁移的可行性**：见 `plan-native-6-react-parity.md`（新页面按镜像目录落地，旧页面按目录批次重写）。
