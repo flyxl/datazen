@@ -86,3 +86,7 @@ React 页面和组件保留。不删除、不改成空壳、不把现有入口�
   - 分割线：导航器/主内容区 splitter 改为 1px 细分割线样式（更贴近 React）。
   - 对象树区域：仅在 `session_open()` 时渲染对象树分割线、对象树与会话操作区；无会话时不再显示多余分割线和 “No objects” 空态。同步调整相关测试期望。
 - **门禁**：`CARGO_TARGET_DIR="$PWD/target" cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **183 + 56 passed, 0 failed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
+
+## 增量：连接/导航搜索框垂直对齐微调（本次）
+- 左侧导航 `Search…`（`navigator-filter-input`）与首页 `Filter connections…`（`home-connections-filter`）改为单行输入，并将输入框高度收敛到居中容器内（`h(20)` + `center_y`），以改善文字与搜索图标的垂直对齐。
+- 门禁：`cargo test -p datazen-ui-api -p datazen-ui --offline --lib -- --test-threads=1` → **183 + 56 passed**；`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` → exit 0（既有 warnings）。
