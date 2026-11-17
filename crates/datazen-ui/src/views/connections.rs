@@ -4,6 +4,7 @@
 
 use super::*;
 
+use crate::i18n::t;
 use crate::state_def::AppState;
 use crate::ui::field::TextField;
 use rune::tok::{self, type_};
@@ -100,8 +101,12 @@ pub(crate) fn import_dialog_body(state: &AppState, theme: tok::Theme) -> El {
                                 .radius(8.0)
                                 .border(1.0, theme.card_border)
                                 .hover(theme.hover)
-                                .label("更换文件")
-                                .child(text("更换文件").font(type_::LABEL).color(theme.text))
+                                .label(t("connShare.changeImportFile"))
+                                .child(
+                                    text(t("connShare.changeImportFile"))
+                                        .font(type_::LABEL)
+                                        .color(theme.text),
+                                )
                                 .on_press_tx(import_press),
                         ),
                 ),
@@ -117,7 +122,7 @@ pub(crate) fn import_dialog_body(state: &AppState, theme: tok::Theme) -> El {
                 .border(1.0, theme.card_border)
                 .fill(theme.card)
                 .hover(theme.hover)
-                .label("选择文件")
+                .label(t("import.selectFile"))
                 .child(text("选择导入文件…").font(type_::LABEL).color(theme.text_secondary))
                 .on_press_tx(import_press),
         );
@@ -299,7 +304,7 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
                     col()
                         .w(220.0)
                         .gap(6.0)
-                        .child(field_label("数据库类型", theme))
+                        .child(field_label(t("newConn.dbType"), theme))
                         .child(form_input(
                             "connection-engine-input",
                             &state.connection_engine,
@@ -332,7 +337,7 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
                 .grow(1.0)
                 .min_w(0.0)
                 .gap(6.0)
-                .child(field_label("数据库", theme))
+                .child(field_label(t("common.database"), theme))
                 .child(form_input(
                     "connection-database-input",
                     &state.connection_database,
@@ -349,7 +354,7 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
                 .grow(1.0)
                 .min_w(0.0)
                 .gap(6.0)
-                .child(field_label("用户名", theme))
+                .child(field_label(t("newConn.username"), theme))
                 .child(form_input(
                     "connection-username-input",
                     &state.connection_username,
@@ -362,7 +367,7 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
                 .grow(1.0)
                 .min_w(0.0)
                 .gap(6.0)
-                .child(field_label("密码", theme))
+                .child(field_label(t("newConn.password"), theme))
                 .child(password_input(
                     "connection-password-input",
                     &state.connection_password,
@@ -382,13 +387,18 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
     let advanced = col()
         .w_full()
         .gap(10.0)
-        .child(section_toggle("connection-advanced-toggle", "高级设置", None, theme));
+        .child(section_toggle(
+            "connection-advanced-toggle",
+            t("newConn.advanced"),
+            None,
+            theme,
+        ));
 
     // Tunnel/SSH section (React tunnel toggle + panel style), preserving SSH keys.
     let ssh_label = if state.connection_ssh_enabled {
         "SSH 隧道（UI，仅本次编辑）"
     } else {
-        "隧道"
+        t("newConn.tunnel")
     };
     let ssh = col()
         .key("connection-section-ssh")
@@ -454,7 +464,7 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
                                 .grow(1.0)
                                 .min_w(0.0)
                                 .gap(6.0)
-                                .child(field_label("SSH 主机", theme))
+                                .child(field_label(t("newConn.sshHost"), theme))
                                 .child(form_input(
                                     "connection-ssh-host-input",
                                     &state.connection_ssh_host,
@@ -466,7 +476,7 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
                             col()
                                 .w(120.0)
                                 .gap(6.0)
-                                .child(field_label("SSH 端口", theme))
+                                .child(field_label(t("newConn.sshPort"), theme))
                                 .child(form_input(
                                     "connection-ssh-port-input",
                                     &state.connection_ssh_port,
@@ -479,7 +489,7 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
                                 .grow(1.0)
                                 .min_w(0.0)
                                 .gap(6.0)
-                                .child(field_label("SSH 用户名", theme))
+                                .child(field_label(t("newConn.sshUsername"), theme))
                                 .child(form_input(
                                     "connection-ssh-username-input",
                                     &state.connection_ssh_username,
