@@ -39,9 +39,9 @@
 | T0-02 | ☐ | 文本输入归一：`ui/field.rs` 收敛到 kit `TextInput`（label/hint/error 态） | `crates/datazen-ui/src/ui/field.rs` | 错误态出现时字段高度不跳变 |
 | T0-03 | ☐ | i18n：zh-CN 表 → `t()` 运行时（2,940 处 key / 2,222 唯一） | `crates/datazen-ui/src/i18n.rs` | 缺键回显 key 且不 panic |
 | T0-04 | ☐ | 图标接 `Kit::glyph`（check/chevron/close/copy/search/lock/eye…） | `crates/datazen-ui/src/icons.rs` | 同一语义不再有两套 SVG |
-| T0-05 | ☐ | Dialog 基座：封装 kit `Dialog`（scrim/标题/关闭/页脚槽/Esc/焦点归还） | `crates/datazen-ui/src/ui/dialog.rs` | 960×640 内完整可见，Esc 关闭，焦点归还。已落地 `9efb4a567`；独立 tester 判 TEST_FAILED（scrim 30%→要 50%、重开保留滚动、无 panel 阴影），修复中 |
+| T0-05 | ☑ | Dialog 基座：封装 kit `Dialog`（scrim/标题/关闭/页脚槽/Esc/焦点归还） | `crates/datazen-ui/src/ui/dialog.rs` | 960×640 内完整可见，Esc 关闭，焦点归还。已落地 `9efb4a567` + `6ba7eedc6`（scrim 0.5、`<key>-content-<epoch>` 重置滚动、kit overlay 阴影、标题截断），tester 判 TEST_PASSED |
 | T0-06 | ☑ | Select：封装 kit `Select`（popup list、键盘上下、placeholder、禁用） | `crates/datazen-ui/src/ui/select.rs` | 键盘选中与鼠标选中的结果一致。已落地 `59c783199` + `af66e5148`（label→value 映射、`on_close` 才挂 dismissal 层），tester 判 TEST_PASSED |
-| T0-07 | ☐ | Menu：封装 kit `Menu` / `context_menu`（右侧 [0,0] 锚定、边缘翻转） | `crates/datazen-ui/src/ui/menu.rs` | 视口边缘不裁切。coder 完成 `dd65b96d7`（184 行基座 + 6 例），opencode tester 复核中 |
+| T0-07 | ☑ | Menu：封装 kit `Menu` / `context_menu`（右侧 [0,0] 锚定、边缘翻转） | `crates/datazen-ui/src/ui/menu.rs` | 视口边缘不裁切。已落地 `dd65b96d7` + `c5dd84922`（子菜单、icon/shortcut/badge/description/checked/danger 透传、`close_on_select`），tester 复测通过；长菜单超窗为 kit 限制，记 `#[ignore]` |
 | T0-08 | ☑ | 开关类：`Checkbox` / `Switch` / `RadioGroup` 封装 | `crates/datazen-ui/src/ui/toggle.rs` | 焦点环可见，整行可点。已落地 `59c783199` + `af66e5148`（Checkbox 半选态），tester 判 TEST_PASSED |
 | T0-09 | ☐ | Table / Tree 采用 kit（`Table` + `Tree`/`FileTree`） | `crates/datazen-ui/src/data_grid/`、`crates/datazen-ui/src/ui/tree.rs` | 1 万行滚动帧率不退化 |
 | T0-10 | ☐ | Toast / Tooltip / HoverCard | `crates/datazen-ui/src/ui/overlay.rs` | 与 kit 动画时长一致。opencode coder 进行中（T0-10 轨 `feature/rune-overlay`） |
