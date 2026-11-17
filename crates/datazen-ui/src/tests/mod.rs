@@ -100,6 +100,7 @@ mod overlay_audit;
 mod overlay_retest;
 // zh-CN table wiring: the keys the rune views took over still resolve.
 mod i18n_usage;
+mod i18n_sweep;
 // Independent audit of the settings/rail i18n batch.
 mod i18n_usage_audit;
 

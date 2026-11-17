@@ -371,7 +371,7 @@ use rune::{Env, Runtime};
         );
         let texts: Vec<String> = rt.elements().iter().filter_map(|e| e.text.clone()).collect();
         assert!(
-            texts.iter().any(|t| t.contains("Select a connection")),
+            texts.iter().any(|t| t.contains(crate::i18n::t("connWin.home.selectConnectionTitle"))),
             "hero heading text present: {texts:?}"
         );
         assert!(
@@ -527,7 +527,7 @@ use rune::{Env, Runtime};
         );
         let texts: Vec<String> = rt.elements().iter().filter_map(|e| e.text.clone()).collect();
         assert!(
-            texts.iter().any(|t| t == "Offline"),
+            texts.iter().any(|t| t == crate::i18n::t("connWin.home.status.offline")),
             "an unopened row reads offline: {texts:?}"
         );
 
@@ -537,11 +537,11 @@ use rune::{Env, Runtime};
         rt.frame(0.0);
         let texts: Vec<String> = rt.elements().iter().filter_map(|e| e.text.clone()).collect();
         assert!(
-            texts.iter().any(|t| t == "Connected"),
+            texts.iter().any(|t| t == crate::i18n::t("conn.connected")),
             "the opened row reads connected: {texts:?}"
         );
         assert!(
-            texts.iter().any(|t| t == "Open"),
+            texts.iter().any(|t| t == crate::i18n::t("connWin.home.connections.open")),
             "the opened row's button says Open: {texts:?}"
         );
     }
