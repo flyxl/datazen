@@ -1,4 +1,10 @@
 //! Rail and chrome icons for the DataZen Rune UI.
+//!
+//! Chrome draws lucide icons: a 24 viewBox with stroke outlines, so the native shell matches the
+//! React UI's visual language. The kit's own 16-view `rune_kit::glyphs` stay inside kit
+//! components; they are not the chrome set. This file is the only place a chrome icon's SVG body
+//! may live — add new icons here, reference the constant at the call site, and keep every body
+//! unique (the registry guard in `tests/icon_registry.rs` fails on an inline definition).
 
 use crate::types::Section;
 
