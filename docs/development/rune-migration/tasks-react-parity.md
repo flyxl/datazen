@@ -35,7 +35,7 @@
 | # | ☐ | task | 落点 | 验收 |
 | --: | :-: | --- | --- | --- |
 | T0-00 | ☑ | kit 基座接入：workspace 依赖、`kit(dark)` 单例、对话框页脚改用 kit `Button` | `Cargo.toml`、`crates/datazen-ui/src/ui/kit.rs`、`crates/datazen-ui/src/views/modals.rs` | 已落地 `4054d0ada`：`gate: PASS`，页脚按钮 36pt、标签中心与盒中心差 0.00pt |
-| T0-01 | ☐ | Kit 主题贯通：`ui/theme.rs` 的 `tok::Theme` 与 `Kit::Palette` 合并，收敛 74 处 `oklch/oklcha` 硬编码 | `crates/datazen-ui/src/ui/theme.rs` | 组件源码内不再出现 `oklcha(` 字面量，色值全经 `kit(dark)` |
+| T0-01 | ☑ | Kit 主题贯通：`ui/theme.rs` 的 `tok::Theme` 与 `Kit::Palette` 合并，收敛 74 处 `oklch/oklcha` 硬编码 | `crates/datazen-ui/src/ui/theme.rs` | 组件源码内不再出现 `oklcha(` 字面量，色值全经 `kit(dark)`。已落地 `9490c10ae`（`ui/palette.rs` 集中语义色 + `tests/tokens.rs` 走查），tester 判 TEST_PASSED |
 | T0-02 | ☐ | 文本输入归一：`ui/field.rs` 收敛到 kit `TextInput`（label/hint/error 态） | `crates/datazen-ui/src/ui/field.rs` | 错误态出现时字段高度不跳变 |
 | T0-03 | ☐ | i18n：zh-CN 表 → `t()` 运行时（2,940 处 key / 2,222 唯一） | `crates/datazen-ui/src/i18n.rs` | 缺键回显 key 且不 panic |
 | T0-04 | ☐ | 图标接 `Kit::glyph`（check/chevron/close/copy/search/lock/eye…） | `crates/datazen-ui/src/icons.rs` | 同一语义不再有两套 SVG |
