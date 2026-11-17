@@ -118,3 +118,6 @@ mod binary_viewer;
 mod json_viewer;
 // Independent audit for T0-11 viewer bases.
 mod viewer_audit;
+
+// T0-12 base geometry regression: every base inside the window, siblings apart.
+mod base_geometry;
