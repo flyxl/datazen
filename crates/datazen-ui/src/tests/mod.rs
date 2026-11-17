@@ -12,6 +12,8 @@ pub(crate) use rune::{Env, Runtime};
 
 pub(crate) mod support;
 pub(crate) mod tokens;
+// T0-09: the tree base (geometry, keyboard, virtualisation, selection).
+mod tree;
 pub(crate) use support::*;
 
 pub(crate) fn runtime() -> Runtime<AppState> {

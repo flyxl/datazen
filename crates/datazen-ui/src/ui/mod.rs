@@ -18,3 +18,4 @@ pub(crate) mod theme;
 pub(crate) mod toast;
 pub(crate) mod toggle;
 pub(crate) mod tooltip;
+pub(crate) mod tree;
