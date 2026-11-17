@@ -81,6 +81,91 @@ type ViewportWriter<S> = Rc<dyn Fn(&mut S, f32)>;
 /// The empty state's height; a hugging root opens at least this tall so the line is not clipped.
 const EMPTY_HEIGHT: f32 = 40.0;
 
+#[allow(dead_code)]
+/// Minimal visible-row info for sticky ancestor arithmetic.
+///
+/// `depth` is the row's tree depth (0 at top level). `is_branch` is true when the row owns a
+/// child list (expanded or collapsed branch), false for a leaf. This mirrors the React flat
+/// pre-order row contract: ancestors are determined by a depth-stack scan over `[0, top)` with no
+/// parent pointers.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct TreeRowData {
+    pub depth: u32,
+    pub is_branch: bool,
+}
+
+#[allow(dead_code)]
+/// Row index at the top of the viewport for a uniform-height virtualized list.
+///
+/// Matches React `firstVisibleTreeIndex`: returns 0 when `row_count <= 0` or `row_height <= 0`,
+/// otherwise clamps `floor(max(0, scroll_top) / row_height)` to the last row.
+pub(crate) fn first_visible_index(scroll_top: f32, row_count: usize, row_height: f32) -> usize {
+    if row_count == 0 || row_height <= 0.0 {
+        return 0;
+    }
+    let raw = (scroll_top.max(0.0) / row_height).floor();
+    if raw.is_nan() || raw <= 0.0 {
+        0
+    } else {
+        let idx = raw as usize;
+        idx.min(row_count.saturating_sub(1))
+    }
+}
+
+#[allow(dead_code)]
+/// Ancestor branch row indexes for the row at `top` in a flat pre-order visible list.
+///
+/// Returns the chain of open branch rows the list has descended into after consuming `[0, top)`,
+/// outermost first (suitable for sticky group headers). Uses the same depth-stack rule as React
+/// `ancestorIndexes`: for each row before `top`, pop stack entries with `depth >= row.depth`, then
+/// push the row if it is a branch. `top` is clamped to `[0, rows.len()]`; a row at `top` that is
+/// itself a branch is not included (it has not been "entered" yet), and a past-the-end `top`
+/// yields the chain still open at the end.
+pub(crate) fn ancestor_indices(rows: &[TreeRowData], top: usize) -> Vec<usize> {
+    let limit = top.min(rows.len());
+    let mut stack: Vec<usize> = Vec::new();
+    for i in 0..limit {
+        let row = rows[i];
+        while let Some(&last) = stack.last() {
+            if rows[last].depth >= row.depth {
+                stack.pop();
+            } else {
+                break;
+            }
+        }
+        if row.is_branch {
+            stack.push(i);
+        }
+    }
+    stack
+}
+
+/// Scroll offset that reveals `index` in a viewport, or `None` if already fully visible.
+///
+/// "Auto" alignment (React parity): if the row's top is above `scroll_top`, align to top; if the
+/// row's bottom is below the viewport bottom, align to bottom (`top + row_height - viewport_h`);
+/// otherwise no change. Non-positive `row_height` or `viewport_h` yields `None`.
+pub(crate) fn reveal_offset(
+    index: usize,
+    row_height: f32,
+    scroll_top: f32,
+    viewport_h: f32,
+) -> Option<f32> {
+    if row_height <= 0.0 || viewport_h <= 0.0 {
+        return None;
+    }
+    let top = index as f32 * row_height;
+    let bottom = top + row_height;
+    let view_bottom = scroll_top + viewport_h;
+    if top < scroll_top {
+        Some(top.max(0.0))
+    } else if bottom > view_bottom {
+        Some((bottom - viewport_h).max(0.0))
+    } else {
+        None
+    }
+}
+
 /// A tree over a [`TreeModel`] in the app's state `S`, drawing the rows with DataZen's keys.
 #[allow(dead_code)] // Used once the connection tree and schema outline migrate to this base.
 pub(crate) struct DataTree<S, T> {
@@ -98,6 +183,8 @@ pub(crate) struct DataTree<S, T> {
     grow: bool,
     read_viewport: Option<fn(&S) -> f32>,
     write_viewport: Option<ViewportWriter<S>>,
+    read_scroll: Option<fn(&S) -> f32>,
+    write_scroll: Option<ViewportWriter<S>>,
 }
 
 #[allow(dead_code)] // Used once the connection tree and schema outline migrate to this base.
@@ -125,6 +212,8 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
             grow: false,
             read_viewport: None,
             write_viewport: None,
+            read_scroll: None,
+            write_scroll: None,
         }
     }
 
@@ -189,6 +278,19 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
         self
     }
 
+    /// Where the app keeps this instance's vertical scroll offset (scrollTop). Programmatic
+    /// reveals update it when a writer is provided; callers may also update it from scroll
+    /// observation if available. Used with [`Self::viewport`] to compute reveal/ancestor geometry.
+    pub(crate) fn scroll_y(
+        mut self,
+        read: fn(&S) -> f32,
+        write: impl Fn(&mut S, f32) + 'static,
+    ) -> DataTree<S, T> {
+        self.read_scroll = Some(read);
+        self.write_scroll = Some(Rc::new(write));
+        self
+    }
+
     /// Builds the tree. `s` is read for the model; handlers write it back.
     pub(crate) fn build(self, s: &S, dark: bool) -> El {
         let DataTree {
@@ -206,6 +308,8 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
             grow,
             read_viewport,
             write_viewport,
+            read_scroll,
+            write_scroll,
         } = self;
         let k = kit(dark);
         let style = style.unwrap_or_else(|| TreeStyle::from_kit(k));
@@ -219,10 +323,40 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
             .map(|row| format!("{key}-row-{row}"));
         let empty = empty_text.unwrap_or_else(|| crate::i18n::t("dataTable.empty").to_owned());
         let row_height = style.row_height;
+        let viewport_key = format!("{key}-viewport");
+
+        let scroll_wired = read_scroll.is_some() && write_scroll.is_some() && read_viewport.is_some();
+        let reveal_cursor = {
+            let vp_key = viewport_key.clone();
+            let write_scroll = write_scroll.clone();
+            let read_scroll = read_scroll;
+            let read_viewport = read_viewport;
+            Rc::new(move |s: &mut S, tx: &mut Tx| -> bool {
+                let Some(read_vp) = read_viewport else { return false; };
+                let Some(read_sc) = read_scroll else { return false; };
+                let Some(write_sc) = &write_scroll else { return false; };
+                let viewport_h = read_vp(&*s);
+                if viewport_h <= 0.0 {
+                    return false;
+                }
+                let cursor = get(s).cursor().map(str::to_owned);
+                let Some(row) = cursor.as_deref().and_then(|id| get(s).visible_row(id)) else { return false; };
+                let scroll_top = read_sc(&*s);
+                let scrolled = if let Some(next) = reveal_offset(row, row_height, scroll_top, viewport_h) {
+                    tx.scroll_to_instant(vp_key.clone(), 0.0, next);
+                    write_sc(s, next);
+                    true
+                } else {
+                    false
+                };
+                scrolled
+            })
+        };
 
         let rows_key = key.clone();
         let row_select = on_select.clone();
         let row_open = on_open.clone();
+        let press_reveal = reveal_cursor.clone();
         let build_row = move |s: &S, i: usize| -> El {
             let Some((data, r)) = get(s).row(i) else {
                 return el();
@@ -232,6 +366,7 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
             let mut e = tree_row(k, &style, &rows_key, i, data, &r, label, icon);
             let press = id.clone();
             let select = row_select.clone();
+            let reveal = press_reveal.clone();
             e = e.on_press_tx(move |s: &mut S, tx: &mut Tx| {
                 let plain = get_mut(s).click(&press, tx.mods());
                 if openable && plain {
@@ -240,6 +375,7 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
                 if let Some(f) = &select {
                     f(s, &press);
                 }
+                reveal(s, tx);
             });
             if !openable {
                 if let Some(f) = row_open.clone() {
@@ -263,28 +399,28 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
             );
 
         let mut viewport = col()
-            .key(format!("{key}-viewport"))
+            .key(viewport_key.clone())
             .w_full()
             .grow(1.0)
             .min_h(0.0)
             .scroll(ScrollSpec {
                 stick_bottom: false,
             });
-        // The layout hook is what lets the runtime measure the scrolling window and widen the
-        // mounted row range; keep it even when the app does not store the height.
+        // The layout hook measures the scrolling window, widens the mounted row range, and
+        // reveals the cursor on external selection/model changes when scroll state is wired.
         if read_viewport.is_none() {
             viewport = viewport.on_layout_tx(|_s: &mut S, _r: [f32; 4], _tx: &mut Tx| {});
-        }
-        if let (Some(read), Some(write)) = (read_viewport, write_viewport.clone()) {
-            // A scroll inside a page reports every frame; only a new height changes what the
-            // window reads (the kit tree's own layout hook). The height lives in the app's
-            // state, not in a process-wide registry, so instances with the same key stay apart.
+        } else if let (Some(read_vp), Some(write_vp)) = (read_viewport, write_viewport.clone()) {
+            let reveal_on_layout = reveal_cursor.clone();
             viewport = viewport.on_layout_tx(move |s: &mut S, r: [f32; 4], tx: &mut Tx| {
-                let before = read(&*s);
-                if before == r[3] {
+                let before = read_vp(&*s);
+                if before != r[3] {
+                    write_vp(s, r[3]);
+                }
+                // Reveal cursor after layout/viewport updates (covers external select).
+                let scrolled = reveal_on_layout(s, tx);
+                if before == r[3] && !scrolled {
                     tx.live_only();
-                } else {
-                    write(s, r[3]);
                 }
             });
         }
@@ -310,6 +446,7 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
         let key_handler = key.clone();
         let select = on_select.clone();
         let open = on_open.clone();
+        let key_reveal = reveal_cursor.clone();
         let mut root = col()
             .key(key.clone())
             .role("tree")
@@ -382,18 +519,19 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
             match out {
                 TreeKey::Ignored => false,
                 TreeKey::Handled => {
-                    let after = {
-                        let m = get_mut(s);
-                        m.cursor().map(|id| (id.to_owned(), m.visible_row(id)))
-                    };
-                    if let Some((id, Some(row))) = after {
+                    let after = get_mut(s).cursor().map(|id| id.to_owned());
+                    if let Some(id) = after {
                         if before.as_deref() != Some(id.as_str()) {
-                            tx.scroll_into_view_in(
-                                key_handler.clone(),
-                                format!("{key_handler}-row-{row}"),
-                            );
                             if let Some(f) = &select {
                                 f(s, &id);
+                            }
+                            if scroll_wired {
+                                key_reveal(s, tx);
+                            } else if let Some(row) = get(s).visible_row(&id) {
+                                tx.scroll_into_view_in(
+                                    key_handler.clone(),
+                                    format!("{key_handler}-row-{row}"),
+                                );
                             }
                         }
                     }
