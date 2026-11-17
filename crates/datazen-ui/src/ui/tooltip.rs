@@ -26,7 +26,12 @@
 #![allow(dead_code)]
 
 use rune::{col, row, El};
-use rune_kit::{popover, Kit, Placement, Tooltip as KitTooltip, TooltipAppearance};
+use rune_kit::{popover, Kit, Placement, Tooltip as KitTooltip, TooltipAppearance, TooltipStyle};
+
+/// The width a compact tooltip's plain text wraps at. The kit caps its Standard tooltip at
+/// 320pt (and the kit's Compact branch sets no cap at all); the compact hint follows the same
+/// measure so a long single-line hint never runs out of the window.
+const COMPACT_MAX_WIDTH: f32 = 320.0;
 
 /// A small hint anchored to a trigger.
 pub(crate) struct Tooltip {
@@ -110,7 +115,17 @@ impl Tooltip {
         for child in self.children {
             kit = kit.child(child);
         }
-        kit.build(k, layer)
+        // The kit's Compact appearance leaves `max_w` unset, so a long single-line hint lays
+        // out at its full unwrapped width and leaves the window. Build through the style so
+        // the same 320pt measure the Standard tooltip uses applies to the compact hint too;
+        // placement, flip and the kit's own children are untouched.
+        let style = TooltipStyle::from_kit(k, self.appearance);
+        let style = if self.appearance == TooltipAppearance::Compact {
+            style.max_width(COMPACT_MAX_WIDTH)
+        } else {
+            style
+        };
+        kit.render(&style, layer)
     }
 }
 
