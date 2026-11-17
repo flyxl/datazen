@@ -2,6 +2,7 @@
 #![allow(unused_imports)]
 
 use super::*;
+use crate::i18n::t;
 
 use crate::constants::*;
 use crate::icons::{self, section_icon, ICON_PANEL_LEFT_CLOSE, ICON_PANEL_LEFT_OPEN};
@@ -333,7 +334,7 @@ pub(crate) fn content_status_bar(state: &AppState, theme: tok::Theme) -> El {
                 )
                 .child(
                     text(if connected {
-                        "Connected"
+                        t("conn.connected")
                     } else {
                         "Disconnected"
                     })

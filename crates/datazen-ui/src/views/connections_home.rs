@@ -7,6 +7,7 @@
 //! root modal layer (`views/modals.rs`); interaction keys/tests are preserved.
 
 use super::*;
+use crate::i18n::t;
 
 use crate::icons::{
     ICON_CLOCK, ICON_CONNECTIONS, ICON_COPY, ICON_DOWNLOAD, ICON_PLAY, ICON_PLUS, ICON_SEARCH,
@@ -75,7 +76,7 @@ fn banners(state: &AppState, theme: tok::Theme) -> Vec<El> {
                 .radius(8.0)
                 .fill(theme.control_track)
                 .child(
-                    text("Connecting…")
+                    text(t("conn.connecting"))
                         .key("connect-loading")
                         .font(type_::LABEL)
                         .color(theme.text_secondary),
@@ -234,7 +235,7 @@ fn home_hero(
                 .min_w(0.0)
                 .gap(4.0)
                 .child(
-                    text("Select a connection")
+                    text(t("connWin.home.selectConnectionTitle"))
                         .key("connections-home-title")
                         .font(TextStyle::new(20.0, 700.0))
                         .color(theme.text),
@@ -326,7 +327,7 @@ fn home_header(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                     TextField::new("home-connections-filter", &state.connection_search)
                         .height(28.0)
                         .grow()
-                        .placeholder("Filter connections…")
+                        .placeholder(t("connWin.home.connections.filter"))
                         .on_edit(|state: &mut AppState| &mut state.connection_search)
                         .build(dark),
                 ),
@@ -342,12 +343,12 @@ fn home_header(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 .fill(theme.card)
                 .border(1.0, theme.card_border)
                 .hover(theme.hover)
-                .label("Import connections")
+                .label(t("common.importConnections"))
                 // The dialog it opens must hand focus back here, so the trigger
                 // has to take focus (it was pointer-only).
                 .focusable(true)
                 .child(icon(&ICON_DOWNLOAD, 13.0).color(theme.text_secondary))
-                .child(text("Import connections").font(type_::LABEL).color(theme.text))
+                .child(text(t("common.importConnections")).font(type_::LABEL).color(theme.text))
                 .on_press(|state: &mut AppState| state.open_import_dialog()),
         )
         .child(
@@ -471,7 +472,7 @@ fn connection_cards(
                         icon(&ICON_PLAY, 12.0).color(on_accent())
                     })
                     .child(
-                        text(if open { "Open" } else { "Connect" })
+                        text(if open { t("connWin.home.connections.open") } else { t("connWin.home.connections.connect") })
                             .font(type_::LABEL)
                             .color(if open { theme.text } else { on_accent() }),
                     ),
@@ -492,9 +493,9 @@ fn connection_cards(
 /// "Showing X of Y · Show all" (React's paging row).
 fn paging_row(state: &AppState, theme: tok::Theme, visible_count: usize, total: usize) -> El {
     let show_all_label = if state.connections_show_all {
-        "Show less".to_owned()
+        t("connWin.home.connections.showLess").to_owned()
     } else {
-        format!("Show all {total}")
+        t("connWin.home.connections.showAll").replace("{count}", &total.to_string())
     };
     row()
         .key("connections-paging")
@@ -682,7 +683,7 @@ fn mcp_promo_bar(theme: tok::Theme, dark: bool) -> El {
                 .hover(theme.hover)
                 .label("Copy command")
                 .child(icon(&ICON_COPY, 13.0).color(theme.text_secondary))
-                .child(text("Copy").font(type_::LABEL).color(theme.text)),
+                .child(text(t("common.copy")).font(type_::LABEL).color(theme.text)),
         )
 }
 
@@ -698,7 +699,7 @@ fn shortcut_footer(theme: tok::Theme) -> El {
         .flex_wrap()
         .child(shortcut_hint("connections-shortcut-key", "⌘↩", "Run query", theme))
         .child(shortcut_hint("connections-shortcut-save", "⌘S", "Save query", theme))
-        .child(shortcut_hint("connections-shortcut-format", "⇧⌥F", "Format SQL", theme))
+        .child(shortcut_hint("connections-shortcut-format", "⇧⌥F", t("keymap.action.formatSql"), theme))
 }
 
 fn shortcut_hint(key: &str, keys: &str, label: &str, theme: tok::Theme) -> El {
@@ -738,21 +739,21 @@ fn status_pill(state: &AppState, theme: tok::Theme, dark: bool, id: &str) -> El 
             palette::status_pill_connected_bg(dark),
             tok::accent(4, dark),
             tok::accent(4, dark),
-            "Connected",
+            t("conn.connected"),
         )
     } else if connecting {
         (
             palette::status_pill_connecting_bg(dark),
             tok::accent(0, dark),
             tok::accent(0, dark),
-            "Connecting…",
+            t("conn.connecting"),
         )
     } else {
         (
             theme.control_track,
             theme.text_secondary,
             theme.text_secondary,
-            "Offline",
+            t("connWin.home.status.offline"),
         )
     };
     row()

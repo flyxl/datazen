@@ -2,6 +2,7 @@
 #![allow(unused_imports)]
 
 use super::*;
+use crate::i18n::t;
 
 use crate::constants::*;
 use crate::icons::{self, section_icon};
@@ -77,7 +78,7 @@ pub(crate) fn er_view(
                         .center_y()
                         .radius(6.0)
                         .fill(theme.control_off)
-                        .child(text("Close").font(type_::LABEL).color(theme.text))
+                        .child(text(t("common.close")).font(type_::LABEL).color(theme.text))
                         .on_press(|state: &mut AppState| state.close_er()),
                 ),
         )
@@ -224,9 +225,9 @@ pub(crate) fn columns_view(state: &AppState, title: &str, theme: tok::Theme, dar
                 .key("columns-header")
                 .w_full()
                 .h(24.0)
-                .child(header("Column", 240.0))
-                .child(header("Type", 140.0))
-                .child(header("Nullable", 100.0)),
+                .child(header(t("structView.fieldName"), 240.0))
+                .child(header(t("structView.type"), 140.0))
+                .child(header(t("structView.nullable"), 100.0)),
         );
     for (index, column) in columns.iter().enumerate() {
         let cell = |value: &str, width: f32| {
@@ -328,7 +329,7 @@ pub(crate) fn column_drafts_section(state: &AppState, title: &str, theme: tok::T
                 .center_y()
                 .radius(6.0)
                 .fill(theme.control_off)
-                .child(text("Apply").font(type_::LABEL).color(theme.text))
+                .child(text(t("filter.apply")).font(type_::LABEL).color(theme.text))
                 .on_press(|state: &mut AppState| state.apply_column_drafts()),
         );
     }
@@ -384,9 +385,9 @@ pub(crate) fn indexes_view(state: &AppState, title: &str, theme: tok::Theme) -> 
                 .key("indexes-header")
                 .w_full()
                 .h(24.0)
-                .child(header("Index", 260.0))
-                .child(header("Columns", 320.0))
-                .child(header("Unique", 100.0)),
+                .child(header(t("indexes.colName"), 260.0))
+                .child(header(t("indexes.columns"), 320.0))
+                .child(header(t("indexes.colUnique"), 100.0)),
         );
     for (index, spec) in indexes.iter().enumerate() {
         let cell = |value: &str, width: f32| {
@@ -440,7 +441,7 @@ pub(crate) fn foreign_keys_view(state: &AppState, title: &str, theme: tok::Theme
                 .w_full()
                 .h(24.0)
                 .child(header("Name", 260.0))
-                .child(header("Columns", 240.0))
+                .child(header(t("indexes.columns"), 240.0))
                 .child(header("References", 320.0)),
         );
     for (index, key) in keys.iter().enumerate() {
