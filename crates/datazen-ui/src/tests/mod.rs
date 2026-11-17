@@ -18,6 +18,8 @@ mod tree;
 mod tree_audit;
 // T0-11 patch: a compact tooltip's long hint wraps inside the window.
 mod tooltip_text;
+// T0-04: chrome icons come from one 24-view lucide registry.
+mod icon_registry;
 // T0-11 audit: independent wrap and placement probes.
 mod tooltip_text_audit;
 pub(crate) use support::*;
