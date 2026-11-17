@@ -121,3 +121,6 @@ mod viewer_audit;
 
 // T0-12 base geometry regression: every base inside the window, siblings apart.
 mod base_geometry;
+
+// T0-11 temporal value input: typing, validation and commit keys.
+mod temporal_input;
