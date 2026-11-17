@@ -251,6 +251,11 @@ if (windowSizeArg) {
  */
 if (args.includes('--capture')) {
   process.env.E2E_CAPTURE = '1';
+  // Keep capture output consistent with the site demo GIF/video dimensions unless explicitly overridden.
+  if (!process.env.E2E_WINDOW_SIZE) {
+    process.env.E2E_WINDOW_SIZE = '960x540';
+    log('Window pinned to 960x540 for capture runs (matches demo video size; override with --window-size)');
+  }
 }
 if (screenshotTrace) {
   process.env.E2E_SCREENSHOT = '1';

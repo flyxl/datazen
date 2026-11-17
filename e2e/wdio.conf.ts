@@ -294,6 +294,8 @@ export const config: WebdriverIO.Config = {
     screenshots: ['./specs/zz-screenshots.ts', './specs/demo-recording.ts'],
     // Data-browsing release screenshots (output: e2e/screenshots/data-browsing). Use with --capture.
     'data-browsing-shots': ['./specs/data-browsing-screenshots.ts'],
+    // Suggested data-grid feature screenshots (output: e2e/screenshots/data-grid-suggested). Use with --capture.
+    'data-grid-suggested-shots': ['./specs/data-grid-suggested-screenshots.ts'],
     // Site/marketing screenshot captures (output: e2e/screenshots/site). Use with --capture.
     'site-shots': [
       './specs/zz-screenshots.ts',

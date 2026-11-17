@@ -240,7 +240,7 @@ pnpm e2e:demo
 # 需要时显式构建
 pnpm e2e:demo:build
 
-# 将 e2e/screenshots/demo/demo-recording.mp4 同步到 site/assets/video/（后处理，不重录）
+# 将 e2e/screenshots/demo/demo-recording.gif 同步到 site/assets/video/（后处理，不重录）
 pnpm e2e:demo:sync
 ```
 

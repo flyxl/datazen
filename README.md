@@ -14,7 +14,7 @@
 [Download](https://flyxl.github.io/datazen/download.html) · [Website](https://flyxl.github.io/datazen/) · [中文](README.zh-CN.md) · [Manual](https://flyxl.github.io/datazen/manual.html) · [Contributing](CONTRIBUTING.md)
 </div>
 
-<video src="site/assets/video/demo-recording.mp4" controls width="100%" poster="site/assets/video/demo-poster.png"></video>
+<img src="site/assets/video/demo-recording.gif" alt="DataZen demo" width="100%" />
 
 <p align="center">
   <b>17 database drivers</b> · <b>10 interface languages</b> · <b>MCP server &amp; client</b> · <b>No account, no cloud</b> · <b>macOS · Windows · Linux</b>
