@@ -7,6 +7,7 @@ pub mod data_grid;
 pub mod splitter;
 pub mod sql_editor;
 mod constants;
+pub(crate) mod i18n;
 mod icons;
 mod types;
 mod state_def;
