@@ -1,4 +1,4 @@
-use rune::{El, Ime, Key, KeyEvent, Span, TextEdit, TextStyle, Tx, col, oklch, row, text, text_input};
+use rune::{El, Ime, Key, KeyEvent, Span, TextEdit, TextStyle, Tx, col, row, text, text_input};
 
 pub(super) const KEYWORDS: &[&str] = &[
     "ALL", "ALTER", "AND", "AS", "AVG", "BY", "CASE", "COUNT", "CREATE", "DELETE", "DISTINCT",

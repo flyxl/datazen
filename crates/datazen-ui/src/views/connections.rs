@@ -7,7 +7,9 @@ use super::*;
 use crate::state_def::AppState;
 use crate::ui::field::TextField;
 use rune::tok::{self, type_};
-use rune::{col, oklcha, row, text, El};
+use rune::{col, row, text, El};
+
+use crate::ui::palette;
 use rune::{FileDialogOptions, Tx};
 
 /// The connections page: the home body. The connection form and the import
@@ -496,7 +498,7 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
         .child(
             text(error_text)
                 .font(type_::LABEL)
-                .color(oklcha(0.63, 0.22, 25.0, 1.0))
+                .color(palette::danger_text(false))
                 .wrap(),
         );
 

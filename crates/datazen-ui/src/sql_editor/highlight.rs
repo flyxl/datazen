@@ -1,4 +1,6 @@
-use rune::{Span, oklch};
+use rune::Span;
+
+use crate::ui::palette;
 
 use super::model::{is_keyword, KEYWORDS};
 
@@ -75,16 +77,16 @@ pub fn highlight_sql(src: &str, dark: bool) -> Vec<Span> {
 }
 
 pub(super) fn keyword_color(dark: bool) -> rune::Color {
-    if dark { oklch(0.72, 0.13, 305.0) } else { oklch(0.48, 0.16, 305.0) }
+    palette::code_palette(dark).keyword
 }
 pub(super) fn string_color(dark: bool) -> rune::Color {
-    if dark { oklch(0.74, 0.12, 145.0) } else { oklch(0.50, 0.14, 145.0) }
+    palette::code_palette(dark).string
 }
 pub(super) fn comment_color(dark: bool) -> rune::Color {
-    if dark { oklch(0.62, 0.02, 95.0) } else { oklch(0.52, 0.03, 95.0) }
+    palette::code_palette(dark).comment
 }
 pub(super) fn number_color(dark: bool) -> rune::Color {
-    if dark { oklch(0.78, 0.12, 70.0) } else { oklch(0.52, 0.14, 70.0) }
+    palette::code_palette(dark).number
 }
 
 // keep KEYWORDS referenced to avoid unused warning pattern in some builds? not needed.

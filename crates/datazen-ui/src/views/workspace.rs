@@ -14,7 +14,9 @@ use datazen_ui_api::{
     Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi,
 };
 use rune::tok::{self, type_};
-use rune::{col, oklch, row, text, Color, Cx, El};
+use rune::{col, row, text, Color, Cx, El};
+
+use crate::ui::palette;
 use rune::{FileDialogOptions, TextEdit, Tx};
 
 pub(crate) fn page_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
@@ -772,7 +774,7 @@ fn result_chart_view(grid: &crate::data_grid::DataGrid, theme: tok::Theme) -> El
                         .w(34.0)
                         .h(height)
                         .radius(3.0)
-                        .fill(oklch(0.72, 0.13, 250.0)),
+                        .fill(palette::chart_bar_accent(false)),
                 )
                 .child(
                     text(format!("{short_label} {value}"))

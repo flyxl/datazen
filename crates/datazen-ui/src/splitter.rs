@@ -2,7 +2,9 @@
 //! persists it through `Setting::Layout` once the gesture ends.
 
 use crate::AppState;
-use rune::{el, oklch, Drag, El, Phase, Tx};
+use rune::{el, Drag, El, Phase, Tx};
+
+use crate::ui::palette;
 
 /// The direction a split bar divides space.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -103,7 +105,7 @@ pub(crate) fn splitter_handle(
         .label(label)
         .a11y_value(format!("{size} pt"))
         .focusable(true)
-        .fill(oklch(0.5, 0.0, 0.0).alpha(0.2));
+        .fill(palette::splitter_drag_fill(false));
     handle = match axis {
         SplitAxis::Vertical => handle.w(1.0).h_full(),
         SplitAxis::Horizontal => handle.w_full().h(1.0),

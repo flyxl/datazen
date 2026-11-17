@@ -9,7 +9,9 @@ use crate::state_def::AppState;
 use crate::ui::dialog::Dialog;
 use crate::ui::kit::kit;
 use rune::tok::{self, type_};
-use rune::{col, oklch, row, text, Color, El, ScrollSpec, TextStyle};
+use rune::{col, row, text, Color, El, ScrollSpec, TextStyle};
+
+use crate::ui::palette;
 use rune_kit::{Button, ButtonVariant, ControlSize};
 
 /// The floating layer for whatever dialog is open — the import dialog first
@@ -55,7 +57,7 @@ fn engine_hue(engine: &str) -> f32 {
 /// Engine badge icon (colored rounded badge + monogram) for driver list.
 fn engine_badge_icon(engine: &str, size: f32, dark: bool) -> El {
     let hue = engine_hue(engine);
-    let fill = oklch(if dark { 0.5 } else { 0.58 }, 0.12, hue);
+    let fill = palette::engine_badge_fill(dark, hue);
     let initial = engine
         .chars()
         .next()
@@ -70,7 +72,7 @@ fn engine_badge_icon(engine: &str, size: f32, dark: bool) -> El {
         .child(
             text(initial)
                 .font(TextStyle::new(size * 0.46, 700.0))
-                .color(oklch(0.99, 0.005, 256.0)),
+                .color(palette::badge_ink(dark)),
         )
 }
 

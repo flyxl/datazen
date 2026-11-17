@@ -14,7 +14,9 @@ use datazen_ui_api::{
     Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi,
 };
 use rune::tok::{self, type_};
-use rune::{col, oklch, row, text, Color, Cx, El};
+use rune::{col, row, text, Color, Cx, El};
+
+use crate::ui::palette;
 use rune::{FileDialogOptions, TextEdit, Tx};
 
 pub(crate) fn er_view(
@@ -95,11 +97,7 @@ pub(crate) fn er_box(
     let collapsed = columns.is_some_and(|columns| columns.len() > 12);
     let table = table.to_owned();
     let drag_table = table.clone();
-    let box_fill = if dark {
-        oklch(0.24, 0.03, 250.0)
-    } else {
-        oklch(0.96, 0.01, 250.0)
-    };
+    let box_fill = palette::er_box_fill(dark);
     let mut class_box = col()
         .key(format!("er-box-{table}"))
         .absolute(x, y)
