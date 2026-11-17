@@ -19,6 +19,26 @@ fn settings_texts(section: &str) -> Vec<String> {
         .collect()
 }
 
+/// The texts laid out under `settings-section-<id>`, read off the real layout.
+fn section_texts(section: &str) -> Vec<String> {
+    let mut runtime = super::runtime();
+    runtime.state.active = Section::Settings;
+    runtime.state.set_settings_section(section);
+    runtime.frame(0.0);
+    let elements = runtime.elements();
+    let path = elements
+        .iter()
+        .find(|element| element.key.as_deref() == Some(&format!("settings-section-{section}")))
+        .unwrap_or_else(|| panic!("{section}: the settings section is laid out"))
+        .path
+        .clone();
+    elements
+        .into_iter()
+        .filter(|element| element.path.starts_with(&path))
+        .filter_map(|element| element.text)
+        .collect()
+}
+
 #[test]
 fn the_settings_page_does_not_show_raw_translation_keys() {
     // Every section in the nav should render its label from the pack. A key
@@ -40,21 +60,49 @@ fn the_settings_page_does_not_show_raw_translation_keys() {
 }
 
 #[test]
-#[ignore = "DEFECT dfbe30895: placeholder bodies splice a Chinese section label into an English sentence"]
-fn placeholder_bodies_stay_in_one_language() {
-    // `settings.rs` renders `"{label} settings are not available in this Rune
-    // build yet."`. Since `label` is now `t(...)`, a not-yet-migrated section
-    // (logging, behaviour, AI, prompts, MCP, tunnels, extensions) shows
-    // 「日志 settings are not available in this Rune build yet.」. Either
-    // translate the template or keep the label in English; do not mix.
-    let body = settings_texts("logging")
-        .into_iter()
-        .find(|text| text.contains("settings are not available"))
-        .expect("the logging section shows its placeholder body");
-    let english_template = body.contains("settings are not available in this Rune build yet.");
-    let has_han = body.chars().any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c));
-    assert!(
-        !(english_template && has_han),
-        "the placeholder body mixes a translated label into an English template: {body:?}"
-    );
+fn placeholder_sections_speak_one_chinese_sentence() {
+    // `settings.rs` renders `"{label}设置在此 Rune 构建中尚不可用"`. The label
+    // is `t(...)`, so the whole body has to stay Chinese: a half-translated
+    // template shows up here as an English fragment or a raw key.
+    for section in [
+        "behavior",
+        "logging",
+        "ai",
+        "prompts",
+        "mcpServer",
+        "mcpClient",
+        "tunnels",
+        "extensions",
+    ] {
+        let texts = section_texts(section);
+        let title = texts
+            .first()
+            .cloned()
+            .unwrap_or_else(|| panic!("{section}: the section shows a title"));
+        assert!(
+            !texts
+                .iter()
+                .any(|text| text.contains("settings are not available")),
+            "{section}: an English template survived the migration: {texts:?}"
+        );
+        let body = texts
+            .iter()
+            .find(|text| text.ends_with("尚不可用"))
+            .unwrap_or_else(|| panic!("{section}: no Chinese placeholder body in {texts:?}"));
+        assert!(
+            body.starts_with(&title),
+            "{section}: body {body:?} does not start with its translated title {title:?}"
+        );
+        assert!(
+            body.chars().any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c)),
+            "{section}: the placeholder body is not Chinese: {body:?}"
+        );
+        assert!(
+            !texts.iter().any(|text| text.contains("settings.")
+                || text.contains("newConn.")
+                || text.contains("common.")
+                || text.contains("nav.")),
+            "{section}: a raw key fell through to the page: {texts:?}"
+        );
+    }
 }
