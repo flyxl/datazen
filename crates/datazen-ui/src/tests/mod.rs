@@ -72,3 +72,4 @@ mod query_workspace;
 mod rail_modals;
 // Menu and context-menu base.
 mod menus;
+mod menus_audit;
