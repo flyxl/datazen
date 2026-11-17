@@ -43,10 +43,10 @@
 | T0-06 | ☑ | Select：封装 kit `Select`（popup list、键盘上下、placeholder、禁用） | `crates/datazen-ui/src/ui/select.rs` | 键盘选中与鼠标选中的结果一致。已落地 `59c783199` + `af66e5148`（label→value 映射、`on_close` 才挂 dismissal 层），tester 判 TEST_PASSED |
 | T0-07 | ☑ | Menu：封装 kit `Menu` / `context_menu`（右侧 [0,0] 锚定、边缘翻转） | `crates/datazen-ui/src/ui/menu.rs` | 视口边缘不裁切。已落地 `dd65b96d7` + `c5dd84922`（子菜单、icon/shortcut/badge/description/checked/danger 透传、`close_on_select`），tester 复测通过；长菜单超窗为 kit 限制，记 `#[ignore]` |
 | T0-08 | ☑ | 开关类：`Checkbox` / `Switch` / `RadioGroup` 封装 | `crates/datazen-ui/src/ui/toggle.rs` | 焦点环可见，整行可点。已落地 `59c783199` + `af66e5148`（Checkbox 半选态），tester 判 TEST_PASSED |
-| T0-09 | `~` | Table 已落地（`7ca97f558`→`1c5d8e9d4`，合流 `14948e4f8`；借 `rune_kit::TableStyle` 自绘，未包 kit `Table`，因为它的行键是私有硬编码；无虚拟化，tester 复测 PASS）；Tree 基座进行中 | `crates/datazen-ui/src/data_grid/`、`crates/datazen-ui/src/ui/{table,tree}.rs` | 1 万行滚动帧率不退化 |
+| T0-09 | ☑ | Table（`1c5d8e9d4`，合流 `14948e4f8`）+ Tree（`abb1ef2cf`，复测 `12bb3f1f9`，合流 `1279b9197`）已落地；都借 kit 的样式/模型自绘（kit `Table`/`Tree` 的行键私有硬编码），Tree 有虚拟化、Table 暂无；Tree 的 a11y 用 `active_descendant` 指向可见行、页高按实例存 `S` | `crates/datazen-ui/src/data_grid/`、`crates/datazen-ui/src/ui/{table,tree}.rs` | 1 万行滚动帧率不退化 |
 | T0-10 | ☑ | Toast / Tooltip / HoverCard | `crates/datazen-ui/src/ui/toast.rs`、`ui/tooltip.rs` | 与 kit 动画时长一致。已落地 `271a95b48` + `86818558a`（`ToastHost` 持 `ToastStack` 走 `tick`，HoverCard 锚点贴合触发器），tester 复测 TEST_PASSED；`ToastHost` 尚无真实调用点，动效与帧时钟待接线 |
 | T0-11 | `~` | kit 缺失件：CopyableError+ErrorBanner（`c02669bd9`，合流 `28fba0cef`；颜色与 a11y 断言补强 `4170cb0b8`，合流 `e3e99478c`）、Slider/PathInput（`df6e8853b`，合流 `4773d96b0`+`c0f11bbb1`）已落地；JsonViewer/BinaryViewer 待复测（`1f2e43aef`+`1a36af30f`）；1500ms copied 反馈、TemporalValueInput、虚拟树行算术仍待 | `crates/datazen-ui/src/ui/*.rs` | 每件一条几何/行为断言 |
-| T0-12 | `~` | 基座几何回归：每组件 960×640 + 1440×816（`.worktrees/datazen-rune-geometry`，`feature/rune-geometry`，基线 `350a86dad`） | `crates/datazen-ui/src/tests/base_geometry.rs` | 越界节点为 0 |
+| T0-12 | ☑ | 基座几何回归：16 个基座 × {960×640, 1440×816} × {dark, light} = 64 次渲染，越界 0、同父兄弟无重叠（`23e0db186`，合流 `3ec5a6ba8`）；顺带发现 compact Tooltip 长单行文本不换行会横向出窗（`ui/tooltip.rs:105` → kit `overlay.rs:255` 的 `max_w: None`），记为待修 | `crates/datazen-ui/src/tests/base_geometry.rs` | 越界节点为 0 |
 
 Phase 0 合计约 12 个工作日。它做完之前不碰 §4 的台账任务，否则每个页面都会再手搓一遍组件。
 
