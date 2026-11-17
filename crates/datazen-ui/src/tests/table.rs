@@ -1,8 +1,6 @@
 //! T0-09 table base: geometry, alignment, empty state, sorting, selection,
 //! keyboard and pointer activation, and window-fit at two viewport sizes.
 
-use super::*;
-
 use crate::ui::table::{CellValue, Column, DataTable};
 use rune::{col, Align, Cx, El, Env, Key, KeyEvent, Mods, Runtime};
 use rune_kit::SortDir;
@@ -32,22 +30,31 @@ struct Probe {
     activations: Vec<usize>,
     sort: Option<(usize, SortDir)>,
     grow: bool,
+    /// Table wired with `on_activate` only: rows must still be real Tab stops.
+    activate_only: bool,
+    /// No handlers at all: nothing in the table may join the tab order.
+    no_handlers: bool,
 }
 
 fn view(state: &Probe, _cx: &mut Cx<Probe>) -> El {
     let columns = columns();
-    let rows = state
-        .rows
-        .iter()
-        .map(|row| row.iter().map(|cell| CellValue::from(*cell)).collect::<Vec<_>>());
+    let rows = state.rows.iter().map(|row| {
+        row.iter()
+            .map(|cell| CellValue::from(*cell))
+            .collect::<Vec<_>>()
+    });
     let mut table = DataTable::new(KEY, &columns)
         .rows(rows)
-        .selected(state.selected)
-        .on_select(|s: &mut Probe, i| {
-            s.selected = Some(i);
-            s.selects.push(i);
-        })
-        .on_activate(|s: &mut Probe, i| s.activations.push(i));
+        .selected(state.selected);
+    if !state.no_handlers {
+        table = table.on_activate(|s: &mut Probe, i| s.activations.push(i));
+        if !state.activate_only {
+            table = table.on_select(|s: &mut Probe, i| {
+                s.selected = Some(i);
+                s.selects.push(i);
+            });
+        }
+    }
     if let Some((column, dir)) = state.sort {
         table = table.sort(column, dir);
     }
@@ -249,7 +256,10 @@ fn selected_row_is_highlighted_differently() {
     let normal = element(&rt, "tbl-row-0").fill;
     let selected = element(&rt, "tbl-row-1").fill;
     let normal_again = element(&rt, "tbl-row-2").fill;
-    assert_ne!(selected, normal, "selected row must not use the plain row fill");
+    assert_ne!(
+        selected, normal,
+        "selected row must not use the plain row fill"
+    );
     assert_eq!(normal, normal_again, "unselected rows share one fill");
 }
 
@@ -263,7 +273,11 @@ fn keyboard_moves_focus_and_activates_the_current_row() {
     let mut rt = probe(state, (1440.0, 816.0));
 
     press(&mut rt, Key::Tab);
-    assert_eq!(focused(&rt).as_deref(), Some("tbl"), "Tab reaches the table");
+    assert_eq!(
+        focused(&rt).as_deref(),
+        Some("tbl"),
+        "Tab reaches the table"
+    );
     assert!(rt.state.selected.is_none());
 
     press(&mut rt, Key::Down);
@@ -279,7 +293,11 @@ fn keyboard_moves_focus_and_activates_the_current_row() {
     assert_eq!(rt.state.selects, vec![0, 1, 0]);
 
     press(&mut rt, Key::Enter);
-    assert_eq!(rt.state.activations, vec![0], "Enter activates the current row");
+    assert_eq!(
+        rt.state.activations,
+        vec![0],
+        "Enter activates the current row"
+    );
     press(&mut rt, Key::Text(" ".into()));
     assert_eq!(rt.state.activations, vec![0, 0], "Space activates too");
 
@@ -289,6 +307,52 @@ fn keyboard_moves_focus_and_activates_the_current_row() {
     assert_eq!(rt.state.activations, vec![0, 0, 2]);
     press(&mut rt, Key::Home);
     assert_eq!(focused(&rt).as_deref(), Some("tbl-row-0"));
+}
+
+#[test]
+fn activate_only_rows_are_tab_stops_that_activate() {
+    let mut state = Probe::default();
+    state.rows = rows3();
+    state.activate_only = true;
+    let mut rt = probe(state, (1440.0, 816.0));
+
+    press(&mut rt, Key::Tab);
+    assert_eq!(
+        focused(&rt).as_deref(),
+        Some("tbl-row-0"),
+        "without on_select every focusable row is its own Tab stop"
+    );
+    press(&mut rt, Key::Enter);
+    assert_eq!(rt.state.activations, vec![0], "Enter reaches on_activate");
+    press(&mut rt, Key::Tab);
+    assert_eq!(focused(&rt).as_deref(), Some("tbl-row-1"));
+    press(&mut rt, Key::Text(" ".into()));
+    assert_eq!(
+        rt.state.activations,
+        vec![0, 1],
+        "Space reaches on_activate"
+    );
+}
+
+#[test]
+fn static_table_takes_no_tab_focus() {
+    let mut state = Probe::default();
+    state.rows = rows3();
+    state.activate_only = true;
+    let mut rt = probe(state, (1440.0, 816.0));
+    press(&mut rt, Key::Tab);
+    assert!(focused(&rt).is_some());
+
+    let mut state = Probe::default();
+    state.rows = rows3();
+    state.no_handlers = true;
+    let mut rt = probe(state, (1440.0, 816.0));
+    press(&mut rt, Key::Tab);
+    assert_eq!(
+        focused(&rt),
+        None,
+        "a table with no handlers is not a Tab stop"
+    );
 }
 
 #[test]

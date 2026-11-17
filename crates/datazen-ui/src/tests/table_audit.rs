@@ -118,7 +118,6 @@ fn rows3() -> Vec<Vec<&'static str>> {
 /// A table with neither handler must not put its rows in the tab order: they
 /// are visible text, and a Tab stop that ignores Enter/Space is an empty shell.
 #[test]
-#[ignore = "known defect: a table with no handlers still puts every row in the tab order"]
 fn a_static_table_has_no_empty_tab_stops() {
     let mut state = Audit::default();
     state.rows = rows3();
@@ -129,21 +128,20 @@ fn a_static_table_has_no_empty_tab_stops() {
     assert!(rt.state.activations.is_empty());
 }
 
-/// Documents the current fallback: without `on_select` every row is its own tab
-/// stop (`tab_index(0)`), even when `on_activate` is absent too.
+/// `on_activate` alone keeps rows as real Tab stops with a working Enter: the
+/// row is not an empty shell, and no container focus group is needed.
 #[test]
-fn a_static_table_currently_tabs_through_every_row() {
+fn activate_only_rows_are_tab_stops_with_a_working_enter() {
     let mut state = Audit::default();
     state.rows = rows3();
+    state.activate = true;
     let mut rt = probe(state, (960.0, 640.0));
     press(&mut rt, Key::Tab);
     assert_eq!(focused(&rt).as_deref(), Some("tbl-row-0"));
     press(&mut rt, Key::Tab);
     assert_eq!(focused(&rt).as_deref(), Some("tbl-row-1"));
-    press(&mut rt, Key::Tab);
-    assert_eq!(focused(&rt).as_deref(), Some("tbl-row-2"));
     press(&mut rt, Key::Enter);
-    assert!(rt.state.activations.is_empty(), "nothing handles Enter");
+    assert_eq!(rt.state.activations, vec![1], "Enter reaches the row");
 }
 
 /// `on_select` alone makes the container the single tab stop and rows

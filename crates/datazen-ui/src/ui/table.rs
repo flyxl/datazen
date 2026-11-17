@@ -258,7 +258,10 @@ impl<'a> DataTable<'a> {
 
     /// A row press (select and focus) and the focus movement keys. `f(state, row)` receives
     /// the rendered row index of the row that was pressed or focused.
-    pub(crate) fn on_select<S: 'static>(mut self, f: impl Fn(&mut S, usize) + 'static) -> DataTable<'a> {
+    pub(crate) fn on_select<S: 'static>(
+        mut self,
+        f: impl Fn(&mut S, usize) + 'static,
+    ) -> DataTable<'a> {
         let f: Rc<dyn Fn(&mut S, usize)> = Rc::new(f);
         let row_f = Rc::clone(&f);
         let root_f = Rc::clone(&f);
@@ -368,10 +371,24 @@ impl<'a> DataTable<'a> {
         let style = TableStyle::from_kit(k);
         let order = order(&rows, sort);
         let len = rows.len();
-        let body_h = if len == 0 { 44.0 } else { len as f32 * style.row_height };
+        let body_h = if len == 0 {
+            44.0
+        } else {
+            len as f32 * style.row_height
+        };
 
         let head = header(&key, columns, sort, &style, k);
-        let body = body(&key, columns, &rows, &order, selected, empty_text.as_deref(), &style, &select, &activate);
+        let body = body(
+            &key,
+            columns,
+            &rows,
+            &order,
+            selected,
+            empty_text.as_deref(),
+            &style,
+            &select,
+            &activate,
+        );
 
         let mut root = col().key(key.clone()).role("grid").w_full().clip_soft(0.0);
         root = match height {
@@ -391,15 +408,20 @@ impl<'a> DataTable<'a> {
 }
 
 /// The header row: one column header per column, the rule under it and between columns.
-fn header(key: &str, columns: &[Column], sort: Option<(usize, SortDir)>, style: &TableStyle, k: &rune_kit::Kit) -> El {
+fn header(
+    key: &str,
+    columns: &[Column],
+    sort: Option<(usize, SortDir)>,
+    style: &TableStyle,
+    k: &rune_kit::Kit,
+) -> El {
     let mut head = row()
         .key(format!("{key}-head"))
         .role("row")
         .w_full()
         .h(style.header_height)
         .child(
-            el()
-                .key(format!("{key}-head-rule"))
+            el().key(format!("{key}-head-rule"))
                 .pin(Some(0.0), None, Some(0.0), Some(0.0))
                 .h(1.0)
                 .fill(style.rule)
@@ -411,7 +433,11 @@ fn header(key: &str, columns: &[Column], sort: Option<(usize, SortDir)>, style: 
         let title = text(c.title.clone())
             .key(format!("{key}-col-{i}-title"))
             .font(style.header_font)
-            .color(if sorted.is_some() { style.text } else { style.header_text })
+            .color(if sorted.is_some() {
+                style.text
+            } else {
+                style.header_text
+            })
             .truncate()
             .shrink()
             .min_w(0.0)
@@ -451,8 +477,7 @@ fn header(key: &str, columns: &[Column], sort: Option<(usize, SortDir)>, style: 
         let mut cell = justify(cell, c.align);
         if i != last {
             cell = cell.child(
-                el()
-                    .key(format!("{key}-col-{i}-rule"))
+                el().key(format!("{key}-col-{i}-rule"))
                     .pin(None, Some(8.0), Some(0.0), Some(8.0))
                     .w(1.0)
                     .fill(style.rule)
@@ -481,12 +506,13 @@ fn body(
         .w_full()
         .grow(1.0)
         .min_h(0.0)
-        .scroll(ScrollSpec { stick_bottom: false });
+        .scroll(ScrollSpec {
+            stick_bottom: false,
+        });
     if rows.is_empty() {
         let empty = empty_text.unwrap_or_else(|| crate::i18n::t("dataTable.empty"));
         return body.child(
-            el()
-                .key(format!("{key}-empty"))
+            el().key(format!("{key}-empty"))
                 .role("status")
                 .label(empty)
                 .w_full()
@@ -496,13 +522,16 @@ fn body(
                 .child(text(empty).font(style.font).color(style.muted)),
         );
     }
+    // Rows are only focus targets when something can happen on Enter/Space. A
+    // static table (no handlers) must not put empty shells in the tab order.
+    let interactive = select.is_some() || activate.is_some();
     for (i, &source) in order.iter().enumerate() {
         let cells = &rows[source].cells;
         let is_selected = selected == Some(i);
         let mut r = row()
             .key(format!("{key}-row-{i}"))
             .role("row")
-            .focusable(true)
+            .focusable(interactive)
             .tab_index(if select.is_some() { -1 } else { 0 })
             .focus_selected(is_selected)
             .w_full()
@@ -576,7 +605,12 @@ fn justify(e: El, align: Align) -> El {
 fn order(rows: &[Row], sort: Option<(usize, SortDir)>) -> Vec<usize> {
     let mut order: Vec<usize> = (0..rows.len()).collect();
     if let Some((column, dir)) = sort {
-        order.sort_by(|&a, &b| dir.apply(compare(cell_text(&rows[a], column), cell_text(&rows[b], column))));
+        order.sort_by(|&a, &b| {
+            dir.apply(compare(
+                cell_text(&rows[a], column),
+                cell_text(&rows[b], column),
+            ))
+        });
     }
     order
 }
