@@ -96,3 +96,5 @@ mod copyable;
 // T0-11 viewer bases.
 mod binary_viewer;
 mod json_viewer;
+// Independent audit for T0-11 viewer bases.
+mod viewer_audit;
