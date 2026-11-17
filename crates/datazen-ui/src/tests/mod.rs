@@ -14,6 +14,8 @@ pub(crate) mod support;
 pub(crate) mod tokens;
 // T0-09: the tree base (geometry, keyboard, virtualisation, selection).
 mod tree;
+// T0-09 audit: virtual staging, page height, edges and the selected a11y state.
+mod tree_audit;
 pub(crate) use support::*;
 
 pub(crate) fn runtime() -> Runtime<AppState> {
