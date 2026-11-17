@@ -148,7 +148,9 @@ fn line_stays_centred_in_28_and_36_point_boxes() {
         // The inner editor of the field whose box encloses it.
         let input = inputs
             .iter()
-            .find(|e| e.rect[1] >= box_rect[1] && e.rect[1] + e.rect[3] <= box_rect[1] + box_rect[3])
+            .find(|e| {
+                e.rect[1] >= box_rect[1] && e.rect[1] + e.rect[3] <= box_rect[1] + box_rect[3]
+            })
             .unwrap_or_else(|| panic!("{key} has an inner editor"));
         let box_centre = box_rect[1] + box_rect[3] / 2.0;
         let line_centre = input.rect[1] + input.rect[3] / 2.0;
@@ -216,14 +218,15 @@ fn caller_chrome_survives_the_kit_shell() {
     const FILL: rune::Color = rune::Color::WHITE;
     fn field(state: &AppState, _cx: &mut rune::Cx<AppState>) -> rune::El {
         rune::col().w_full().items_start().child(
-        crate::ui::field::TextField::new("audit-chrome", &state.connection_search)
-            .height(36.0)
-            .width(200.0)
-            .radius(8.0)
-            .fill(FILL)
-            .border(1.0, rune::Color::BLACK)
-            .on_edit(|state: &mut AppState| &mut state.connection_search)
-            .build(true))
+            crate::ui::field::TextField::new("audit-chrome", &state.connection_search)
+                .height(36.0)
+                .width(200.0)
+                .radius(8.0)
+                .fill(FILL)
+                .border(1.0, rune::Color::BLACK)
+                .on_edit(|state: &mut AppState| &mut state.connection_search)
+                .build(true),
+        )
     }
     let mut rt = Runtime::new(AppState::default(), field, (400.0, 120.0), probe_env());
     rt.frame(0.0);
@@ -289,7 +292,10 @@ fn light_system_without_a_saved_theme_keeps_fields_on_the_light_palette() {
         AppState::default(),
         view,
         (960.0, 640.0),
-        Env { system_dark: false, scale: 1.0 },
+        Env {
+            system_dark: false,
+            scale: 1.0,
+        },
     );
     rt.state.active = Section::Settings;
     rt.state.set_settings_section("dataBrowsing");
@@ -315,4 +321,44 @@ fn light_system_without_a_saved_theme_keeps_fields_on_the_light_palette() {
     );
 }
 
-
+#[test]
+fn light_system_paints_every_settings_field_with_the_light_palette() {
+    use crate::settings_state::SETTINGS_SECTIONS;
+    let mut rt = Runtime::new(
+        AppState::default(),
+        view,
+        (960.0, 640.0),
+        Env {
+            system_dark: false,
+            scale: 1.0,
+        },
+    );
+    rt.state.active = Section::Settings;
+    let light = rune::tok::theme(false).text;
+    let mut seen = 0;
+    for def in SETTINGS_SECTIONS {
+        rt.state.set_settings_section(def.id);
+        rt.frame(0.0);
+        for e in rt.elements() {
+            if e.key.as_deref() != Some("input") {
+                continue;
+            }
+            if let Some(color) = e.text_color {
+                assert_eq!(
+                    color, light,
+                    "{}: a text field on the light page uses a non-light token",
+                    def.id
+                );
+                seen += 1;
+            }
+        }
+    }
+    assert!(
+        seen >= 4,
+        "expected the settings text fields to render, saw {seen}"
+    );
+    assert!(
+        !rt.state.dark_theme(),
+        "dark_theme() must follow the page theme"
+    );
+}
