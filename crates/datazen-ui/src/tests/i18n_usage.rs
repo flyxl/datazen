@@ -121,3 +121,34 @@ fn the_two_connection_views_still_ask_for_the_keys_they_took_over() {
         }
     }
 }
+
+#[test]
+fn the_connection_form_renders_translated_labels() {
+    // Render the real dialog and read the laid-out text: the connection name
+    // label keeps its required marker next to the translated name, the database
+    // field shows the pack text, and no key falls through to the screen.
+    let mut runtime = super::runtime();
+    runtime.state.open_connection_dialog();
+    runtime.frame(0.0);
+    assert!(
+        runtime.find("connection-dialog").is_some(),
+        "the connection dialog is laid out"
+    );
+    let texts: Vec<String> = runtime
+        .elements()
+        .into_iter()
+        .filter_map(|element| element.text)
+        .collect();
+    for expected in ["连接名称 *", "数据库名"] {
+        assert!(
+            texts.iter().any(|text| text == expected),
+            "the form does not show {expected:?}; it shows {texts:?}"
+        );
+    }
+    assert!(
+        !texts
+            .iter()
+            .any(|text| text.starts_with("newConn.") || text.starts_with("common.")),
+        "a translation key fell through to the screen: {texts:?}"
+    );
+}
