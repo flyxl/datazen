@@ -269,61 +269,6 @@ pub(crate) fn app_ime(state: &mut AppState, ev: &Ime, _: &mut Tx) -> bool {
         && crate::sql_editor::on_ime(&mut state.sql, ev)
 }
 
-/// Headless/viewer capture entry for migration verification.
-/// Renders a single viewer scenario selected by `DATAZEN_VIEWER_CAPTURE`.
-/// Supported scenes: `unparseable-json`, `binary-4kb`,
-/// `long-single-line-json-pretty`, `nested-6-json`.
-pub fn run_viewer_capture(scene: &str) {
-    use crate::ui::binary_viewer::BinaryViewer;
-    use crate::ui::json_viewer::{JsonDisplayMode, JsonViewer};
-
-    #[derive(Default, Clone)]
-    struct CaptureState {
-        scene: String,
-    }
-
-    fn capture_init() -> CaptureState {
-        CaptureState::default()
-    }
-
-    fn capture_view(state: &CaptureState, cx: &mut Cx<CaptureState>) -> El {
-        let dark = cx.system_dark();
-        match state.scene.as_str() {
-            "unparseable-json" => JsonViewer::new("jv", "{not json").build(dark),
-            "binary-4kb" => {
-                let bytes = vec![b'A'; 4096];
-                BinaryViewer::new("bv", &bytes).build(dark)
-            }
-            "long-single-line-json-pretty" => {
-                let text = format!(
-                    "{{\"id\":1,\"name\":\"{}\",\"active\":true,\"count\":1234567890,\"tags\":[\"alpha\",\"beta\",\"gamma\",\"delta\"],\"note\":\"end\"}}",
-                    "a".repeat(180)
-                );
-                JsonViewer::new("jv", &text)
-                    .mode(JsonDisplayMode::Pretty)
-                    .build(dark)
-            }
-            "nested-6-json" => JsonViewer::new(
-                "jv",
-                r#"{"a":{"b":{"c":{"d":{"e":{"f":1}}}}}}"#,
-            )
-            .build(dark),
-            other => rune::text(format!("unknown viewer capture scene: {other}"))
-                .key("capture-unknown"),
-        }
-    }
-
-    let scene = scene.to_owned();
-    App::new(AppSpec {
-        fonts: APP_FONTS,
-        families: APP_FONT_FAMILIES,
-        min_size: Some(WINDOW_MIN_SIZE),
-        ..AppSpec::new("DataZen Viewer Capture", (960.0, 640.0), capture_init, capture_view)
-    })
-    .init(move || CaptureState { scene })
-    .run();
-}
-
 /// WebAssembly entrypoint consumed by wasm-bindgen.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen::prelude::wasm_bindgen(start)]
