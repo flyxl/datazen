@@ -126,3 +126,8 @@ mod viewer_audit;
 
 // T0-12 base geometry regression: every base inside the window, siblings apart.
 mod base_geometry;
+
+// T0-11 chrome bases: ToolbarButton, Tabs, Spinner, Badge, Label, ToolbarShell.
+mod chrome_parts;
+mod chrome_parts_audit;
+mod chrome_fix_audit;
