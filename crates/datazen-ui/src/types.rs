@@ -1,5 +1,7 @@
 //! Core UI types for the DataZen Rune UI.
 
+use crate::i18n::t;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum TableView {
     #[default]
@@ -45,16 +47,18 @@ impl Section {
         }
     }
 
-    pub(crate) const fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
-            // Align rail/main navigation labels with the React sidebar.
-            Self::Connections => "Databases",
-            Self::Workspace => "Workspace",
-            Self::Settings => "Settings",
+            // Align rail/main navigation labels with the React sidebar
+            // (packages/frontend/src/windows/connection/WorkspaceModeSidebar.tsx).
+            // Tools has no React sidebar entry, so it keeps its literal.
+            Self::Connections => t("nav.databases"),
+            Self::Workspace => t("nav.workspacePages"),
+            Self::Settings => t("nav.settings"),
             Self::Tools => "Tools",
-            Self::Dashboards => "Dashboard",
-            Self::Workflows => "Workflow",
-            Self::Wapps => "Extensions",
+            Self::Dashboards => t("nav.dashboard"),
+            Self::Workflows => t("nav.workflow"),
+            Self::Wapps => t("nav.extensions"),
         }
     }
 }

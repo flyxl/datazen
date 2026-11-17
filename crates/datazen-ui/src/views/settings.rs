@@ -4,6 +4,7 @@
 use super::*;
 
 use crate::constants::*;
+use crate::i18n::t;
 use crate::icons::{self, section_icon};
 use crate::settings_state::{SettingsSectionDef, SETTINGS_NAV_GROUPS, SETTINGS_SECTIONS};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
@@ -62,7 +63,7 @@ fn settings_nav(state: &AppState, theme: tok::Theme, active: &str) -> El {
                     .px(12.0)
                     .center_y()
                     .child(
-                        text((*group_label).to_owned())
+                        text(t(group_label).to_owned())
                             .font(type_::LABEL)
                             .color(theme.text_secondary),
                     ),
@@ -93,7 +94,7 @@ fn settings_nav(state: &AppState, theme: tok::Theme, active: &str) -> El {
                     .radius(6.0)
                     .fill(fill)
                     .child(
-                        text(section.label.to_owned())
+                        text(t(section.label_key).to_owned())
                             .font(type_::LABEL)
                             .color(label_color),
                     )
@@ -112,14 +113,14 @@ fn settings_content(state: &AppState, theme: tok::Theme, dark: bool, active: &st
         "dataBrowsing" => data_browsing_section(state, theme, dark),
         "editor" => editor_section(state, theme, dark),
         "behavior" => behavior_section(state, theme),
-        "logging" => placeholder_section("logging", "Logging", theme),
-        "ai" => placeholder_section("ai", "AI Assistant", theme),
-        "prompts" => placeholder_section("prompts", "Prompts", theme),
-        "mcpServer" => placeholder_section("mcpServer", "MCP Server", theme),
-        "mcpClient" => placeholder_section("mcpClient", "MCP Client", theme),
-        "tunnels" => placeholder_section("tunnels", "Tunnels", theme),
-        "extensions" => placeholder_section("extensions", "Extensions", theme),
-        _ => placeholder_section(active, "Settings", theme),
+        "logging" => placeholder_section("logging", t("settings.logging"), theme),
+        "ai" => placeholder_section("ai", t("common.aiAssistant"), theme),
+        "prompts" => placeholder_section("prompts", t("settings.prompts"), theme),
+        "mcpServer" => placeholder_section("mcpServer", t("settings.mcp.title"), theme),
+        "mcpClient" => placeholder_section("mcpClient", t("settings.mcpClient.title"), theme),
+        "tunnels" => placeholder_section("tunnels", t("settings.tunnels.title"), theme),
+        "extensions" => placeholder_section("extensions", t("settings.extensions.title"), theme),
+        _ => placeholder_section(active, t("settings.title"), theme),
     };
     col()
         .key(format!("settings-content-{active}"))
@@ -136,7 +137,7 @@ fn general_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .key("settings-section-general")
         .w_full()
         .gap(12.0)
-        .child(section_title("General", theme))
+        .child(section_title(t("settings.general"), theme))
         .child(
             text("Application settings and saved queries.".to_owned())
                 .font(type_::LABEL)
@@ -158,7 +159,7 @@ fn appearance_section(state: &AppState, theme: tok::Theme) -> El {
         .key("settings-section-appearance")
         .w_full()
         .gap(12.0)
-        .child(section_title("Appearance", theme))
+        .child(section_title(t("settings.appearance"), theme))
         .child(
             row()
                 .key("settings-appearance")
@@ -205,7 +206,7 @@ fn data_browsing_section(state: &AppState, theme: tok::Theme, dark: bool) -> El 
         .key("settings-section-dataBrowsing")
         .w_full()
         .gap(12.0)
-        .child(section_title("Data Browsing", theme))
+        .child(section_title(t("settings.dataBrowsing"), theme))
         .child(
             row()
                 .key("settings-data")
@@ -272,12 +273,12 @@ fn editor_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .key("settings-section-editor")
         .w_full()
         .gap(12.0)
-        .child(section_title("Editor", theme))
+        .child(section_title(t("settings.editor"), theme))
         .child(snippets_section(state, theme, dark))
 }
 
 fn behavior_section(_state: &AppState, theme: tok::Theme) -> El {
-    placeholder_section("behavior", "Behavior", theme)
+    placeholder_section("behavior", t("settings.behavior"), theme)
 }
 
 fn section_title(label: &str, theme: tok::Theme) -> El {
@@ -295,11 +296,9 @@ fn placeholder_section(id: &str, label: &str, theme: tok::Theme) -> El {
         .gap(8.0)
         .child(section_title(label, theme))
         .child(
-            text(format!(
-                "{label} settings are not available in this Rune build yet."
-            ))
-            .font(type_::LABEL)
-            .color(theme.text_secondary)
+            text(format!("{label}设置在此 Rune 构建中尚不可用"))
+                .font(type_::LABEL)
+                .color(theme.text_secondary)
             .w_full()
             .wrap(),
         )
@@ -367,7 +366,7 @@ fn snippets_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                         .center_y()
                         .radius(6.0)
                         .fill(theme.control_off)
-                        .child(text("Save").font(type_::LABEL).color(theme.text))
+                        .child(text(t("common.save")).font(type_::LABEL).color(theme.text))
                         .on_press(|state: &mut AppState| state.save_snippet_form()),
                 )
                 .child(
@@ -413,7 +412,7 @@ fn snippets_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                         .radius(4.0)
                         .fill(theme.control_off)
                         .child(
-                            text("Delete")
+                            text(t("common.delete"))
                                 .font(type_::LABEL)
                                 .color(theme.text_secondary),
                         )
@@ -450,7 +449,7 @@ pub(crate) fn favorites_section(state: &AppState, theme: tok::Theme, dark: bool)
         .w_full()
         .gap(6.0)
         .child(
-            text("Favorites".to_owned())
+            text(t("query.favorites").to_owned())
                 .font(type_::TITLE)
                 .color(theme.text),
         )
@@ -495,7 +494,7 @@ pub(crate) fn favorites_section(state: &AppState, theme: tok::Theme, dark: bool)
                 .px(8.0)
                 .center_y()
                 .child(
-                    text("No favorites yet".to_owned())
+                    text(t("query.noFavorites").to_owned())
                         .font(type_::LABEL)
                         .color(theme.text_secondary),
                 ),
@@ -553,7 +552,7 @@ pub(crate) fn favorites_section(state: &AppState, theme: tok::Theme, dark: bool)
                         .radius(4.0)
                         .fill(theme.control_off)
                         .child(
-                            text("Delete")
+                            text(t("common.delete"))
                                 .font(type_::LABEL)
                                 .color(theme.text_secondary),
                         )
@@ -607,7 +606,7 @@ pub(crate) fn backup_section(state: &AppState, theme: tok::Theme) -> El {
                         .center_y()
                         .radius(6.0)
                         .fill(theme.control_off)
-                        .child(text("Start backup").font(type_::LABEL).color(theme.text))
+                        .child(text(t("backup.startBackup")).font(type_::LABEL).color(theme.text))
                         .on_press_tx(|state: &mut AppState, tx: &mut Tx| {
                             state.begin_backup_form(tx)
                         }),

@@ -257,7 +257,7 @@ use rune::{Env, Runtime};
         let tree = runtime.accessibility_json();
         let nav = find(&tree, "rail-wapps").expect("the sidebar lists the area");
         assert_eq!(nav["role"], "tab");
-        assert_eq!(nav["name"], "Extensions");
+        assert_eq!(nav["name"], crate::i18n::t("nav.extensions"));
 
         let page = find(&tree, "wapps-page").expect("the page is in the tree");
         assert!(find(&tree, "wapps-pending").is_some(), "the WAPPS entry is mounted");

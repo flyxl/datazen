@@ -40,6 +40,30 @@ fn keys_taken_over_by_the_rune_views_resolve() {
         "newConn.sshUsername",
         "newConn.tunnel",
         "newConn.username",
+        // Batch 2: settings sections, the rail, and the navigator title.
+        "nav.databases",
+        "nav.dashboard",
+        "nav.extensions",
+        "nav.settings",
+        "nav.workflow",
+        "nav.workspacePages",
+        "settings.appearance",
+        "settings.behavior",
+        "settings.dataBrowsing",
+        "settings.editor",
+        "settings.general",
+        "settings.logging",
+        "settings.mcp.title",
+        "settings.mcpClient.title",
+        "settings.nav.group.app",
+        "settings.nav.group.integration",
+        "settings.prompts",
+        "settings.title",
+        "settings.tunnels.title",
+        "common.aiAssistant",
+        "query.favorites",
+        "query.noFavorites",
+        "backup.startBackup",
     ];
     for key in keys {
         assert_ne!(t(key), key, "{key} falls back to the key");
@@ -151,4 +175,89 @@ fn the_connection_form_renders_translated_labels() {
             .any(|text| text.starts_with("newConn.") || text.starts_with("common.")),
         "a translation key fell through to the screen: {texts:?}"
     );
+}
+
+#[test]
+fn the_settings_and_navigation_views_still_ask_for_their_keys() {
+    // Pin the call sites, not just the table: reverting a label to its English
+    // literal removes the `t(...)` call and the key scan stays green. The
+    // settings nav reads its labels from `SETTINGS_SECTIONS`, so pin the keys
+    // there and the two calls that resolve them.
+    let settings = include_str!("../views/settings.rs");
+    let settings_state = include_str!("../settings_state.rs");
+    let types = include_str!("../types.rs");
+    let navigation = include_str!("../views/navigation.rs");
+    let files: [(&str, &str, &[&str]); 4] = [
+        (
+            "views/settings.rs",
+            settings,
+            &[
+                "t(group_label)",
+                "t(section.label_key)",
+                "t(\"settings.general\")",
+                "t(\"settings.appearance\")",
+                "t(\"settings.dataBrowsing\")",
+                "t(\"settings.editor\")",
+                "t(\"settings.behavior\")",
+                "t(\"settings.logging\")",
+                "t(\"common.aiAssistant\")",
+                "t(\"settings.prompts\")",
+                "t(\"settings.mcp.title\")",
+                "t(\"settings.mcpClient.title\")",
+                "t(\"settings.tunnels.title\")",
+                "t(\"settings.extensions.title\")",
+                "t(\"settings.title\")",
+                "t(\"query.favorites\")",
+                "t(\"query.noFavorites\")",
+                "t(\"common.save\")",
+                "t(\"common.delete\")",
+                "t(\"backup.startBackup\")",
+            ],
+        ),
+        (
+            "settings_state.rs",
+            settings_state,
+            &[
+                "label_key: \"settings.general\"",
+                "label_key: \"settings.appearance\"",
+                "label_key: \"settings.dataBrowsing\"",
+                "label_key: \"settings.editor\"",
+                "label_key: \"settings.behavior\"",
+                "label_key: \"settings.logging\"",
+                "label_key: \"common.aiAssistant\"",
+                "label_key: \"settings.prompts\"",
+                "label_key: \"settings.mcp.title\"",
+                "label_key: \"settings.mcpClient.title\"",
+                "label_key: \"settings.tunnels.title\"",
+                "label_key: \"settings.extensions.title\"",
+                "\"settings.nav.group.app\"",
+                "\"settings.nav.group.integration\"",
+            ],
+        ),
+        (
+            "types.rs",
+            types,
+            &[
+                "t(\"nav.databases\")",
+                "t(\"nav.workspacePages\")",
+                "t(\"nav.settings\")",
+                "t(\"nav.dashboard\")",
+                "t(\"nav.workflow\")",
+                "t(\"nav.extensions\")",
+            ],
+        ),
+        (
+            "views/navigation.rs",
+            navigation,
+            &["t(\"nav.databases\")"],
+        ),
+    ];
+    for (file, source, needles) in files {
+        for needle in needles {
+            assert!(
+                source.contains(needle),
+                "{file} no longer contains {needle}; update this guard if the wiring moved"
+            );
+        }
+    }
 }
