@@ -1,0 +1,263 @@
+# React → Rune 逐文件迁移台账
+
+一个 task 一行，**改状态只改该行方括号里的一个字符**：
+
+- `- [ ]` 待办 · `- [~]` 进行中 · `- [x]` 完成 · `- [!]` 阻塞
+
+状态不落到任何汇总数字里（那会逼着改状态时连带改别的行）：进度用
+`node scripts/rune-parity.mjs --progress` 现算。行尾的 area、工作量、涉及文件由脚本生成，
+不要手改；React 源码变动后跑 `node scripts/rune-parity.mjs --tasklist` 刷新，
+已存在的 T 编号保留原状态。
+
+- [ ] T001 · components/ui · 0.90d · components/ui/Dialog.tsx components/ui/ErrorBanner.tsx components/ui/Select.tsx
+- [ ] T002 · components/ui · 0.30d · components/ui/Spinner.tsx
+- [ ] T003 · components/ui · 0.90d · components/ui/WebContextMenu.tsx
+- [ ] T004 · components/DataTable · 0.80d · components/DataTable/CellRenderer.tsx components/DataTable/ColumnStatsDialog.tsx
+- [ ] T005 · components/DataTable · 1.30d · components/DataTable/DataExportDialog.tsx · split
+- [ ] T006 · components/DataTable · 4.00d · components/DataTable/DataTable.tsx · split
+- [ ] T007 · components/DataTable · 0.90d · components/DataTable/DataTableSelectionBar.tsx
+- [ ] T008 · components/DataTable · 0.30d · components/DataTable/DefaultOrderSelect.tsx
+- [ ] T009 · components/DataTable · 0.80d · components/DataTable/DetailPanel.tsx
+- [ ] T010 · components/DataTable · 0.80d · components/DataTable/DetailPanelToggle.tsx components/DataTable/DraftRow.tsx
+- [ ] T011 · components/DataTable · 0.90d · components/DataTable/EditableCell.tsx components/DataTable/editors/BinaryCellEditor.tsx components/DataTable/editors/BooleanCellEditor.tsx
+- [ ] T012 · components/DataTable · 0.80d · components/DataTable/editors/CellEditorHost.tsx
+- [ ] T013 · components/DataTable · 0.90d · components/DataTable/editors/EnumCellEditor.tsx components/DataTable/editors/JsonCellEditor.tsx components/DataTable/editors/LongTextCellEditor.tsx
+- [ ] T014 · components/DataTable · 0.90d · components/DataTable/editors/NumberCellEditor.tsx components/DataTable/editors/TemporalCellEditor.tsx components/DataTable/editors/TextCellEditor.tsx
+- [ ] T015 · components/DataTable · 0.80d · components/DataTable/GridCell.tsx
+- [ ] T016 · components/DataTable · 0.30d · components/DataTable/GridKeyboardHints.tsx
+- [ ] T017 · components/DataTable · 0.80d · components/DataTable/Pagination.tsx
+- [ ] T018 · components/DataTable · 0.90d · components/DataTable/QuickLookDialog.tsx
+- [ ] T019 · components/DataTable · 0.80d · components/DataTable/TableHeader.tsx
+- [ ] T020 · components/DataTable · 3.10d · components/DataTable/VirtualBody.tsx · split
+- [ ] T021 · components/filter · 0.60d · components/filter/FilterBetweenInput.tsx components/filter/FilterConditionChip.tsx
+- [ ] T022 · components/filter · 0.90d · components/filter/FilterConditionEditor.tsx
+- [ ] T023 · components/filter · 0.30d · components/filter/FilterConnectorToggle.tsx
+- [ ] T024 · components/filter · 0.90d · components/filter/FilterSqlPreviewDialog.tsx
+- [ ] T025 · components/filter · 0.80d · components/filter/FilterTokenInput.tsx components/filter/FilterValueInput.tsx
+- [ ] T026 · components/filter · 0.80d · components/filter/NamedViewMenu.tsx
+- [ ] T027 · components/schema · 0.50d · components/schema/SchemaDiffPanel.tsx
+- [ ] T028 · components/history · 1.30d · components/history/GlobalQueryHistoryDialog.tsx · split
+- [ ] T029 · components/history · 1.00d · components/history/HistoryEntryCard.tsx components/history/HistoryFilterBar.tsx
+- [ ] T030 · components/query · 0.30d · components/query/ExplainPlanTree.tsx
+- [ ] T031 · components/query · 0.90d · components/query/QueryArtifactExport.tsx
+- [ ] T032 · components/query · 1.00d · components/query/QueryContextSelectors.tsx components/query/QueryErrorPanel.tsx
+- [ ] T033 · components/query · 0.30d · components/query/QueryExecutionStatus.tsx
+- [ ] T034 · components/connection · 0.80d · components/connection/ConnectionAdvancedSettings.tsx
+- [ ] T035 · components/connection · 0.90d · components/connection/ConnectionAiNotes.tsx
+- [ ] T036 · components/connection · 1.00d · components/connection/ConnectionFormBody.tsx components/connection/ConnectionImportFields.tsx
+- [ ] T037 · components/connection · 0.90d · components/connection/ConnectionShareDialog.tsx
+- [ ] T038 · components/connection · 0.90d · components/connection/ConnectionShareDialogHost.tsx
+- [ ] T039 · components/connection · 0.90d · components/connection/FileConnectionFields.tsx
+- [ ] T040 · components/connection · 0.60d · components/connection/HttpProxyTunnelFields.tsx components/connection/IndexConnectionFields.tsx
+- [ ] T041 · components/connection · 0.90d · components/connection/NewConnectionDialog.tsx
+- [ ] T042 · components/connection · 0.90d · components/connection/ObjectFilterDialog.tsx components/connection/SaveTunnelDialog.tsx components/connection/shared.tsx
+- [ ] T043 · components/connection · 0.80d · components/connection/SshTunnelFields.tsx components/connection/StandardConnectionFields.tsx
+- [ ] T044 · components/connection · 0.80d · components/connection/WebSocketTunnelFields.tsx components/chart/AxisConfigurator.tsx
+- [ ] T045 · components/chart · 2.00d · components/chart/ChartCanvas.tsx · split
+- [ ] T046 · components/chart · 0.80d · components/chart/ChartEmptyState.tsx components/chart/ChartToolbar.tsx
+- [ ] T047 · components/chart · 0.80d · components/chart/ChartView.tsx
+- [ ] T048 · components/chart · 2.00d · components/chart/LogScaleTooltip.tsx · split
+- [ ] T049 · components/chart · 2.00d · components/chart/renderers/AreaChartRenderer.tsx · split
+- [ ] T050 · components/chart · 2.00d · components/chart/renderers/BarChartRenderer.tsx · split
+- [ ] T051 · components/chart · 2.00d · components/chart/renderers/LineChartRenderer.tsx · split
+- [ ] T052 · components/chart · 2.00d · components/chart/renderers/PieChartRenderer.tsx · split
+- [ ] T053 · components/chart · 2.00d · components/chart/renderers/ScatterChartRenderer.tsx · split
+- [ ] T054 · components/ai · 5.30d · components/ai/AiChatPanel.tsx · split
+- [ ] T055 · components/ai · 0.80d · components/ai/AiCodeBlock.tsx
+- [ ] T056 · components/ai · 0.90d · components/ai/AiEgressNotice.tsx
+- [ ] T057 · components/ai · 0.80d · components/ai/AiInput.tsx
+- [ ] T058 · components/ai · 2.00d · components/ai/AiMessageContent.tsx · split
+- [ ] T059 · components/ai · 0.90d · components/ai/AiSessionHistory.tsx
+- [ ] T060 · components/ai · 1.30d · components/ai/ContextPicker.tsx · split
+- [ ] T061 · components/ai · 0.90d · components/ai/DiagnosisPanel.tsx
+- [ ] T062 · components/ai · 0.90d · components/ai/ExplainPanel.tsx
+- [ ] T063 · components/ai · 0.90d · components/ai/Nl2SqlPanel.tsx
+- [ ] T064 · components/ai · 0.90d · components/ai/NlFilterInput.tsx
+- [ ] T065 · components/ai · 1.30d · components/ai/WorkflowChatPanel.tsx · split
+- [ ] T066 · components/ai · 1.30d · components/ai/WorkflowPanel.tsx · split
+- [ ] T067 · components/migration · 0.80d · components/migration/MigrationEndpointsBar.tsx
+- [ ] T068 · components/migration · 0.50d · components/migration/MigrationJobFailureNotice.tsx
+- [ ] T069 · components/migration · 1.30d · components/migration/MigrationJobVerdictPanel.tsx · split
+- [ ] T070 · components/migration · 0.90d · components/migration/MigrationRunHistoryDialog.tsx
+- [ ] T071 · components/sql-editor · 2.70d · components/sql-editor/SqlEditor.tsx · split
+- [ ] T072 · components/admin · 0.90d · components/admin/AdminCreateDialog.tsx
+- [ ] T073 · components/admin · 0.60d · components/admin/AdminSchemaFields.tsx components/admin/PrivilegeSelector.tsx
+- [ ] T074 · components · 0.90d · components/AiWriteProposalHost.tsx
+- [ ] T075 · components · 0.90d · components/DbTypeBadge.tsx components/ErrorBoundary.tsx components/export/ExportColumnPicker.tsx
+- [ ] T076 · components/export · 0.60d · components/export/ExportSuccessPanel.tsx components/FilterBar.tsx
+- [ ] T077 · components · 2.60d · components/FilterEditor.tsx · split
+- [ ] T078 · components · 0.30d · components/LocaleDomainLoading.tsx
+- [ ] T079 · components · 0.90d · components/McpApprovalHost.tsx
+- [ ] T080 · components · 1.30d · components/MenuBar.tsx · split
+- [ ] T081 · components · 2.00d · components/SqlCodeBlock.tsx · split
+- [ ] T082 · components · 0.80d · components/SqlEditor.tsx components/SqlSyntaxPreview.tsx
+- [ ] T083 · components · 0.80d · components/StatusBar.tsx components/ThemedIcon.tsx
+- [ ] T084 · components · 0.90d · components/ThemeToggle.tsx
+- [ ] T085 · components · 0.30d · components/WindowChromeFallback.tsx
+- [ ] T086 · windows/settings · 0.90d · windows/settings/ai/AiContextSettings.tsx
+- [ ] T087 · windows/settings · 0.30d · windows/settings/ai/ModelProfileDialog.tsx
+- [ ] T088 · windows/settings · 0.80d · windows/settings/ai/ModelProfileForm.tsx
+- [ ] T089 · windows/settings · 0.50d · windows/settings/ai/ModelProfileListItem.tsx
+- [ ] T090 · windows/settings · 0.90d · windows/settings/AiSettingsSection.tsx
+- [ ] T091 · windows/settings · 0.90d · windows/settings/AiToolBridgeSection.tsx
+- [ ] T092 · windows/settings · 0.90d · windows/settings/AppearanceSection.tsx
+- [ ] T093 · windows/settings · 0.90d · windows/settings/DataCleanupSection.tsx
+- [ ] T094 · windows/settings · 0.90d · windows/settings/DriverSettingsSection.tsx
+- [ ] T095 · windows/settings · 0.90d · windows/settings/InstallLanguagePackDialog.tsx
+- [ ] T096 · windows/settings · 0.30d · windows/settings/JsonSchemaSettingsForm.tsx
+- [ ] T097 · windows/settings · 0.90d · windows/settings/LanguagePacksCard.tsx
+- [ ] T098 · windows/settings · 1.30d · windows/settings/McpClientSection.tsx · split
+- [ ] T099 · windows/settings · 1.30d · windows/settings/McpSettingsSection.tsx · split
+- [ ] T100 · windows/settings · 1.30d · windows/settings/MemorySection.tsx · split
+- [ ] T101 · windows/settings · 0.90d · windows/settings/PromptSettingsSection.tsx
+- [ ] T102 · windows/settings · 0.30d · windows/settings/SettingHint.tsx
+- [ ] T103 · windows/settings · 1.30d · windows/settings/SettingsContent.tsx · split
+- [ ] T104 · windows/settings · 0.30d · windows/settings/settingsUi.tsx
+- [ ] T105 · windows/settings · 0.90d · windows/settings/SkillsSection.tsx
+- [ ] T106 · windows/settings · 0.50d · windows/settings/SnippetEditDialog.tsx
+- [ ] T107 · windows/settings · 0.90d · windows/settings/SqlSnippetsCard.tsx
+- [ ] T108 · windows/settings · 0.90d · windows/settings/TableDataSettingsSection.tsx
+- [ ] T109 · windows/settings · 0.90d · windows/settings/TunnelDeleteDialog.tsx
+- [ ] T110 · windows/settings · 0.90d · windows/settings/TunnelEditDialog.tsx
+- [ ] T111 · windows/settings · 0.90d · windows/settings/TunnelSettingsSection.tsx
+- [ ] T112 · windows/settings · 0.90d · windows/settings/TunnelTestDialog.tsx
+- [ ] T113 · windows/settings · 0.90d · windows/settings/UpdateSection.tsx
+- [ ] T114 · windows/connection · 2.00d · windows/connection/BatchExportDialog.tsx · split
+- [ ] T115 · windows/connection · 1.30d · windows/connection/ConnectionNavigatorTree.tsx · split
+- [ ] T116 · windows/connection · 1.30d · windows/connection/ConnectionPage.tsx · split
+- [ ] T117 · windows/connection · 1.30d · windows/connection/ConnectionWorkspaceHome.tsx · split
+- [ ] T118 · windows/connection · 0.80d · windows/connection/ContentStatusBar.tsx windows/connection/ContentToolbar.tsx
+- [ ] T119 · windows/connection · 1.30d · windows/connection/ContentView.tsx · split
+- [ ] T120 · windows/connection · 0.90d · windows/connection/ContentViewDialogs.tsx
+- [ ] T121 · windows/connection · 1.30d · windows/connection/ContentViewDrawers.tsx · split
+- [ ] T122 · windows/connection · 0.60d · windows/connection/CreateDatabaseDialog.tsx windows/connection/CreateSchemaDialog.tsx
+- [ ] T123 · windows/connection · 0.90d · windows/connection/CreateUserDialog.tsx
+- [ ] T124 · windows/connection · 0.90d · windows/connection/DatabaseObjectView.tsx
+- [ ] T125 · windows/connection · 0.50d · windows/connection/DDLView.tsx
+- [ ] T126 · windows/connection · 3.60d · windows/connection/DocumentConnectionView.tsx · split
+- [ ] T127 · windows/connection · 0.30d · windows/connection/er/ErRelationLegend.tsx
+- [ ] T128 · windows/connection · 2.00d · windows/connection/er/TableNode.tsx · split
+- [ ] T129 · windows/connection · 2.20d · windows/connection/ErDiagramView.tsx · split
+- [ ] T130 · windows/connection · 0.50d · windows/connection/ExecuteSqlFileDialog.tsx
+- [ ] T131 · windows/connection · 1.30d · windows/connection/ExportDialog.tsx · split
+- [ ] T132 · windows/connection · 0.90d · windows/connection/ForeignKeysView.tsx
+- [ ] T133 · windows/connection · 0.90d · windows/connection/home/ConnectionCardList.tsx
+- [ ] T134 · windows/connection · 0.60d · windows/connection/home/HomeHero.tsx windows/connection/home/McpPromoBar.tsx
+- [ ] T135 · windows/connection · 0.50d · windows/connection/home/RecentQueriesList.tsx
+- [ ] T136 · windows/connection · 0.90d · windows/connection/home/ShortcutFooter.tsx
+- [ ] T137 · windows/connection · 3.70d · windows/connection/ImportDialog.tsx · split
+- [ ] T138 · windows/connection · 1.30d · windows/connection/IndexesView.tsx · split
+- [ ] T139 · windows/connection · 1.30d · windows/connection/navigator/DatabaseValueSearchDialog.tsx · split
+- [ ] T140 · windows/connection · 1.00d · windows/connection/navigator/GlobalObjectSearch.tsx windows/connection/navigator/NavigatorDialogs.tsx
+- [ ] T141 · windows/connection · 0.50d · windows/connection/navigator/NavigatorToolbar.tsx
+- [ ] T142 · windows/connection · 1.30d · windows/connection/navigator/NavigatorTreeRow.tsx · split
+- [ ] T143 · windows/connection · 0.90d · windows/connection/navigator/treeStatusDot.tsx
+- [ ] T144 · windows/connection · 0.90d · windows/connection/ObjectBrowser.tsx
+- [ ] T145 · windows/connection · 1.30d · windows/connection/PanelContentRenderer.tsx · split
+- [ ] T146 · windows/connection · 0.90d · windows/connection/PanelTabBar.tsx
+- [ ] T147 · windows/connection · 0.30d · windows/connection/PendingPlanDialog.tsx
+- [ ] T148 · windows/connection · 1.30d · windows/connection/PrivilegeView.tsx · split
+- [ ] T149 · windows/connection · 0.90d · windows/connection/ProcessListView.tsx
+- [ ] T150 · windows/connection · 0.30d · windows/connection/query/ExecutionStrategyAskModal.tsx
+- [ ] T151 · windows/connection · 0.90d · windows/connection/query/QueryBuilderHostAdapter.tsx
+- [ ] T152 · windows/connection · 1.30d · windows/connection/query/QueryEditorSection.tsx · split
+- [ ] T153 · windows/connection · 1.30d · windows/connection/query/QuerySidebarSection.tsx · split
+- [ ] T154 · windows/connection · 1.30d · windows/connection/query/QueryTransactionModals.tsx · split
+- [ ] T155 · windows/connection · 0.90d · windows/connection/query/toolbar/ExecutionStrategySelect.tsx
+- [ ] T156 · windows/connection · 0.90d · windows/connection/query/toolbar/RefreshCompletionButton.tsx
+- [ ] T157 · windows/connection · 0.90d · windows/connection/query/toolbar/SnippetMenuButton.tsx
+- [ ] T158 · windows/connection · 1.30d · windows/connection/query/useQueryExecutionGate.tsx · split
+- [ ] T159 · windows/connection · 1.30d · windows/connection/QueryPanel.tsx · split
+- [ ] T160 · windows/connection · 0.80d · windows/connection/result-workspace/ExecutionSummaryCard.tsx windows/connection/result-workspace/ResultFindBar.tsx
+- [ ] T161 · windows/connection · 1.30d · windows/connection/result-workspace/ResultTableView.tsx · split
+- [ ] T162 · windows/connection · 0.50d · windows/connection/result-workspace/ResultWorkspace.tsx
+- [ ] T163 · windows/connection · 3.50d · windows/connection/ServerStatusView.tsx · split
+- [ ] T164 · windows/connection · 0.80d · windows/connection/SetValueDateDialog.tsx windows/connection/structure/StructureColumnTable.tsx
+- [ ] T165 · windows/connection · 0.80d · windows/connection/structure/StructureIndexTable.tsx windows/connection/structure/StructurePlanPreview.tsx
+- [ ] T166 · windows/connection · 0.90d · windows/connection/StructureView.tsx
+- [ ] T167 · windows/connection · 0.30d · windows/connection/TableClipboardStatus.tsx
+- [ ] T168 · windows/connection · 0.80d · windows/connection/TableColumnFilter.tsx
+- [ ] T169 · windows/connection · 0.50d · windows/connection/TableFilterToolbar.tsx
+- [ ] T170 · windows/connection · 0.90d · windows/connection/TableFkBreadcrumb.tsx
+- [ ] T171 · windows/connection · 0.90d · windows/connection/TableFkErrorBanner.tsx windows/connection/TableLoadErrorState.tsx windows/connection/TableNoPrimaryKeyTip.tsx
+- [ ] T172 · windows/connection · 0.90d · windows/connection/TablePendingChangesBar.tsx
+- [ ] T173 · windows/connection · 0.60d · windows/connection/TableReadOnlyTip.tsx windows/connection/TableStatusBanners.tsx
+- [ ] T174 · windows/connection · 1.30d · windows/connection/TableStructureEditor.tsx · split
+- [ ] T175 · windows/connection · 0.50d · windows/connection/TableToolbar.tsx
+- [ ] T176 · windows/connection · 5.70d · windows/connection/TableView.tsx · split
+- [ ] T177 · windows/connection · 0.90d · windows/connection/WorkspaceModeSidebar.tsx
+- [ ] T178 · windows/workspace · 0.30d · windows/workspace/WappIcon.tsx
+- [ ] T179 · windows/workspace · 0.90d · windows/workspace/WappPageShell.tsx
+- [ ] T180 · windows/workspace · 0.30d · windows/workspace/WorkspaceDefaultCards.tsx
+- [ ] T181 · windows/workspace · 0.90d · windows/workspace/WorkspaceNavigator.tsx
+- [ ] T182 · windows/workspace · 0.90d · windows/workspace/WorkspaceTabBar.tsx
+- [ ] T183 · windows/workspace · 0.90d · windows/workspace/WorkspaceView.tsx
+- [ ] T184 · windows/dashboard · 0.90d · windows/dashboard/AddToDashboardDialog.tsx
+- [ ] T185 · windows/dashboard · 0.80d · windows/dashboard/ChartWidgetTile.tsx
+- [ ] T186 · windows/dashboard · 1.30d · windows/dashboard/DashboardPanel.tsx · split
+- [ ] T187 · windows/dashboard · 0.90d · windows/dashboard/MonitorScheduleAuthorization.tsx
+- [ ] T188 · windows/dashboard · 0.90d · windows/dashboard/RunHistoryDrawer.tsx
+- [ ] T189 · windows/dashboard · 1.30d · windows/dashboard/WidgetEditorDrawer.tsx · split
+- [ ] T190 · windows/workflow · 0.80d · windows/workflow/WorkflowEditorActionBar.tsx windows/workflow/WorkflowExecutionResultPanel.tsx
+- [ ] T191 · windows/workflow · 1.30d · windows/workflow/WorkflowForm.tsx · split
+- [ ] T192 · windows/workflow · 0.50d · windows/workflow/WorkflowHistorySection.tsx
+- [ ] T193 · windows/workflow · 1.30d · windows/workflow/WorkflowPage.tsx · split
+- [ ] T194 · windows/workflow · 0.30d · windows/workflow/workflowStepResultUtils.tsx
+- [ ] T195 · windows/workflow · 2.00d · windows/workflow/WorkflowYamlEditor.tsx · split
+- [ ] T196 · windows/main · 0.90d · windows/main/MainPage.tsx
+- [ ] T197 · windows/main · 0.90d · windows/main/RunningExecutionCloseHost.tsx
+- [ ] T198 · windows/onboarding · 0.90d · windows/onboarding/BrandSidebar.tsx
+- [ ] T199 · windows/onboarding · 0.90d · windows/onboarding/OnboardingWindow.tsx
+- [ ] T200 · windows/onboarding · 0.90d · windows/onboarding/OnboardingWizard.tsx
+- [ ] T201 · windows/onboarding · 0.90d · windows/onboarding/steps/AiProviderStep.tsx
+- [ ] T202 · windows/onboarding · 1.00d · windows/onboarding/steps/DoneStep.tsx windows/onboarding/steps/ImportStep.tsx
+- [ ] T203 · windows/onboarding · 0.90d · windows/onboarding/steps/ManualConnectionStep.tsx
+- [ ] T204 · windows/onboarding · 0.90d · windows/onboarding/steps/SampleStep.tsx
+- [ ] T205 · windows/onboarding · 1.00d · windows/onboarding/steps/WelcomeStep.tsx windows/onboarding/WizardFooter.tsx
+- [ ] T206 · windows/wapps · 0.90d · windows/wapps/InstallWappDialog.tsx
+- [ ] T207 · windows/wapps · 1.30d · windows/wapps/WappManagementPage.tsx · split
+- [ ] T208 · windows/data-transfer · 1.30d · windows/data-transfer/ColumnMappingEditor.tsx · split
+- [ ] T209 · windows/data-transfer · 0.90d · windows/data-transfer/DataTransferAttachedJobs.tsx
+- [ ] T210 · windows/data-transfer · 0.90d · windows/data-transfer/DataTransferTerminalResults.tsx
+- [ ] T211 · windows/data-transfer · 1.30d · windows/data-transfer/DataTransferWindow.tsx · split
+- [ ] T212 · windows/data-transfer · 0.90d · windows/data-transfer/MappingGateNotice.tsx
+- [ ] T213 · windows/data-transfer · 0.90d · windows/data-transfer/SourceFilterEditor.tsx
+- [ ] T214 · windows/data-transfer · 0.90d · windows/data-transfer/TransferExecuteConfirmDialog.tsx
+- [ ] T215 · windows/data-transfer · 0.30d · windows/data-transfer/TransferJobResultPanel.tsx
+- [ ] T216 · windows/data-transfer · 0.90d · windows/data-transfer/TransferMappingStep.tsx
+- [ ] T217 · windows/data-transfer · 0.60d · windows/data-transfer/TransferPairingNote.tsx windows/data-sync/CompareSummary.tsx
+- [ ] T218 · windows/data-sync · 0.90d · windows/data-sync/DataSyncCompareStep.tsx
+- [ ] T219 · windows/data-sync · 0.30d · windows/data-sync/DataSyncDialogs.tsx
+- [ ] T220 · windows/data-sync · 0.90d · windows/data-sync/DataSyncEndpointStep.tsx
+- [ ] T221 · windows/data-sync · 0.90d · windows/data-sync/DataSyncJobStatusPanel.tsx
+- [ ] T222 · windows/data-sync · 0.90d · windows/data-sync/DataSyncObjectsStep.tsx
+- [ ] T223 · windows/data-sync · 0.90d · windows/data-sync/DataSyncOptionsStep.tsx
+- [ ] T224 · windows/data-sync · 0.90d · windows/data-sync/DataSyncPreviewStep.tsx
+- [ ] T225 · windows/data-sync · 0.90d · windows/data-sync/DataSyncResultStep.tsx
+- [ ] T226 · windows/data-sync · 1.30d · windows/data-sync/DataSyncWindow.tsx · split
+- [ ] T227 · windows/data-sync · 0.60d · windows/data-sync/DataSyncWizardNav.tsx windows/data-sync/DataSyncWizardStepper.tsx
+- [ ] T228 · windows/data-sync · 1.30d · windows/data-sync/DiffDetail.tsx · split
+- [ ] T229 · windows/data-sync · 0.60d · windows/data-sync/EndpointsBar.tsx windows/data-sync/ExecuteBar.tsx
+- [ ] T230 · windows/data-sync · 0.50d · windows/data-sync/MappingPanel.tsx
+- [ ] T231 · windows/data-sync · 0.90d · windows/data-sync/OptionsBar.tsx
+- [ ] T232 · windows/data-sync · 0.90d · windows/data-sync/RecordsetEditor.tsx
+- [ ] T233 · windows/data-sync · 0.90d · windows/data-sync/SqlPreview.tsx
+- [ ] T234 · windows/data-sync · 0.50d · windows/data-sync/TableListPanel.tsx
+- [ ] T235 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffDeployPanel.tsx
+- [ ] T236 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffExecutionPanels.tsx
+- [ ] T237 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffJobStatusPanel.tsx
+- [ ] T238 · windows/schema-diff · 0.30d · windows/schema-diff/SchemaDiffObjectsStep.tsx
+- [ ] T239 · windows/schema-diff · 1.30d · windows/schema-diff/SchemaDiffPlanPanel.tsx · split
+- [ ] T240 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffRightPanel.tsx
+- [ ] T241 · windows/schema-diff · 0.30d · windows/schema-diff/SchemaDiffSavedSetupDialogs.tsx
+- [ ] T242 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffSelectionSteps.tsx
+- [ ] T243 · windows/schema-diff · 0.30d · windows/schema-diff/SchemaDiffTableListPanel.tsx
+- [ ] T244 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffUnifiedObjectsPicker.tsx
+- [ ] T245 · windows/schema-diff · 1.30d · windows/schema-diff/SchemaDiffWindow.tsx · split
+- [ ] T246 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffWindowJobSection.tsx
+- [ ] T247 · windows/schema-diff · 0.60d · windows/schema-diff/SchemaDiffWindowNavigation.tsx windows/schema-diff/SchemaDiffWizardProgress.tsx
+- [ ] T248 · windows/backup · 1.30d · windows/backup/BackupWindow.tsx · split
+- [ ] T249 · windows/backup · 2.00d · windows/backup/ProgressLog.tsx · split
+- [ ] T250 · hooks · 0.30d · hooks/useConfirmDialog.tsx
+- [ ] T251 · bootstrap · 2.00d · bootstrap/startSharedApp.tsx · split
+- [ ] T252 · App.tsx · 0.30d · App.tsx

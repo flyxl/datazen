@@ -9,6 +9,13 @@
 //   node scripts/rune-parity.mjs --tasks 40      the first 40 day-sized tasks
 //   node scripts/rune-parity.mjs --md /tmp/ledger.md
 //   node scripts/rune-parity.mjs --json /tmp/ledger.json
+//
+// The committed tasklist keeps one line per task; its status is that line's
+// checkbox, so a status edit is a one-character diff:
+//
+//   node scripts/rune-parity.mjs --tasklist      refresh, keeping known statuses
+//   node scripts/rune-parity.mjs --status T007=done
+//   node scripts/rune-parity.mjs --progress      count, nothing written back
 
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
@@ -174,7 +181,93 @@ const totals = {
   tasks: tasks.length,
 };
 
-if (flag('--json')) {
+/**
+ * The tasklist is the one committed artefact of this script: one line per task,
+ * status carried by that line's checkbox alone. Everything else on the line is
+ * generated, so refreshing the list never rewrites a status by hand and a status
+ * edit never touches any other line.
+ */
+const TASKLIST = join(ROOT, 'docs/development/rune-migration/tasklist.md');
+
+const MARK_OF_STATE = { todo: ' ', doing: '~', done: 'x', blocked: '!' };
+const STATE_OF_MARK = { ' ': 'todo', '~': 'doing', x: 'done', '!': 'blocked' };
+
+const TASKLIST_HEADER = [
+  '# React → Rune 逐文件迁移台账',
+  '',
+  '一个 task 一行，**改状态只改该行方括号里的一个字符**：',
+  '',
+  '- `- [ ]` 待办 · `- [~]` 进行中 · `- [x]` 完成 · `- [!]` 阻塞',
+  '',
+  '状态不落到任何汇总数字里（那会逼着改状态时连带改别的行）：进度用',
+  '`node scripts/rune-parity.mjs --progress` 现算。行尾的 area、工作量、涉及文件由脚本生成，',
+  '不要手改；React 源码变动后跑 `node scripts/rune-parity.mjs --tasklist` 刷新，',
+  '已存在的 T 编号保留原状态。',
+  '',
+];
+
+const TASK_LINE = /^- \[(.)\] (T\d{3}) · (.+)$/;
+
+function readTasklist(path) {
+  let text;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch {
+    return new Map();
+  }
+  const seen = new Map();
+  for (const line of text.split('\n')) {
+    const m = TASK_LINE.exec(line);
+    if (m && STATE_OF_MARK[m[1]] !== undefined) seen.set(m[2], m[1]);
+  }
+  return seen;
+}
+
+function tasklistLine(index, task, mark) {
+  const files = task.rows.map((r) => r.react.replace('packages/frontend/src/', '')).join(' ');
+  const split = task.split ? ' · split' : '';
+  return `- [${mark}] T${String(index + 1).padStart(3, '0')} · ${task.area} · ${task.days.toFixed(2)}d · ${files}${split}`;
+}
+
+if (flag('--tasklist')) {
+  const path = flag('--tasklist') === true ? TASKLIST : flag('--tasklist');
+  const previous = readTasklist(path);
+  const kept = [...previous.keys()].filter((id) => Number(id.slice(1)) > tasks.length);
+  const lines = [...TASKLIST_HEADER, ...tasks.map((t, i) => tasklistLine(i, t, previous.get(`T${String(i + 1).padStart(3, '0')}`) ?? ' '))];
+  writeFileSync(path, `${lines.join('\n')}\n`);
+  const done = [...previous.values()].filter((m) => m === 'x').length;
+  console.log(`wrote ${path} (${tasks.length} tasks, ${done} already done${kept.length ? `, dropped ${kept.length} stale ids` : ''})`);
+} else if (flag('--status')) {
+  const spec = String(flag('--status'));
+  const [rawId, rawState] = spec.split('=');
+  const id = rawId?.toUpperCase();
+  const mark = MARK_OF_STATE[rawState];
+  if (!/^T\d{3}$/.test(id ?? '') || mark === undefined) {
+    console.error(`bad --status "${spec}": want T###=todo|doing|done|blocked`);
+    process.exit(2);
+  }
+  const path = flag('--file') === true || flag('--file') === null ? TASKLIST : flag('--file');
+  const lines = readFileSync(path, 'utf8').split('\n');
+  const at = lines.findIndex((line) => TASK_LINE.exec(line)?.[2] === id);
+  if (at < 0) {
+    console.error(`${id} is not in ${path}`);
+    process.exit(2);
+  }
+  const before = STATE_OF_MARK[TASK_LINE.exec(lines[at])[1]];
+  const current = lines[at];
+  lines[at] = `${current.slice(0, 3)}${mark}${current.slice(4)}`;
+  writeFileSync(path, lines.join('\n'));
+  console.log(`${id}: ${before} -> ${rawState}`);
+} else if (flag('--progress')) {
+  const path = flag('--progress') === true ? TASKLIST : flag('--progress');
+  const marks = readTasklist(path);
+  const id = (i) => `T${String(i + 1).padStart(3, '0')}`;
+  const count = (m) => tasks.filter((_, i) => (marks.get(id(i)) ?? ' ') === m).length;
+  const done = count('x');
+  const daysDone = tasks.reduce((n, t, i) => n + ((marks.get(id(i)) ?? ' ') === 'x' ? t.days : 0), 0);
+  console.log(`${done}/${tasks.length} tasks done (${count('~')} doing, ${count('!')} blocked, ${count(' ')} todo)`);
+  console.log(`${daysDone.toFixed(1)} of ${totals.days} working days landed on this track`);
+} else if (flag('--json')) {
   writeFileSync(flag('--json'), JSON.stringify({ generatedAt: new Date().toISOString(), totals, tasks, files: rows }, null, 2));
   console.log(`wrote ${flag('--json')} (${totals.tasks} tasks)`);
 } else if (flag('--md')) {
