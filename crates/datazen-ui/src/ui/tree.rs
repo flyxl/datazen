@@ -81,6 +81,21 @@ type ViewportWriter<S> = Rc<dyn Fn(&mut S, f32)>;
 /// The empty state's height; a hugging root opens at least this tall so the line is not clipped.
 const EMPTY_HEIGHT: f32 = 40.0;
 
+thread_local! {
+    static TREE_LAST_CURSOR: std::cell::RefCell<std::collections::HashMap<String, Option<String>>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+fn last_revealed_cursor(key: &str) -> Option<String> {
+    TREE_LAST_CURSOR.with(|m| m.borrow().get(key).cloned().flatten())
+}
+
+fn set_last_revealed_cursor(key: &str, cursor: Option<String>) {
+    TREE_LAST_CURSOR.with(|m| {
+        m.borrow_mut().insert(key.to_owned(), cursor);
+    });
+}
+
 #[allow(dead_code)]
 /// Minimal visible-row info for sticky ancestor arithmetic.
 ///
@@ -328,6 +343,7 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
         let scroll_wired = read_scroll.is_some() && write_scroll.is_some() && read_viewport.is_some();
         let reveal_cursor = {
             let vp_key = viewport_key.clone();
+            let track_key = key.clone();
             let write_scroll = write_scroll.clone();
             let read_scroll = read_scroll;
             let read_viewport = read_viewport;
@@ -340,16 +356,43 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
                     return false;
                 }
                 let cursor = get(s).cursor().map(str::to_owned);
-                let Some(row) = cursor.as_deref().and_then(|id| get(s).visible_row(id)) else { return false; };
+                let Some(row) = cursor.as_deref().and_then(|id| get(s).visible_row(id)) else {
+                    set_last_revealed_cursor(&track_key, cursor);
+                    return false;
+                };
                 let scroll_top = read_sc(&*s);
-                let scrolled = if let Some(next) = reveal_offset(row, row_height, scroll_top, viewport_h) {
+                if let Some(next) = reveal_offset(row, row_height, scroll_top, viewport_h) {
                     tx.scroll_to_instant(vp_key.clone(), 0.0, next);
                     write_sc(s, next);
+                    // Keep last_revealed unchanged so we retry on next layout/frame until
+                    // the selected row is in view by tracked scroll state.
                     true
                 } else {
+                    set_last_revealed_cursor(&track_key, cursor);
                     false
-                };
-                scrolled
+                }
+            })
+        };
+
+        // Reveal when selection/cursor changed (covers external model.select) or when a
+        // previously requested reveal still needs to bring the row into view.
+        // Do not reveal when cursor is unchanged and already in view, preserving manual scroll.
+        let reveal_on_cursor_change = {
+            let track_key = key.clone();
+            let reveal = reveal_cursor.clone();
+            Rc::new(move |s: &mut S, tx: &mut Tx| -> bool {
+                let cursor = get(s).cursor().map(str::to_owned);
+                if cursor.is_none() {
+                    if last_revealed_cursor(&track_key).is_some() {
+                        set_last_revealed_cursor(&track_key, None);
+                    }
+                    return false;
+                }
+                if last_revealed_cursor(&track_key) != cursor {
+                    reveal(s, tx)
+                } else {
+                    false
+                }
             })
         };
 
@@ -411,13 +454,13 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
         if read_viewport.is_none() {
             viewport = viewport.on_layout_tx(|_s: &mut S, _r: [f32; 4], _tx: &mut Tx| {});
         } else if let (Some(read_vp), Some(write_vp)) = (read_viewport, write_viewport.clone()) {
-            let reveal_on_layout = reveal_cursor.clone();
+            let reveal_on_layout = reveal_on_cursor_change.clone();
             viewport = viewport.on_layout_tx(move |s: &mut S, r: [f32; 4], tx: &mut Tx| {
                 let before = read_vp(&*s);
                 if before != r[3] {
                     write_vp(s, r[3]);
                 }
-                // Reveal cursor after layout/viewport updates (covers external select).
+                // Reveal on selection changes (e.g. external model.select), not on every frame.
                 let scrolled = reveal_on_layout(s, tx);
                 if before == r[3] && !scrolled {
                     tx.live_only();

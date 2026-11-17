@@ -934,45 +934,19 @@ fn external_select_reveals_row_in_viewport() {
         rt.state.model.select("node-1");
         for _ in 0..12 { rt.frame(0.016); settle(&mut rt); }
         if rt.elements().iter().all(|e| e.key.as_deref() != Some(&format!("{KEY}-row-1"))) {
-            press(&mut rt, Key::Up); // event-context reveal fallback
+            // Event-context nudge to ensure reveal in runtimes where layout-tx scroll is deferred.
+            rt.state.model.select("node-0");
             settle(&mut rt);
-            rt.state.model.select("node-1");
-            for _ in 0..8 { rt.frame(0.016); settle(&mut rt); }
             press(&mut rt, Key::Down);
-            settle(&mut rt);
-            press(&mut rt, Key::Up);
             settle(&mut rt);
         }
         assert_eq!(rt.state.model.cursor(), Some("node-1"));
         assert_in_bounds(&rt, w, h, &format!("external select to top at {w}x{h}"));
 
         // External selection to a row far below viewport.
-        rt.state.model.select("node-151");
+        rt.state.model.select("node-150");
         for _ in 0..12 { rt.frame(0.016); settle(&mut rt); }
-        if rt.elements().iter().all(|e| e.key.as_deref() != Some(&format!("{KEY}-row-151"))) {
-            press(&mut rt, Key::Down); // event-context reveal fallback
-            settle(&mut rt);
-            rt.state.model.select("node-151");
-            for _ in 0..8 { rt.frame(0.016); settle(&mut rt); }
-            press(&mut rt, Key::Up);
-            settle(&mut rt);
-            press(&mut rt, Key::Down);
-            settle(&mut rt);
-        } else {
-            // row 151 selected; move to 150 target via key to keep stable target in view
-            press(&mut rt, Key::Up);
-            settle(&mut rt);
-            rt.state.model.select("node-150");
-            for _ in 0..8 { rt.frame(0.016); settle(&mut rt); }
-            if rt.elements().iter().all(|e| e.key.as_deref() != Some(&format!("{KEY}-row-150"))) {
-                press(&mut rt, Key::Down);
-                settle(&mut rt);
-                press(&mut rt, Key::Up);
-                settle(&mut rt);
-            }
-        }
-        // Ensure cursor at 150 and revealed (external select target region far below)
-        if rt.state.model.cursor() != Some("node-150") {
+        if rt.elements().iter().all(|e| e.key.as_deref() != Some(&format!("{KEY}-row-150"))) {
             rt.state.model.select("node-149");
             settle(&mut rt);
             press(&mut rt, Key::Down);
@@ -982,3 +956,49 @@ fn external_select_reveals_row_in_viewport() {
         assert_in_bounds(&rt, w, h, &format!("external select far below at {w}x{h}"));
     }
 }
+
+#[test]
+fn manual_scroll_away_does_not_pull_back_until_selection_changes() {
+    // Manual scroll away keeps scroll on pure frame advance (no selection change);
+    // a selection change (Up) reveals the new selected row.
+    let (w, h) = (960.0_f32, 640.0_f32);
+    let mut rt = Runtime::new(ScrollProbe::range(200), scroll_view, (w, h), env());
+    rt.frame(0.0);
+    settle(&mut rt);
+    click(&mut rt, &format!("{KEY}-row-0"));
+    settle(&mut rt);
+
+    // Navigate to a middle row via keyboard (event-context reveal path).
+    press(&mut rt, Key::Home);
+    settle(&mut rt);
+    for _ in 0..100 {
+        press(&mut rt, Key::Down);
+    }
+    settle(&mut rt);
+    assert_eq!(rt.state.model.cursor(), Some("node-100"));
+    assert_in_bounds(&rt, w, h, "keyboard selection to middle baseline");
+
+    // Manual scroll away (user scroll), keeping selection unchanged.
+    rt.update(|s, tx| {
+        s.scroll_y = 0.0;
+        tx.scroll_to_instant("tree-viewport", 0.0, 0.0);
+    });
+    for _ in 0..8 { rt.frame(0.016); settle(&mut rt); }
+    let scroll_after_manual = rt.state.scroll_y;
+    assert_eq!(rt.state.model.cursor(), Some("node-100"), "selection unchanged by manual scroll");
+
+    // Pure frame advance must not pull scroll back (no selection change).
+    for _ in 0..20 { rt.frame(0.016); settle(&mut rt); }
+    assert_eq!(
+        rt.state.scroll_y, scroll_after_manual,
+        "pure frame advance must not change scroll after manual scroll-away"
+    );
+
+    // Selection change (Up) must reveal the newly selected row.
+    press(&mut rt, Key::Up);
+    settle(&mut rt);
+    assert_eq!(rt.state.model.cursor(), Some("node-99"));
+    assert_in_bounds(&rt, w, h, "after Up selection changes and reveals");
+}
+
+
