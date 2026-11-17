@@ -62,8 +62,10 @@ pub(crate) struct TextField<'a> {
     bound: bool,
     on_edit_act: Option<Box<dyn FnOnce(rune_kit::TextInput) -> rune_kit::TextInput>>,
     on_submit_act: Option<Box<dyn FnOnce(rune_kit::TextInput) -> rune_kit::TextInput>>,
+    on_key_act: Option<Box<dyn FnOnce(rune_kit::TextInput) -> rune_kit::TextInput>>,
     on_edit_el: Option<Box<dyn FnOnce(El) -> El>>,
     on_submit_el: Option<Box<dyn FnOnce(El) -> El>>,
+    on_key_el: Option<Box<dyn FnOnce(El) -> El>>,
 }
 
 impl<'a> TextField<'a> {
@@ -89,8 +91,10 @@ impl<'a> TextField<'a> {
             bound: false,
             on_edit_act: None,
             on_submit_act: None,
+            on_key_act: None,
             on_edit_el: None,
             on_submit_el: None,
+            on_key_el: None,
         }
     }
 
@@ -201,6 +205,21 @@ impl<'a> TextField<'a> {
         self
     }
 
+    /// A key handler that runs while the field holds focus. Returning `true`
+    /// consumes the key before Rune's focus traversal; this is how a field
+    /// commits on `Tab` and moves focus itself. Rune routes keys typed into a
+    /// focused text box through the input key (`on_input_key`), never the
+    /// element key, so both build paths install this there.
+    pub(crate) fn on_key<S: 'static>(
+        mut self,
+        f: impl Fn(&mut S, &rune::KeyEvent, &mut rune::Tx) -> bool + Clone + 'static,
+    ) -> Self {
+        let f1 = f.clone();
+        self.on_key_act = Some(Box::new(move |e| e.on_key(f1)));
+        self.on_key_el = Some(Box::new(move |e: El| e.on_input_key(f)));
+        self
+    }
+
     pub(crate) fn build(self, dark: bool) -> El {
         // Rune focuses a text box only when it can reach the `TextEdit` it
         // edits (`can_focus` asks the input for its accessor), and that comes
@@ -245,6 +264,9 @@ impl<'a> TextField<'a> {
             ti = act(ti);
         }
         if let Some(act) = self.on_submit_act {
+            ti = act(ti);
+        }
+        if let Some(act) = self.on_key_act {
             ti = act(ti);
         }
         let mut e = ti.build(k).key(self.key);
@@ -306,6 +328,9 @@ impl<'a> TextField<'a> {
             input = act(input);
         }
         if let Some(act) = self.on_submit_el {
+            input = act(input);
+        }
+        if let Some(act) = self.on_key_el {
             input = act(input);
         }
 

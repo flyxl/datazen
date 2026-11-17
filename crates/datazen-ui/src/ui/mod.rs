@@ -22,6 +22,7 @@ pub(crate) mod slider;
 pub(crate) mod spinner;
 pub(crate) mod table;
 pub(crate) mod tabs;
+pub(crate) mod temporal_input;
 pub(crate) mod theme;
 pub(crate) mod toast;
 pub(crate) mod toggle;
