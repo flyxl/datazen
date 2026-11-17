@@ -27,6 +27,7 @@ type RadioBind = Box<dyn FnOnce(KitRadioItem) -> KitRadioItem>;
 pub(crate) struct Checkbox {
     key: String,
     checked: bool,
+    indeterminate: bool,
     label: Option<String>,
     description: Option<String>,
     disabled: bool,
@@ -38,11 +39,19 @@ impl Checkbox {
         Checkbox {
             key: key.into(),
             checked,
+            indeterminate: false,
             label: None,
             description: None,
             disabled: false,
             binds: Vec::new(),
         }
+    }
+
+    /// Partly on: the box draws a dash and the control reports `aria-checked="mixed"`
+    /// (the "some rows are selected" header box in the React data table).
+    pub(crate) fn indeterminate(mut self, indeterminate: bool) -> Checkbox {
+        self.indeterminate = indeterminate;
+        self
     }
 
     pub(crate) fn label(mut self, label: impl Into<String>) -> Checkbox {
@@ -68,7 +77,9 @@ impl Checkbox {
     }
 
     pub(crate) fn build(self, k: &Kit) -> El {
-        let mut kit = KitCheckbox::new(self.checked).disabled(self.disabled);
+        let mut kit = KitCheckbox::new(self.checked)
+            .disabled(self.disabled)
+            .indeterminate(self.indeterminate);
         if let Some(label) = self.label.as_deref() {
             kit = kit.label(label);
         }

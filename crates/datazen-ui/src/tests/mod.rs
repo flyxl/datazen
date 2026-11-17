@@ -74,3 +74,4 @@ mod rail_modals;
 mod components;
 // Independent review coverage: select (T0-06) and checkbox/switch/radio (T0-09).
 mod choice_extra;
+mod select_values;

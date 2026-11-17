@@ -6,6 +6,10 @@
 //! closes). This wrapper only builds the kit component and names the state the app owns, so a
 //! view never re-implements choosing: `on_choose` receives the kit's choice, and whether the
 //! listbox closes afterwards is the app's decision in that handler.
+//!
+//! Give the select `on_close`: it is what mounts the kit's dismissal layer around the
+//! listbox, and the keyboard only walks into the rows once that layer is up. A select with
+//! `on_toggle` but no `on_close` is mouse-only, which no DataZen view wants.
 
 // The views that call this land in later migration tasks; `tests/components.rs` is the only
 // caller today, so the lib target would otherwise warn about every item.
@@ -18,10 +22,14 @@ use rune_kit::{Kit, Select as KitSelect, SelectAppearance};
 /// handlers are folded in last, once the static configuration is in place.
 type Bind = Box<dyn FnOnce(KitSelect) -> KitSelect>;
 
+/// A choice, rewritten to the option's value when the select carries a value per label.
+type Choose = Box<dyn FnOnce(KitSelect, Option<Vec<(String, String)>>) -> KitSelect>;
+
 /// A field that opens a listbox of options.
 pub(crate) struct Select {
     key: String,
     options: Vec<String>,
+    values: Option<Vec<String>>,
     current: Option<String>,
     placeholder: Option<String>,
     label: Option<String>,
@@ -30,6 +38,7 @@ pub(crate) struct Select {
     disabled: bool,
     toggled: bool,
     binds: Vec<Bind>,
+    choose: Option<Choose>,
 }
 
 impl Select {
@@ -38,6 +47,7 @@ impl Select {
         Select {
             key: key.into(),
             options: options.iter().map(|o| o.as_ref().to_owned()).collect(),
+            values: None,
             current: None,
             placeholder: None,
             label: None,
@@ -46,7 +56,16 @@ impl Select {
             disabled: false,
             toggled: false,
             binds: Vec::new(),
+            choose: None,
         }
+    }
+
+    /// The value behind each label, in the same order as the options: a listbox shows the
+    /// label but `on_choose` hands back the value (`{value: "558:presto", label: "presto"}`).
+    /// Labels must be unique, since the kit answers with the label.
+    pub(crate) fn values<S: AsRef<str>>(mut self, values: &[S]) -> Select {
+        self.values = Some(values.iter().map(|v| v.as_ref().to_owned()).collect());
+        self
     }
 
     /// The chosen option, or `None` for the placeholder.
@@ -103,7 +122,19 @@ impl Select {
         mut self,
         f: impl Fn(&mut S, &str, &mut Tx) + Clone + 'static,
     ) -> Select {
-        self.binds.push(Box::new(move |s| s.on_choose(f)));
+        self.choose = Some(Box::new(move |kit, values| {
+            kit.on_choose(move |state: &mut S, label: &str, tx: &mut Tx| {
+                let picked = match &values {
+                    Some(values) => values
+                        .iter()
+                        .find(|(shown, _)| shown == label)
+                        .map(|(_, value)| value.clone())
+                        .unwrap_or_else(|| label.to_owned()),
+                    None => label.to_owned(),
+                };
+                f(state, &picked, tx);
+            })
+        }));
         self
     }
 
@@ -128,11 +159,37 @@ impl Select {
         if let Some(label) = self.label.as_deref() {
             kit = kit.label(label);
         }
-        let trigger = self
-            .binds
-            .into_iter()
-            .fold(kit, |kit, bind| bind(kit))
-            .build(k, layer);
+        let values = match (&self.values, self.options.len()) {
+            (Some(values), options) => {
+                debug_assert_eq!(
+                    values.len(),
+                    options,
+                    "a select needs one value per option"
+                );
+                let pairs: Vec<(String, String)> = self
+                    .options
+                    .iter()
+                    .cloned()
+                    .zip(values.iter().cloned())
+                    .collect();
+                debug_assert_eq!(
+                    pairs.len(),
+                    pairs
+                        .iter()
+                        .map(|(shown, _)| shown)
+                        .collect::<std::collections::BTreeSet<_>>()
+                        .len(),
+                    "a select with values needs unique labels: the kit answers with the label"
+                );
+                Some(pairs)
+            }
+            (None, _) => None,
+        };
+        let mut kit = self.binds.into_iter().fold(kit, |kit, bind| bind(kit));
+        if let Some(choose) = self.choose {
+            kit = choose(kit, values);
+        }
+        let trigger = kit.build(k, layer);
         // The kit field is 280 points wide by default; DataZen fields fill their parent unless
         // a width is asked for (`El::w`/`w_full` are last-write-wins).
         match self.width {
