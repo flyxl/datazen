@@ -44,7 +44,7 @@ fn short_file_name(path: &str) -> String {
 /// Import dialog body (React-aligned layout) with preserved keys:
 /// `import-dialog-fields`, `import-choose-file`, `import-password-input`,
 /// `import-preview`/`import-notice` and `connection-import` content.
-pub(crate) fn import_dialog_body(state: &AppState, theme: tok::Theme) -> El {
+pub(crate) fn import_dialog_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let mut body = col().key("import-dialog-fields").w_full().gap(14.0);
 
     body = body.child(
@@ -122,14 +122,14 @@ pub(crate) fn import_dialog_body(state: &AppState, theme: tok::Theme) -> El {
     }
 
     // Password + preview/notice (reuses preserved keys and import flow).
-    body = body.child(import_bar(state, theme));
+    body = body.child(import_bar(state, theme, dark));
     body
 }
 
 /// The import bar (T7): password, parsed preview and outcome notice.
 /// Keys preserved for import flows/tests (`import-password-input`,
 /// `connection-import`, `import-preview`, `import-confirm`, `import-notice`).
-pub(crate) fn import_bar(state: &AppState, theme: tok::Theme) -> El {
+pub(crate) fn import_bar(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let mut import = col().key("connection-import").w_full().gap(10.0).child(
         col()
             .key("connection-import-form")
@@ -147,7 +147,7 @@ pub(crate) fn import_bar(state: &AppState, theme: tok::Theme) -> El {
                     .placeholder("加密导出文件请输入密码", theme.text_secondary)
                     .secure()
                     .on_edit(|state: &mut AppState| &mut state.import_password)
-                    .build(),
+                    .build(dark),
             )
             .child(
                 text("仅加密导出需要密码；普通文件可留空。")
@@ -223,6 +223,7 @@ fn form_input(
     key: &str,
     value: &rune::TextEdit,
     theme: tok::Theme,
+    dark: bool,
     edit: fn(&mut AppState) -> &mut rune::TextEdit,
 ) -> El {
     TextField::new(key.to_owned(), value)
@@ -232,16 +233,25 @@ fn form_input(
         .fill(theme.card)
         .border(1.0, theme.card_border)
         .on_edit(edit)
-        .build()
+        .build(dark)
 }
 
 fn password_input(
     key: &str,
     value: &rune::TextEdit,
     theme: tok::Theme,
+    dark: bool,
     edit: fn(&mut AppState) -> &mut rune::TextEdit,
 ) -> El {
-    form_input(key, value, theme, edit).secure()
+    TextField::new(key.to_owned(), value)
+        .height(36.0)
+        .pad_x(12.0)
+        .radius(8.0)
+        .fill(theme.card)
+        .border(1.0, theme.card_border)
+        .secure()
+        .on_edit(edit)
+        .build(dark)
 }
 
 fn section_toggle(key: &str, title: &str, subtitle: Option<&str>, theme: tok::Theme) -> El {
@@ -269,7 +279,7 @@ fn section_toggle(key: &str, title: &str, subtitle: Option<&str>, theme: tok::Th
 
 /// Connection form body (React-aligned grid/sections) with preserved keys for
 /// tests and flows.
-pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El {
+pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     // Basic: name + engine (engine also selectable from sidebar).
     let basic = col()
         .key("connection-section-basic")
@@ -290,6 +300,7 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
                             "connection-name-input",
                             &state.connection_name,
                             theme,
+                            dark,
                             |state: &mut AppState| &mut state.connection_name,
                         )),
                 )
@@ -302,6 +313,7 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
                             "connection-engine-input",
                             &state.connection_engine,
                             theme,
+                            dark,
                             |state: &mut AppState| &mut state.connection_engine,
                         )),
                 ),
@@ -322,6 +334,7 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
                     "connection-address-input",
                     &state.connection_address,
                     theme,
+                    dark,
                     |state: &mut AppState| &mut state.connection_address,
                 )),
         )
@@ -335,6 +348,7 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
                     "connection-database-input",
                     &state.connection_database,
                     theme,
+                    dark,
                     |state: &mut AppState| &mut state.connection_database,
                 )),
         );
@@ -352,6 +366,7 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
                     "connection-username-input",
                     &state.connection_username,
                     theme,
+                    dark,
                     |state: &mut AppState| &mut state.connection_username,
                 )),
         )
@@ -365,6 +380,7 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
                     "connection-password-input",
                     &state.connection_password,
                     theme,
+                    dark,
                     |state: &mut AppState| &mut state.connection_password,
                 )),
         );
@@ -457,6 +473,7 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
                                     "connection-ssh-host-input",
                                     &state.connection_ssh_host,
                                     theme,
+                                    dark,
                                     |state: &mut AppState| &mut state.connection_ssh_host,
                                 )),
                         )
@@ -469,6 +486,7 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
                                     "connection-ssh-port-input",
                                     &state.connection_ssh_port,
                                     theme,
+                                    dark,
                                     |state: &mut AppState| &mut state.connection_ssh_port,
                                 )),
                         )
@@ -482,6 +500,7 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
                                     "connection-ssh-username-input",
                                     &state.connection_ssh_username,
                                     theme,
+                                    dark,
                                     |state: &mut AppState| &mut state.connection_ssh_username,
                                 )),
                         ),

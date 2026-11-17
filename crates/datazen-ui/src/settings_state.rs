@@ -125,6 +125,18 @@ impl AppState {
         }
     }
 
+    /// The active appearance: the persisted theme setting, defaulting to dark
+    /// when none is recorded (the headless/runtime default).
+    pub(crate) fn dark_theme(&self) -> bool {
+        self.ui_settings()
+            .into_iter()
+            .find_map(|setting| match setting {
+                Setting::Theme { dark } => Some(dark),
+                _ => None,
+            })
+            .unwrap_or(true)
+    }
+
     /// The snippets in force (T3): the host's once its file store persists
     /// them, the memory port's while it does not. The host's read answers
     /// from its loaded file — memory-speed, like the settings read.

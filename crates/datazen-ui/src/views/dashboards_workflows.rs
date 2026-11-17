@@ -269,7 +269,7 @@ pub(crate) fn dashboards_page(state: &AppState, theme: tok::Theme) -> El {
                         .height(24.0)
                         .width(160.0)
                         .on_edit(|state: &mut AppState| &mut state.widget_title)
-                        .build(),
+                        .build(state.dark_theme()),
                 )
                 .child(
                     TextField::new("widget-query-input", &state.widget_query)
@@ -277,7 +277,7 @@ pub(crate) fn dashboards_page(state: &AppState, theme: tok::Theme) -> El {
                         .width(260.0)
                         .shrink()
                         .on_edit(|state: &mut AppState| &mut state.widget_query)
-                        .build(),
+                        .build(state.dark_theme()),
                 )
                 .child(
                     row()

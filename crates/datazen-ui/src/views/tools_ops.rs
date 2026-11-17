@@ -39,7 +39,7 @@ pub(crate) fn value_search_tool(state: &AppState, theme: tok::Theme) -> El {
                         .height(24.0)
                         .width(220.0)
                         .on_edit(|state: &mut AppState| &mut state.value_search_value)
-                        .build(),
+                        .build(state.dark_theme()),
                 )
                 .child(
                     row()

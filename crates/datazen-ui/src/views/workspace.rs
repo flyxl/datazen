@@ -587,7 +587,7 @@ fn result_find_bar(state: &AppState, grid: &crate::data_grid::DataGrid, theme: t
                     state.apply_result_find();
                     tx.blur();
                 })
-                .build(),
+                .build(state.dark_theme()),
         )
         .child(
             row()

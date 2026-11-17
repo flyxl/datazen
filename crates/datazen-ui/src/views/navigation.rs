@@ -177,6 +177,7 @@ pub(crate) fn navigator_panel(state: &AppState, theme: tok::Theme, dark: bool) -
         &state.navigator_filter,
         "Search…",
         theme,
+        dark,
         |state| &mut state.navigator_filter,
     );
 

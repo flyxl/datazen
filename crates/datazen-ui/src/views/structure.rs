@@ -272,14 +272,14 @@ pub(crate) fn column_drafts_section(state: &AppState, title: &str, theme: tok::T
                     .height(24.0)
                     .width(140.0)
                     .on_edit(|state: &mut AppState| &mut state.draft_name)
-                    .build(),
+                    .build(state.dark_theme()),
             )
             .child(
                 TextField::new("draft-type-input", &state.draft_type)
                     .height(24.0)
                     .width(110.0)
                     .on_edit(|state: &mut AppState| &mut state.draft_type)
-                    .build(),
+                    .build(state.dark_theme()),
             )
             .child(
                 row()

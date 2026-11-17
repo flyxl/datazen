@@ -224,7 +224,7 @@ fn data_browsing_section(state: &AppState, theme: tok::Theme) -> El {
                         .height(24.0)
                         .width(90.0)
                         .on_edit(|state: &mut AppState| &mut state.page_size_input)
-                        .build(),
+                        .build(state.dark_theme()),
                 )
                 .child(
                     row()
@@ -247,7 +247,7 @@ fn data_browsing_section(state: &AppState, theme: tok::Theme) -> El {
                         .height(24.0)
                         .width(90.0)
                         .on_edit(|state: &mut AppState| &mut state.max_rows_input)
-                        .build(),
+                        .build(state.dark_theme()),
                 )
                 .child(
                     row()
@@ -349,7 +349,7 @@ fn snippets_section(state: &AppState, theme: tok::Theme) -> El {
                         .height(24.0)
                         .width(140.0)
                         .on_edit(|state: &mut AppState| &mut state.snippet_name)
-                        .build(),
+                        .build(state.dark_theme()),
                 )
                 .child(
                     TextField::new("snippet-sql-input", &state.snippet_sql)
@@ -357,7 +357,7 @@ fn snippets_section(state: &AppState, theme: tok::Theme) -> El {
                         .width(280.0)
                         .min_width(0.0)
                         .on_edit(|state: &mut AppState| &mut state.snippet_sql)
-                        .build(),
+                        .build(state.dark_theme()),
                 )
                 .child(
                     row()
@@ -467,7 +467,7 @@ pub(crate) fn favorites_section(state: &AppState, theme: tok::Theme) -> El {
                         .grow()
                         .min_width(0.0)
                         .on_edit(|state: &mut AppState| &mut state.favorite_title)
-                        .build(),
+                        .build(state.dark_theme()),
                 )
                 .child(
                     row()
@@ -685,7 +685,7 @@ pub(crate) fn import_section(state: &AppState, theme: tok::Theme) -> El {
                         .height(24.0)
                         .width(240.0)
                         .on_edit(|state: &mut AppState| &mut state.import_source)
-                        .build(),
+                        .build(state.dark_theme()),
                 )
                 .child(
                     row()
@@ -747,7 +747,7 @@ pub(crate) fn import_section(state: &AppState, theme: tok::Theme) -> El {
                             .height(24.0)
                             .width(180.0)
                             .on_edit(|state: &mut AppState| &mut state.import_target)
-                            .build(),
+                            .build(state.dark_theme()),
                     )
                     .child(
                         row()
@@ -849,7 +849,7 @@ pub(crate) fn export_section(state: &AppState, theme: tok::Theme) -> El {
                         .height(24.0)
                         .width(220.0)
                         .on_edit(|state: &mut AppState| &mut state.export_range)
-                        .build(),
+                        .build(state.dark_theme()),
                 )
                 .child(
                     row()

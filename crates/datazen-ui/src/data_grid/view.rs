@@ -372,7 +372,7 @@ fn filter_bar(state: &crate::AppState, ink: rune::Color, muted: rune::Color, wel
                     state.apply_filter();
                     tx.blur();
                 })
-                .build(),
+                .build(state.dark_theme()),
         )
         .child(
             text(format!("{} rows", state.grid.total_rows()))
@@ -636,7 +636,7 @@ fn cell(
                     state.commit_grid_edit();
                     tx.blur();
                 })
-                .build(),
+                .build(dark),
         )
     } else {
         box_el.child(text(grid.cell(row_index, col_index)).font(label_style()).color(ink))

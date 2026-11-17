@@ -80,3 +80,6 @@ mod choice_extra;
 mod menus;
 mod menus_audit;
 mod select_values;
+
+#[cfg(test)]
+mod field_kit;
