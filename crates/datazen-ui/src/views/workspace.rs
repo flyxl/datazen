@@ -130,7 +130,7 @@ pub(crate) fn view_switcher(state: &AppState, theme: tok::Theme) -> El {
         ))
         .child(entry(
             "view-columns",
-            "Columns",
+            t("connWin.fields"),
             TableView::Columns,
             state.table_view == TableView::Columns,
         ))
@@ -289,8 +289,10 @@ pub(crate) fn query_toolbar(_state: &AppState, theme: tok::Theme) -> El {
             toolbar_button("sql-format", t("query.format"), theme)
                 .on_press(|s: &mut AppState| s.format_query()),
         )
+        // React's query error panel has a separate AI action,
+        // t("query.explainError"); the toolbar's Explain is explain.title.
         .child(
-            toolbar_button("sql-explain", t("query.explainError"), theme)
+            toolbar_button("sql-explain", t("explain.title"), theme)
                 .on_press(|s: &mut AppState| s.explain_query()),
         )
         .child(

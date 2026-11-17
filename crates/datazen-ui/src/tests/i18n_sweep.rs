@@ -60,7 +60,40 @@ const ALLOW: &[(&str, &str)] = &[
     ),
 ];
 
-fn literals(line: &str) -> Vec<String> {
+/// Byte spans of the string literal inside every translation call on the line.
+///
+/// Matching the opening translation call as a token (not as a substring) keeps
+/// `text(...)` under the reverse index: `text` is an identifier, so its trailing
+/// opener is not a translation call.
+fn t_arg_spans(line: &str) -> Vec<(usize, usize)> {
+    let bytes = line.as_bytes();
+    let ident = |byte: u8| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'.';
+    let mut spans = Vec::new();
+    let mut i = 0;
+    while i + 2 < bytes.len() {
+        let starts_call = bytes[i] == b't'
+            && bytes[i + 1] == b'('
+            && bytes[i + 2] == b'"'
+            && (i == 0 || !ident(bytes[i - 1]));
+        if starts_call {
+            let start = i + 2;
+            let mut j = start + 1;
+            while j < bytes.len() && bytes[j] != b'"' {
+                j += if bytes[j] == b'\\' { 2 } else { 1 };
+            }
+            if j < bytes.len() {
+                spans.push((start, j + 1));
+                i = j + 1;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    spans
+}
+
+/// The `//`-stripped string literals on one line, with the opening-quote offset.
+fn literals(line: &str) -> Vec<(usize, String)> {
     let bytes = line.as_bytes();
     let mut out = Vec::new();
     let mut i = 0;
@@ -72,14 +105,10 @@ fn literals(line: &str) -> Vec<String> {
         if bytes[i] == b'"' {
             let mut j = i + 1;
             while j < bytes.len() && bytes[j] != b'"' {
-                if bytes[j] == b'\\' {
-                    j += 2;
-                } else {
-                    j += 1;
-                }
+                j += if bytes[j] == b'\\' { 2 } else { 1 };
             }
             if j < bytes.len() {
-                out.push(line[i + 1..j].to_owned());
+                out.push((i, line[i + 1..j].to_owned()));
                 i = j + 1;
                 continue;
             }
@@ -91,7 +120,7 @@ fn literals(line: &str) -> Vec<String> {
                 j += 1;
             }
             if j < bytes.len() {
-                out.push(line[i + 2..j].to_owned());
+                out.push((i, line[i + 2..j].to_owned()));
                 i = j + 1;
                 continue;
             }
@@ -117,12 +146,17 @@ fn no_migrated_view_bypasses_the_translation_table() {
     let mut failures = Vec::new();
     for (file, source) in FILES {
         for (index, line) in source.lines().enumerate() {
-            // A `t(...)` call marks the migrated form; anything else is a suspect.
-            if line.contains("t(\"") {
-                continue;
-            }
-            for literal in literals(line) {
+            let t_spans = t_arg_spans(line);
+            for (quote, literal) in literals(line) {
                 if literal.is_empty() {
+                    continue;
+                }
+                // Only the argument of a `t(...)` call is exempt; a display
+                // literal on the same line still has to face the table.
+                if t_spans
+                    .iter()
+                    .any(|(start, end)| *start <= quote && quote < *end)
+                {
                     continue;
                 }
                 if !ZH_CN.iter().any(|(_, value)| *value == literal) {
@@ -154,102 +188,144 @@ fn no_migrated_view_bypasses_the_translation_table() {
 }
 
 /// Every key this batch wired, pinned in the file that must still ask for it.
-const PINNED: &[(&str, &str)] = &[
-    ("../views/workspace.rs", "connWin.data"),
-    ("../views/workspace.rs", "connWin.indexes"),
-    ("../views/workspace.rs", "query.running"),
-    ("../views/workspace.rs", "query.run"),
-    ("../views/workspace.rs", "common.cancel"),
-    ("../views/workspace.rs", "query.format"),
-    ("../views/workspace.rs", "query.explainError"),
-    ("../views/workspace.rs", "query.beginTx"),
-    ("../views/workspace.rs", "query.commitTx"),
-    ("../views/workspace.rs", "query.rollbackTx"),
-    ("../views/workspace.rs", "query.noFavorites"),
-    ("../views/workspace.rs", "chart.viewTable"),
-    ("../views/workspace.rs", "chart.viewChart"),
-    ("../views/workspace.rs", "select.noMatches"),
-    ("../views/workspace.rs", "resultFind.openLabel"),
-    ("../views/workspace.rs", "main.ready"),
-    ("../views/connections_home.rs", "conn.connecting"),
+const PINNED: &[(&str, &str, usize)] = &[
+    ("../views/workspace.rs", "chart.viewChart", 1),
+    ("../views/workspace.rs", "chart.viewTable", 1),
+    ("../views/workspace.rs", "common.cancel", 1),
+    ("../views/workspace.rs", "connWin.data", 1),
+    ("../views/workspace.rs", "connWin.fields", 1),
+    ("../views/workspace.rs", "connWin.indexes", 1),
+    ("../views/workspace.rs", "explain.title", 1),
+    ("../views/workspace.rs", "main.ready", 1),
+    ("../views/workspace.rs", "objectSearch.ddl", 1),
+    ("../views/workspace.rs", "query.beginTx", 1),
+    ("../views/workspace.rs", "query.commitTx", 1),
+    ("../views/workspace.rs", "query.format", 1),
+    ("../views/workspace.rs", "query.noFavorites", 1),
+    ("../views/workspace.rs", "query.rollbackTx", 1),
+    ("../views/workspace.rs", "query.run", 1),
+    ("../views/workspace.rs", "query.running", 2),
+    ("../views/workspace.rs", "resultFind.openLabel", 1),
+    ("../views/workspace.rs", "select.noMatches", 1),
+    ("../views/connections_home.rs", "common.copy", 1),
     (
         "../views/connections_home.rs",
-        "connWin.home.selectConnectionTitle",
+        "common.importConnections",
+        2,
+    ),
+    ("../views/connections_home.rs", "conn.connected", 1),
+    ("../views/connections_home.rs", "conn.connecting", 2),
+    (
+        "../views/connections_home.rs",
+        "connWin.home.connections.connect",
+        1,
     ),
     (
         "../views/connections_home.rs",
         "connWin.home.connections.filter",
+        1,
     ),
-    ("../views/connections_home.rs", "common.importConnections"),
+    (
+        "../views/connections_home.rs",
+        "connWin.home.connections.noMatch",
+        1,
+    ),
     (
         "../views/connections_home.rs",
         "connWin.home.connections.open",
-    ),
-    (
-        "../views/connections_home.rs",
-        "connWin.home.connections.connect",
-    ),
-    (
-        "../views/connections_home.rs",
-        "connWin.home.connections.showLess",
+        1,
     ),
     (
         "../views/connections_home.rs",
         "connWin.home.connections.showAll",
+        1,
     ),
-    ("../views/connections_home.rs", "common.copy"),
-    ("../views/connections_home.rs", "keymap.action.formatSql"),
-    ("../views/connections_home.rs", "conn.connected"),
+    (
+        "../views/connections_home.rs",
+        "connWin.home.connections.showLess",
+        1,
+    ),
+    (
+        "../views/connections_home.rs",
+        "connWin.home.connections.showing",
+        1,
+    ),
+    (
+        "../views/connections_home.rs",
+        "connWin.home.hero.subtitleConnections",
+        1,
+    ),
+    (
+        "../views/connections_home.rs",
+        "connWin.home.hero.subtitleGroups",
+        1,
+    ),
+    (
+        "../views/connections_home.rs",
+        "connWin.home.hero.subtitleTypes",
+        1,
+    ),
+    (
+        "../views/connections_home.rs",
+        "connWin.home.selectConnectionTitle",
+        1,
+    ),
     (
         "../views/connections_home.rs",
         "connWin.home.status.offline",
+        1,
     ),
-    ("../views/navigation.rs", "select.noMatches"),
-    ("../views/navigation.rs", "query.objectTree.schema"),
-    ("../views/navigation.rs", "query.objectTree.noObjects"),
-    ("../views/navigation.rs", "main.ctx.disconnect"),
-    ("../views/chrome.rs", "conn.connected"),
-    ("../views/structure.rs", "common.close"),
-    ("../views/structure.rs", "structView.fieldName"),
-    ("../views/structure.rs", "structView.type"),
-    ("../views/structure.rs", "structView.nullable"),
-    ("../views/structure.rs", "filter.apply"),
-    ("../views/structure.rs", "indexes.colName"),
-    ("../views/structure.rs", "indexes.columns"),
-    ("../views/structure.rs", "indexes.colUnique"),
-    ("../views/settings.rs", "filter.view.rename"),
-    ("../views/settings.rs", "common.stop"),
-    ("../views/settings.rs", "import.import"),
-    ("../views/settings.rs", "sync.next"),
-    ("../views/settings.rs", "onboarding.common.finish"),
-    ("../views/settings.rs", "common.back"),
-    ("../views/settings.rs", "export.export"),
-    ("../views/tools_ops.rs", "common.search"),
-    ("../views/tools_ops.rs", "common.cancel"),
-    ("../views/tools_ops.rs", "valueSearch.status.running"),
-    ("../views/tools_ops.rs", "common.confirm"),
-    ("../views/tools_sync.rs", "sync.compare"),
-    ("../views/tools_sync.rs", "sync.next"),
-    ("../views/tools_sync.rs", "filter.clear"),
-    ("../views/tools_sync.rs", "common.preview"),
-    ("../data_grid/view.rs", "query.gridReadOnly.tooltip"),
-    ("../data_grid/view.rs", "common.loading"),
-    ("../data_grid/view.rs", "tableData.commit"),
-    ("../data_grid/view.rs", "tableData.rollback"),
-    ("../sql_editor/view.rs", "resultFind.replaceNext"),
+    ("../views/connections_home.rs", "keymap.action.formatSql", 1),
+    ("../views/navigation.rs", "common.newQuery", 1),
+    ("../views/navigation.rs", "main.ctx.disconnect", 1),
+    ("../views/navigation.rs", "query.objectTree.noObjects", 1),
+    ("../views/navigation.rs", "query.objectTree.schema", 1),
+    ("../views/navigation.rs", "select.noMatches", 3),
+    ("../views/chrome.rs", "common.newQuery", 2),
+    ("../views/chrome.rs", "conn.connected", 1),
+    ("../views/structure.rs", "common.close", 1),
+    ("../views/structure.rs", "filter.apply", 1),
+    ("../views/structure.rs", "indexes.colName", 1),
+    ("../views/structure.rs", "indexes.colUnique", 1),
+    ("../views/structure.rs", "indexes.columns", 2),
+    ("../views/structure.rs", "structView.fieldName", 1),
+    ("../views/structure.rs", "structView.nullable", 1),
+    ("../views/structure.rs", "structView.type", 1),
+    ("../views/settings.rs", "common.back", 1),
+    ("../views/settings.rs", "common.stop", 1),
+    ("../views/settings.rs", "export.export", 2),
+    ("../views/settings.rs", "filter.view.rename", 1),
+    ("../views/settings.rs", "import.import", 1),
+    ("../views/settings.rs", "onboarding.common.finish", 1),
+    ("../views/settings.rs", "sync.next", 1),
+    ("../views/tools_ops.rs", "common.cancel", 2),
+    ("../views/tools_ops.rs", "common.confirm", 1),
+    ("../views/tools_ops.rs", "common.search", 1),
+    ("../views/tools_ops.rs", "valueSearch.status.running", 1),
+    ("../views/tools_sync.rs", "common.preview", 1),
+    ("../views/tools_sync.rs", "common.selectAll", 1),
+    ("../views/tools_sync.rs", "filter.clear", 1),
+    ("../views/tools_sync.rs", "sync.compare", 1),
+    ("../views/tools_sync.rs", "sync.next", 2),
+    ("../data_grid/view.rs", "common.loading", 1),
+    ("../data_grid/view.rs", "query.gridReadOnly.tooltip", 1),
+    ("../data_grid/view.rs", "tableData.commit", 1),
+    ("../data_grid/view.rs", "tableData.rollback", 1),
+    ("../sql_editor/view.rs", "resultFind.replaceNext", 1),
 ];
 
 #[test]
 fn every_wired_key_is_still_asked_for_in_its_file() {
-    for (file, key) in PINNED {
+    for (file, key, count) in PINNED {
         let source = FILES
             .iter()
             .find(|(path, _)| path == file)
             .map(|(_, source)| *source)
             .unwrap_or_else(|| panic!("{file} is not in FILES"));
+        let asked = source.matches(&format!("t(\"{key}\")")).count();
         assert!(
-            source.contains(&format!("t(\"{key}\")")),
-            "{file} no longer asks for t(\"{key}\"); update this guard if the wiring moved"
+            asked >= *count,
+            "{file}: expected {count} t(\"{key}\") site(s), found {asked}; update this guard if the wiring moved"
         );
     }
 }

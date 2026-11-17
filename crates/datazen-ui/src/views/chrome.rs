@@ -166,11 +166,13 @@ pub(crate) fn content_toolbar(state: &AppState, theme: tok::Theme) -> El {
                     .center_y()
                     .radius(6.0)
                     .fill(theme.control_off)
-                    .label("New query")
+                    .label(t("common.newQuery"))
                     .on_press(|state: &mut AppState| {
                         state.open_query_tab("Query");
                     })
-                    .child(text("New query").font(type_::LABEL).color(theme.text)),
+                    .child(
+                        text(t("common.newQuery")).font(type_::LABEL).color(theme.text),
+                    ),
             );
         }
         Section::Connections => {}
@@ -336,7 +338,10 @@ pub(crate) fn content_status_bar(state: &AppState, theme: tok::Theme) -> El {
                     text(if connected {
                         t("conn.connected")
                     } else {
-                        "Disconnected"
+                        // No locale key exists for this state (React only ships
+                        // conn.connected); use a neutral Chinese state word so
+                        // the status bar does not mix languages.
+                        "未连接"
                     })
                     .key("status-connection-label")
                     .font(type_::LABEL)

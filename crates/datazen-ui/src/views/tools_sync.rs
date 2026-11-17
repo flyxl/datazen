@@ -183,7 +183,9 @@ pub(crate) fn sync_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                             .center_y()
                             .radius(6.0)
                             .fill(theme.control_off)
-                            .child(text("Select all").font(type_::LABEL).color(theme.text))
+                            .child(
+                                text(t("common.selectAll")).font(type_::LABEL).color(theme.text),
+                            )
                             .on_press(|state: &mut AppState| state.sync_select_all()),
                     )
                     .child(

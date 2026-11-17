@@ -377,7 +377,9 @@ fn snippets_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                         .center_y()
                         .radius(6.0)
                         .fill(theme.control_off)
-                        .child(text("Update").font(type_::LABEL).color(theme.text))
+                        .child(
+                            text(t("common.save")).font(type_::LABEL).color(theme.text),
+                        )
                         .on_press(|state: &mut AppState| state.update_snippet_form()),
                 ),
         );

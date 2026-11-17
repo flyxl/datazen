@@ -260,9 +260,9 @@ fn counts_line(
     engine_count: usize,
     strong: Color,
 ) -> (String, Vec<Span>) {
-    let connection_word = if connection_count == 1 { "connection" } else { "connections" };
-    let group_word = if group_count == 1 { "group" } else { "groups" };
-    let engine_word = if engine_count == 1 { "engine type" } else { "engine types" };
+    let connection_word = t("connWin.home.hero.subtitleConnections");
+    let group_word = t("connWin.home.hero.subtitleGroups");
+    let engine_word = t("connWin.home.hero.subtitleTypes");
     let line = format!(
         "{connection_count} {connection_word} · {group_count} {group_word} · {engine_count} {engine_word}"
     );
@@ -505,7 +505,11 @@ fn paging_row(state: &AppState, theme: tok::Theme, visible_count: usize, total: 
         .gap(8.0)
         .center_y()
         .child(
-            text(format!("Showing {visible_count} of {total}"))
+            text(
+                t("connWin.home.connections.showing")
+                    .replace("{visible}", &visible_count.to_string())
+                    .replace("{total}", &total.to_string()),
+            )
                 .key("connections-showing")
                 .font(type_::LABEL)
                 .color(theme.text_secondary),
@@ -541,7 +545,7 @@ fn no_match_state(theme: tok::Theme, needle: &str) -> El {
         .center()
         .child(icon(&ICON_SEARCH, 20.0).color(theme.text_secondary))
         .child(
-            text(format!("No matches for “{needle}”"))
+            text(t("connWin.home.connections.noMatch").replace("{query}", needle))
                 .font(type_::LABEL)
                 .color(theme.text_secondary),
         )

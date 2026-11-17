@@ -166,7 +166,7 @@ pub(crate) fn navigator_panel(state: &AppState, theme: tok::Theme, dark: bool) -
         .child(nav_toolbar_button(
             "open-query",
             &icons::ICON_PLUS,
-            "New query",
+            t("common.newQuery"),
             theme,
             |state| {
                 let _ = state.open_query_tab("Query");
