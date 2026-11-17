@@ -103,6 +103,8 @@ mod i18n_usage;
 mod i18n_sweep;
 // Independent audit of the settings/rail i18n batch.
 mod i18n_usage_audit;
+// Independent audit of the batch-3 view translations.
+mod i18n_batch3_audit;
 
 // T0-11 error display bases.
 mod banner;
