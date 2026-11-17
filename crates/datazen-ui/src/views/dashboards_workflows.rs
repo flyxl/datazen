@@ -246,7 +246,7 @@ pub(crate) fn workflows_page(state: &AppState, theme: tok::Theme, dark: bool) ->
 }
 
 /// The dashboards page: the widget list. An empty list has its own state.
-pub(crate) fn dashboards_page(state: &AppState, theme: tok::Theme) -> El {
+pub(crate) fn dashboards_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let widgets = state.host_widgets();
     let mut page = col()
         .key("dashboards-page")
@@ -269,7 +269,7 @@ pub(crate) fn dashboards_page(state: &AppState, theme: tok::Theme) -> El {
                         .height(24.0)
                         .width(160.0)
                         .on_edit(|state: &mut AppState| &mut state.widget_title)
-                        .build(state.dark_theme()),
+                        .build(dark),
                 )
                 .child(
                     TextField::new("widget-query-input", &state.widget_query)
@@ -277,7 +277,7 @@ pub(crate) fn dashboards_page(state: &AppState, theme: tok::Theme) -> El {
                         .width(260.0)
                         .shrink()
                         .on_edit(|state: &mut AppState| &mut state.widget_query)
-                        .build(state.dark_theme()),
+                        .build(dark),
                 )
                 .child(
                     row()

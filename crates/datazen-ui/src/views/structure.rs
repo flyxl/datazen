@@ -200,7 +200,7 @@ pub(crate) fn notice_row(key: &str, sentence: &str, theme: tok::Theme) -> El {
 
 /// The column list: name, type, nullability — one row per column, plus the
 /// drafts section. The official list is read-only; drafts are separate.
-pub(crate) fn columns_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
+pub(crate) fn columns_view(state: &AppState, title: &str, theme: tok::Theme, dark: bool) -> El {
     // E1: the cache is the only read — the job's columns segment renders.
     let columns = state
         .structures
@@ -252,13 +252,13 @@ pub(crate) fn columns_view(state: &AppState, title: &str, theme: tok::Theme) -> 
     if let Some(sentence) = structure_notice(state, title) {
         list = list.child(notice_row("columns-structure-notice", &sentence, theme));
     }
-    let mut list = list.child(column_drafts_section(state, title, theme));
+    let mut list = list.child(column_drafts_section(state, title, theme, dark));
     list
 }
 
 /// The drafts area under the column list: inputs, the queued drafts, separate
 /// from the official columns.
-pub(crate) fn column_drafts_section(state: &AppState, title: &str, theme: tok::Theme) -> El {
+pub(crate) fn column_drafts_section(state: &AppState, title: &str, theme: tok::Theme, dark: bool) -> El {
     let drafts = state.column_drafts.get(title).cloned().unwrap_or_default();
     let mut section = col().key("column-drafts").w_full().gap(6.0).child(
         row()
@@ -272,14 +272,14 @@ pub(crate) fn column_drafts_section(state: &AppState, title: &str, theme: tok::T
                     .height(24.0)
                     .width(140.0)
                     .on_edit(|state: &mut AppState| &mut state.draft_name)
-                    .build(state.dark_theme()),
+                    .build(dark),
             )
             .child(
                 TextField::new("draft-type-input", &state.draft_type)
                     .height(24.0)
                     .width(110.0)
                     .on_edit(|state: &mut AppState| &mut state.draft_type)
-                    .build(state.dark_theme()),
+                    .build(dark),
             )
             .child(
                 row()

@@ -21,7 +21,7 @@ use rune::{FileDialogOptions, TextEdit, Tx};
 /// A6: grouped settings navigation (2 groups, 12 sections) with deep-link
 /// selection by section key. Only the active section's content renders so
 /// navigation switching is observable and addressable.
-pub(crate) fn settings_page(state: &AppState, theme: tok::Theme) -> El {
+pub(crate) fn settings_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let active = state.settings_section();
     // The page is one row of the page column, which also holds the content
     // toolbar, the tab strip and the status bar: `h_full` measured the whole
@@ -35,7 +35,7 @@ pub(crate) fn settings_page(state: &AppState, theme: tok::Theme) -> El {
         .min_w(0.0)
         .gap(0.0)
         .child(settings_nav(state, theme, active))
-        .child(settings_content(state, theme, active))
+        .child(settings_content(state, theme, dark, active))
 }
 
 fn settings_nav(state: &AppState, theme: tok::Theme, active: &str) -> El {
@@ -105,12 +105,12 @@ fn settings_nav(state: &AppState, theme: tok::Theme, active: &str) -> El {
     nav
 }
 
-fn settings_content(state: &AppState, theme: tok::Theme, active: &str) -> El {
+fn settings_content(state: &AppState, theme: tok::Theme, dark: bool, active: &str) -> El {
     let body = match active {
-        "general" => general_section(state, theme),
+        "general" => general_section(state, theme, dark),
         "appearance" => appearance_section(state, theme),
-        "dataBrowsing" => data_browsing_section(state, theme),
-        "editor" => editor_section(state, theme),
+        "dataBrowsing" => data_browsing_section(state, theme, dark),
+        "editor" => editor_section(state, theme, dark),
         "behavior" => behavior_section(state, theme),
         "logging" => placeholder_section("logging", "Logging", theme),
         "ai" => placeholder_section("ai", "AI Assistant", theme),
@@ -131,7 +131,7 @@ fn settings_content(state: &AppState, theme: tok::Theme, active: &str) -> El {
         .child(body)
 }
 
-fn general_section(state: &AppState, theme: tok::Theme) -> El {
+fn general_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     col()
         .key("settings-section-general")
         .w_full()
@@ -142,7 +142,7 @@ fn general_section(state: &AppState, theme: tok::Theme) -> El {
                 .font(type_::LABEL)
                 .color(theme.text_secondary),
         )
-        .child(favorites_section(state, theme))
+        .child(favorites_section(state, theme, dark))
 }
 
 fn appearance_section(state: &AppState, theme: tok::Theme) -> El {
@@ -185,7 +185,7 @@ fn appearance_section(state: &AppState, theme: tok::Theme) -> El {
         .child(settings_error_row(state, theme))
 }
 
-fn data_browsing_section(state: &AppState, theme: tok::Theme) -> El {
+fn data_browsing_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let settings = state.ui_settings();
     let page_size = settings
         .iter()
@@ -224,7 +224,7 @@ fn data_browsing_section(state: &AppState, theme: tok::Theme) -> El {
                         .height(24.0)
                         .width(90.0)
                         .on_edit(|state: &mut AppState| &mut state.page_size_input)
-                        .build(state.dark_theme()),
+                        .build(dark),
                 )
                 .child(
                     row()
@@ -247,7 +247,7 @@ fn data_browsing_section(state: &AppState, theme: tok::Theme) -> El {
                         .height(24.0)
                         .width(90.0)
                         .on_edit(|state: &mut AppState| &mut state.max_rows_input)
-                        .build(state.dark_theme()),
+                        .build(dark),
                 )
                 .child(
                     row()
@@ -262,18 +262,18 @@ fn data_browsing_section(state: &AppState, theme: tok::Theme) -> El {
                 ),
         )
         .child(settings_error_row(state, theme))
-        .child(export_section(state, theme))
-        .child(import_section(state, theme))
+        .child(export_section(state, theme, dark))
+        .child(import_section(state, theme, dark))
         .child(backup_section(state, theme))
 }
 
-fn editor_section(state: &AppState, theme: tok::Theme) -> El {
+fn editor_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     col()
         .key("settings-section-editor")
         .w_full()
         .gap(12.0)
         .child(section_title("Editor", theme))
-        .child(snippets_section(state, theme))
+        .child(snippets_section(state, theme, dark))
 }
 
 fn behavior_section(_state: &AppState, theme: tok::Theme) -> El {
@@ -325,7 +325,7 @@ fn settings_error_row(state: &AppState, theme: tok::Theme) -> El {
     }
 }
 
-fn snippets_section(state: &AppState, theme: tok::Theme) -> El {
+fn snippets_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     // SQL snippets: add, update, delete.
     let mut snippets = col()
         .key("settings-snippets")
@@ -349,7 +349,7 @@ fn snippets_section(state: &AppState, theme: tok::Theme) -> El {
                         .height(24.0)
                         .width(140.0)
                         .on_edit(|state: &mut AppState| &mut state.snippet_name)
-                        .build(state.dark_theme()),
+                        .build(dark),
                 )
                 .child(
                     TextField::new("snippet-sql-input", &state.snippet_sql)
@@ -357,7 +357,7 @@ fn snippets_section(state: &AppState, theme: tok::Theme) -> El {
                         .width(280.0)
                         .min_width(0.0)
                         .on_edit(|state: &mut AppState| &mut state.snippet_sql)
-                        .build(state.dark_theme()),
+                        .build(dark),
                 )
                 .child(
                     row()
@@ -444,7 +444,7 @@ fn snippets_section(state: &AppState, theme: tok::Theme) -> El {
 /// The favorites section (T6): save the current query, list the host's
 /// favorites, open one into a query tab, rename one (the file stays), delete
 /// one (the bytes move to the store's trash).
-pub(crate) fn favorites_section(state: &AppState, theme: tok::Theme) -> El {
+pub(crate) fn favorites_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let mut section = col()
         .key("settings-favorites")
         .w_full()
@@ -467,7 +467,7 @@ pub(crate) fn favorites_section(state: &AppState, theme: tok::Theme) -> El {
                         .grow()
                         .min_width(0.0)
                         .on_edit(|state: &mut AppState| &mut state.favorite_title)
-                        .build(state.dark_theme()),
+                        .build(dark),
                 )
                 .child(
                     row()
@@ -660,7 +660,7 @@ pub(crate) fn backup_section(state: &AppState, theme: tok::Theme) -> El {
 
 /// The import wizard's first two steps: source, then target table. No target,
 /// no next step.
-pub(crate) fn import_section(state: &AppState, theme: tok::Theme) -> El {
+pub(crate) fn import_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let mut section = col().key("import-section").w_full().gap(6.0).child(
         text("Import".to_owned())
             .font(type_::TITLE)
@@ -685,7 +685,7 @@ pub(crate) fn import_section(state: &AppState, theme: tok::Theme) -> El {
                         .height(24.0)
                         .width(240.0)
                         .on_edit(|state: &mut AppState| &mut state.import_source)
-                        .build(state.dark_theme()),
+                        .build(dark),
                 )
                 .child(
                     row()
@@ -747,7 +747,7 @@ pub(crate) fn import_section(state: &AppState, theme: tok::Theme) -> El {
                             .height(24.0)
                             .width(180.0)
                             .on_edit(|state: &mut AppState| &mut state.import_target)
-                            .build(state.dark_theme()),
+                            .build(dark),
                     )
                     .child(
                         row()
@@ -811,7 +811,7 @@ pub(crate) fn import_section(state: &AppState, theme: tok::Theme) -> El {
     }
     section
 }
-pub(crate) fn export_section(state: &AppState, theme: tok::Theme) -> El {
+pub(crate) fn export_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let mut section = col()
         .key("export-section")
         .w_full()
@@ -849,7 +849,7 @@ pub(crate) fn export_section(state: &AppState, theme: tok::Theme) -> El {
                         .height(24.0)
                         .width(220.0)
                         .on_edit(|state: &mut AppState| &mut state.export_range)
-                        .build(state.dark_theme()),
+                        .build(dark),
                 )
                 .child(
                     row()

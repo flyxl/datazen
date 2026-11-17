@@ -257,7 +257,6 @@ fn plain_field_has_no_kit_shell() {
 }
 
 #[test]
-#[ignore = "DEFECT e80bfb243: TextField::ink is stored but never applied; un-ignore after the fix"]
 fn ink_parameter_reaches_the_editor_text_colour() {
     const INK: rune::Color = rune::Color::WHITE;
     fn field(state: &AppState, _cx: &mut rune::Cx<AppState>) -> rune::El {
@@ -285,7 +284,6 @@ fn ink_parameter_reaches_the_editor_text_colour() {
 }
 
 #[test]
-#[ignore = "DEFECT e80bfb243: AppState::dark_theme() defaults to dark while app.rs falls back to system_dark(false); un-ignore after the fix"]
 fn light_system_without_a_saved_theme_keeps_fields_on_the_light_palette() {
     let mut rt = Runtime::new(
         AppState::default(),
@@ -316,3 +314,5 @@ fn light_system_without_a_saved_theme_keeps_fields_on_the_light_palette() {
         rt.state.dark_theme()
     );
 }
+
+

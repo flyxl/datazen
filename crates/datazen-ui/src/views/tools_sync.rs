@@ -77,7 +77,7 @@ pub(crate) fn tools_page(state: &AppState, theme: tok::Theme, dark: bool) -> El 
             Tool::Sync => sync_tool(state, theme, dark),
             Tool::Compare => compare_tool(state, theme),
             Tool::Transfer => transfer_tool(state, theme),
-            Tool::ValueSearch => value_search_tool(state, theme),
+            Tool::ValueSearch => value_search_tool(state, theme, dark),
         })
 }
 pub(crate) fn sync_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {

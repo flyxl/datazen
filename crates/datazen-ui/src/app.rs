@@ -17,14 +17,16 @@ use rune::tok::{self, type_};
 use rune::{col, row, text, App, AppSpec, Cx, El, Ime, Key, KeyEvent, Titlebar, Tx};
 
 pub(crate) fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
-    let dark = state
-        .ui_settings()
-        .iter()
-        .find_map(|setting| match setting {
-            Setting::Theme { dark } => Some(*dark),
+    let system_dark = cx.system_dark();
+    state.system_dark.set(system_dark);
+    let dark = match state.desktop.read_ui_settings() {
+        Ok(settings) => settings.into_iter().find_map(|setting| match setting {
+            Setting::Theme { dark } => Some(dark),
             _ => None,
-        })
-        .unwrap_or_else(|| cx.system_dark());
+        }),
+        Err(_) => None,
+    }
+    .unwrap_or(system_dark);
     let theme = tok::theme(dark);
 
     let rail = rail_view(state, dark);

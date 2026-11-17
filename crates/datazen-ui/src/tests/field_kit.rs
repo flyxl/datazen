@@ -49,7 +49,7 @@ fn text_field_click_at_top_edge_focuses_and_takes_input() {
         crate::ui::field::TextField::new("probe", &state.connection_search)
             .height(28.0)
             .width(220.0)
-            .placeholder("x", rune::Color::TRANSPARENT)
+            .placeholder("x")
             .on_edit(|state: &mut AppState| &mut state.connection_search)
             .build(true)
     }
@@ -133,7 +133,7 @@ fn placeholder_visible_when_empty_and_hidden_when_filled() {
         crate::ui::field::TextField::new("probe-ph", &state.connection_search)
             .height(28.0)
             .width(220.0)
-            .placeholder("Type here", rune::Color::TRANSPARENT)
+            .placeholder("Type here")
             .on_edit(|state: &mut AppState| &mut state.connection_search)
             .build(true)
     }

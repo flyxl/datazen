@@ -11,15 +11,15 @@
 //! to the inner editor (probed in `tests::field_kit`).
 
 use rune::tok::type_;
-use rune::{Color, El, TextEdit, TextStyle};
+use rune::{text_input, Color, El, TextEdit, TextStyle};
 
 use super::kit::kit;
 
 /// Vertical padding that would centre one line of `style` inside a
 /// `height`-tall box.
 ///
-/// Kept for geometry tests. The live field centres through the kit's outer
-/// row rather than by adding this padding to the editor itself.
+/// The kit-delegated field centres through its outer row; the legacy
+/// (custom-ink) path uses this padding directly.
 pub(crate) fn centered_pad(style: TextStyle, height: f32) -> f32 {
     ((height - style.line_px()) / 2.0).max(0.0)
 }
@@ -38,8 +38,10 @@ pub(crate) fn centered_pad(style: TextStyle, height: f32) -> f32 {
 /// ```
 ///
 /// The kit supplies the default shell (fill, border, focus ring, hover); any
-/// chrome a caller sets (`fill`/`border`/`radius`/`pad_x`/`ink`) is applied on
-/// top of the built element so the caller's intent wins.
+/// chrome a caller sets (`fill`/`border`/`radius`/`pad_x`) is applied on top
+/// of the built element so the caller's intent wins. Placeholder colour and
+/// the default text colour are decided by the kit; `.ink(...)` opts into the
+/// direct-build path so the requested text colour reaches the editor.
 pub(crate) struct TextField<'a> {
     key: String,
     edit: &'a TextEdit,
@@ -53,15 +55,15 @@ pub(crate) struct TextField<'a> {
     radius: Option<f32>,
     fill: Option<Color>,
     border: Option<(f32, Color)>,
-    placeholder: Option<(String, Color)>,
+    placeholder: Option<String>,
     ink: Option<Color>,
     secure: bool,
     label: Option<String>,
     bound: bool,
-    has_on_submit: bool,
-    acts: Vec<Box<dyn FnOnce(El) -> El>>,
     on_edit_act: Option<Box<dyn FnOnce(rune_kit::TextInput) -> rune_kit::TextInput>>,
     on_submit_act: Option<Box<dyn FnOnce(rune_kit::TextInput) -> rune_kit::TextInput>>,
+    on_edit_el: Option<Box<dyn FnOnce(El) -> El>>,
+    on_submit_el: Option<Box<dyn FnOnce(El) -> El>>,
 }
 
 impl<'a> TextField<'a> {
@@ -85,10 +87,10 @@ impl<'a> TextField<'a> {
             secure: false,
             label: None,
             bound: false,
-            has_on_submit: false,
-            acts: Vec::new(),
             on_edit_act: None,
             on_submit_act: None,
+            on_edit_el: None,
+            on_submit_el: None,
         }
     }
 
@@ -155,13 +157,15 @@ impl<'a> TextField<'a> {
         self
     }
 
-    /// Placeholder text and the colour it is drawn in, until the field has a value.
-    pub(crate) fn placeholder(mut self, text: impl Into<String>, ink: Color) -> Self {
-        self.placeholder = Some((text.into(), ink));
+    /// Placeholder text shown until the field has a value. The colour is
+    /// determined by the kit's theme tokens.
+    pub(crate) fn placeholder(mut self, text: impl Into<String>) -> Self {
+        self.placeholder = Some(text.into());
         self
     }
 
-    /// The typed text's colour, in place of the runtime's default.
+    /// The typed text's colour, in place of the kit/theme default. Setting
+    /// this opts into the direct-build path so the colour reaches the editor.
     pub(crate) fn ink(mut self, ink: Color) -> Self {
         self.ink = Some(ink);
         self
@@ -181,16 +185,19 @@ impl<'a> TextField<'a> {
 
     pub(crate) fn on_edit<S: 'static>(
         mut self,
-        f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
+        f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + Clone + 'static,
     ) -> Self {
         self.bound = true;
-        self.on_edit_act = Some(Box::new(move |e| e.on_edit(f)));
+        let f1 = f.clone();
+        self.on_edit_act = Some(Box::new(move |e| e.on_edit(f1)));
+        self.on_edit_el = Some(Box::new(move |e: El| e.on_edit(f)));
         self
     }
 
-    pub(crate) fn on_submit<S: 'static>(mut self, f: impl Fn(&mut S, &mut rune::Tx) + 'static) -> Self {
-        self.has_on_submit = true;
-        self.on_submit_act = Some(Box::new(move |e| e.on_submit(f)));
+    pub(crate) fn on_submit<S: 'static>(mut self, f: impl Fn(&mut S, &mut rune::Tx) + Clone + 'static) -> Self {
+        let f1 = f.clone();
+        self.on_submit_act = Some(Box::new(move |e| e.on_submit(f1)));
+        self.on_submit_el = Some(Box::new(move |e: El| e.on_submit(f)));
         self
     }
 
@@ -199,6 +206,14 @@ impl<'a> TextField<'a> {
         // edits (`can_focus` asks the input for its accessor), and that comes
         // from `on_edit`: a field without it never takes a caret.
         debug_assert!(self.bound, "a text field without on_edit cannot take focus");
+
+        // A caller-specified ink colour must reach the editor text; kit's
+        // TextInput owns the inner element colour, so use the direct
+        // text_input path in that case (it still fills the full box height).
+        if self.ink.is_some() {
+            return self.build_direct(dark);
+        }
+
         let k = kit(dark);
 
         // A field embedded inside a caller-drawn container (nav search row,
@@ -217,7 +232,7 @@ impl<'a> TextField<'a> {
         if embedded {
             ti = ti.plain();
         }
-        if let Some((text, _)) = &self.placeholder {
+        if let Some(text) = &self.placeholder {
             ti = ti.placeholder(text.clone());
         }
         if self.secure {
@@ -258,8 +273,74 @@ impl<'a> TextField<'a> {
         if self.shrink {
             e = e.shrink();
         }
-        for act in self.acts {
-            e = act(e);
+        e
+    }
+
+    /// Direct `text_input` build used when the caller needs control the kit
+    /// cannot express (custom text/placeholder ink). Keeps the whole box as
+    /// the hit target and exposes an inner "input" element so audits/tests can
+    /// inspect the editor, mirroring the kit's structure.
+    fn build_direct(self, dark: bool) -> El {
+        let mut input = text_input(self.edit, self.style)
+            .key("input")
+            .grow(1.0)
+            .shrink()
+            .min_w(0.0)
+            .single_line();
+        if let Some(text) = self.placeholder {
+            // No caller-specified placeholder colour in the kit-delegated
+            // contract; use a theme-aware hint colour.
+            let hint = if dark { Color::WHITE.alpha(0.45) } else { Color::BLACK.alpha(0.45) };
+            input = input.placeholder(text, hint);
+        }
+        if let Some(ink) = self.ink {
+            input = input.color(ink);
+        }
+        if self.secure {
+            input = input.secure();
+        }
+        if let Some(label) = self.label {
+            input = input.label(label);
+        }
+        if let Some(act) = self.on_edit_el {
+            input = act(input);
+        }
+        if let Some(act) = self.on_submit_el {
+            input = act(input);
+        }
+
+        // Wrap in a full-height row that centres the editor line, so the whole
+        // box remains a hit target (matching the kit's outer structure).
+        use rune::row;
+        let mut e = row()
+            .key(self.key)
+            .h(self.height)
+            .center_y()
+            .child(input);
+        match self.width {
+            Some(width) => e = e.w(width),
+            None => e = e.w_full(),
+        }
+        if self.grow {
+            e = e.grow(1.0).min_w(0.0);
+        }
+        if let Some(min) = self.min_width {
+            e = e.min_w(min);
+        }
+        if self.shrink {
+            e = e.shrink();
+        }
+        if self.pad_x > 0.0 {
+            e = e.px(self.pad_x);
+        }
+        if let Some(radius) = self.radius {
+            e = e.radius(radius);
+        }
+        if let Some(fill) = self.fill {
+            e = e.fill(fill);
+        }
+        if let Some((width, color)) = self.border {
+            e = e.border(width, color);
         }
         e
     }

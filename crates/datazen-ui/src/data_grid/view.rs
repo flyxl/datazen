@@ -105,7 +105,7 @@ pub fn panel(
         .child(text(status).font(label_style()).color(muted).key("data-grid-status"))
         .child(status_banner(state, muted, well))
         .child(pending_changes_bar(state, muted, well))
-        .child(filter_bar(state, ink, muted, well))
+        .child(filter_bar(state, ink, muted, well, dark))
         .child(fk_bar(state, ink, muted, well))
         .child(sheet(grid, GridSlot::Table, ink, well, 380.0, dark))
         .child(footer(state, ink, muted))
@@ -339,7 +339,7 @@ pub(crate) fn status_line(grid: &DataGrid) -> String {
 }
 
 /// One text filter on one column: a column chip that cycles, a text field, the row count.
-fn filter_bar(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well: rune::Color) -> El {
+fn filter_bar(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well: rune::Color, dark: bool) -> El {
     let column = state
         .grid
         .column_name(state.filter_column)
@@ -372,7 +372,7 @@ fn filter_bar(state: &crate::AppState, ink: rune::Color, muted: rune::Color, wel
                     state.apply_filter();
                     tx.blur();
                 })
-                .build(state.dark_theme()),
+                .build(dark),
         )
         .child(
             text(format!("{} rows", state.grid.total_rows()))

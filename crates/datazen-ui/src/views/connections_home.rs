@@ -324,7 +324,7 @@ fn home_header(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                     TextField::new("home-connections-filter", &state.connection_search)
                         .height(28.0)
                         .grow()
-                        .placeholder("Filter connections…", theme.text_secondary)
+                        .placeholder("Filter connections…")
                         .on_edit(|state: &mut AppState| &mut state.connection_search)
                         .build(dark),
                 ),

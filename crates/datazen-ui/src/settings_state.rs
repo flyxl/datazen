@@ -125,16 +125,18 @@ impl AppState {
         }
     }
 
-    /// The active appearance: the persisted theme setting, defaulting to dark
-    /// when none is recorded (the headless/runtime default).
+    /// The active appearance: the persisted theme setting (from the desktop
+    /// adapter) or the system preference when none is saved. Memory-workspace
+    /// fallback settings are not treated as a persisted theme choice.
     pub(crate) fn dark_theme(&self) -> bool {
-        self.ui_settings()
-            .into_iter()
-            .find_map(|setting| match setting {
+        let saved = match self.desktop.read_ui_settings() {
+            Ok(settings) => settings.into_iter().find_map(|setting| match setting {
                 Setting::Theme { dark } => Some(dark),
                 _ => None,
-            })
-            .unwrap_or(true)
+            }),
+            Err(_) => None,
+        };
+        saved.unwrap_or_else(|| self.system_dark.get())
     }
 
     /// The snippets in force (T3): the host's once its file store persists

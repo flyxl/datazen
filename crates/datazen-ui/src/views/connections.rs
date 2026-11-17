@@ -144,7 +144,7 @@ pub(crate) fn import_bar(state: &AppState, theme: tok::Theme, dark: bool) -> El 
                     .radius(8.0)
                     .fill(theme.card)
                     .border(1.0, theme.card_border)
-                    .placeholder("加密导出文件请输入密码", theme.text_secondary)
+                    .placeholder("加密导出文件请输入密码")
                     .secure()
                     .on_edit(|state: &mut AppState| &mut state.import_password)
                     .build(dark),
