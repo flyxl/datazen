@@ -135,6 +135,17 @@ pub(crate) static ICON_SPARKLES: rune::Icon = rune::Icon {
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275Z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5 3v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M19 17v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 5h4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M17 19h4\"/>",
 };
 
+pub(crate) static ICON_LOADER2: rune::Icon = rune::Icon {
+    name: "loader-2",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 12a9 9 0 1 1-6.219-8.56\"/>",
+};
+pub(crate) static ICON_RING_ARC: rune::Icon = rune::Icon {
+    name: "spinner-ring-arc",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2.5\" fill=\"none\" stroke-linecap=\"round\" d=\"M12 3a9 9 0 1 1-9 9\"/>",
+};
+
 pub(crate) fn section_icon(section: Section) -> &'static rune::Icon {
     match section {
         Section::Connections => &ICON_CONNECTIONS,

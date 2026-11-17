@@ -17,19 +17,8 @@
 //! the root is `role="progressbar"` and carries the accessible label/text.
 // No `views/` caller uses this yet; it is a reusable base for later migration tasks.
 
-use rune::{el, icon, row, text, El, Icon};
-
-static LOADER2: Icon = Icon {
-    name: "loader-2",
-    view: 24.0,
-    body: r#"<path stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 1 1-6.219-8.56"/>"#,
-};
-
-static RING_ARC: Icon = Icon {
-    name: "spinner-ring-arc",
-    view: 24.0,
-    body: r#"<path stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" d="M12 3a9 9 0 1 1-9 9"/>"#,
-};
+use crate::icons::{ICON_LOADER2, ICON_RING_ARC};
+use rune::{el, icon, row, text, El};
 
 /// Visual size. Three tiers as required by acceptance.
 #[allow(dead_code)] // reusable base; remove when view callers land
@@ -123,10 +112,10 @@ impl Spinner {
         let key = self.key;
 
         let indicator = match self.variant {
-            SpinnerVariant::Icon => icon(&LOADER2, px)
+            SpinnerVariant::Icon => icon(&ICON_LOADER2, px)
                 .key(format!("{key}-indicator"))
                 .color(color),
-            SpinnerVariant::Ring => icon(&RING_ARC, px)
+            SpinnerVariant::Ring => icon(&ICON_RING_ARC, px)
                 .key(format!("{key}-indicator"))
                 .color(color),
         };
@@ -147,8 +136,7 @@ impl Spinner {
                 )
         } else {
             // Decorative: hidden from accessibility tree.
-            el()
-                .key(key.clone())
+            el().key(key.clone())
                 .size(px, px)
                 .center()
                 .a11y_hidden()
