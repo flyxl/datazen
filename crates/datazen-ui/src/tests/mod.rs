@@ -87,3 +87,5 @@ mod overlay;
 mod overlay_audit;
 // Second-round independent recheck for T0-10 fixes.
 mod overlay_retest;
+// Slider and PathInput base controls (T0-11).
+mod widgets;
