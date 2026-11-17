@@ -98,6 +98,7 @@ mod i18n_usage_audit;
 // T0-11 error display bases.
 mod banner;
 mod banner_audit;
+mod copyable_timer_audit;
 mod copyable;
 
 // T0-02 text field base and its audit.
