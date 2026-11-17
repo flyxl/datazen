@@ -21,15 +21,14 @@
 //!
 //! ## What it leaves out
 //!
-//! - The 1500 ms "copied" confirmation flip. Implementing it needs a timer and
-//!   transient state; `dialog`/`menu` keep no timers, and adding one here would
-//!   require app/state machinery beyond a small local field. The copy control
-//!   therefore keeps the `common.copy` label and only performs the copy; the
-//!   timed label swap is recorded as a gap for a later pass that can wire a
-//!   timer through existing runtime patterns.
-//! - Translation is not done here except for the copy control's own label,
-//!   which reads `t("common.copy")` (and would read `t("common.copied")` once
-//!   the timed flip exists). The message is owned by the caller.
+//! - Timed "copied" feedback: the control shows `common.copied` / check glyph
+//!   when [`CopyableError::copied`] is true (caller computes from its state,
+//!   e.g. `copied_until > now`) and reverts when false. On press the control
+//!   copies, schedules `tx.wake_after(1500ms)` so the runtime wakes for a
+//!   redraw, and invokes the caller callback (which should record the deadline
+//!   in state and re-time on repeated presses). Translation uses
+//!   `t("common.copy")` / `t("common.copied")`; the message is owned by the
+//!   caller.
 //!
 //! ## Key convention
 //!
@@ -40,10 +39,15 @@
 //! | copy | `<key>-copy`    |
 #![allow(dead_code)]
 
+use std::time::Duration;
+
 use rune::{col, icon, row, text, El, Tx};
 use rune_kit::Kit;
 
 use crate::i18n;
+
+/// Duration the "copied" feedback stays visible after a copy press.
+const COPIED_FEEDBACK_MS: u64 = 1500;
 
 type CopyBind = Box<dyn FnOnce(El) -> El>;
 
@@ -53,6 +57,7 @@ pub(crate) struct CopyableError {
     message: String,
     copy_button: bool,
     mono: bool,
+    copied: bool,
     on_copy: Option<CopyBind>,
 }
 
@@ -63,6 +68,7 @@ impl CopyableError {
             message: message.into(),
             copy_button: false,
             mono: false,
+            copied: false,
             on_copy: None,
         }
     }
@@ -79,23 +85,40 @@ impl CopyableError {
         self
     }
 
+    /// Show transient "copied" feedback (`common.copied` + check icon) when true.
+    /// Caller computes this from its state, e.g. `copied_until.map_or(false, |u| now < u)`.
+    pub(crate) fn copied(mut self, on: bool) -> Self {
+        self.copied = on;
+        self
+    }
+
     /// Called when the copy control is pressed. The control also writes the
-    /// exact message to the clipboard in the same press (via `tx.copy`), so the
-    /// handler runs as a press action that reaches the probe/state.
-    pub(crate) fn on_copy<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    /// exact message to the clipboard and schedules `tx.wake_after(1500ms)` so
+    /// the runtime produces a frame for feedback revert. Handler receives `&mut Tx`
+    /// (e.g. to record `copied_until = Some(tx.clock() + 1.5)` in state).
+    pub(crate) fn on_copy_tx<S: 'static>(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
         let message = self.message.clone();
         self.on_copy = Some(Box::new(move |e: El| {
             e.on_press_tx(move |state: &mut S, tx: &mut Tx| {
                 tx.copy(message.clone());
-                f(state);
+                // Schedule a wake so the runtime produces a frame at/after expiry
+                // for timed feedback revert (caller/state decide visibility).
+                tx.wake_after(Duration::from_millis(COPIED_FEEDBACK_MS));
+                f(state, tx);
             })
         }));
         self
     }
 
+    /// Called when the copy control is pressed, after copying and scheduling wake.
+    /// Backward-compatible variant without `Tx` access.
+    pub(crate) fn on_copy<S: 'static>(self, f: impl Fn(&mut S) + 'static) -> Self {
+        self.on_copy_tx(move |state: &mut S, _tx: &mut Tx| f(state))
+    }
+
     /// Builds the copyable error. `S` is the runtime state type: the copy
     /// control always needs a typed press handler so it can write to the
-    /// clipboard even when no [`CopyableError::on_copy`] callback was supplied.
+    /// clipboard and schedule the feedback wake.
     pub(crate) fn build<S: 'static>(self, k: &Kit) -> El {
         let text_key = format!("{}-text", self.key);
 
@@ -116,7 +139,11 @@ impl CopyableError {
         }
 
         let root = if self.copy_button {
-            let label = i18n::t("common.copy");
+            let (label, glyph) = if self.copied {
+                (i18n::t("common.copied"), k.glyph.check)
+            } else {
+                (i18n::t("common.copy"), k.glyph.copy)
+            };
             let mut btn = row()
                 .key(format!("{}-copy", self.key))
                 .focusable(true)
@@ -128,7 +155,7 @@ impl CopyableError {
                 .py(2.0)
                 .label(label)
                 .hover(k.alpha(k.c.danger.fg, 0.1))
-                .child(icon(k.glyph.copy, 12.0).color(k.c.text_muted).a11y_hidden())
+                .child(icon(glyph, 12.0).color(k.c.text_muted).a11y_hidden())
                 .child(text(label).font(k.ty.small).color(k.c.text_muted));
 
             if let Some(handle) = self.on_copy {
@@ -137,6 +164,9 @@ impl CopyableError {
                 let message = self.message.clone();
                 btn = btn.on_press_tx(move |_state: &mut S, tx: &mut Tx| {
                     tx.copy(message.clone());
+                    // Schedule a wake so the runtime produces a frame at/after expiry
+                    // for timed feedback revert (caller/state decide visibility).
+                    tx.wake_after(Duration::from_millis(COPIED_FEEDBACK_MS));
                 });
             }
 
