@@ -116,3 +116,4 @@ mod json_viewer;
 mod viewer_audit;
 mod chrome_parts;
 mod chrome_parts_audit;
+mod chrome_fix_audit;
