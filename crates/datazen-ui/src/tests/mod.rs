@@ -70,3 +70,7 @@ mod chrome_metrics;
 mod query_workspace;
 // Rail alignment and modal dialogs.
 mod rail_modals;
+// Base kit primitives: select and the switch family.
+mod components;
+// Independent review coverage: select (T0-06) and checkbox/switch/radio (T0-09).
+mod choice_extra;
