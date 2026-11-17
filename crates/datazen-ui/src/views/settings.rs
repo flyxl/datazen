@@ -377,7 +377,9 @@ fn snippets_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                         .center_y()
                         .radius(6.0)
                         .fill(theme.control_off)
-                        .child(text("Update").font(type_::LABEL).color(theme.text))
+                        .child(
+                            text(t("common.save")).font(type_::LABEL).color(theme.text),
+                        )
                         .on_press(|state: &mut AppState| state.update_snippet_form()),
                 ),
         );
@@ -540,7 +542,7 @@ pub(crate) fn favorites_section(state: &AppState, theme: tok::Theme, dark: bool)
                         .center_y()
                         .radius(4.0)
                         .fill(theme.control_off)
-                        .child(text("Rename").font(type_::LABEL).color(theme.text))
+                        .child(text(t("filter.view.rename")).font(type_::LABEL).color(theme.text))
                         .on_press(move |state: &mut AppState| state.rename_favorite_row(index)),
                 )
                 .child(
@@ -619,7 +621,7 @@ pub(crate) fn backup_section(state: &AppState, theme: tok::Theme) -> El {
                         .center_y()
                         .radius(6.0)
                         .fill(theme.control_off)
-                        .child(text("Stop").font(type_::LABEL).color(theme.text))
+                        .child(text(t("common.stop")).font(type_::LABEL).color(theme.text))
                         .on_press(|state: &mut AppState| state.stop_backup()),
                 )
                 .child(
@@ -661,7 +663,7 @@ pub(crate) fn backup_section(state: &AppState, theme: tok::Theme) -> El {
 /// no next step.
 pub(crate) fn import_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let mut section = col().key("import-section").w_full().gap(6.0).child(
-        text("Import".to_owned())
+        text(t("import.import").to_owned())
             .font(type_::TITLE)
             .color(theme.text),
     );
@@ -724,7 +726,7 @@ pub(crate) fn import_section(state: &AppState, theme: tok::Theme, dark: bool) ->
                         .center_y()
                         .radius(6.0)
                         .fill(theme.control_off)
-                        .child(text("Next").font(type_::LABEL).color(theme.text))
+                        .child(text(t("sync.next")).font(type_::LABEL).color(theme.text))
                         .on_press(|state: &mut AppState| state.import_next()),
                 ),
         ),
@@ -756,7 +758,7 @@ pub(crate) fn import_section(state: &AppState, theme: tok::Theme, dark: bool) ->
                             .center_y()
                             .radius(6.0)
                             .fill(theme.control_off)
-                            .child(text("Finish").font(type_::LABEL).color(theme.text))
+                            .child(text(t("onboarding.common.finish")).font(type_::LABEL).color(theme.text))
                             .on_press(|state: &mut AppState| state.import_finish()),
                     )
                     .child(
@@ -767,7 +769,7 @@ pub(crate) fn import_section(state: &AppState, theme: tok::Theme, dark: bool) ->
                             .center_y()
                             .radius(6.0)
                             .fill(theme.control_off)
-                            .child(text("Back").font(type_::LABEL).color(theme.text_secondary))
+                            .child(text(t("common.back")).font(type_::LABEL).color(theme.text_secondary))
                             .on_press(|state: &mut AppState| state.import_back()),
                     ),
             ),
@@ -816,7 +818,7 @@ pub(crate) fn export_section(state: &AppState, theme: tok::Theme, dark: bool) ->
         .w_full()
         .gap(6.0)
         .child(
-            text("Export".to_owned())
+            text(t("export.export").to_owned())
                 .font(type_::TITLE)
                 .color(theme.text),
         )
@@ -858,7 +860,7 @@ pub(crate) fn export_section(state: &AppState, theme: tok::Theme, dark: bool) ->
                         .center_y()
                         .radius(6.0)
                         .fill(theme.control_off)
-                        .child(text("Export").font(type_::LABEL).color(theme.text))
+                        .child(text(t("export.export")).font(type_::LABEL).color(theme.text))
                         .on_press_tx(|state: &mut AppState, tx: &mut Tx| {
                             state.begin_export_form(tx)
                         }),

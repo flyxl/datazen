@@ -2,6 +2,7 @@
 #![allow(unused_imports)]
 
 use super::*;
+use crate::i18n::t;
 
 use crate::constants::*;
 use crate::icons::{self, section_icon};
@@ -56,7 +57,7 @@ pub(crate) fn tools_page(state: &AppState, theme: tok::Theme, dark: bool) -> El 
                 ))
                 .child(entry(
                     "tool-compare",
-                    "Compare",
+                    t("sync.compare"),
                     Tool::Compare,
                     state.tool == Tool::Compare,
                 ))
@@ -129,7 +130,7 @@ pub(crate) fn sync_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                             .center_y()
                             .radius(6.0)
                             .fill(theme.control_off)
-                            .child(text("Next").font(type_::LABEL).color(theme.text))
+                            .child(text(t("sync.next")).font(type_::LABEL).color(theme.text))
                             .on_press(|state: &mut AppState| state.sync_next_endpoints()),
                     ),
             )
@@ -182,7 +183,9 @@ pub(crate) fn sync_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                             .center_y()
                             .radius(6.0)
                             .fill(theme.control_off)
-                            .child(text("Select all").font(type_::LABEL).color(theme.text))
+                            .child(
+                                text(t("common.selectAll")).font(type_::LABEL).color(theme.text),
+                            )
                             .on_press(|state: &mut AppState| state.sync_select_all()),
                     )
                     .child(
@@ -193,7 +196,7 @@ pub(crate) fn sync_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                             .center_y()
                             .radius(6.0)
                             .fill(theme.control_off)
-                            .child(text("Clear").font(type_::LABEL).color(theme.text))
+                            .child(text(t("filter.clear")).font(type_::LABEL).color(theme.text))
                             .on_press(|state: &mut AppState| state.sync_clear_tables()),
                     )
                     .child(
@@ -204,7 +207,7 @@ pub(crate) fn sync_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                             .center_y()
                             .radius(6.0)
                             .fill(theme.control_off)
-                            .child(text("Next").font(type_::LABEL).color(theme.text))
+                            .child(text(t("sync.next")).font(type_::LABEL).color(theme.text))
                             .on_press(|state: &mut AppState| state.sync_next_tables()),
                     ),
             );
@@ -255,7 +258,7 @@ pub(crate) fn sync_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                     .center_y()
                     .radius(6.0)
                     .fill(theme.control_off)
-                    .child(text("Preview").font(type_::LABEL).color(theme.text))
+                    .child(text(t("common.preview")).font(type_::LABEL).color(theme.text))
                     .on_press(|state: &mut AppState| state.sync_show_preview()),
             );
         }

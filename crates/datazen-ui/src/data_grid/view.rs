@@ -2,6 +2,7 @@ use std::borrow::Cow;
 
 use rune::{El, GrowthSpec, ScrollPos, TextStyle, col, el, row, text};
 
+use crate::i18n::t;
 use crate::ui::palette;
 
 use super::{DataGrid, GUTTER_W, ROW_H};
@@ -124,7 +125,7 @@ fn status_banner(state: &crate::AppState, muted: rune::Color, well: rune::Color)
         lines.push(("commit-loading-banner".into(), "Saving staged changes…".into()));
     }
     if let Some(reason) = grid.read_only_reason() {
-        lines.push(("grid-readonly".into(), format!("Read-only: {reason}")));
+        lines.push(("grid-readonly".into(), format!("{}", t("query.gridReadOnly.tooltip").replace("{reason}", &reason))));
     }
     if let Some(filter) = &state.filter {
         lines.push((
@@ -410,7 +411,7 @@ fn footer(state: &crate::AppState, ink: rune::Color, muted: rune::Color) -> El {
                 .px(8.0)
                 .center_y()
                 .radius(6.0)
-                .child(text("Loading…").font(label_style()).color(muted)),
+                .child(text(t("common.loading")).font(label_style()).color(muted)),
         );
     }
     footer = footer
@@ -452,7 +453,7 @@ fn footer(state: &crate::AppState, ink: rune::Color, muted: rune::Color) -> El {
                 .px(8.0)
                 .center_y()
                 .radius(6.0)
-                .child(text("Commit").font(label_style()).color(ink))
+                .child(text(t("tableData.commit")).font(label_style()).color(ink))
                 .on_press(|state: &mut crate::AppState| state.commit_staged_edits()),
         )
         .child(
@@ -462,7 +463,7 @@ fn footer(state: &crate::AppState, ink: rune::Color, muted: rune::Color) -> El {
                 .px(8.0)
                 .center_y()
                 .radius(6.0)
-                .child(text("Rollback").font(label_style()).color(ink))
+                .child(text(t("tableData.rollback")).font(label_style()).color(ink))
                 .on_press(|state: &mut crate::AppState| state.rollback_staged_edits()),
         );
     footer

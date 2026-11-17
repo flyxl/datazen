@@ -1,5 +1,6 @@
 use rune::{El, Ime, Key, KeyEvent, Span, TextEdit, TextStyle, Tx, col, row, text};
 
+use crate::i18n::t;
 use crate::ui::palette;
 
 use super::highlight::highlight_sql;
@@ -108,7 +109,7 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: boo
                         .build(dark),
                 )
                 .child(
-                    text("Replace")
+                    text(t("resultFind.replaceNext"))
                         .font(rune::tok::type_::LABEL)
                         .color(ink)
                         .key("sql-replace-current")

@@ -74,7 +74,7 @@ pub(crate) fn navigator_connections_tree(state: &AppState, theme: tok::Theme, da
                 if filter.is_empty() {
                     "No recent connections"
                 } else {
-                    "No matches"
+                    t("select.noMatches")
                 },
                 1,
                 theme,
@@ -118,7 +118,7 @@ pub(crate) fn navigator_connections_tree(state: &AppState, theme: tok::Theme, da
                 if filter.is_empty() {
                     "No connections"
                 } else {
-                    "No matches"
+                    t("select.noMatches")
                 },
                 1,
                 theme,
@@ -166,7 +166,7 @@ pub(crate) fn navigator_panel(state: &AppState, theme: tok::Theme, dark: bool) -
         .child(nav_toolbar_button(
             "open-query",
             &icons::ICON_PLUS,
-            "New query",
+            t("common.newQuery"),
             theme,
             |state| {
                 let _ = state.open_query_tab("Query");
@@ -274,7 +274,7 @@ pub(crate) fn object_tree(state: &AppState, theme: tok::Theme) -> El {
             let schema_row = nav_branch_row(
                 &schema_key,
                 &schema_label,
-                Some("schema"),
+                Some(t("query.objectTree.schema")),
                 1,
                 !collapsed,
                 &icons::ICON_FOLDER,
@@ -310,9 +310,9 @@ pub(crate) fn object_tree(state: &AppState, theme: tok::Theme) -> El {
 
     if rows.is_empty() {
         let msg = if filter.is_empty() {
-            "No objects"
+            t("query.objectTree.noObjects")
         } else {
-            "No matches"
+            t("select.noMatches")
         };
         rows.push(nav_empty_row("object-tree-empty", msg, 0, theme));
     }
@@ -359,7 +359,7 @@ pub(crate) fn disconnect_button(state: &AppState, theme: tok::Theme) -> El {
         .radius(6.0)
         .hover(theme.hover)
         .child(rune::icon(&icons::ICON_X, 14.0).color(theme.text_secondary))
-        .child(text("Disconnect").font(type_::LABEL).color(theme.text))
+        .child(text(t("main.ctx.disconnect")).font(type_::LABEL).color(theme.text))
         .on_press(|state: &mut AppState| state.disconnect())
 }
 

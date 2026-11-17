@@ -2,6 +2,7 @@
 #![allow(unused_imports)]
 
 use super::*;
+use crate::i18n::t;
 
 use crate::constants::*;
 use crate::icons::{self, section_icon};
@@ -67,7 +68,7 @@ pub(crate) fn value_search_tool(state: &AppState, theme: tok::Theme, dark: bool)
                         .radius(6.0)
                         .fill(theme.control_off)
                         .child(
-                            text("Search".to_owned())
+                            text(t("common.search").to_owned())
                                 .font(type_::LABEL)
                                 .color(theme.text),
                         )
@@ -82,7 +83,7 @@ pub(crate) fn value_search_tool(state: &AppState, theme: tok::Theme, dark: bool)
                         .radius(6.0)
                         .fill(theme.control_off)
                         .child(
-                            text("Cancel".to_owned())
+                            text(t("common.cancel").to_owned())
                                 .font(type_::LABEL)
                                 .color(theme.text),
                         )
@@ -97,7 +98,7 @@ pub(crate) fn value_search_tool(state: &AppState, theme: tok::Theme, dark: bool)
                 .h(20.0)
                 .center_y()
                 .child(
-                    text("Searching…".to_owned())
+                    text(t("valueSearch.status.running").to_owned())
                         .font(type_::LABEL)
                         .color(theme.text_secondary),
                 ),
@@ -321,7 +322,7 @@ pub(crate) fn transfer_tool(state: &AppState, theme: tok::Theme) -> El {
                         .radius(6.0)
                         .fill(theme.control_off)
                         .child(
-                            text("Confirm".to_owned())
+                            text(t("common.confirm").to_owned())
                                 .font(type_::LABEL)
                                 .color(theme.text),
                         )
@@ -336,7 +337,7 @@ pub(crate) fn transfer_tool(state: &AppState, theme: tok::Theme) -> El {
                         .radius(6.0)
                         .fill(theme.control_off)
                         .child(
-                            text("Cancel".to_owned())
+                            text(t("common.cancel").to_owned())
                                 .font(type_::LABEL)
                                 .color(theme.text_secondary),
                         )

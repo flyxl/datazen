@@ -2,6 +2,7 @@
 #![allow(unused_imports)]
 
 use super::*;
+use crate::i18n::t;
 
 use crate::constants::*;
 use crate::icons::{self, section_icon};
@@ -123,19 +124,19 @@ pub(crate) fn view_switcher(state: &AppState, theme: tok::Theme) -> El {
         .center_y()
         .child(entry(
             "view-data",
-            "Data",
+            t("connWin.data"),
             TableView::Data,
             state.table_view == TableView::Data,
         ))
         .child(entry(
             "view-columns",
-            "Columns",
+            t("connWin.fields"),
             TableView::Columns,
             state.table_view == TableView::Columns,
         ))
         .child(entry(
             "view-indexes",
-            "Indexes",
+            t("connWin.indexes"),
             TableView::Indexes,
             state.table_view == TableView::Indexes,
         ))
@@ -147,7 +148,7 @@ pub(crate) fn view_switcher(state: &AppState, theme: tok::Theme) -> El {
         ))
         .child(entry(
             "view-ddl",
-            "DDL",
+            t("objectSearch.ddl"),
             TableView::Ddl,
             state.table_view == TableView::Ddl,
         ))
@@ -179,7 +180,7 @@ pub(crate) fn query_workspace(state: &AppState, theme: tok::Theme, dark: bool) -
             .h(20.0)
             .center_y()
             .child(
-                text("Running…".to_owned())
+                text(t("query.running").to_owned())
                     .font(type_::LABEL)
                     .color(theme.text_secondary),
             )
@@ -279,29 +280,31 @@ pub(crate) fn query_toolbar(_state: &AppState, theme: tok::Theme) -> El {
         .h(28.0)
         .gap(6.0)
         .center_y()
-        .child(toolbar_button("sql-run", "Run", theme).on_press(|s: &mut AppState| s.run_query()))
+        .child(toolbar_button("sql-run", t("query.run"), theme).on_press(|s: &mut AppState| s.run_query()))
         .child(
-            toolbar_button("sql-cancel", "Cancel", theme)
+            toolbar_button("sql-cancel", t("common.cancel"), theme)
                 .on_press(|s: &mut AppState| s.cancel_query()),
         )
         .child(
-            toolbar_button("sql-format", "Format", theme)
+            toolbar_button("sql-format", t("query.format"), theme)
                 .on_press(|s: &mut AppState| s.format_query()),
         )
+        // React's query error panel has a separate AI action,
+        // t("query.explainError"); the toolbar's Explain is explain.title.
         .child(
-            toolbar_button("sql-explain", "Explain", theme)
+            toolbar_button("sql-explain", t("explain.title"), theme)
                 .on_press(|s: &mut AppState| s.explain_query()),
         )
         .child(
-            toolbar_button("sql-tx-begin", "Begin", theme)
+            toolbar_button("sql-tx-begin", t("query.beginTx"), theme)
                 .on_press(|s: &mut AppState| s.query_transaction("Begin transaction")),
         )
         .child(
-            toolbar_button("sql-tx-commit", "Commit", theme)
+            toolbar_button("sql-tx-commit", t("query.commitTx"), theme)
                 .on_press(|s: &mut AppState| s.query_transaction("Commit")),
         )
         .child(
-            toolbar_button("sql-tx-rollback", "Rollback", theme)
+            toolbar_button("sql-tx-rollback", t("query.rollbackTx"), theme)
                 .on_press(|s: &mut AppState| s.query_transaction("Rollback")),
         )
         .child(
@@ -440,7 +443,7 @@ fn query_favorites_panel(state: &AppState, theme: tok::Theme) -> El {
     let mut panel = col().key("query-favorites-panel").w_full().gap(4.0);
     if favorites.is_empty() {
         panel = panel.child(
-            text("No favorites yet")
+            text(t("query.noFavorites"))
                 .key("query-favorites-empty")
                 .font(type_::LABEL)
                 .color(theme.text_secondary),
@@ -551,13 +554,13 @@ fn result_view_toggle(state: &AppState, theme: tok::Theme) -> El {
         .center_y()
         .child(entry(
             "result-view-table",
-            "Table",
+            t("chart.viewTable"),
             ResultView::Table,
             state.result_view == ResultView::Table,
         ))
         .child(entry(
             "result-view-chart",
-            "Chart",
+            t("chart.viewChart"),
             ResultView::Chart,
             state.result_view == ResultView::Chart,
         ))
@@ -570,7 +573,7 @@ fn result_find_bar(state: &AppState, grid: &crate::data_grid::DataGrid, theme: t
     let count_label = if grid.find_needle().trim().is_empty() {
         String::new()
     } else if count == 0 {
-        "No matches".to_owned()
+        t("select.noMatches").to_owned()
     } else {
         format!("{current} of {count}")
     };
@@ -599,7 +602,7 @@ fn result_find_bar(state: &AppState, grid: &crate::data_grid::DataGrid, theme: t
                 .center_y()
                 .radius(6.0)
                 .fill(theme.control_off)
-                .child(text("Find").font(type_::LABEL).color(theme.text))
+                .child(text(t("resultFind.openLabel")).font(type_::LABEL).color(theme.text))
                 .on_press(|state: &mut AppState| state.apply_result_find()),
         )
         .child(
@@ -635,9 +638,9 @@ fn result_find_bar(state: &AppState, grid: &crate::data_grid::DataGrid, theme: t
 /// A5: status bar for the result workspace (rows/cols/state/selection).
 fn result_status_bar(state: &AppState, grid: &crate::data_grid::DataGrid, theme: tok::Theme) -> El {
     let exec = if state.query_loading.is_some() {
-        "Running…".to_owned()
+        t("query.running").to_owned()
     } else {
-        "Ready".to_owned()
+        t("main.ready").to_owned()
     };
     let (r0, r1, c0, c1) = grid.rect();
     let selection = if grid.focus() == (0, 0)
