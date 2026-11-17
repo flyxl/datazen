@@ -45,7 +45,7 @@
 | T0-08 | ☑ | 开关类：`Checkbox` / `Switch` / `RadioGroup` 封装 | `crates/datazen-ui/src/ui/toggle.rs` | 焦点环可见，整行可点。已落地 `59c783199` + `af66e5148`（Checkbox 半选态），tester 判 TEST_PASSED |
 | T0-09 | ☐ | Table / Tree 采用 kit（`Table` + `Tree`/`FileTree`） | `crates/datazen-ui/src/data_grid/`、`crates/datazen-ui/src/ui/tree.rs` | 1 万行滚动帧率不退化 |
 | T0-10 | ☑ | Toast / Tooltip / HoverCard | `crates/datazen-ui/src/ui/toast.rs`、`ui/tooltip.rs` | 与 kit 动画时长一致。已落地 `271a95b48` + `86818558a`（`ToastHost` 持 `ToastStack` 走 `tick`，HoverCard 锚点贴合触发器），tester 复测 TEST_PASSED；`ToastHost` 尚无真实调用点，动效与帧时钟待接线 |
-| T0-11 | ☐ | kit 缺失件：Slider、CopyableError、ErrorBanner、JsonViewer/BinaryViewer、PathInput、TemporalValueInput、虚拟树行算术 | `crates/datazen-ui/src/ui/*.rs` | 每件一条几何/行为断言 |
+| T0-11 | `~` | kit 缺失件：CopyableError+ErrorBanner 已落地（`c02669bd9`，合流 `28fba0cef`；tester 判 PASS，遗留 1500ms copied 反馈、mono 度量断言环境敏感两处低危）；Slider/PathInput、JsonViewer/BinaryViewer、TemporalValueInput、虚拟树行算术仍待 | `crates/datazen-ui/src/ui/*.rs` | 每件一条几何/行为断言 |
 | T0-12 | ☐ | 基座几何回归：每组件 960×640 + 1440×816 | `crates/datazen-ui/src/tests/components.rs` | 越界节点为 0 |
 
 Phase 0 合计约 12 个工作日。它做完之前不碰 §4 的台账任务，否则每个页面都会再手搓一遍组件。
