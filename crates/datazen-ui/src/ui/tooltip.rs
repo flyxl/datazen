@@ -4,8 +4,24 @@
 //! anchored to the trigger (the same two-part build as `ui/select.rs`). Mount the layer at the
 //! root with `rune_kit::root` so the overlay paints above the page.
 //!
-//! Tooltip and hover card are state-driven surfaces: the app owns `open` and flips it on
-//! hover/focus/press; this wrapper does not add implicit keyboard handlers.
+//! ## State and keyboard
+//!
+//! Tooltip and hover card are **state-driven** surfaces: the app owns `open` and flips it on
+//! hover/focus/press intent. This base does not add implicit keyboard open/close handlers;
+//! keep the trigger element itself focusable/interactive in the caller when keyboard access is
+//! required.
+//!
+//! ## HoverCard anchoring
+//!
+//! [`HoverCard`] is assembled from `rune_kit::popover::{anchored, raised}` (not kit
+//! `HoverCard::build`) so the anchor row is sized to the trigger content instead of spanning a
+//! full-width row. Positioning uses `popover::anchored` with `k.motion.overlay`, which applies
+//! the kit fit behavior for top/bottom placements, and the surface uses
+//! `popover::raised(k, content, k.radius.lg)` to match the kit raised look. `placement` is
+//! passed through; outward placements are expected to remain inside the window (flip/fit) as
+//! covered by overlay audit tests.
+//!
+//! [`Tooltip`] delegates to kit `Tooltip` for rendering/placement/appearance.
 
 #![allow(dead_code)]
 
@@ -55,7 +71,7 @@ impl Tooltip {
         self
     }
 
-    /// Any extra content (keybinds, spans).
+    /// Any extra content (keybinds, spans). Confirm at first real call site.
     pub(crate) fn child(mut self, child: El) -> Tooltip {
         self.children.push(child);
         self
@@ -140,11 +156,13 @@ impl HoverCard {
 
     /// Builds the trigger, pushing the card into `layer` while `open`.
     ///
-    /// Implemented with `rune_kit::popover` primitives so the anchor sizes to the trigger
-    /// (not a full-width row) and top/bottom placements fit within the window.
+    /// The anchor row is sized to the trigger (not a full-width row) so placement is measured
+    /// from the trigger bounds; content is positioned with `popover::anchored`.
     pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let anchor_key = format!("{}-trigger", self.key);
-        let trigger = row().key(anchor_key.clone()).children(self.trigger);
+        // Keep the anchor sized to the trigger content even inside a stretching column.
+        let anchor = row().key(anchor_key.clone()).children(self.trigger);
+        let trigger = row().child(anchor);
         if !self.open {
             return trigger;
         }

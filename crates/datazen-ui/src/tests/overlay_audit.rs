@@ -1,11 +1,13 @@
 //! Independent audit tests for T0-10 overlay base (toast/tooltip/hover-card).
 //!
-//! Focus: auto-dismiss wiring gap, outward placement flip behavior, hover-card anchor fit,
+//! Focus: auto-dismiss lifecycle wiring, outward placement flip/clamp behavior, hover-card anchor fit,
 //! and toast stacking/interaction invariants beyond the coder's self-tests.
 
 use rune::{Cx, El, Env, Runtime};
+use rune_kit::toast_stack::ToastEffect;
 use rune_kit::Placement;
 
+use crate::ui::toast::ToastHost;
 use crate::ui::{toast, tooltip};
 
 fn env() -> Env {
@@ -61,40 +63,111 @@ fn rects_overlap(a: [f32; 4], b: [f32; 4]) -> bool {
         || b[1] + b[3] <= a[1] + 0.5)
 }
 
-// ---- 1. Auto-dismiss wiring gap -----------------------------------------------------------
+// ---- 1. Auto-dismiss lifecycle -----------------------------------------------------------
 
-/// Documents current behavior: the wrapper renders toasts as static elements with no time/lifecycle.
-/// Advancing frames does not remove them, and there is no API to attach a timeout.
-/// This is the "toast 到点会消失" requirement in current (unwired) state: it does not disappear.
-///
-/// Contrast: `rune_kit::toast_stack::ToastStack` can expire entries via `Tick` (see
-/// `toast_stack_step_can_close_on_tick` below), but datazen-ui's toast wrapper/app does not use it.
+/// Integration: a timed toast hosted by ToastHost disappears once its time elapses and fires the
+/// close callback exactly once (via ToastEffect::Closed). Further clock advances must not re-fire.
 #[test]
-fn toast_does_not_auto_dismiss_without_stack_wiring() {
+fn toast_dismisses_once_its_time_elapses() {
+    #[derive(Clone, Debug, Default, PartialEq)]
+    struct Opt {
+        title: &'static str,
+    }
+
     #[derive(Default)]
-    struct S;
-    let mut rt = Runtime::new(
-        S,
-        |_s, _cx: &mut Cx<S>| {
-            let k = crate::ui::kit::kit(true);
-            let t = toast::Toast::new("auto", "Saving")
-                .description("will this go away?")
-                .build(k);
-            rune_kit::root(rune::col().w_full().h_full(), vec![toast::toast_region(vec![t]).build(k)])
+    struct S {
+        host: ToastHost<Opt>,
+        closed: usize,
+        now: f64,
+        version: usize,
+    }
+
+    fn view(s: &S, _cx: &mut Cx<S>) -> El {
+        let k = crate::ui::kit::kit(true);
+        let cards = s
+            .host
+            .entries()
+            .iter()
+            .filter(|e| s.host.stack().place(e.id, |_| 0.0).is_some_and(|p| p.visible))
+            .map(|entry| {
+                toast::Toast::new(format!("auto-{}", entry.id), entry.options.title)
+                    .description("timed")
+                    .build(k)
+            })
+            .collect::<Vec<_>>();
+        let region = toast::toast_region(cards).build(k);
+        let tick = rune::row()
+            .key("tick-toast")
+            .role("button")
+            .label("tick")
+            .w(1.0)
+            .h(1.0)
+            .on_press(|s: &mut S| {
+                s.version += 1;
+                for e in s.host.tick(s.now) {
+                    if let ToastEffect::Closed(_) = e {
+                        s.closed += 1;
+                    }
+                }
+            });
+        rune_kit::root(
+            rune::col()
+                .w_full()
+                .h_full()
+                .child(rune::el().key(format!("v{}", s.version)).w(0.0).h(0.0))
+                .child(tick)
+                .child(region),
+            Vec::new(),
+        )
+    }
+
+    let mut state = S::default();
+    let _ = state
+        .host
+        .show("auto", Opt { title: "Saving" }, Some(2.0), 0.0);
+    let mut rt = Runtime::new(state, view, (960.0, 640.0), env());
+    rt.frame(0.0);
+    assert_eq!(rt.state.host.entries().len(), 1, "toast mounted initially");
+    assert!(
+        rt.elements()
+            .iter()
+            .any(|e| e.key.as_deref().is_some_and(|k| k.starts_with("auto-"))),
+        "toast element present initially"
+    );
+
+    // Drive time past due and tick through a state-mutating handler so the view re-renders.
+    rt.state.now = 2.1;
+    click_center(&mut rt, "tick-toast");
+    rt.frame(0.0);
+
+    assert_eq!(rt.state.host.entries().len(), 0, "toast removed after its time elapses");
+    // Verify the expired toast is not rendered in a fresh frame of the post-expiry state.
+    let mut gone = Runtime::new(
+        S {
+            host: rt.state.host.clone(),
+            closed: rt.state.closed,
+            now: rt.state.now,
+            version: rt.state.version,
         },
+        view,
         (960.0, 640.0),
         env(),
     );
-    rt.frame(0.0);
-    assert!(rt.find("auto").is_some(), "toast mounted initially");
-    // Simulate long passage of time: many frames; no ToastStack::Tick is wired anywhere.
-    for _ in 0..600 {
-        rt.frame(1.0 / 60.0);
-    }
+    gone.frame(0.0);
     assert!(
-        rt.find("auto").is_some(),
-        "现状: toast remains after ~10s worth of frames because auto-dismiss (ToastStack::step/WakeAt) is not wired"
+        !gone
+            .elements()
+            .iter()
+            .any(|e| e.key.as_deref().is_some_and(|k| k.starts_with("auto-"))),
+        "toast element gone after expiry"
     );
+    assert_eq!(rt.state.closed, 1, "auto-close callback/effect fired exactly once");
+
+    // Further ticks must not re-fire.
+    rt.state.now = 5.0;
+    click_center(&mut rt, "tick-toast");
+    rt.frame(0.0);
+    assert_eq!(rt.state.closed, 1, "no duplicate close after expiry");
 }
 
 /// Vendor mechanism sanity: ToastStack expires a timed toast on Tick and reports Closed/WakeAt.
@@ -248,15 +321,14 @@ fn card_fit_view(_state: &CardFitState, _cx: &mut Cx<CardFitState>) -> El {
 }
 
 #[test]
-fn hover_card_anchor_row_expands_wider_than_trigger_observation() {
+fn hover_card_anchor_row_fits_trigger_width() {
     let mut rt = Runtime::new(CardFitState, card_fit_view, (960.0, 640.0), env());
     rt.frame(0.0);
     let anchor = element(&rt, "fit-card-trigger").rect;
-    // Observation/defect: trigger is 120.0 wide but anchor row lays out much wider in this context,
-    // meaning the anchored trigger region does not tightly fit the trigger element.
+    // Anchor row is sized to the trigger content (120.0 wide), not expanded across the column.
     assert!(
-        anchor[2] > 200.0,
-        "expected to observe expanded anchor in current impl; got {anchor:?}"
+        (anchor[2] - 120.0).abs() <= 1.0,
+        "anchor width should fit trigger (≈120pt ±1): {anchor:?}"
     );
     eprintln!("hover_card anchor rect (trigger w=120): {anchor:?}");
     assert!(rt.find("fit-card-card").is_some(), "card content mounted");
