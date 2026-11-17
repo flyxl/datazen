@@ -7,8 +7,9 @@
 //! the literal that really is an argument of a translation call, so `text(…)`
 //! stays under the guard.
 //!
-//! The ignored tests below record the batch-3 gaps that still need a fix; they
-//! are turned on when the coder lands it.
+//! The regression pins below are active: they assert the batch-3 gaps stay fixed
+//! (explain.title, the home counts/empty states, the status bar, Columns, and the
+//! generic Save/Select all/New query takeovers).
 
 use crate::i18n::ZH_CN;
 
@@ -198,7 +199,7 @@ const PINNED: &[(&str, &str, usize)] = &[
     ("../views/workspace.rs", "objectSearch.ddl", 1),
     ("../views/workspace.rs", "query.beginTx", 1),
     ("../views/workspace.rs", "query.commitTx", 1),
-    ("../views/workspace.rs", "query.explainError", 1),
+    ("../views/workspace.rs", "explain.title", 1),
     ("../views/workspace.rs", "query.format", 1),
     ("../views/workspace.rs", "query.noFavorites", 1),
     ("../views/workspace.rs", "query.rollbackTx", 1),
@@ -212,7 +213,13 @@ const PINNED: &[(&str, &str, usize)] = &[
 fn every_batch_three_call_site_keeps_its_translation() {
     let mut failures = Vec::new();
     for (file, key, count) in PINNED {
-        let asked = source(file).matches(&format!("t(\"{key}\")")).count();
+        // Count only real calls: skip `//` comment lines, otherwise a comment that
+        // happens to spell a translation call for the same key can mask a revert.
+        let asked = source(file)
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .map(|line| line.matches(&format!("t(\"{key}\")")).count())
+            .sum::<usize>();
         if asked < *count {
             failures.push(format!(
                 "{file}: expected {count} t(\"{key}\") site(s), found {asked}"
@@ -227,7 +234,6 @@ fn every_batch_three_call_site_keeps_its_translation() {
 }
 
 #[test]
-#[ignore = "DEFECT 62c4e00ae: the SQL toolbar Explain button asks for query.explainError (the AI error-panel action) although the toolbar copy is explain.title = EXPLAIN 分析"]
 fn the_explain_button_uses_the_query_toolbar_key() {
     assert!(
         source("../views/workspace.rs").contains("t(\"explain.title\")"),
@@ -236,7 +242,6 @@ fn the_explain_button_uses_the_query_toolbar_key() {
 }
 
 #[test]
-#[ignore = "DEFECT 62c4e00ae: connections_home still renders 'Showing 1 of 2', 'No matches for …' and 'N connections · M groups · K engine types' in English although connWin.home.connections.showing / noMatch / hero.subtitle* exist at the same positions"]
 fn the_home_counts_and_empty_states_use_the_home_keys() {
     let home = source("../views/connections_home.rs");
     for key in [
@@ -252,7 +257,6 @@ fn the_home_counts_and_empty_states_use_the_home_keys() {
 }
 
 #[test]
-#[ignore = "DEFECT 62c4e00ae: the status bar translates Connected but leaves the Disconnected branch as an English literal, and no conn.disconnected key exists"]
 fn the_status_bar_speaks_one_language() {
     assert!(
         !source("../views/chrome.rs").contains("\"Disconnected\""),
@@ -261,7 +265,6 @@ fn the_status_bar_speaks_one_language() {
 }
 
 #[test]
-#[ignore = "DEFECT 62c4e00ae: the Columns view tab is still the literal \"Columns\" although connWin.fields = Columns/列 sits beside connWin.data and connWin.indexes"]
 fn the_columns_tab_uses_the_connection_key() {
     assert!(
         source("../views/workspace.rs").contains("t(\"connWin.fields\")"),
@@ -270,7 +273,6 @@ fn the_columns_tab_uses_the_connection_key() {
 }
 
 #[test]
-#[ignore = "DEFECT 62c4e00ae: snippet Update, sync Select all and the New query button keep English literals although common.save, common.selectAll and common.newQuery carry the same surfaces"]
 fn existing_generic_keys_are_taken_over() {
     assert!(
         !source("../views/settings.rs").contains("\"Update\""),
