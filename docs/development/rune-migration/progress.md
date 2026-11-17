@@ -132,3 +132,14 @@ React 页面和组件保留。不删除、不改成空壳、不把现有入口�
   - 试验改动已回滚，工作树回到 `a3fe93ea0`（`Cargo.toml`/`Cargo.lock` 未留改动）。
 - **待选路线**：① 在可写环境（或 CI）预取上述 crate 后真依赖 `rune-kit`；② 在本仓库同源复制要用到的 kit 模块（`kit.rs` 346 行、`actions.rs` 529、`text_input.rs` 682、`badge.rs` 82、`card.rs` 93、`field.rs` 84、`list.rs` 232，合计约 2.0K 行），API 与 kit 保持一致，依赖可解析后再换回 `rune_kit::*` import。
 - **React → Rune 逐文件迁移的可行性**：见 `plan-native-6-react-parity.md`（新页面按镜像目录落地，旧页面按目录批次重写）。
+
+## 增量：Phase 0 基座四轨并行（2026-11-17，进行中）
+
+- **组织方式**：Phase 0 的 13 个 task 不再串行手搓，按「一条轨道一个 worktree、一个 coder + 一个独立 tester」并行推进（`scripts/new-feature-worktree.sh rune-{dialog,choice,menu,overlay} feat/rune-native-ui-migration`），coder 与 tester 不共享上下文，tester 只允许改测试、必须逐条复现 coder 自报数字并用变异反证。opencode 轨（`opencode run --auto --model opencode/iceman-free`）的 coder 完工后同样交 opencode 的 tester 复核。
+- **T0-00 → `4054d0ada`**：对话框页脚改用 kit `Button`，`ui/kit.rs` 用 `OnceLock` 缓存 `Kit::neutral(dark)`（避免每帧解 ~70 个 token）。`Kit::neutral` 由 `rune::tok::theme(dark)` + `tok::accent(0, dark)` 推导，与既有主题同源，所以视觉基线未变。
+- **T0-06 + T0-08 → `59c783199`**（choice 轨，5 文件 +787）：`ui/select.rs` 封 kit `Select`（`SelectAppearance::Field`），`ui/toggle.rs` 封 `Checkbox`/`Switch`/`RadioItem`。kit 的 `RadioGroup` 容器不能用（item key 硬编码 `item{i}`，两个实例必撞），改为 `RadioItem` + 自建 `radiogroup` 行；kit `Select` 不会自己关列表，`on_choose` 里必须写回 `open=false`。补丁 `af66e5148`：Checkbox 透出 `indeterminate`；Select 增 `values()` 做 label→value 映射（kit 只回 label），并发现 **`on_close` 是挂键盘 dismissal 层的地方——不给它，弹层鼠标能选、键盘按不动**，已写进模块文档。
+- **T0-05（dialog 轨）`9efb4a567`**：`ui/dialog.rs` 362 行（scrim + 居中 panel + 可滚动 body + 页脚槽 + `modal` 焦点陷阱，Esc 关闭并归还焦点）。**没有包 kit `Dialog`**：kit 的 key 写死（`close`/`header`/`body`/`{key}-dialog`）且 `El` 字段 `pub(crate)` 改不了名，也没有 footer、body 滚动和高度档，所以做的是「kit 形状的同构基座」，复用 kit 的 `IconButton` 与 palette。独立 tester 判 **TEST_FAILED**：6 条自报数字全部复现无误，但 scrim 用了 `k.c.scrim`（黑 30%）而 React 与迁移前都是 50%，重开保留上次滚动偏移（`#[ignore]` 用例记录：35 vs 275），panel 丢了 elevation 阴影。修复中。
+- **T0-07（menu 轨）`dd65b96d7`**：opencode coder 交付 `ui/menu.rs` 184 行（`Menu`/`Item`/`context_menu`）+ 6 个用例，`gate: PASS` 88/105/84。自报风险是 API 面窄（未透出 icon/shortcut/checked/submenu），已交给 opencode tester 对照 `useNavigatorContextMenus.ts`/`dataTableContextMenu.ts`/`MenuBar.tsx` 判缺口。
+- **T0-10（overlay 轨）**：opencode coder 进行中，目标 `ui/toast.rs`、`ui/tooltip.rs` + `tests/overlay.rs`。
+- **回滚的教训**：`.husky/pre-commit` 会跑 `cargo fmt --all`（stable rustfmt），第一次提交把 46 个已跟踪文件重排、并在 `vendor/rune` 里改了 1198 个文件，已整体回退。此后所有提交用 `--no-verify`、只 `git add` 自己的文件。
+- **tasklist**：`tasklist.md` 一行一个 task、状态只占方括号一个字符（` ` 待办 / `~` 进行中 / `x` 完成 / `!` 阻塞），文件内不留汇总数字；`scripts/rune-parity.mjs --status T007=done` 只翻一行，`--tasklist` 刷新行尾但保留既有状态，`--progress` 现算。
