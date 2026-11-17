@@ -108,3 +108,9 @@ mod field_kit_audit;
 // Slider and PathInput base controls (T0-11).
 mod widgets;
 mod widgets_audit_t0_11;
+
+// T0-11 viewer bases.
+mod binary_viewer;
+mod json_viewer;
+// Independent audit for T0-11 viewer bases.
+mod viewer_audit;
