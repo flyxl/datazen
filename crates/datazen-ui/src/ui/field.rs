@@ -207,14 +207,16 @@ impl<'a> TextField<'a> {
 
     /// A key handler that runs while the field holds focus. Returning `true`
     /// consumes the key before Rune's focus traversal; this is how a field
-    /// commits on `Tab` and moves focus itself.
+    /// commits on `Tab` and moves focus itself. Rune routes keys typed into a
+    /// focused text box through the input key (`on_input_key`), never the
+    /// element key, so both build paths install this there.
     pub(crate) fn on_key<S: 'static>(
         mut self,
         f: impl Fn(&mut S, &rune::KeyEvent, &mut rune::Tx) -> bool + Clone + 'static,
     ) -> Self {
         let f1 = f.clone();
         self.on_key_act = Some(Box::new(move |e| e.on_key(f1)));
-        self.on_key_el = Some(Box::new(move |e: El| e.on_key(f)));
+        self.on_key_el = Some(Box::new(move |e: El| e.on_input_key(f)));
         self
     }
 

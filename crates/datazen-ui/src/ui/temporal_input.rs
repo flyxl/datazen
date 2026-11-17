@@ -32,6 +32,14 @@
 //! field and does not commit, matching the React cell host. The error state
 //! paints the field border and message in `kit.c.danger`; everything else is
 //! the shared `TextField` chrome.
+//!
+//! Unlike the React control, which paints its error only after a commit
+//! attempt, the Rune base validates the current text on every build: a
+//! NOT NULL empty field or malformed text shows the error row immediately.
+//! This is deliberate inline feedback for an in-place editor, not a stale
+//! error left behind by a wiring bug.
+
+#![allow(dead_code)]
 
 use std::cell::RefCell;
 use std::rc::Rc;

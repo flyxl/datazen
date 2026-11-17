@@ -18,9 +18,6 @@ pub(crate) mod path_input;
 pub(crate) mod select;
 pub(crate) mod slider;
 pub(crate) mod table;
-// The T0-11 temporal editor has no view caller yet; its test suite is the only
-// consumer, matching the module-level suppression the other bases use.
-#[allow(dead_code)]
 pub(crate) mod temporal_input;
 pub(crate) mod theme;
 pub(crate) mod toast;
