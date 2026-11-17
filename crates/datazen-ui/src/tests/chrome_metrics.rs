@@ -402,19 +402,23 @@ use rune::{Env, Runtime};
         );
     }
 
-    #[test]
-    fn the_connection_and_import_dialogs_fit_the_minimum_window() {
-        // Both dialogs are larger than the 960x640 window's leftover page
-        // area, and the create/save action used to sit at the end of the
-        // scrolling form body instead of the always-visible footer.
+    /// Both dialogs must stay inside the window, keep their footer pinned to
+    /// the panel's bottom edge, and keep the primary action inside the visible
+    /// footer — at every window size the migration gate renders.
+    fn assert_dialogs_fit(width: f32, height: f32) {
         for (dialog_key, footer_key, action_key, open) in [
-            ("connection-dialog", "connection-dialog-footer", "connection-save", 0),
-            ("import-dialog", "dialog-footer", "import-confirm", 1),
+            (
+                "connection-dialog",
+                "connection-dialog-footer",
+                "connection-save",
+                0,
+            ),
+            ("import-dialog", "import-dialog-footer", "import-confirm", 1),
         ] {
             let mut rt = Runtime::new(
                 AppState::default(),
                 view,
-                (960.0, 640.0),
+                (width, height),
                 Env {
                     system_dark: true,
                     scale: 1.0,
@@ -437,18 +441,36 @@ use rune::{Env, Runtime};
             let dialog = rect(dialog_key);
             let footer = rect(footer_key);
             let action = rect(action_key);
+            let title = rect(&format!("{dialog_key}-title"));
+            let close = rect(&format!("{dialog_key}-close"));
             assert!(
                 dialog[0] >= -0.5
-                    && dialog[0] + dialog[2] <= 960.5
+                    && dialog[0] + dialog[2] <= width + 0.5
                     && dialog[1] >= -0.5
-                    && dialog[1] + dialog[3] <= 640.5,
-                "{dialog_key}: {:?} leaves the 960x640 window",
+                    && dialog[1] + dialog[3] <= height + 0.5,
+                "{dialog_key}: {:?} leaves the {width}x{height} window",
+                dialog
+            );
+            for (part, part_rect) in [("title", title), ("close", close)] {
+                assert!(
+                    part_rect[0] >= dialog[0] - 0.5
+                        && part_rect[0] + part_rect[2] <= dialog[0] + dialog[2] + 0.5
+                        && part_rect[1] >= dialog[1] - 0.5
+                        && part_rect[1] + part_rect[3] <= dialog[1] + dialog[3] + 0.5,
+                    "{dialog_key}: {part} {:?} is outside the panel {:?}",
+                    part_rect,
+                    dialog
+                );
+            }
+            assert!(
+                footer[1] + footer[3] <= dialog[1] + dialog[3] + 0.5 && footer[1] >= dialog[1],
+                "{dialog_key}: footer {:?} leaves the dialog {:?}",
+                footer,
                 dialog
             );
             assert!(
-                footer[1] + footer[3] <= dialog[1] + dialog[3] + 0.5
-                    && footer[1] >= dialog[1],
-                "{dialog_key}: footer {:?} leaves the dialog {:?}",
+                (footer[1] + footer[3] - (dialog[1] + dialog[3])).abs() <= 0.5,
+                "{dialog_key}: footer {:?} is not pinned to the panel's bottom edge {:?}",
                 footer,
                 dialog
             );
@@ -459,6 +481,19 @@ use rune::{Env, Runtime};
                 footer
             );
         }
+    }
+
+    #[test]
+    fn the_connection_and_import_dialogs_fit_the_minimum_window() {
+        // Both dialogs are larger than the 960x640 window's leftover page
+        // area, and the create/save action used to sit at the end of the
+        // scrolling form body instead of the always-visible footer.
+        assert_dialogs_fit(960.0, 640.0);
+    }
+
+    #[test]
+    fn the_connection_and_import_dialogs_fit_the_default_window() {
+        assert_dialogs_fit(1440.0, 816.0);
     }
 
 #[test]

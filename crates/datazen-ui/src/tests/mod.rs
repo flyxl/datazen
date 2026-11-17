@@ -66,6 +66,8 @@ mod structure_jobs;
 mod host_jobs;
 // Toolbar/status sizing, light theme, row numbers, column width.
 mod chrome_metrics;
+// Dialog base: mount rules, Escape close, focus return.
+mod dialog;
 // A3 query workspace (editor/results/sidebar/tabs).
 mod query_workspace;
 // Rail alignment and modal dialogs.
