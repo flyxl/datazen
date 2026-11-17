@@ -17,9 +17,11 @@ use crate::ui::field::TextField;
 use datazen_ui_api::ConnectionProfile;
 use rune::tok::{self, type_};
 use rune::{
-    col, icon, oklch, oklcha, rich, row, text, Align, Color, El, ScrollSpec, Span,
+    col, icon, rich, row, text, Align, Color, El, ScrollSpec, Span,
     TextCase, TextStyle,
 };
+
+use crate::ui::palette;
 
 /// How many cards render before the show-all row appears (React `COLLAPSED_COUNT`).
 const COLLAPSED_COUNT: usize = 6;
@@ -52,7 +54,7 @@ fn banners(state: &AppState, theme: tok::Theme) -> Vec<El> {
                 .gap(8.0)
                 .center_y()
                 .radius(8.0)
-                .fill(oklcha(0.66, 0.15, 58.0, 0.14))
+                .fill(palette::warning_banner_fill(false))
                 .child(
                     text(message.clone())
                         .key("desktop-adapter-message")
@@ -108,7 +110,7 @@ fn empty_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                     .size(52.0, 52.0)
                     .radius(16.0)
                     .center()
-                    .fill(oklcha(if dark { 0.62 } else { 0.6 }, 0.17, 256.0, 0.14))
+                    .fill(palette::accent_tint_fill(dark))
                     .child(icon(&ICON_CONNECTIONS, 24.0).color(accent)),
             )
             .child(
@@ -632,7 +634,7 @@ fn mcp_promo_bar(theme: tok::Theme, dark: bool) -> El {
                 .size(32.0, 32.0)
                 .radius(8.0)
                 .center()
-                .fill(oklcha(if dark { 0.62 } else { 0.6 }, 0.17, 256.0, 0.14))
+                .fill(palette::accent_tint_fill(dark))
                 .child(icon(&ICON_SPARKLES, 16.0).color(accent)),
         )
         .child(
@@ -733,14 +735,14 @@ fn status_pill(state: &AppState, theme: tok::Theme, dark: bool, id: &str) -> El 
             .is_some_and(|first| first == id);
     let (bg, fg, dot, label) = if open {
         (
-            oklcha(if dark { 0.7 } else { 0.55 }, 0.16, 152.0, 0.16),
+            palette::status_pill_connected_bg(dark),
             tok::accent(4, dark),
             tok::accent(4, dark),
             "Connected",
         )
     } else if connecting {
         (
-            oklcha(if dark { 0.66 } else { 0.6 }, 0.17, 256.0, 0.16),
+            palette::status_pill_connecting_bg(dark),
             tok::accent(0, dark),
             tok::accent(0, dark),
             "Connecting…",
@@ -774,7 +776,7 @@ fn status_pill(state: &AppState, theme: tok::Theme, dark: bool, id: &str) -> El 
 /// A rounded engine monogram: stable hue per engine string, white initial.
 fn engine_badge(id: &str, engine: &str, _theme: tok::Theme, dark: bool, size: f32) -> El {
     let hue = engine_hue(engine);
-    let fill = oklch(if dark { 0.5 } else { 0.58 }, 0.12, hue);
+    let fill = palette::engine_badge_fill(dark, hue);
     let initial = engine
         .chars()
         .next()
@@ -790,7 +792,7 @@ fn engine_badge(id: &str, engine: &str, _theme: tok::Theme, dark: bool, size: f3
         .child(
             text(initial)
                 .font(TextStyle::new(size * 0.42, 700.0))
-                .color(oklch(0.99, 0.005, 256.0)),
+                .color(palette::badge_ink(dark)),
         )
 }
 
@@ -857,5 +859,5 @@ fn engine_hue(engine: &str) -> f32 {
 
 /// Text that stays readable on the accent fill in both appearances.
 fn on_accent() -> Color {
-    oklch(0.985, 0.005, 256.0)
+    palette::on_accent(false)
 }

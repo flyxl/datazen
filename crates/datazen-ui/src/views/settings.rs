@@ -15,7 +15,7 @@ use datazen_ui_api::{
     Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi,
 };
 use rune::tok::{self, type_};
-use rune::{col, oklch, row, text, Color, Cx, El};
+use rune::{col, row, text, Color, Cx, El};
 use rune::{FileDialogOptions, TextEdit, Tx};
 
 /// A6: grouped settings navigation (2 groups, 12 sections) with deep-link

@@ -14,7 +14,9 @@ use datazen_ui_api::{
     Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi,
 };
 use rune::tok::{self, type_};
-use rune::{col, oklch, row, text, Color, Cx, El};
+use rune::{col, row, text, Color, Cx, El};
+
+use crate::ui::palette;
 use rune::{FileDialogOptions, TextEdit, Tx};
 
 pub(crate) fn value_search_tool(state: &AppState, theme: tok::Theme) -> El {
@@ -482,9 +484,9 @@ pub(crate) fn compare_tool(state: &AppState, theme: tok::Theme) -> El {
                 .child(text(label).font(type_::LABEL).color(theme.text))
                 .child(row().key(mark).w(10.0).h(10.0).radius(5.0).fill(
                     if object.present_on_target {
-                        oklch(0.75, 0.12, 145.0)
+                        palette::status_ok(false)
                     } else {
-                        oklch(0.7, 0.14, 25.0)
+                        palette::status_fail(false)
                     },
                 )),
         );

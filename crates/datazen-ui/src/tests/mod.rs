@@ -11,6 +11,7 @@ pub(crate) use datazen_ui_api::*;
 pub(crate) use rune::{Env, Runtime};
 
 pub(crate) mod support;
+pub(crate) mod tokens;
 pub(crate) use support::*;
 
 pub(crate) fn runtime() -> Runtime<AppState> {

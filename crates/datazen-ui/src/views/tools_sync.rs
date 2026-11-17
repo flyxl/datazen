@@ -13,7 +13,7 @@ use datazen_ui_api::{
     Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi,
 };
 use rune::tok::{self, type_};
-use rune::{col, oklch, row, text, text_input, Color, Cx, El};
+use rune::{col, row, text, text_input, Color, Cx, El};
 use rune::{FileDialogOptions, TextEdit, Tx};
 
 pub(crate) fn tools_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {

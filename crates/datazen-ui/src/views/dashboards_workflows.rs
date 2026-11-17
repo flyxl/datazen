@@ -14,7 +14,9 @@ use datazen_ui_api::{
     Setting, SettingsApi, TabKind, Workflow, WorkflowStepResult, WorkspaceApi,
 };
 use rune::tok::{self, type_};
-use rune::{col, oklch, row, text, Color, Cx, El};
+use rune::{col, row, text, Color, Cx, El};
+
+use crate::ui::palette;
 use rune::{FileDialogOptions, TextEdit, Tx};
 
 pub(crate) fn wapps_page(theme: tok::Theme) -> El {
@@ -222,9 +224,9 @@ pub(crate) fn workflows_page(state: &AppState, theme: tok::Theme, dark: bool) ->
                                 .h(10.0)
                                 .radius(5.0)
                                 .fill(if result.ok {
-                                    oklch(0.75, 0.12, 145.0)
+                                    palette::status_ok(false)
                                 } else {
-                                    oklch(0.7, 0.14, 25.0)
+                                    palette::status_fail(false)
                                 }),
                         )
                         .child(
@@ -437,7 +439,7 @@ pub(crate) fn bar_chart(state: &AppState, id: u64, theme: tok::Theme) -> El {
                         .w(30.0)
                         .h(height)
                         .radius(3.0)
-                        .fill(oklch(0.72, 0.13, 250.0)),
+                        .fill(palette::chart_bar_accent(false)),
                 )
                 .child(
                     text(format!("{label} {value}"))

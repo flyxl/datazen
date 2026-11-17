@@ -1,4 +1,6 @@
-use rune::{El, Ime, Key, KeyEvent, Span, TextEdit, TextStyle, Tx, col, oklch, row, text};
+use rune::{El, Ime, Key, KeyEvent, Span, TextEdit, TextStyle, Tx, col, row, text};
+
+use crate::ui::palette;
 
 use super::highlight::highlight_sql;
 use super::model::SqlEditor;
@@ -144,8 +146,8 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: boo
 
 /// The keyword completion, drawn in the canvas below the caret's line.
 fn completion_list(editor: &SqlEditor, ink: rune::Color, dark: bool) -> El {
-    let bg = if dark { oklch(0.22, 0.03, 250.0) } else { oklch(0.97, 0.01, 250.0) };
-    let sel_bg = if dark { oklch(0.34, 0.08, 250.0) } else { oklch(0.86, 0.06, 250.0) };
+    let bg = palette::editor_bg(dark);
+    let sel_bg = palette::editor_selection_bg(dark);
     let mut list = col()
         .key("sql-completion")
         .w(170.0)
@@ -240,7 +242,7 @@ fn line_row(
         }
         if is_main {
             if let Some(composed) = editor.composition() {
-                let underline = if dark { oklch(0.8, 0.1, 95.0) } else { oklch(0.55, 0.12, 95.0) };
+                let underline = palette::editor_composition_underline(dark);
                 row = row.child(
                     text(composed)
                         .font(editor_font())
@@ -284,13 +286,7 @@ fn clip_span(span: &Span, abs_from: usize, abs_to: usize, origin: usize) -> Opti
 }
 
 fn caret(main: bool, dark: bool) -> El {
-    let fill = if dark {
-        if main { oklch(0.9, 0.12, 250.0) } else { oklch(0.8, 0.08, 250.0) }
-    } else if main {
-        oklch(0.35, 0.10, 250.0)
-    } else {
-        oklch(0.45, 0.08, 250.0)
-    };
+    let fill = palette::editor_caret_fill(main, dark);
     let bar = col().w(2.0).h(16.0).fill(fill);
     if main { bar.key("sql-caret").ime_cursor() } else { bar }
 }
@@ -309,14 +305,14 @@ fn split_lines(doc: &str) -> Vec<(usize, &str)> {
 }
 
 fn keyword_color(dark: bool) -> rune::Color {
-    if dark { oklch(0.72, 0.13, 305.0) } else { oklch(0.48, 0.16, 305.0) }
+    palette::code_palette(dark).keyword
 }
 fn string_color(dark: bool) -> rune::Color {
-    if dark { oklch(0.74, 0.12, 145.0) } else { oklch(0.50, 0.14, 145.0) }
+    palette::code_palette(dark).string
 }
 fn comment_color(dark: bool) -> rune::Color {
-    if dark { oklch(0.62, 0.02, 95.0) } else { oklch(0.52, 0.03, 95.0) }
+    palette::code_palette(dark).comment
 }
 fn number_color(dark: bool) -> rune::Color {
-    if dark { oklch(0.78, 0.12, 70.0) } else { oklch(0.52, 0.14, 70.0) }
+    palette::code_palette(dark).number
 }

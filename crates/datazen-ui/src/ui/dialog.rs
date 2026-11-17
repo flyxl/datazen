@@ -65,7 +65,7 @@ const FOOTER_HEIGHT: f32 = 56.0;
 /// Space between the centered panel and the window edge (React's `p-4`).
 const LAYER_PAD: f32 = 16.0;
 /// The scrim's opacity: React's `bg-black/50` (`packages/ui/src/Dialog.tsx`)
-/// and the pre-port `scrim()` in `views/modals.rs` (`oklcha(0.0, 0.0, 256.0,
+/// and the pre-port `scrim()` in `views/modals.rs` (semi-transparent neutral scrim,
 /// 0.5)`). The kit palette's scrim is 30% (`rune_kit::palette`), which dims the
 /// page less than the React dialog it replaces.
 const SCRIM_ALPHA: f32 = 0.5;

@@ -1,6 +1,8 @@
 use std::borrow::Cow;
 
-use rune::{El, GrowthSpec, ScrollPos, TextStyle, col, el, oklch, row, text};
+use rune::{El, GrowthSpec, ScrollPos, TextStyle, col, el, row, text};
+
+use crate::ui::palette;
 
 use super::{DataGrid, GUTTER_W, ROW_H};
 use crate::ui::field::TextField;
@@ -467,9 +469,8 @@ fn footer(state: &crate::AppState, ink: rune::Color, muted: rune::Color) -> El {
 }
 
 fn header_row(grid: &DataGrid, slot: GridSlot, ink: rune::Color, dark: bool) -> El {
-    let header_bg = if dark { oklch(0.22, 0.02, 250.0) } else { oklch(0.92, 0.01, 250.0) };
-    let gutter_bg = if dark { oklch(0.20, 0.02, 250.0) } else { oklch(0.90, 0.01, 250.0) };
-    let mut line = row().key(slot.key("data-grid-header")).h(ROW_H).fill(header_bg);
+    let gp = palette::grid_palette(dark);
+    let mut line = row().key(slot.key("data-grid-header")).h(ROW_H).fill(gp.header_bg);
     // A4: row-number gutter header.
     line = line.child(
         row()
@@ -478,7 +479,7 @@ fn header_row(grid: &DataGrid, slot: GridSlot, ink: rune::Color, dark: bool) -> 
             .h(ROW_H)
             .px(6.0)
             .center_y()
-            .fill(gutter_bg)
+            .fill(gp.header_gutter_bg)
             .child(text("#").font(label_style()).color(ink)),
     );
     let mut cursor = 0u32;
@@ -501,7 +502,7 @@ fn data_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color, d
 
 fn paint_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color, dark: bool) -> El {
     let cols = grid.built_columns();
-    let gutter_bg = if dark { oklch(0.19, 0.02, 250.0) } else { oklch(0.93, 0.01, 250.0) };
+    let gp = palette::grid_palette(dark);
     let mut line = row()
         .key(slot.key(&format!("grid-row-{row_index}")))
         .role("row")
@@ -520,7 +521,7 @@ fn paint_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color, 
             .h(ROW_H)
             .px(6.0)
             .center_y()
-            .fill(gutter_bg)
+            .fill(gp.gutter_bg)
             .child(text(num.to_string()).font(label_style()).color(ink)),
     );
     let mut cursor = 0u32;
@@ -566,8 +567,8 @@ fn header_cell(
         cell = cell.on_press(move |state: &mut crate::AppState| state.cycle_sort(col_index));
     }
     if col_index == 0 {
-        let frozen_bg = if dark { oklch(0.24, 0.03, 250.0) } else { oklch(0.90, 0.01, 250.0) };
-        cell = cell.sticky_left(GUTTER_W).fill(frozen_bg);
+        let gp = palette::grid_palette(dark);
+        cell = cell.sticky_left(GUTTER_W).fill(gp.frozen_bg);
     }
     cell
 }
@@ -585,22 +586,23 @@ fn cell(
     let frozen = col_index == 0;
     let current_hit = grid.is_current_find_hit(row_index, col_index);
     let any_hit = grid.is_find_hit(row_index, col_index);
+    let gp = palette::grid_palette(dark);
     let fill = if current_hit {
-        if dark { oklch(0.55, 0.14, 85.0) } else { oklch(0.86, 0.14, 85.0) }
+        gp.find_current
     } else if any_hit {
-        if dark { oklch(0.42, 0.10, 85.0) } else { oklch(0.92, 0.10, 85.0) }
+        gp.find_hit
     } else if active {
-        if dark { oklch(0.45, 0.09, 250.0) } else { oklch(0.78, 0.10, 250.0) }
+        gp.active
     } else if selected {
-        if dark { oklch(0.38, 0.05, 250.0) } else { oklch(0.86, 0.05, 250.0) }
+        gp.selected
     } else if frozen {
-        if dark { oklch(0.20, 0.02, 250.0) } else { oklch(0.94, 0.01, 250.0) }
+        gp.frozen_cell
     } else if row_index % 2 == 0 {
-        if dark { oklch(0.18, 0.01, 250.0) } else { oklch(0.99, 0.005, 250.0) }
+        gp.zebra_even
     } else if dark {
-        oklch(0.16, 0.01, 250.0)
+        gp.zebra_odd_dark
     } else {
-        oklch(0.965, 0.005, 250.0)
+        gp.zebra_odd_light
     };
     let w = grid.col_w(col_index);
     let mut box_el = row()

@@ -84,7 +84,7 @@ pub(crate) fn nav_section_header(
         &crate::icons::ICON_FOLDER
     };
     // React navigator section/group headers use an amber folder icon.
-    let folder_color = rune::oklcha(0.78, 0.15, 80.0, 1.0);
+    let folder_color = super::palette::folder_icon(false);
     row()
         .key(key.to_owned())
         .w_full()
