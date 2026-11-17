@@ -138,13 +138,13 @@ impl<'a, S: 'static> PathInput<'a, S, HasBrowse<S>> {
         field = field.border(1.0, border_color);
 
         if let Some(ph) = &self.placeholder {
-            field = field.placeholder(ph.clone(), c.text_faint);
+            field = field.placeholder(ph.clone());
         }
         if let Some(label) = &self.label {
             field = field.label(label.clone());
         }
 
-        let mut field_el = if self.disabled {
+        let field_el = if self.disabled {
             // Render as a non-interactive display so it is unfocusable.
             let display = if self.edit.text.is_empty() {
                 self.placeholder.clone().unwrap_or_default()
@@ -177,7 +177,7 @@ impl<'a, S: 'static> PathInput<'a, S, HasBrowse<S>> {
                 let on_edit = on_edit.clone();
                 field = field.on_edit(move |s: &mut S| on_edit(s));
             }
-            field.build()
+            field.build(dark)
         };
 
         let browse_label = self

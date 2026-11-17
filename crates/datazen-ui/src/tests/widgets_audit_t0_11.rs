@@ -1,6 +1,5 @@
-use super::*;
 use rune::render::{Gpu, OFFSCREEN_FORMAT, Offscreen, Renderer, write_png};
-use rune::{Cx, El, Env, Key, KeyEvent, Mods, Runtime, TextEdit, col, el, row};
+use rune::{Cx, El, Env, Key, KeyEvent, Mods, Runtime, col};
 
 fn env() -> Env {
     Env {
