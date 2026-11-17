@@ -93,3 +93,6 @@ mod i18n_usage;
 // T0-11 error display bases.
 mod banner;
 mod copyable;
+// T0-11 viewer bases.
+mod binary_viewer;
+mod json_viewer;

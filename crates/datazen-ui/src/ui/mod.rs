@@ -5,9 +5,11 @@
 //! instead of ad-hoc styling.
 
 pub(crate) mod banner;
+pub(crate) mod binary_viewer;
 pub(crate) mod copyable;
 pub(crate) mod dialog;
 pub(crate) mod field;
+pub(crate) mod json_viewer;
 pub(crate) mod kit;
 pub(crate) mod menu;
 pub(crate) mod nav;
