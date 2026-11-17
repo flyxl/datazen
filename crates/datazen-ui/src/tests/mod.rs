@@ -115,3 +115,4 @@ mod json_viewer;
 // Independent audit for T0-11 viewer bases.
 mod viewer_audit;
 mod chrome_parts;
+mod chrome_parts_audit;
