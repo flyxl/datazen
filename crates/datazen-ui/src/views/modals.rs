@@ -78,7 +78,7 @@ fn engine_badge_icon(engine: &str, size: f32, dark: bool) -> El {
 
 /// Import dialog (React ConnectionShareDialog, import/file mode layout).
 fn import_dialog(state: &AppState, theme: tok::Theme, dark: bool) -> Dialog {
-    Dialog::new("import-dialog", "导入连接")
+    Dialog::new("import-dialog", t("common.importConnections"))
         .open(true)
         .open_epoch(state.import_dialog_epoch)
         .width(520.0)
@@ -114,7 +114,7 @@ fn import_dialog(state: &AppState, theme: tok::Theme, dark: bool) -> Dialog {
 /// New-connection dialog (React-aligned: left type sidebar, then the form and
 /// the always-visible action row below it).
 fn connection_dialog(state: &AppState, theme: tok::Theme, dark: bool) -> Dialog {
-    Dialog::new("connection-dialog", "新建连接")
+    Dialog::new("connection-dialog", t("common.newConnection"))
         .open(true)
         .open_epoch(state.connection_dialog_epoch)
         .width(920.0)
@@ -217,7 +217,7 @@ fn connection_type_sidebar(state: &AppState, theme: tok::Theme, dark: bool) -> E
                 .py(12.0)
                 .gap(8.0)
                 .border(1.0, theme.separator)
-                .child(text("选择数据库类型").font(type_::LABEL).color(theme.text))
+                .child(text(t("newConn.selectDbType")).font(type_::LABEL).color(theme.text))
                 .child(
                     text("从左侧选择类型")
                         .font(type_::LABEL)

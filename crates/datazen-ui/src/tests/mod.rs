@@ -87,3 +87,5 @@ mod overlay;
 mod overlay_audit;
 // Second-round independent recheck for T0-10 fixes.
 mod overlay_retest;
+// zh-CN table wiring: the keys the rune views took over still resolve.
+mod i18n_usage;
