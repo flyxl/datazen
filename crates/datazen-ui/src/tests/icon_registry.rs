@@ -7,12 +7,17 @@
 //! source text (the registry is plain statics) and fails with the offending files and lines.
 //!
 //! Coverage: the scan walks `crates/datazen-ui/src/**/*.rs` and skips `src/icons.rs` and
-//! `src/tests/`. It sees definitions written as Rust source — `Icon {` (rustfmt's shape) or
-//! `Icon{` — including one inside a single-line function body. It does not see raw SVG strings
-//! held outside an `Icon` literal, `include_str!`/`include_bytes!` payloads, type aliases for
-//! `Icon`, or icons synthesized by a macro; those are outside the text-level contract this guard
-//! enforces. `crates/datazen-rune-host/src/tray.rs` is a different crate and its `TrayIcon` is an
-//! OS tray pixel buffer, not a chrome SVG — a deliberate exception.
+//! `src/tests/`. It sees `Icon` as a whole token only, so `MyIcon`, `TrayIcon` and `ResolvedIcon`
+//! are not candidates; a definition is `Icon {` (rustfmt's shape) or `Icon{` in expression
+//! position, including one inside a single-line function body, while a return type and an
+//! `impl Icon` head are not. Limitations of this text-level contract: an `Icon { … }` inside a
+//! string literal or an inline comment is reported too (only `//` lines are skipped and string
+//! contents are not lexed); raw SVG strings held outside an `Icon` literal, `include_str!` /
+//! `include_bytes!` payloads, a type alias such as `type MyAlias = rune::Icon;` followed by
+//! `MyAlias { … }`, and icons synthesized by a macro are not seen. Those residuals are accepted;
+//! this guard is a tripwire, not a Rust parser. `crates/datazen-rune-host/src/tray.rs` is a
+//! different crate and its `TrayIcon` is an OS tray pixel buffer, not a chrome SVG — a deliberate
+//! exception (the whole-token rule keeps it out anyway).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -30,17 +35,33 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Offsets in `line` where an `Icon {`/`Icon{` literal starts a definition, not a return type.
+fn is_ident_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+/// Offsets in `line` where the whole token `Icon` starts a definition (`Icon {`/`Icon{`), not a
+/// return type and not the tail of a longer identifier such as `MyIcon`.
 fn inline_icon_offsets(line: &str) -> Vec<usize> {
     let mut offsets = Vec::new();
     let mut from = 0;
     while let Some(rel) = line[from..].find("Icon") {
         let at = from + rel;
-        let rest = &line[at + "Icon".len()..];
-        if rest.trim_start().starts_with('{') && !is_type_position(line, at) {
-            offsets.push(at);
+        let end = at + "Icon".len();
+        let standalone = line[..at]
+            .chars()
+            .next_back()
+            .map_or(true, |c| !is_ident_char(c))
+            && line[end..]
+                .chars()
+                .next()
+                .map_or(true, |c| !is_ident_char(c));
+        if standalone {
+            let rest = &line[end..];
+            if rest.trim_start().starts_with('{') && !is_type_position(line, at) {
+                offsets.push(at);
+            }
         }
-        from = at + "Icon".len();
+        from = end;
     }
     offsets
 }
@@ -176,20 +197,43 @@ fn no_inline_icon_definitions_outside_the_registry() {
     );
 }
 
+/// A probe directory with a unique name that removes itself, even when an assertion panics.
+struct ProbeDir {
+    path: PathBuf,
+}
+
+impl ProbeDir {
+    fn new() -> Self {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_nanos())
+            .unwrap_or_default();
+        let path =
+            std::env::temp_dir().join(format!("datazen-icon-guard-{}-{nonce}", std::process::id()));
+        fs::create_dir_all(&path).expect("create the probe directory");
+        Self { path }
+    }
+}
+
+impl Drop for ProbeDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
 #[test]
 fn a_single_line_function_body_is_still_scanned() {
-    let dir = std::env::temp_dir().join(format!("datazen-icon-guard-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).expect("create the probe directory");
-    let probe = dir.join("probe.rs");
-    fs::write(
-        &probe,
-        "fn probe() -> Icon { Icon { name: \"probe\", view: 24.0, body: \"<path d=\\\"M0 0\\\"/>\" } }\n",
-    )
-    .expect("write the probe source");
-
-    let violations = inline_icon_violations(&dir, &[]);
-    let _ = fs::remove_dir_all(&dir);
+    let (violations, path) = {
+        let dir = ProbeDir::new();
+        let probe = dir.path.join("probe.rs");
+        fs::write(
+            &probe,
+            "fn probe() -> Icon { Icon { name: \"probe\", view: 24.0, body: \"<path d=\\\"M0 0\\\"/>\" } }\n",
+        )
+        .expect("write the probe source");
+        let violations = inline_icon_violations(&dir.path, &[]);
+        (violations, dir.path.clone())
+    };
 
     assert_eq!(
         violations.len(),
@@ -200,6 +244,28 @@ fn a_single_line_function_body_is_still_scanned() {
         violations[0].contains("probe.rs:1:"),
         "the report names the probe file and line: {violations:#?}"
     );
+    assert!(
+        !path.exists(),
+        "the probe directory outlives its test: {}",
+        path.display()
+    );
+}
+
+#[test]
+fn a_longer_identifier_is_not_a_definition() {
+    for line in [
+        "fn alias() -> &'static MyIcon { &crate::icons::ICON_CONNECTIONS }",
+        "type MyIcon = rune::Icon;",
+        "struct MyIcon { value: u8 }",
+        "enum MyIcon { A }",
+        "let icon: MyIcon = MyIcon { value: 0 };",
+        "fn wrapped() -> Vec<Icon> { Vec::new() }",
+    ] {
+        assert!(
+            inline_icon_offsets(line).is_empty(),
+            "a longer identifier or a non-literal mention is not a definition: {line}"
+        );
+    }
 }
 
 #[test]
