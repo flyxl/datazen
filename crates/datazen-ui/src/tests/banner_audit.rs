@@ -27,6 +27,8 @@ fn click<S>(rt: &mut Runtime<S>, key: &str) {
 #[derive(Default)]
 struct Probe {
     copied: usize,
+    now: f64,
+    copied_until: Option<f64>,
 }
 
 // ---- Banner: color pinning (must distinguish danger fg vs text_base, and danger chrome) ----
@@ -156,21 +158,40 @@ fn copyable_mono_view(_s: &Probe, _cx: &mut Cx<Probe>) -> El {
     rune::col().w(480.0).h(120.0).child(w)
 }
 
-fn copyable_non_mono_with_button_view(_s: &Probe, _cx: &mut Cx<Probe>) -> El {
+fn copyable_non_mono_with_button_view(s: &Probe, _cx: &mut Cx<Probe>) -> El {
     let k = crate::ui::kit::kit(true);
+    let copied = s.copied_until.map_or(false, |u| s.now < u);
     let w = CopyableError::new("c", "err")
         .copy_button(true)
-        .on_copy(|s: &mut Probe| s.copied += 1)
+        .copied(copied)
+        .on_copy_tx(|s: &mut Probe, tx: &mut rune::Tx| {
+            s.copied += 1;
+            s.now = tx.clock();
+            s.copied_until = Some(tx.clock() + 1.5);
+        })
         .build::<Probe>(k);
-    rune::col().w(480.0).h(120.0).child(w)
+    let sync = rune::row()
+        .key("c-sync")
+        .role("button")
+        .label("sync")
+        .w(1.0)
+        .h(1.0)
+        .on_press(|_s: &mut Probe| {});
+    rune::col().w(480.0).h(120.0).child(sync).child(w)
 }
 
-fn copyable_mono_with_button_view(_s: &Probe, _cx: &mut Cx<Probe>) -> El {
+fn copyable_mono_with_button_view(s: &Probe, _cx: &mut Cx<Probe>) -> El {
     let k = crate::ui::kit::kit(true);
+    let copied = s.copied_until.map_or(false, |u| s.now < u);
     let w = CopyableError::new("c", "err")
         .mono(true)
         .copy_button(true)
-        .on_copy(|s: &mut Probe| s.copied += 1)
+        .copied(copied)
+        .on_copy_tx(|s: &mut Probe, tx: &mut rune::Tx| {
+            s.copied += 1;
+            s.now = tx.clock();
+            s.copied_until = Some(tx.clock() + 1.5);
+        })
         .build::<Probe>(k);
     rune::col().w(480.0).h(120.0).child(w)
 }
@@ -209,22 +230,86 @@ fn mono_text_style_is_observable_via_element_tree() {
 }
 
 #[test]
-#[ignore = "DEFECT: copyable has no copied-state timer (no 1500ms common.copied feedback); needs timed state/clock mechanism in runtime/view"]
 fn copy_button_shows_copied_feedback_for_1500ms_then_reverts() {
-    // Expected (React CopyableError.tsx + useCopyFeedback 1500ms):
-    // - before click: button shows Copy icon + t('common.copy')
-    // - after click: immediately shows Check icon + t('common.copied')
-    // - after ~1500ms: reverts to Copy + t('common.copy')
-    // Current implementation (ui/copyable.rs): label is static i18n::t("common.copy")
-    // and press only tx.copy + optional callback; no transient "copied" state/timer.
-    // To implement: add timed copied state (e.g. store timestamp/flag in app state and
-    // drive revert via frame clock/tick or ToastTimer-like runtime timer) and swap
-    // glyph/label while active.
+    // Timed feedback (React CopyableError.tsx + useCopyFeedback 1500ms):
+    // - before click: button shows Copy + t('common.copy')
+    // - after click: immediately shows Check + t('common.copied'), wake scheduled
+    // - after ~1500ms (virtual time advanced): reverts to Copy + t('common.copy')
+    // - second click re-times: 1.6s later still copied, 1.6s after that reverted
     let mut rt = Runtime::new(Probe::default(), copyable_non_mono_with_button_view, (480.0, 240.0), env());
     rt.frame(0.0);
+
+    let before = element(&rt, "c-copy").label.unwrap_or_default();
+    assert!(
+        before.contains("copy") || before.contains("复制"),
+        "before click should show copy label: {before}"
+    );
+
     click(&mut rt, "c-copy");
-    // When implemented, assert copied label/glyph here and after 1.5s revert.
-    let btn = element(&rt, "c-copy");
-    let label = btn.label.unwrap_or_default();
-    assert!(label.contains("copied") || label.contains("已复制"), "should show copied feedback: {label}");
+    rt.frame(0.0);
+    let copied = element(&rt, "c-copy").label.unwrap_or_default();
+    assert!(
+        copied.contains("copied") || copied.contains("已复制"),
+        "after click should show copied feedback: {copied}"
+    );
+    assert_ne!(copied, before, "copied feedback must differ from copy label");
+
+    // Advance past 1500ms and observe revert (state.now compared in view).
+    let until = rt.state.copied_until.expect("copied_until set on press");
+    rt.frame(1.6);
+    rt.state.now = until + 0.01;
+    click(&mut rt, "c-sync");
+    let reverted = element(&rt, "c-copy").label.unwrap_or_default();
+    assert!(
+        reverted.contains("copy") || reverted.contains("复制"),
+        "after 1.6s should revert to copy: {reverted}"
+    );
+    assert!(
+        !(reverted.contains("copied") || reverted.contains("已复制")),
+        "after 1.6s must not still show copied: {reverted}"
+    );
+
+    // Re-click re-times: click at ~1.6s (reverted), click again at +0.8s to reset timer,
+    // then +1.0s later (1.0s since re-time, 1.8s since re-click point but timer reset) still copied,
+    // then +0.6s more (1.6s since re-time) reverted. This proves the second click re-timed.
+    click(&mut rt, "c-copy"); // t = T0
+    rt.frame(0.0);
+    let copied2 = element(&rt, "c-copy").label.unwrap_or_default();
+    assert!(
+        copied2.contains("copied") || copied2.contains("已复制"),
+        "second click should show copied again: {copied2}"
+    );
+    let until2 = rt.state.copied_until.expect("copied_until set on second press");
+    rt.frame(0.8);
+    rt.state.now = until2 - 0.2;
+    click(&mut rt, "c-sync");
+    assert!(
+        element(&rt, "c-copy").label.unwrap_or_default().contains("copied")
+            || element(&rt, "c-copy").label.unwrap_or_default().contains("已复制"),
+        "0.8s after click still copied"
+    );
+    click(&mut rt, "c-copy"); // re-time
+    rt.frame(0.0);
+    let copied3 = element(&rt, "c-copy").label.unwrap_or_default();
+    assert!(
+        copied3.contains("copied") || copied3.contains("已复制"),
+        "re-click should show copied: {copied3}"
+    );
+    let until3 = rt.state.copied_until.expect("copied_until set on re-time");
+    rt.frame(1.0);
+    rt.state.now = until3 - 0.1;
+    click(&mut rt, "c-sync");
+    let still_copied = element(&rt, "c-copy").label.unwrap_or_default();
+    assert!(
+        still_copied.contains("copied") || still_copied.contains("已复制"),
+        "1.0s after re-time should still be copied (re-timed): {still_copied}"
+    );
+    rt.frame(0.6);
+    rt.state.now = until3 + 0.01;
+    click(&mut rt, "c-sync");
+    let reverted2 = element(&rt, "c-copy").label.unwrap_or_default();
+    assert!(
+        reverted2.contains("copy") || reverted2.contains("复制"),
+        "1.6s after re-time should revert: {reverted2}"
+    );
 }
