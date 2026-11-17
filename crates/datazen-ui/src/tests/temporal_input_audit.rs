@@ -313,7 +313,6 @@ fn on_key_is_wired_on_the_kit_build_path() {
 }
 
 #[test]
-#[ignore = "DEFECT 464bbe786: TextField::on_key on the direct (ink) build path is wired with El::on_key, which Rune never calls for a focused text field (its keys go to on_input_key); un-ignore after the wiring change"]
 fn on_key_is_wired_on_the_direct_build_path_too() {
     struct Direct {
         value: TextEdit,
