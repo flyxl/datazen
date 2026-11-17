@@ -28,40 +28,27 @@
 
 ## 3. Phase 0：基座（不属于台账，必须先做）
 
-台账假定设计系统已经存在。Rune 侧现在只有 `crates/datazen-ui/src/ui/{mod,theme,nav,field}.rs` 共 536 行，
-而 React 页面通过 `packages/frontend/src/components/ui/*` 这层薄壳调用 `@datazen/ui` 的组件，
-实测被引用次数：Button 92、Spinner 39、CopyableError 28、Dialog 27、Select 25、Input 22、ErrorBanner 10、
-Checkbox 10、useCopyFeedback 7、Badge 6、ToolbarButton 5、ResultMessageDialog 2、ToolbarShell 2、Tabs 2、
-LimitationsDialog 2、WebContextMenuHost 1、ConfirmDialog 1、Slider 1、Radio 1。
+基座**不再手搓**：`rune-kit` 已接入（根 `Cargo.toml` 的 `rune-kit` path 依赖 + `crates/datazen-ui/src/ui/kit.rs`
+的 `OnceLock<Kit>`，`Kit::neutral(dark)` 由 `rune::tok::theme` 推导），Phase 0 只剩把现有面收敛到 kit
+以及补 kit 缺的那几个件。状态就是 `☐` 列的一个字符，改它只动一行。
 
-所以先补这 22 个基座 task（每个 ≤1 天），完成后再进 §4：
+| # | ☐ | task | 落点 | 验收 |
+| --: | :-: | --- | --- | --- |
+| T0-00 | ☑ | kit 基座接入：workspace 依赖、`kit(dark)` 单例、对话框页脚改用 kit `Button` | `Cargo.toml`、`crates/datazen-ui/src/ui/kit.rs`、`crates/datazen-ui/src/views/modals.rs` | 已落地 `4054d0ada`：`gate: PASS`，页脚按钮 36pt、标签中心与盒中心差 0.00pt |
+| T0-01 | ☐ | Kit 主题贯通：`ui/theme.rs` 的 `tok::Theme` 与 `Kit::Palette` 合并，收敛 74 处 `oklch/oklcha` 硬编码 | `crates/datazen-ui/src/ui/theme.rs` | 组件源码内不再出现 `oklcha(` 字面量，色值全经 `kit(dark)` |
+| T0-02 | ☐ | 文本输入归一：`ui/field.rs` 收敛到 kit `TextInput`（label/hint/error 态） | `crates/datazen-ui/src/ui/field.rs` | 错误态出现时字段高度不跳变 |
+| T0-03 | ☐ | i18n：zh-CN 表 → `t()` 运行时（2,940 处 key / 2,222 唯一） | `crates/datazen-ui/src/i18n.rs` | 缺键回显 key 且不 panic |
+| T0-04 | ☐ | 图标接 `Kit::glyph`（check/chevron/close/copy/search/lock/eye…） | `crates/datazen-ui/src/icons.rs` | 同一语义不再有两套 SVG |
+| T0-05 | ☐ | Dialog 基座：封装 kit `Dialog`（scrim/标题/关闭/页脚槽/Esc/焦点归还） | `crates/datazen-ui/src/ui/dialog.rs` | 960×640 内完整可见，Esc 关闭，焦点归还 |
+| T0-06 | ☐ | Select：封装 kit `Select`（popup list、键盘上下、placeholder、禁用） | `crates/datazen-ui/src/ui/select.rs` | 键盘选中与鼠标选中的结果一致 |
+| T0-07 | ☐ | Menu：封装 kit `Menu` / `context_menu`（右侧 [0,0] 锚定、边缘翻转） | `crates/datazen-ui/src/ui/menu.rs` | 视口边缘不裁切 |
+| T0-08 | ☐ | 开关类：`Checkbox` / `Switch` / `RadioGroup` 封装 | `crates/datazen-ui/src/ui/toggle.rs` | 焦点环可见，整行可点 |
+| T0-09 | ☐ | Table / Tree 采用 kit（`Table` + `Tree`/`FileTree`） | `crates/datazen-ui/src/data_grid/`、`crates/datazen-ui/src/ui/tree.rs` | 1 万行滚动帧率不退化 |
+| T0-10 | ☐ | Toast / Tooltip / HoverCard | `crates/datazen-ui/src/ui/overlay.rs` | 与 kit 动画时长一致 |
+| T0-11 | ☐ | kit 缺失件：Slider、CopyableError、ErrorBanner、JsonViewer/BinaryViewer、PathInput、TemporalValueInput、虚拟树行算术 | `crates/datazen-ui/src/ui/*.rs` | 每件一条几何/行为断言 |
+| T0-12 | ☐ | 基座几何回归：每组件 960×640 + 1440×816 | `crates/datazen-ui/src/tests/components.rs` | 越界节点为 0 |
 
-| # | task | 落点 | 验收 |
-| --: | --- | --- | --- |
-| T0-01 | Button（primary/secondary/ghost/danger × size × icon × disabled × loading） | `crates/datazen-ui/src/ui/button.rs` | 已落地 `d91ed3001`：四变体共用 36pt 高与同一文字基线，`the_button_variants_keep_one_height_and_baseline` 覆盖 |
-| T0-02 | Spinner（小/中，tone，可 label） | `crates/datazen-ui/src/ui/spinner.rs` | 动画帧不改变占位矩形 |
-| T0-03 | 图标集对齐 lucide 实际用例 | `crates/datazen-ui/src/icons.rs` | 缺失清单清零，未用图标删除 |
-| T0-04 | CopyableError + 复制反馈定时 | `crates/datazen-ui/src/ui/copyable.rs` | 复制后 1.5s 复位 |
-| T0-05 | Dialog 基座（scrim/标题/关闭/页脚槽/Esc/焦点归还） | `crates/datazen-ui/src/ui/dialog.rs` | 960×640 内完整可见，Esc 关闭 |
-| T0-06 | Select（popup list、键盘上下、labels、无匹配） | `crates/datazen-ui/src/ui/select.rs` | 键盘选中与鼠标一致 |
-| T0-07 | Input（label/hint/error 态包 TextField） | `crates/datazen-ui/src/ui/input.rs` | 错误态高度不跳变 |
-| T0-08 | ErrorBanner（variant） | `crates/datazen-ui/src/ui/error_banner.rs` | 长文本换行不越界 |
-| T0-09 | Checkbox + Radio | `crates/datazen-ui/src/ui/toggle.rs` | 焦点环与点击命中区 |
-| T0-10 | Badge + Divider + Label | `crates/datazen-ui/src/ui/badge.rs` | 主题色取自 `tok::theme` |
-| T0-11 | ToolbarShell + ToolbarButton | `crates/datazen-ui/src/ui/toolbar.rs` | 窄窗换行 |
-| T0-12 | Tabs（受控 tab + 渲染回调） | `crates/datazen-ui/src/ui/tabs.rs` | 选中态与键位 |
-| T0-13 | ConfirmDialog + ResultMessageDialog + LimitationsDialog | `crates/datazen-ui/src/ui/confirm.rs` | 三者共用 Dialog 基座 |
-| T0-14 | Slider | `crates/datazen-ui/src/ui/slider.rs` | 拖拽到两端取值 |
-| T0-15 | WebContextMenuHost（右键菜单宿主） | `crates/datazen-ui/src/ui/context_menu.rs` | 视口边缘翻转 |
-| T0-16 | i18n：zh-CN 表 → `t()` 运行时（2,940 处 key / 2,222 唯一） | `crates/datazen-ui/src/i18n.rs` | 缺键回显 key 且不 panic |
-| T0-17 | PathInput（路径补全 + PathPicker 回调） | `crates/datazen-ui/src/ui/path_input.rs` | 6 个调用点的键位 |
-| T0-18 | TemporalValueInput | `crates/datazen-ui/src/ui/temporal.rs` | 日期/时间/日期时间三型 |
-| T0-19 | JsonViewer + BinaryViewer（hex 行） | `crates/datazen-ui/src/ui/viewers.rs` | 大 payload 不爆栈 |
-| T0-20 | VirtualTree + 树行算术（TREE_TOP_LEVEL/effectiveExpanded/searchedRowLevels/ariaLevelOf/indentOf） | `crates/datazen-ui/src/ui/tree.rs` | 1 万行滚动帧率与展开状态 |
-| T0-21 | `cn()` 审计（257 处）确认在 Rune 侧无需对应物 | 文档 + `ui/theme.rs` | 逐处给出等价 token 或删除理由 |
-| T0-22 | 基座回归：每组件 960×640 + 1440×816 几何断言 | `crates/datazen-ui/src/tests/components.rs` | 越界节点为 0 |
-
-Phase 0 合计约 22 个工作日。它做完之前不碰 §4 的台账任务，否则每个页面都会手搓一遍组件。
+Phase 0 合计约 12 个工作日。它做完之前不碰 §4 的台账任务，否则每个页面都会再手搓一遍组件。
 
 ## 4. 逐文件任务台账
 
