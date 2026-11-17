@@ -89,3 +89,4 @@ mod overlay_audit;
 mod overlay_retest;
 // Slider and PathInput base controls (T0-11).
 mod widgets;
+mod widgets_audit_t0_11;
