@@ -4,6 +4,7 @@
 
 use super::*;
 
+use crate::i18n::t;
 use crate::state_def::AppState;
 use crate::ui::dialog::Dialog;
 use crate::ui::kit::kit;
@@ -90,7 +91,7 @@ fn import_dialog(state: &AppState, theme: tok::Theme, dark: bool) -> Dialog {
         .body_pad((20.0, 20.0))
         .child(connections::import_dialog_body(state, theme))
         .footer(
-            Button::new("取消")
+            Button::new(t("common.cancel"))
                 .variant(ButtonVariant::Ghost)
                 .control_size(ControlSize::ExtraLarge)
                 .on_press(|state: &mut AppState| state.close_import_dialog())
@@ -98,7 +99,7 @@ fn import_dialog(state: &AppState, theme: tok::Theme, dark: bool) -> Dialog {
                 .key("dialog-cancel"),
         )
         .footer(
-            Button::new("导入连接")
+            Button::new(t("common.importConnections"))
                 .variant(ButtonVariant::Contrast)
                 .control_size(ControlSize::ExtraLarge)
                 .on_press(|state: &mut AppState| state.submit_connections_import())
@@ -124,7 +125,7 @@ fn connection_dialog(state: &AppState, theme: tok::Theme, dark: bool) -> Dialog 
         .sidebar(connection_type_sidebar(state, theme, dark))
         .child(connections::connection_form_fields(state, theme))
         .footer(
-            Button::new("测试连接")
+            Button::new(t("newConn.testConnection"))
                 .variant(ButtonVariant::Neutral)
                 .control_size(ControlSize::ExtraLarge)
                 // The connection probe lands with the A2 form port; until then the
@@ -134,7 +135,7 @@ fn connection_dialog(state: &AppState, theme: tok::Theme, dark: bool) -> Dialog 
                 .key("connection-test"),
         )
         .footer(
-            Button::new("取消")
+            Button::new(t("common.cancel"))
                 .variant(ButtonVariant::Neutral)
                 .control_size(ControlSize::ExtraLarge)
                 .on_press(|state: &mut AppState| state.close_connection_dialog())
@@ -142,7 +143,7 @@ fn connection_dialog(state: &AppState, theme: tok::Theme, dark: bool) -> Dialog 
                 .key("dialog-cancel"),
         )
         .footer(
-            Button::new("保存")
+            Button::new(t("common.save"))
                 .variant(ButtonVariant::Contrast)
                 .control_size(ControlSize::ExtraLarge)
                 .on_press(|state: &mut AppState| state.save_connection_form())
