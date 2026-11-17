@@ -6,9 +6,10 @@
 use super::*;
 
 use crate::state_def::AppState;
-use crate::ui::button::{Button, ButtonVariant, BUTTON_LG};
+use crate::ui::kit::kit;
 use rune::tok::{self, type_};
 use rune::{col, oklch, oklcha, row, text, Color, El, ScrollSpec, TextStyle};
+use rune_kit::{Button, ButtonVariant, ControlSize};
 
 /// The floating layer for whatever dialog is open — the import dialog first
 /// (the React share dialog opens at most one), else the connection form.
@@ -114,18 +115,20 @@ fn import_dialog_layer(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .gap(8.0)
         .border(1.0, theme.separator)
         .child(
-            Button::new("dialog-cancel", "取消")
+            Button::new("取消")
                 .variant(ButtonVariant::Ghost)
-                .height(BUTTON_LG)
+                .control_size(ControlSize::ExtraLarge)
                 .on_press(|state: &mut AppState| state.close_import_dialog())
-                .build(theme, dark),
+                .build(kit(dark))
+                .key("dialog-cancel"),
         )
         .child(
-            Button::new("import-confirm", "导入连接")
-                .variant(ButtonVariant::Primary)
-                .height(BUTTON_LG)
+            Button::new("导入连接")
+                .variant(ButtonVariant::Contrast)
+                .control_size(ControlSize::ExtraLarge)
                 .on_press(|state: &mut AppState| state.submit_connections_import())
-                .build(theme, dark),
+                .build(kit(dark))
+                .key("import-confirm"),
         );
 
     let panel = col()
@@ -211,27 +214,30 @@ fn connection_dialog_layer(state: &AppState, theme: tok::Theme, dark: bool) -> E
         .gap(8.0)
         .border(1.0, theme.separator)
         .child(
-            Button::new("connection-test", "测试连接")
-                .variant(ButtonVariant::Secondary)
-                .height(BUTTON_LG)
+            Button::new("测试连接")
+                .variant(ButtonVariant::Neutral)
+                .control_size(ControlSize::ExtraLarge)
                 // The connection probe lands with the A2 form port; until then the
                 // action keeps its place and its button role, exactly as before.
                 .on_press(|_state: &mut AppState| {})
-                .build(theme, dark),
+                .build(kit(dark))
+                .key("connection-test"),
         )
         .child(
-            Button::new("dialog-cancel", "取消")
-                .variant(ButtonVariant::Secondary)
-                .height(BUTTON_LG)
+            Button::new("取消")
+                .variant(ButtonVariant::Neutral)
+                .control_size(ControlSize::ExtraLarge)
                 .on_press(|state: &mut AppState| state.close_connection_dialog())
-                .build(theme, dark),
+                .build(kit(dark))
+                .key("dialog-cancel"),
         )
         .child(
-            Button::new("connection-save", "保存")
-                .variant(ButtonVariant::Primary)
-                .height(BUTTON_LG)
+            Button::new("保存")
+                .variant(ButtonVariant::Contrast)
+                .control_size(ControlSize::ExtraLarge)
                 .on_press(|state: &mut AppState| state.save_connection_form())
-                .build(theme, dark),
+                .build(kit(dark))
+                .key("connection-save"),
         );
 
     let right = col()

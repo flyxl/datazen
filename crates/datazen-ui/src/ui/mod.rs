@@ -4,7 +4,7 @@
 //! views (for example the connection navigator) compose consistent controls
 //! instead of ad-hoc styling.
 
-pub(crate) mod button;
 pub(crate) mod field;
+pub(crate) mod kit;
 pub(crate) mod nav;
 pub(crate) mod theme;

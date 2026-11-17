@@ -67,6 +67,9 @@ datazen-driver-vector = { path = "crates/drivers/vector" }
 # the wasm build of datazen-ui (H6). The web host ships WebGPU-only, the
 # same way rune's own web app does.
 rune = { path = "vendor/rune/crates/rune", default-features = false, features = ["accessibility", "embedded-fonts", "metal-backend", "svg"] }
+# The themed component set on top of rune: every control the migration adds
+# reads only `Kit` tokens, so one theme entry point restyles all of them.
+rune-kit = { path = "vendor/rune/crates/rune-kit", default-features = false }
 wasm-bindgen = "=0.2.129"
 thiserror = "1"
 async-trait = "0.1"
