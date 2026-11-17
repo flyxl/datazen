@@ -622,7 +622,10 @@ fn scroll_view(state: &ScrollState, _cx: &mut rune::Cx<ScrollState>) -> rune::El
 #[test]
 fn reopening_a_scrolled_dialog_starts_at_the_top() {
     let mut runtime = Runtime::new(
-        ScrollState { open: true, epoch: 1 },
+        ScrollState {
+            open: true,
+            epoch: 1,
+        },
         scroll_view,
         (960.0, 640.0),
         Env {
@@ -918,5 +921,172 @@ fn reopening_a_dialog_bumps_its_generation() {
         runtime.state.import_dialog_epoch,
         import.wrapping_add(1),
         "reopening the import dialog bumps its generation"
+    );
+}
+
+#[test]
+fn both_dialogs_paint_the_half_opacity_black_scrim() {
+    let mut runtime = runtime();
+    runtime.frame(0.0);
+    press(&mut runtime, "connection-new");
+    for key in ["connection-dialog-scrim"] {
+        let scrim = fill(&runtime, key);
+        assert!(
+            (scrim.a - 0.5).abs() <= 0.001,
+            "{key} is half opaque, not {}: {scrim:?}",
+            scrim.a
+        );
+        assert!(
+            scrim.r.abs() <= 1e-3 && scrim.g.abs() <= 1e-3 && scrim.b.abs() <= 1e-3,
+            "{key} is pure black: {scrim:?}"
+        );
+    }
+    escape(&mut runtime);
+    press(&mut runtime, "import-connections");
+    let scrim = fill(&runtime, "import-dialog-scrim");
+    assert!(
+        (scrim.a - 0.5).abs() <= 0.001,
+        "the import scrim is half opaque, not {}: {scrim:?}",
+        scrim.a
+    );
+    assert!(
+        scrim.r.abs() <= 1e-3 && scrim.g.abs() <= 1e-3 && scrim.b.abs() <= 1e-3,
+        "the import scrim is pure black: {scrim:?}"
+    );
+}
+
+#[test]
+fn reopening_stamps_a_new_content_generation_but_keeps_the_body_key() {
+    let mut runtime = Runtime::new(
+        ScrollState {
+            open: true,
+            epoch: 1,
+        },
+        scroll_view,
+        (960.0, 640.0),
+        Env {
+            system_dark: true,
+            scale: 1.0,
+        },
+    );
+    runtime.frame(0.0);
+    assert!(
+        runtime.find("probe-scroll-content-1").is_some(),
+        "the first open stamps content-1"
+    );
+    assert!(
+        runtime.find("probe-scroll-body").is_some(),
+        "the documented body key is stable"
+    );
+    let before = rect(&runtime, "probe-scroll-content")[1];
+    let (bx, by) = runtime.find("probe-scroll-body").expect("the body");
+    runtime.wheel(bx, by, -240.0);
+    runtime.frame(0.0);
+    runtime.frame(0.0);
+    let scrolled = rect(&runtime, "probe-scroll-content")[1];
+    assert!(scrolled < before, "the wheel moved the body");
+
+    escape(&mut runtime);
+    assert!(runtime.find("probe-scroll-content-1").is_none());
+    for _ in 0..5 {
+        runtime.frame(0.0);
+    }
+    runtime.update(|state, _| state.open());
+    runtime.frame(0.0);
+    runtime.frame(0.0);
+    assert!(
+        runtime.find("probe-scroll-content-2").is_some(),
+        "the second open stamps content-2"
+    );
+    assert!(
+        runtime.find("probe-scroll-content-1").is_none(),
+        "the old generation is gone"
+    );
+    assert!(
+        runtime.find("probe-scroll-body").is_some(),
+        "the documented body key still finds the body"
+    );
+    assert_eq!(
+        rect(&runtime, "probe-scroll-content")[1],
+        before,
+        "the new generation starts at the top"
+    );
+}
+
+#[test]
+fn twenty_opens_do_not_accumulate_dialog_elements() {
+    let mut runtime = runtime();
+    runtime.frame(0.0);
+    press(&mut runtime, "connection-new");
+    runtime.settle_all();
+    let element_count = runtime.elements().len();
+    for _ in 1..20 {
+        escape(&mut runtime);
+        press(&mut runtime, "connection-new");
+        runtime.settle_all();
+        assert_eq!(
+            runtime.elements().len(),
+            element_count,
+            "the element tree does not grow with the open generation"
+        );
+    }
+    assert_eq!(
+        runtime.state.connection_dialog_epoch, 20,
+        "every open bumped the generation"
+    );
+    let content_keys: Vec<String> = runtime
+        .elements()
+        .into_iter()
+        .filter_map(|element| element.key)
+        .filter(|key| key.starts_with("connection-dialog-content-"))
+        .collect();
+    assert_eq!(
+        content_keys,
+        vec!["connection-dialog-content-20".to_string()],
+        "exactly one content generation is mounted"
+    );
+}
+
+#[test]
+fn the_panel_paints_exactly_the_kit_overlay_layers() {
+    let kit = crate::ui::kit::kit(true);
+    let overlay = kit.elevation.overlay.clone();
+    let mut runtime = runtime();
+    runtime.frame(0.0);
+    press(&mut runtime, "connection-new");
+    runtime.frame(0.0);
+    let pose = runtime
+        .presented_pose("connection-dialog")
+        .expect("the panel has presented visuals");
+    assert_eq!(
+        pose.shadows(),
+        overlay.as_slice(),
+        "the panel paints the kit's overlay elevation, not a hand-rolled shadow"
+    );
+    assert_eq!(pose.shadows().len(), 2, "the overlay is a drop plus a ring");
+}
+
+#[test]
+fn an_open_dialog_keeps_typed_fields_across_an_epoch_rebuild() {
+    let mut runtime = runtime();
+    runtime.frame(0.0);
+    press(&mut runtime, "connection-new");
+    runtime.settle_all();
+    runtime.frame(0.0);
+    press(&mut runtime, "connection-name-input");
+    runtime.frame(0.0);
+    runtime.paste("epoch-kept");
+    runtime.frame(0.0);
+    assert_eq!(runtime.state.connection_name.text, "epoch-kept");
+
+    runtime.update(|state, _| {
+        state.connection_dialog_epoch = state.connection_dialog_epoch.wrapping_add(1);
+    });
+    runtime.frame(0.0);
+    runtime.frame(0.0);
+    assert!(runtime.state.connection_dialog_open);
+    assert_eq!(
+        runtime.state.connection_name.text, "epoch-kept",
+        "the field value lives in AppState, not in the body wrapper"
     );
 }
