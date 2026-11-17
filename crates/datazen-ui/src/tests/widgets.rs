@@ -1,6 +1,4 @@
-use super::*;
-
-use rune::{Cx, Drag, El, Env, Key, KeyEvent, Mods, Phase, Runtime, TextEdit, col, el, row};
+use rune::{Cx, El, Env, Key, KeyEvent, Mods, Runtime, TextEdit, col};
 
 fn env() -> Env {
     Env {

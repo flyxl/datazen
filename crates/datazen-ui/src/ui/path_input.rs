@@ -144,7 +144,7 @@ impl<'a, S: 'static> PathInput<'a, S, HasBrowse<S>> {
             field = field.label(label.clone());
         }
 
-        let mut field_el = if self.disabled {
+        let field_el = if self.disabled {
             // Render as a non-interactive display so it is unfocusable.
             let display = if self.edit.text.is_empty() {
                 self.placeholder.clone().unwrap_or_default()
