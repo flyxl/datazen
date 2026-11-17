@@ -107,3 +107,6 @@ mod field_kit_audit;
 // Slider and PathInput base controls (T0-11).
 mod widgets;
 mod widgets_audit_t0_11;
+
+// T0-12 base geometry regression: every base inside the window, siblings apart.
+mod base_geometry;
