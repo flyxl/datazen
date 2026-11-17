@@ -235,7 +235,32 @@ fn slider_disabled_reports_nothing_and_not_focusable() {
 
 #[test]
 fn slider_thumb_center_sits_at_reported_fraction() {
-    // With fixed width, thumb center should be at track.x + ratio*track.w (±1pt).
+    // Thumb center must sit at track.x + ratio*track.w (±1pt) for ratios 0, 0.25, 0.5, 1.
+    // Track fills available width (400 window - 2*20 padding = 360).
+    fn assert_thumb(rt: &Runtime<SliderProbe>, ratio: f64, label: &str) -> (rune::ElementInfo, rune::ElementInfo, f32) {
+        let track = element(rt, "probe-slider");
+        let thumb = element(rt, "probe-slider-thumb");
+        assert!(
+            thumb.rect[3] > 0.0,
+            "{label}: thumb must have non-zero height, got {:?}",
+            thumb.rect
+        );
+        let expected_center = track.rect[0] + ratio as f32 * track.rect[2];
+        let thumb_center = thumb.rect[0] + thumb.rect[2] / 2.0;
+        let diff = (thumb_center - expected_center).abs();
+        assert!(
+            diff <= 1.0,
+            "{label}: thumb center {thumb_center} within 1pt of {expected_center} (diff {diff}, ratio {ratio}, value {}, track={:?} thumb={:?})",
+            rt.state.value,
+            track.rect,
+            thumb.rect
+        );
+        (track, thumb, diff)
+    }
+
+    let mut geoms: Vec<(String, [f32; 4], [f32; 4], f32, f64)> = Vec::new();
+
+    // Ratio 0.5 (initial)
     let mut rt = Runtime::new(
         SliderProbe { value: 50.0, changes: Vec::new() },
         slider_view,
@@ -243,34 +268,48 @@ fn slider_thumb_center_sits_at_reported_fraction() {
         env(),
     );
     rt.frame(0.0);
-    let track = element(&rt, "probe-slider");
-    let thumb = element(&rt, "probe-slider-thumb");
-    let expected_center = track.rect[0] + 0.5 * track.rect[2];
-    let thumb_center = thumb.rect[0] + thumb.rect[2] / 2.0;
-    assert!(
-        (thumb_center - expected_center).abs() <= 1.0,
-        "thumb center {thumb_center} should be within 1pt of {expected_center} (track {:?}, thumb {:?})",
-        track.rect,
-        thumb.rect
-    );
+    let (t, th, d) = assert_thumb(&rt, 0.5, "ratio 0.5");
+    geoms.push(("0.5".into(), t.rect, th.rect, d, 0.5));
 
-    // Move to 25% and verify after rebuild.
-    let x = track.rect[0] + track.rect[2] * 0.25;
-    let y = track.rect[1] + track.rect[3] / 2.0;
-    rt.pointer_down(x, y);
-    rt.pointer_up(x, y);
-    rt.frame(1.0 / 60.0);
-    rt.frame(1.0 / 60.0);
+    // Ratio 0.25
     let track = element(&rt, "probe-slider");
-    let thumb = element(&rt, "probe-slider-thumb");
-    let ratio = rt.state.value / 100.0;
-    let expected_center = track.rect[0] + ratio as f32 * track.rect[2];
-    let thumb_center = thumb.rect[0] + thumb.rect[2] / 2.0;
-    assert!(
-        (thumb_center - expected_center).abs() <= 1.0,
-        "after move: thumb center {thumb_center} within 1pt of {expected_center} (ratio {ratio}, value {}, track={:?} thumb={:?})",
-        rt.state.value, track.rect, thumb.rect
-    );
+    let y = track.rect[1] + track.rect[3] / 2.0;
+    rt.pointer_down(track.rect[0] + track.rect[2] * 0.25, y);
+    rt.pointer_up(track.rect[0] + track.rect[2] * 0.25, y);
+    rt.frame(1.0 / 60.0);
+    rt.frame(1.0 / 60.0);
+    let (t, th, d) = assert_thumb(&rt, 0.25, "ratio 0.25");
+    geoms.push(("0.25".into(), t.rect, th.rect, d, 0.25));
+
+    // Ratio 0
+    let track = element(&rt, "probe-slider");
+    let y = track.rect[1] + track.rect[3] / 2.0;
+    rt.pointer_down(track.rect[0], y);
+    rt.pointer_up(track.rect[0], y);
+    rt.frame(1.0 / 60.0);
+    rt.frame(1.0 / 60.0);
+    let (t, th, d) = assert_thumb(&rt, 0.0, "ratio 0");
+    geoms.push(("0".into(), t.rect, th.rect, d, 0.0));
+
+    // Ratio 1
+    let track = element(&rt, "probe-slider");
+    let y = track.rect[1] + track.rect[3] / 2.0;
+    rt.pointer_down(track.rect[0] + track.rect[2], y);
+    rt.pointer_up(track.rect[0] + track.rect[2], y);
+    rt.frame(1.0 / 60.0);
+    rt.frame(1.0 / 60.0);
+    let (t, th, d) = assert_thumb(&rt, 1.0, "ratio 1");
+    geoms.push(("1".into(), t.rect, th.rect, d, 1.0));
+
+    // Print geometry for report (visible with --nocapture)
+    for (label, tr, th, diff, ratio) in &geoms {
+        let expected = tr[0] + *ratio as f32 * tr[2];
+        let center = th[0] + th[2] / 2.0;
+        eprintln!(
+            "GEOM ratio={label} track=[{:.2},{:.2},{:.2},{:.2}] thumb=[{:.2},{:.2},{:.2},{:.2}] expected_center={expected:.2} thumb_center={center:.2} diff={diff:.2}",
+            tr[0], tr[1], tr[2], tr[3], th[0], th[1], th[2], th[3]
+        );
+    }
 }
 
 // ---- PathInput ----------------------------------------------------------------------------

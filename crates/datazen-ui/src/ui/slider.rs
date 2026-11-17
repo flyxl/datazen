@@ -141,96 +141,57 @@ impl<S: 'static> Slider<S> {
         let (fill_el, thumb_el) = if let Some(w) = self.width {
             let fill_w = (ratio as f32 * w).clamp(0.0, w);
             let thumb_left = ratio as f32 * w - thumb_size / 2.0;
-            // Fill bar sized to fraction.
             let fill = el()
                 .key(format!("{}-fill", self.key))
                 .absolute(0.0, track_y)
-                .w(w)
+                .w(fill_w.max(0.0))
+                .h(track_h)
+                .radius(track_radius)
+                .fill(c.bg_accent);
+            let thumb = el()
+                .key(format!("{}-thumb", self.key))
+                .absolute(thumb_left, thumb_y)
+                .size(thumb_size, thumb_size)
+                .radius(thumb_size / 2.0)
+                .fill(c.knob)
+                .border(1.0, c.border_strong);
+            (fill, thumb)
+        } else {
+            let fill = el()
+                .key(format!("{}-fill", self.key))
+                .absolute(0.0, track_y)
+                .w_full()
                 .h(track_h)
                 .child(
                     row()
-                        .w(w)
+                        .w_full()
                         .h(track_h)
                         .child(
                             el()
-                                .w(fill_w.max(0.0))
+                                .grow(ratio.max(0.0) as f32)
+                                .min_w(0.0)
                                 .h(track_h)
                                 .radius(track_radius)
                                 .fill(c.bg_accent),
-                        ),
+                        )
+                        .child(el().grow((1.0 - ratio).max(0.0) as f32).min_w(0.0).h(track_h)),
                 );
-            // Keyed thumb element: positioned so its center sits at ratio*w.
             let thumb = el()
                 .absolute(0.0, thumb_y)
-                .w(w)
+                .w_full()
                 .h(thumb_size)
                 .child(
                     row()
-                        .w(w)
+                        .w_full()
                         .h(thumb_size)
-                        .child(el().grow(ratio as f32).min_w(0.0).h(thumb_size))
+                        .child(el().grow(ratio.max(0.0) as f32).min_w(0.0).h(thumb_size))
                         .child(
                             el()
                                 .key(format!("{}-thumb", self.key))
                                 .w(0.0)
                                 .h(thumb_size),
                         )
-                        .child(el().grow((1.0 - ratio) as f32).min_w(0.0).h(thumb_size)),
-                )
-                .child(
-                    row()
-                        .absolute(0.0, 0.0)
-                        .w(w)
-                        .h(thumb_size)
-                        .child(el().w(thumb_left.max(0.0)).h(thumb_size))
-                        .child(
-                            el()
-                                .size(thumb_size, thumb_size)
-                                .radius(thumb_size / 2.0)
-                                .fill(c.knob)
-                                .border(1.0, c.border_strong),
-                        ),
-                );
-            (fill, thumb)
-        } else {
-            // Fallback: travel-based positioning using grow spacers.
-            let fill = el()
-                .key(format!("{}-fill", self.key))
-                .absolute(0.0, track_y)
-                .w_full()
-                .h(track_h)
-                .child(
-                    row()
-                        .w_full()
-                        .h(track_h)
-                        .child(
-                            el()
-                                .grow(ratio as f32)
-                                .min_w(0.0)
-                                .h(track_h)
-                                .radius(track_radius)
-                                .fill(c.bg_accent),
-                        )
-                        .child(el().grow((1.0 - ratio) as f32).min_w(0.0).h(track_h)),
-                );
-            let thumb = el()
-                .key(format!("{}-thumb", self.key))
-                .absolute(0.0, thumb_y)
-                .w_full()
-                .h(thumb_size)
-                .child(
-                    row()
-                        .w_full()
-                        .h(thumb_size)
-                        .child(el().grow(ratio as f32).min_w(0.0).h(thumb_size))
-                        .child(
-                            el()
-                                .size(thumb_size, thumb_size)
-                                .radius(thumb_size / 2.0)
-                                .fill(c.knob)
-                                .border(1.0, c.border_strong),
-                        )
-                        .child(el().grow((1.0 - ratio) as f32).min_w(0.0).h(thumb_size)),
+                        .child(el().grow((1.0 - ratio).max(0.0) as f32).min_w(0.0).h(thumb_size)),
                 );
             (fill, thumb)
         };
