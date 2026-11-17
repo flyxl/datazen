@@ -5,6 +5,14 @@
 //! lives in `src/icons.rs`: an inline `Icon { … }` at a call site is a second definition, and two
 //! registry constants with the same body are the same icon named twice. This guard reads the
 //! source text (the registry is plain statics) and fails with the offending files and lines.
+//!
+//! Coverage: the scan walks `crates/datazen-ui/src/**/*.rs` and skips `src/icons.rs` and
+//! `src/tests/`. It sees definitions written as Rust source — `Icon {` (rustfmt's shape) or
+//! `Icon{` — including one inside a single-line function body. It does not see raw SVG strings
+//! held outside an `Icon` literal, `include_str!`/`include_bytes!` payloads, type aliases for
+//! `Icon`, or icons synthesized by a macro; those are outside the text-level contract this guard
+//! enforces. `crates/datazen-rune-host/src/tray.rs` is a different crate and its `TrayIcon` is an
+//! OS tray pixel buffer, not a chrome SVG — a deliberate exception.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -20,6 +28,68 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
             out.push(path);
         }
     }
+}
+
+/// Offsets in `line` where an `Icon {`/`Icon{` literal starts a definition, not a return type.
+fn inline_icon_offsets(line: &str) -> Vec<usize> {
+    let mut offsets = Vec::new();
+    let mut from = 0;
+    while let Some(rel) = line[from..].find("Icon") {
+        let at = from + rel;
+        let rest = &line[at + "Icon".len()..];
+        if rest.trim_start().starts_with('{') && !is_type_position(line, at) {
+            offsets.push(at);
+        }
+        from = at + "Icon".len();
+    }
+    offsets
+}
+
+/// True when the `Icon` at `at` is a return type (`-> Icon`, `-> &'static rune::Icon`, …) or the
+/// head of an `impl Icon` block, i.e. a mention of the type rather than a definition.
+fn is_type_position(line: &str, at: usize) -> bool {
+    let prefix = line[..at].trim_end();
+    if prefix.ends_with("impl") {
+        return true;
+    }
+    let Some(arrow) = prefix.rfind("->") else {
+        return false;
+    };
+    let ret = line[arrow + 2..at + "Icon".len()].trim();
+    let ret = ret.strip_prefix('&').map(str::trim).unwrap_or(ret);
+    let ret = match ret.strip_prefix('\'') {
+        Some(after) => match after.split_once(char::is_whitespace) {
+            Some((_, type_name)) => type_name.trim(),
+            None => ret,
+        },
+        None => ret,
+    };
+    let ret = ret.strip_prefix("rune::").map(str::trim).unwrap_or(ret);
+    ret == "Icon"
+}
+
+/// Lines under `dir` that define an icon inline, formatted `path:line: source`. `skip` paths are
+/// left out (the registry itself and the test tree in production use).
+fn inline_icon_violations(dir: &Path, skip: &[&Path]) -> Vec<String> {
+    let mut files = Vec::new();
+    collect_rs_files(dir, &mut files);
+    let mut violations = Vec::new();
+    for path in files {
+        if skip.iter().any(|skipped| path.starts_with(skipped)) {
+            continue;
+        }
+        let content = fs::read_to_string(&path).expect("read rust source");
+        for (idx, line) in content.lines().enumerate() {
+            if line.trim_start().starts_with("//") {
+                continue;
+            }
+            if inline_icon_offsets(line).is_empty() {
+                continue;
+            }
+            violations.push(format!("{}:{}: {}", path.display(), idx + 1, line.trim()));
+        }
+    }
+    violations
 }
 
 /// One `ICON_*` static: its name, its declared view size and its SVG body.
@@ -74,10 +144,9 @@ fn registry_icons(source: &str) -> Vec<RegistryIcon> {
 
 /// The contents of a leading `"…"` literal, honouring `\"` and `\\`.
 fn read_quoted(text: &str) -> String {
-    let mut chars = text.chars();
     let mut out = String::new();
     let mut escaped = false;
-    for c in chars.by_ref() {
+    for c in text.chars() {
         if escaped {
             out.push(c);
             escaped = false;
@@ -95,44 +164,63 @@ fn read_quoted(text: &str) -> String {
 #[test]
 fn no_inline_icon_definitions_outside_the_registry() {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let mut files = Vec::new();
-    collect_rs_files(&src, &mut files);
-
     let registry = src.join("icons.rs");
     let tests_dir = src.join("tests");
-    let mut violations = Vec::new();
-
-    for path in files {
-        if path == registry || path.starts_with(&tests_dir) {
-            continue;
-        }
-        let content = fs::read_to_string(&path).expect("read rust source");
-        for (idx, line) in content.lines().enumerate() {
-            let trimmed = line.trim_start();
-            if trimmed.starts_with("//") {
-                continue;
-            }
-            let Some(at) = line.find("Icon {") else {
-                continue;
-            };
-            // `-> Icon {` opens a function body, it does not define an icon.
-            if line[..at].trim_end().ends_with("->") {
-                continue;
-            }
-            let rel = path
-                .strip_prefix(&src)
-                .unwrap_or(&path)
-                .display()
-                .to_string();
-            violations.push(format!("src/{}:{}: {}", rel, idx + 1, line.trim()));
-        }
-    }
+    let violations = inline_icon_violations(&src, &[&registry, &tests_dir]);
 
     assert!(
         violations.is_empty(),
         "a chrome icon body may only live in src/icons.rs; move these inline definitions into \
          the registry and reference the constant:\n{}",
         violations.join("\n")
+    );
+}
+
+#[test]
+fn a_single_line_function_body_is_still_scanned() {
+    let dir = std::env::temp_dir().join(format!("datazen-icon-guard-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("create the probe directory");
+    let probe = dir.join("probe.rs");
+    fs::write(
+        &probe,
+        "fn probe() -> Icon { Icon { name: \"probe\", view: 24.0, body: \"<path d=\\\"M0 0\\\"/>\" } }\n",
+    )
+    .expect("write the probe source");
+
+    let violations = inline_icon_violations(&dir, &[]);
+    let _ = fs::remove_dir_all(&dir);
+
+    assert_eq!(
+        violations.len(),
+        1,
+        "an inline icon inside a single-line function body must be reported:\n{violations:#?}"
+    );
+    assert!(
+        violations[0].contains("probe.rs:1:"),
+        "the report names the probe file and line: {violations:#?}"
+    );
+}
+
+#[test]
+fn a_typed_icon_reference_is_not_a_definition() {
+    for line in [
+        "fn audit_ref() -> &'static rune::Icon { &crate::icons::ICON_X }",
+        "fn plain() -> Icon { crate::icons::ICON_X }",
+        "fn borrowed() -> &Icon { &crate::icons::ICON_X }",
+        "fn section(section: Section) -> &'static rune::Icon {",
+        "impl Icon {",
+    ] {
+        assert!(
+            inline_icon_offsets(line).is_empty(),
+            "a return type or impl head is not an inline definition: {line}"
+        );
+    }
+    let definition = "static PROBE: Icon = Icon{ name: \"probe\", view: 24.0, body: \"\" };";
+    assert_eq!(
+        inline_icon_offsets(definition),
+        vec![21],
+        "an unspaced `Icon{{` is a definition"
     );
 }
 
