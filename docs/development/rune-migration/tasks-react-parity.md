@@ -44,7 +44,7 @@
 | T0-07 | ☑ | Menu：封装 kit `Menu` / `context_menu`（右侧 [0,0] 锚定、边缘翻转） | `crates/datazen-ui/src/ui/menu.rs` | 视口边缘不裁切。已落地 `dd65b96d7` + `c5dd84922`（子菜单、icon/shortcut/badge/description/checked/danger 透传、`close_on_select`），tester 复测通过；长菜单超窗为 kit 限制，记 `#[ignore]` |
 | T0-08 | ☑ | 开关类：`Checkbox` / `Switch` / `RadioGroup` 封装 | `crates/datazen-ui/src/ui/toggle.rs` | 焦点环可见，整行可点。已落地 `59c783199` + `af66e5148`（Checkbox 半选态），tester 判 TEST_PASSED |
 | T0-09 | ☐ | Table / Tree 采用 kit（`Table` + `Tree`/`FileTree`） | `crates/datazen-ui/src/data_grid/`、`crates/datazen-ui/src/ui/tree.rs` | 1 万行滚动帧率不退化 |
-| T0-10 | ☐ | Toast / Tooltip / HoverCard | `crates/datazen-ui/src/ui/overlay.rs` | 与 kit 动画时长一致。opencode coder 进行中（T0-10 轨 `feature/rune-overlay`） |
+| T0-10 | ☑ | Toast / Tooltip / HoverCard | `crates/datazen-ui/src/ui/toast.rs`、`ui/tooltip.rs` | 与 kit 动画时长一致。已落地 `271a95b48` + `86818558a`（`ToastHost` 持 `ToastStack` 走 `tick`，HoverCard 锚点贴合触发器），tester 复测 TEST_PASSED；`ToastHost` 尚无真实调用点，动效与帧时钟待接线 |
 | T0-11 | ☐ | kit 缺失件：Slider、CopyableError、ErrorBanner、JsonViewer/BinaryViewer、PathInput、TemporalValueInput、虚拟树行算术 | `crates/datazen-ui/src/ui/*.rs` | 每件一条几何/行为断言 |
 | T0-12 | ☐ | 基座几何回归：每组件 960×640 + 1440×816 | `crates/datazen-ui/src/tests/components.rs` | 越界节点为 0 |
 
