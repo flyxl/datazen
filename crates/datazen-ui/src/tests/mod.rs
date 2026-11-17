@@ -142,3 +142,6 @@ mod temporal_input;
 
 // T0-11 audit: independent probes for the temporal editor contract.
 mod temporal_input_audit;
+
+// T029: history components (entry card + filter bar).
+mod history_components;
