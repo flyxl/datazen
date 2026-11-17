@@ -531,3 +531,64 @@ fn the_text_field_component_keeps_the_requested_geometry() {
         assert!(field.rect[2] > 0.0, "{key}: width {}", field.rect[2]);
     }
 }
+
+#[test]
+fn the_button_variants_keep_one_height_and_baseline() {
+    // A dialog footer mixes a ghost/secondary cancel with a primary action. The
+    // component owns height, padding and ink, so all four variants land on one
+    // row and every label sits in the middle of its own box.
+    fn probe(_state: &AppState, _cx: &mut rune::Cx<AppState>) -> rune::El {
+        use crate::ui::button::{Button, ButtonVariant, BUTTON_LG};
+        let theme = rune::tok::theme(true);
+        let variants = [
+            ("probe-primary", ButtonVariant::Primary),
+            ("probe-secondary", ButtonVariant::Secondary),
+            ("probe-ghost", ButtonVariant::Ghost),
+            ("probe-danger", ButtonVariant::Danger),
+        ];
+        let mut row = rune::row().gap(8.0);
+        for (key, variant) in variants {
+            row = row.child(
+                Button::new(key, "保存")
+                    .variant(variant)
+                    .height(BUTTON_LG)
+                    .build(theme, true),
+            );
+        }
+        row
+    }
+    let env = Env {
+        system_dark: true,
+        scale: 1.0,
+    };
+    let mut rt = Runtime::new(AppState::default(), probe, (600.0, 120.0), env);
+    rt.frame(0.0);
+    let elements = rt.elements();
+    let mut top = None;
+    for key in ["probe-primary", "probe-secondary", "probe-ghost", "probe-danger"] {
+        let button = elements
+            .iter()
+            .find(|element| element.key.as_deref() == Some(key))
+            .unwrap_or_else(|| panic!("{key} is laid out"));
+        assert!(
+            (button.rect[3] - 36.0).abs() < 0.5,
+            "{key}: height {}, want 36",
+            button.rect[3]
+        );
+        assert!(button.rect[0] + button.rect[2] <= 600.5, "{key} hangs past the window");
+        match top {
+            None => top = Some(button.rect[1]),
+            Some(y) => assert!((button.rect[1] - y).abs() < 0.5, "{key} sits off the shared row"),
+        }
+        let ink = elements
+            .iter()
+            .find(|element| element.role == "text" && element.path.starts_with(&button.path))
+            .unwrap_or_else(|| panic!("{key} has a label"));
+        let box_middle = button.rect[1] + button.rect[3] / 2.0;
+        let ink_middle = ink.rect[1] + ink.rect[3] / 2.0;
+        assert!(
+            (box_middle - ink_middle).abs() < 0.6,
+            "{key}: label centre {ink_middle} vs box {box_middle}"
+        );
+    }
+}

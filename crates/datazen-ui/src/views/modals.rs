@@ -6,6 +6,7 @@
 use super::*;
 
 use crate::state_def::AppState;
+use crate::ui::button::{Button, ButtonVariant, BUTTON_LG};
 use rune::tok::{self, type_};
 use rune::{col, oklch, oklcha, row, text, Color, El, ScrollSpec, TextStyle};
 
@@ -14,7 +15,7 @@ use rune::{col, oklch, oklcha, row, text, Color, El, ScrollSpec, TextStyle};
 /// `None` mounts nothing and the window keeps its plain layout.
 pub(crate) fn modal_layer(state: &AppState, theme: tok::Theme, dark: bool) -> Option<El> {
     if state.import_dialog_open {
-        Some(import_dialog_layer(state, theme))
+        Some(import_dialog_layer(state, theme, dark))
     } else if state.connection_dialog_open {
         Some(connection_dialog_layer(state, theme, dark))
     } else {
@@ -41,14 +42,6 @@ fn dialog_layer(
 
 fn scrim() -> Color {
     oklcha(0.0, 0.0, 256.0, 0.5)
-}
-
-fn accent_fill(_theme: tok::Theme) -> Color {
-    oklcha(0.62, 0.17, 256.0, 1.0)
-}
-
-fn accent_hover_fill(_theme: tok::Theme) -> Color {
-    oklcha(0.58, 0.17, 256.0, 1.0)
 }
 
 /// Stable accent hue per engine id (aligned with connections home badges).
@@ -107,64 +100,8 @@ fn close_button(key: &str, theme: tok::Theme, close: impl Fn(&mut AppState) + 's
         .on_press(move |state: &mut AppState| close(state))
 }
 
-fn ghost_button(
-    key: &str,
-    label: &str,
-    theme: tok::Theme,
-    on_press: impl Fn(&mut AppState) + 'static,
-) -> El {
-    row()
-        .key(key.to_owned())
-        .h(36.0)
-        .px(14.0)
-        .center()
-        .radius(8.0)
-        .border(1.0, theme.card_border)
-        .fill(theme.card)
-        .hover(theme.hover)
-        .on_press(on_press)
-        .child(text(label).font(type_::LABEL).color(theme.text))
-}
-
-fn secondary_button(
-    key: &str,
-    label: &str,
-    theme: tok::Theme,
-    on_press: impl Fn(&mut AppState) + 'static,
-) -> El {
-    row()
-        .key(key.to_owned())
-        .h(36.0)
-        .px(14.0)
-        .center()
-        .radius(8.0)
-        .border(1.0, theme.card_border)
-        .fill(theme.card)
-        .hover(theme.hover)
-        .on_press(on_press)
-        .child(text(label).font(type_::LABEL).color(theme.text_secondary))
-}
-
-fn primary_button(
-    key: &str,
-    label: &str,
-    theme: tok::Theme,
-    on_press: impl Fn(&mut AppState) + 'static,
-) -> El {
-    row()
-        .key(key.to_owned())
-        .h(36.0)
-        .px(16.0)
-        .center()
-        .radius(8.0)
-        .fill(accent_fill(theme))
-        .hover(accent_hover_fill(theme))
-        .on_press(on_press)
-        .child(text(label).font(type_::LABEL).color(Color::WHITE))
-}
-
 /// Import dialog (React ConnectionShareDialog, import/file mode layout).
-fn import_dialog_layer(state: &AppState, theme: tok::Theme) -> El {
+fn import_dialog_layer(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let body = connections::import_dialog_body(state, theme);
 
     let footer = row()
@@ -176,17 +113,20 @@ fn import_dialog_layer(state: &AppState, theme: tok::Theme) -> El {
         .justify_end()
         .gap(8.0)
         .border(1.0, theme.separator)
-        .child(ghost_button("dialog-cancel", "取消", theme, |state: &mut AppState| {
-            state.close_import_dialog();
-        }))
-        .child(primary_button(
-            "import-confirm",
-            "导入连接",
-            theme,
-            |state: &mut AppState| {
-                state.submit_connections_import();
-            },
-        ));
+        .child(
+            Button::new("dialog-cancel", "取消")
+                .variant(ButtonVariant::Ghost)
+                .height(BUTTON_LG)
+                .on_press(|state: &mut AppState| state.close_import_dialog())
+                .build(theme, dark),
+        )
+        .child(
+            Button::new("import-confirm", "导入连接")
+                .variant(ButtonVariant::Primary)
+                .height(BUTTON_LG)
+                .on_press(|state: &mut AppState| state.submit_connections_import())
+                .build(theme, dark),
+        );
 
     let panel = col()
         .key("import-dialog")
@@ -270,23 +210,29 @@ fn connection_dialog_layer(state: &AppState, theme: tok::Theme, dark: bool) -> E
         .justify_end()
         .gap(8.0)
         .border(1.0, theme.separator)
-        .child(secondary_button(
-            "connection-test",
-            "测试连接",
-            theme,
-            |_state: &mut AppState| {},
-        ))
-        .child(secondary_button(
-            "dialog-cancel",
-            "取消",
-            theme,
-            |state: &mut AppState| {
-                state.close_connection_dialog();
-            },
-        ))
-        .child(primary_button("connection-save", "保存", theme, |state: &mut AppState| {
-            state.save_connection_form();
-        }));
+        .child(
+            Button::new("connection-test", "测试连接")
+                .variant(ButtonVariant::Secondary)
+                .height(BUTTON_LG)
+                // The connection probe lands with the A2 form port; until then the
+                // action keeps its place and its button role, exactly as before.
+                .on_press(|_state: &mut AppState| {})
+                .build(theme, dark),
+        )
+        .child(
+            Button::new("dialog-cancel", "取消")
+                .variant(ButtonVariant::Secondary)
+                .height(BUTTON_LG)
+                .on_press(|state: &mut AppState| state.close_connection_dialog())
+                .build(theme, dark),
+        )
+        .child(
+            Button::new("connection-save", "保存")
+                .variant(ButtonVariant::Primary)
+                .height(BUTTON_LG)
+                .on_press(|state: &mut AppState| state.save_connection_form())
+                .build(theme, dark),
+        );
 
     let right = col()
         .grow(1.0)
