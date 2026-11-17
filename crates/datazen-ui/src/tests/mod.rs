@@ -75,6 +75,8 @@ mod query_workspace;
 mod rail_modals;
 // Base kit primitives: select and the switch family.
 mod components;
+// T0-09 table base: geometry, sort, selection, keyboard, window fit.
+mod table;
 // Independent review coverage: select (T0-06) and checkbox/switch/radio (T0-09).
 mod choice_extra;
 // Menu and context-menu base.
