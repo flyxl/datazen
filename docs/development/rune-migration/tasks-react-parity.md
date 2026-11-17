@@ -36,7 +36,7 @@
 | --: | :-: | --- | --- | --- |
 | T0-00 | ☑ | kit 基座接入：workspace 依赖、`kit(dark)` 单例、对话框页脚改用 kit `Button` | `Cargo.toml`、`crates/datazen-ui/src/ui/kit.rs`、`crates/datazen-ui/src/views/modals.rs` | 已落地 `4054d0ada`：`gate: PASS`，页脚按钮 36pt、标签中心与盒中心差 0.00pt |
 | T0-01 | ☑ | Kit 主题贯通：`ui/theme.rs` 的 `tok::Theme` 与 `Kit::Palette` 合并，收敛 74 处 `oklch/oklcha` 硬编码 | `crates/datazen-ui/src/ui/theme.rs` | 组件源码内不再出现 `oklcha(` 字面量，色值全经 `kit(dark)`。已落地 `9490c10ae`（`ui/palette.rs` 集中语义色 + `tests/tokens.rs` 走查），tester 判 TEST_PASSED |
-| T0-02 | ☐ | 文本输入归一：`ui/field.rs` 收敛到 kit `TextInput`（label/hint/error 态） | `crates/datazen-ui/src/ui/field.rs` | 错误态出现时字段高度不跳变 |
+| T0-02 | ☑ | 文本输入归一：`ui/field.rs` 收敛到 kit `TextInput`（label/hint/error 态）。已落地 `e6e9a3a0f`（合流 `5acff13f3`；外框 padding 可聚焦、28/36pt 居中差 0.0pt、23 处生产链全带 `on_edit`），tester `rune-i18n-test` 判 TEST_PASSED（审计 `9db4e510e` + `c5cc56bf9`）；遗留 `centered_pad` 已无调用者、`settings_state::dark_theme()` 仅测试用 | `crates/datazen-ui/src/ui/field.rs` | 错误态出现时字段高度不跳变 |
 | T0-03 | `~` | i18n：zh-CN 表 → `t()` 运行时（2,940 处 key / 2,222 唯一）；基座 `740551ea4`+`91fed60bf`，连接视图接管 `cb8e3f2b0`+`ad766ba5c`+`da19183ad`（16 处 / 15 键；`views/` 余 12 条无等价键的缺口） | `crates/datazen-ui/src/i18n.rs`、`crates/datazen-ui/src/tests/i18n_usage.rs` | 缺键回显 key 且不 panic；`every_key_the_ui_asks_for_exists` + 调用点 pin 双守卫 |
 | T0-04 | ☐ | 图标接 `Kit::glyph`（check/chevron/close/copy/search/lock/eye…） | `crates/datazen-ui/src/icons.rs` | 同一语义不再有两套 SVG |
 | T0-05 | ☑ | Dialog 基座：封装 kit `Dialog`（scrim/标题/关闭/页脚槽/Esc/焦点归还） | `crates/datazen-ui/src/ui/dialog.rs` | 960×640 内完整可见，Esc 关闭，焦点归还。已落地 `9efb4a567` + `6ba7eedc6`（scrim 0.5、`<key>-content-<epoch>` 重置滚动、kit overlay 阴影、标题截断），tester 判 TEST_PASSED |
