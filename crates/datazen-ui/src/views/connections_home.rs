@@ -519,11 +519,7 @@ fn paging_row(state: &AppState, theme: tok::Theme, visible_count: usize, total: 
                 .center_y()
                 .radius(6.0)
                 .hover(theme.hover)
-                .label(if state.connections_show_all {
-                    "Show less"
-                } else {
-                    "Show all"
-                })
+                .label(show_all_label.clone())
                 .child(
                     text(show_all_label)
                         .font(type_::LABEL)
