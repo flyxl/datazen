@@ -8,7 +8,7 @@
 //! literal" rule here: later tracks move more strings over step by step, and a
 //! blanket ban would block work that is still in flight.
 
-use crate::i18n::{len, t};
+use crate::i18n::{has, len, t, ZH_CN};
 
 #[test]
 fn the_zh_cn_table_is_generated_and_populated() {
@@ -48,4 +48,74 @@ fn keys_taken_over_by_the_rune_views_resolve() {
 #[test]
 fn the_reference_translation_is_still_chinese() {
     assert_eq!(t("common.save"), "保存");
+}
+
+#[test]
+fn an_unknown_key_falls_back_to_the_key() {
+    // `t` never returns an empty string for a missing key: the UI shows the key
+    // itself, which is how a missed pack entry becomes visible instead of a
+    // silently blank label.
+    let unknown = "datazen.i18n.guard.no_such_key";
+    assert!(!has(unknown), "{unknown} unexpectedly exists in the packs");
+    assert_eq!(t(unknown), unknown);
+}
+
+#[test]
+fn the_zh_cn_table_has_no_undocumented_empty_values() {
+    // `valueSearch.status.idle` is empty on purpose: it is a status line with
+    // nothing to report yet (see `i18n.rs`). Everything else must carry text —
+    // an empty value renders as a blank label or tooltip.
+    let empties: Vec<&str> = ZH_CN
+        .iter()
+        .filter(|(_, value)| value.is_empty())
+        .map(|(key, _)| *key)
+        .collect();
+    assert_eq!(empties, ["valueSearch.status.idle"]);
+}
+
+#[test]
+fn the_two_connection_views_still_ask_for_the_keys_they_took_over() {
+    // `every_key_the_ui_asks_for_exists` catches a typo in a call site, but not
+    // a revert: hard-coding the label again removes the call and the scan stays
+    // green (verified by mutation while auditing commit cb8e3f2b0). Pin the
+    // keys in the two files this track converted.
+    let connections = include_str!("../views/connections.rs");
+    let modals = include_str!("../views/modals.rs");
+    let files: [(&str, &str, &[&str]); 2] = [
+        (
+            "views/connections.rs",
+            connections,
+            &[
+                "common.database",
+                "connShare.changeImportFile",
+                "import.selectFile",
+                "newConn.advanced",
+                "newConn.dbType",
+                "newConn.password",
+                "newConn.tunnel",
+                "newConn.username",
+                "newConn.sshHost",
+                "newConn.sshPort",
+                "newConn.sshUsername",
+            ],
+        ),
+        (
+            "views/modals.rs",
+            modals,
+            &[
+                "common.importConnections",
+                "common.newConnection",
+                "newConn.selectDbType",
+            ],
+        ),
+    ];
+    for (file, source, keys) in files {
+        for key in keys {
+            let call = format!("t(\"{key}\")");
+            assert!(
+                source.contains(&call),
+                "{file} no longer asks for {call}; update this guard if the wiring moved"
+            );
+        }
+    }
 }
