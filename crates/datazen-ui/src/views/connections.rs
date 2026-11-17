@@ -292,7 +292,7 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
                         .grow(1.0)
                         .min_w(0.0)
                         .gap(6.0)
-                        .child(field_label("连接名称 *", theme))
+                        .child(field_label(&format!("{} *", t("newConn.connName")), theme))
                         .child(form_input(
                             "connection-name-input",
                             &state.connection_name,
@@ -337,7 +337,7 @@ pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme) -> El 
                 .grow(1.0)
                 .min_w(0.0)
                 .gap(6.0)
-                .child(field_label(t("common.database"), theme))
+                .child(field_label(t("newConn.database"), theme))
                 .child(form_input(
                     "connection-database-input",
                     &state.connection_database,

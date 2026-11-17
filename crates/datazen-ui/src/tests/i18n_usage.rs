@@ -25,12 +25,13 @@ fn keys_taken_over_by_the_rune_views_resolve() {
     // entry dropped in a later edit makes `t` fall back to the key itself, and
     // this assertion catches that here instead of showing a raw key in the UI.
     let keys = [
-        "common.database",
         "common.importConnections",
         "common.newConnection",
         "connShare.changeImportFile",
         "import.selectFile",
         "newConn.advanced",
+        "newConn.connName",
+        "newConn.database",
         "newConn.dbType",
         "newConn.password",
         "newConn.selectDbType",
@@ -86,10 +87,11 @@ fn the_two_connection_views_still_ask_for_the_keys_they_took_over() {
             "views/connections.rs",
             connections,
             &[
-                "common.database",
                 "connShare.changeImportFile",
                 "import.selectFile",
                 "newConn.advanced",
+                "newConn.connName",
+                "newConn.database",
                 "newConn.dbType",
                 "newConn.password",
                 "newConn.tunnel",
