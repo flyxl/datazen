@@ -77,10 +77,15 @@ fn engine_badge_icon(engine: &str, size: f32, dark: bool) -> El {
 fn import_dialog(state: &AppState, theme: tok::Theme, dark: bool) -> Dialog {
     Dialog::new("import-dialog", "导入连接")
         .open(true)
+        .open_epoch(state.import_dialog_epoch)
         .width(520.0)
         .fit()
-        // React caps the body at 70vh; 448 keeps header + body + footer under
-        // the 560 the panel used to cap and inside the 640pt minimum window.
+        // React caps the body at 70vh (571.2 at the 1440x816 default window).
+        // A view gets no viewport from `rune::Cx` (only `Runtime` has it), so
+        // this keeps the pre-port figure for the 640pt minimum window: 448
+        // leaves header + body + footer under the 560 the panel used to cap
+        // and inside 640. A taller window gets React's content height; a body
+        // past the cap scrolls.
         .body_max_height(448.0)
         .body_pad((20.0, 20.0))
         .child(connections::import_dialog_body(state, theme))
@@ -108,6 +113,7 @@ fn import_dialog(state: &AppState, theme: tok::Theme, dark: bool) -> Dialog {
 fn connection_dialog(state: &AppState, theme: tok::Theme, dark: bool) -> Dialog {
     Dialog::new("connection-dialog", "新建连接")
         .open(true)
+        .open_epoch(state.connection_dialog_epoch)
         .width(920.0)
         .fill_height()
         .max_height(680.0)

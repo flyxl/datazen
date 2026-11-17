@@ -25,6 +25,16 @@ fn rect<S>(runtime: &Runtime<S>, key: &str) -> [f32; 4] {
         .rect
 }
 
+/// The fill an element paints, from the runtime's own element list.
+fn fill<S>(runtime: &Runtime<S>, key: &str) -> rune::Color {
+    runtime
+        .elements()
+        .into_iter()
+        .find(|element| element.key.as_deref() == Some(key))
+        .unwrap_or_else(|| panic!("{key} present"))
+        .fill
+}
+
 fn press<S>(runtime: &mut Runtime<S>, key: &str) {
     let (x, y) = runtime.find(key).unwrap_or_else(|| panic!("{key} press"));
     runtime.pointer_down(x, y);
@@ -578,12 +588,24 @@ fn the_import_dialog_fits_its_content_at_both_window_sizes() {
 #[derive(Default)]
 struct ScrollState {
     open: bool,
+    /// The app's `*_dialog_epoch`: bumped by every open, as
+    /// `AppState::open_*_dialog` does, so the base gives the body a new
+    /// identity and a fresh scroll viewport.
+    epoch: u64,
+}
+
+impl ScrollState {
+    fn open(&mut self) {
+        self.open = true;
+        self.epoch = self.epoch.wrapping_add(1);
+    }
 }
 
 fn scroll_view(state: &ScrollState, _cx: &mut rune::Cx<ScrollState>) -> rune::El {
     let mut layer = Vec::new();
     crate::ui::dialog::Dialog::new("probe-scroll", "Scroll")
         .open(state.open)
+        .open_epoch(state.epoch)
         .fit()
         .body_max_height(120.0)
         .child(rune::text("tall").key("probe-scroll-content").h(600.0))
@@ -598,10 +620,9 @@ fn scroll_view(state: &ScrollState, _cx: &mut rune::Cx<ScrollState>) -> rune::El
 }
 
 #[test]
-#[ignore = "known defect: a reopened dialog keeps the scroll offset of the body it unmounted"]
 fn reopening_a_scrolled_dialog_starts_at_the_top() {
     let mut runtime = Runtime::new(
-        ScrollState { open: true },
+        ScrollState { open: true, epoch: 1 },
         scroll_view,
         (960.0, 640.0),
         Env {
@@ -630,7 +651,7 @@ fn reopening_a_scrolled_dialog_starts_at_the_top() {
     for _ in 0..5 {
         runtime.frame(0.0);
     }
-    runtime.update(|state, _| state.open = true);
+    runtime.update(|state, _| state.open());
     runtime.frame(0.0);
     runtime.frame(0.0);
     assert_eq!(
@@ -754,6 +775,11 @@ fn long_title_view(_state: &FiveState, _cx: &mut rune::Cx<FiveState>) -> rune::E
         .children(layer)
 }
 
+/// The title's box stays one line and left of the close control even when the
+/// text is longer than the space. The elision itself (`El::truncate`, React's
+/// `truncate`) is not in the runtime's element list — `text` reports the whole
+/// string and the box is the same with and without it — so only the layout
+/// invariant is asserted here.
 #[test]
 fn a_long_title_stays_on_one_line_and_clears_the_close_control() {
     let mut runtime = Runtime::new(
@@ -812,4 +838,85 @@ fn five_tabs_reach_the_new_connection_trigger_and_escape_returns_there() {
     );
     assert!(runtime.find("connection-dialog-layer").is_none());
     assert!(runtime.find("connection-dialog").is_none());
+}
+
+#[test]
+fn the_scrim_dims_the_page_at_half_opacity() {
+    // React's `bg-black/50` (`packages/ui/src/Dialog.tsx`) and the pre-port
+    // `scrim()` in `views/modals.rs` (`oklcha(0.0, 0.0, 256.0, 0.5)`) both dim
+    // the page by half. The kit palette's own scrim is 30%, so the base cannot
+    // just paint `k.c.scrim`.
+    let mut runtime = runtime();
+    runtime.frame(0.0);
+    press(&mut runtime, "connection-new");
+    let scrim = fill(&runtime, "connection-dialog-scrim");
+    assert!(
+        (scrim.a - 0.5).abs() <= 0.001,
+        "the scrim is 50% opaque, not {:.1}%: {scrim:?}",
+        scrim.a * 100.0
+    );
+    assert!(
+        scrim.r.abs() <= 1e-3 && scrim.g.abs() <= 1e-3 && scrim.b.abs() <= 1e-3,
+        "the scrim is black, as React's `bg-black/50`: {scrim:?}"
+    );
+}
+
+#[test]
+fn the_panel_draws_the_kit_overlay_elevation() {
+    // React's `shadow-xl` on the panel; `rune_kit::Dialog` paints
+    // `k.elevation.overlay` the same way. For the neutral palette those layers
+    // are an 8pt drop with a 16pt blur plus a zero-blur 0.5pt ring.
+    let mut runtime = runtime();
+    runtime.frame(0.0);
+    press(&mut runtime, "connection-new");
+    runtime.frame(0.0);
+    let pose = runtime
+        .presented_pose("connection-dialog")
+        .expect("the panel has presented visuals");
+    let shadows = pose.shadows();
+    assert_eq!(
+        shadows.len(),
+        2,
+        "the overlay elevation is a drop plus a ring: {shadows:?}"
+    );
+    assert!(
+        (shadows[0].y - 8.0).abs() <= 0.5 && (shadows[0].blur - 16.0).abs() <= 0.5,
+        "the drop layer is the kit's overlay drop: {shadows:?}"
+    );
+    assert!(
+        shadows[1].blur.abs() <= 0.5 && (shadows[1].spread - 0.5).abs() <= 0.5,
+        "the second layer is the kit's 0.5pt ring: {shadows:?}"
+    );
+    assert!(
+        shadows.iter().any(|shadow| shadow.color.a > 0.0),
+        "the elevation is painted, not transparent: {shadows:?}"
+    );
+}
+
+#[test]
+fn reopening_a_dialog_bumps_its_generation() {
+    // The scroll reset relies on the app bumping the generation on every open,
+    // so a stale body never keeps the offset of the one it replaced.
+    let mut runtime = runtime();
+    runtime.frame(0.0);
+    press(&mut runtime, "connection-new");
+    let connection = runtime.state.connection_dialog_epoch;
+    escape(&mut runtime);
+    press(&mut runtime, "connection-new");
+    assert_eq!(
+        runtime.state.connection_dialog_epoch,
+        connection.wrapping_add(1),
+        "reopening the connection dialog bumps its generation"
+    );
+
+    escape(&mut runtime);
+    press(&mut runtime, "import-connections");
+    let import = runtime.state.import_dialog_epoch;
+    escape(&mut runtime);
+    press(&mut runtime, "import-connections");
+    assert_eq!(
+        runtime.state.import_dialog_epoch,
+        import.wrapping_add(1),
+        "reopening the import dialog bumps its generation"
+    );
 }

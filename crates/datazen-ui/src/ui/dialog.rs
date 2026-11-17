@@ -25,8 +25,34 @@
 //! closing hands focus back to where it was before the dialog opened
 //! (`runtime/input/modal_focus.rs`). A dialog without `on_close` mounts
 //! nothing, exactly as `rune_kit::Dialog` does.
+//!
+//! ## Reopening starts at the top
+//!
+//! Rune keeps a scroll viewport's offset per element id, and a dialog that
+//! unmounts and mounts again at the same path gets its old id back. A body the
+//! user scrolled before Escape would therefore reopen at that offset, which
+//! React's fresh mount never did. [`Dialog::open_epoch`] stamps the body's
+//! wrapper with a new key on each open, so the body is a new element (and a new
+//! scroll viewport, offset 0) while the documented `<key>-body` key stays the
+//! same for lookups and tests.
+//!
+//! ## Enter does not activate controls (evaluated, not enabled here)
+//!
+//! Rune presses a focused pressable on Return only when the app turns on
+//! `Cx::web_focus()` (`runtime/input/focus.rs`): without it `takes_return` is
+//! false and only Rune's own `El::default_button` reacts to Enter. DataZen
+//! never calls it, so today Enter does nothing on a focused button, Space
+//! presses it, and a dialog's Tab order starts at its first focusable control
+//! (the close button). `web_focus()` is app-wide input semantics — every
+//! pressable becomes a Tab stop and takes focus on click — so this track
+//! records the gap instead of switching it on for the whole port; it belongs to
+//! a keyboard-navigation task with its own full-suite pass. A trial on this
+//! branch (setting it in `app::view`, then reverted) passed 211 of 213 tests:
+//! only the Tab-travel assumptions moved — five tabs then land on
+//! `rail-workspace` instead of `connection-new`, and a dialog opens focused on
+//! its first control (`connection-name-input`) instead of its close button.
 
-use rune::{col, row, text, El, ScrollSpec, TextStyle};
+use rune::{col, row, text, Color, El, ScrollSpec, TextStyle};
 use rune_kit::{ControlSize, IconButton, IconButtonVariant, Kit};
 
 /// Panel corner radius (React's `rounded-xl`).
@@ -38,6 +64,11 @@ const PANEL_HEIGHT: f32 = 368.0;
 const FOOTER_HEIGHT: f32 = 56.0;
 /// Space between the centered panel and the window edge (React's `p-4`).
 const LAYER_PAD: f32 = 16.0;
+/// The scrim's opacity: React's `bg-black/50` (`packages/ui/src/Dialog.tsx`)
+/// and the pre-port `scrim()` in `views/modals.rs` (`oklcha(0.0, 0.0, 256.0,
+/// 0.5)`). The kit palette's scrim is 30% (`rune_kit::palette`), which dims the
+/// page less than the React dialog it replaces.
+const SCRIM_ALPHA: f32 = 0.5;
 
 /// A dialog panel plus the scrim under it, pushed into the app's layer.
 pub(crate) struct Dialog {
@@ -45,6 +76,7 @@ pub(crate) struct Dialog {
     title: String,
     description: Option<String>,
     open: bool,
+    open_epoch: u64,
     width: f32,
     fit: bool,
     fill: bool,
@@ -72,6 +104,7 @@ impl Dialog {
             title: title.into(),
             description: None,
             open: false,
+            open_epoch: 0,
             width: 576.0,
             fit: false,
             fill: false,
@@ -95,6 +128,17 @@ impl Dialog {
     /// pushes nothing.
     pub(crate) fn open(mut self, open: bool) -> Self {
         self.open = open;
+        self
+    }
+
+    /// The open generation: the caller bumps it every time the dialog opens
+    /// (next to the `*_dialog_open` flag). Each value gives the body a new
+    /// element identity, so a dialog that unmounted after the user scrolled it
+    /// reopens at the top instead of at the remembered offset (see the module
+    /// docs). While the dialog stays open the value does not change, so a view
+    /// may rebuild freely without losing the offset.
+    pub(crate) fn open_epoch(mut self, epoch: u64) -> Self {
+        self.open_epoch = epoch;
         self
     }
 
@@ -247,7 +291,10 @@ impl Dialog {
                 text(self.title.clone())
                     .key(format!("{}-title", self.key))
                     .font(title_font)
-                    .color(k.c.text_base),
+                    .color(k.c.text_base)
+                    // React's `truncate`: one line with an ellipsis instead of
+                    // a hard cut at the panel's edge.
+                    .truncate(),
             );
         if let Some(description) = self.description.clone() {
             title = title.child(
@@ -287,7 +334,14 @@ impl Dialog {
             body = body.max_h(max);
         }
 
-        let mut content = col().w_full().min_w(0.0).child(body);
+        // The epoch is part of this wrapper's identity but not of the
+        // documented body key: each open is a new body to Rune (and so a new
+        // scroll viewport), while lookups still find `<key>-body`.
+        let mut content = col()
+            .key(format!("{}-content-{}", self.key, self.open_epoch))
+            .w_full()
+            .min_w(0.0)
+            .child(body);
         if definite {
             content = content.grow(1.0).min_h(0.0);
         }
@@ -337,6 +391,10 @@ impl Dialog {
         if let Some(max) = self.max_height {
             panel = panel.max_h(max);
         }
+        // React's `shadow-xl` on the panel; `rune_kit::Dialog` paints
+        // `k.elevation.overlay` the same way, and `Kit::elevate` is the shared
+        // helper the popovers and menus can reuse.
+        let panel = k.elevate(panel, &k.elevation.overlay);
         let panel = close(panel).modal_click_outside(self.click_outside);
 
         layer.push(
@@ -345,7 +403,7 @@ impl Dialog {
                 .absolute(0.0, 0.0)
                 .w_full()
                 .h_full()
-                .fill(k.c.scrim)
+                .fill(Color::BLACK.alpha(SCRIM_ALPHA))
                 .a11y_hidden(),
         );
         layer.push(

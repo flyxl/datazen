@@ -28,6 +28,9 @@ impl AppState {
 
     pub(crate) fn open_connection_dialog(&mut self) {
         self.connection_dialog_open = true;
+        // A new open is a new body for the dialog base, so its scroll viewport
+        // starts at the top (`Dialog::open_epoch`).
+        self.connection_dialog_epoch = self.connection_dialog_epoch.wrapping_add(1);
         self.connection_error = None;
         self.connection_name = TextEdit::new(String::new());
         self.connection_engine = TextEdit::new(String::new());
@@ -167,6 +170,8 @@ impl AppState {
     /// starts from a clean slate; closing drops the journey's picks.
     pub(crate) fn open_import_dialog(&mut self) {
         self.import_dialog_open = true;
+        // See `open_connection_dialog`: a reopened dialog starts at the top.
+        self.import_dialog_epoch = self.import_dialog_epoch.wrapping_add(1);
         self.import_file = None;
         self.import_preview = None;
         self.import_notice = None;
