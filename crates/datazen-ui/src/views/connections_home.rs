@@ -341,6 +341,9 @@ fn home_header(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 .border(1.0, theme.card_border)
                 .hover(theme.hover)
                 .label("Import connections")
+                // The dialog it opens must hand focus back here, so the trigger
+                // has to take focus (it was pointer-only).
+                .focusable(true)
                 .child(icon(&ICON_DOWNLOAD, 13.0).color(theme.text_secondary))
                 .child(text("Import connections").font(type_::LABEL).color(theme.text))
                 .on_press(|state: &mut AppState| state.open_import_dialog()),
@@ -355,6 +358,9 @@ fn home_header(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 .radius(7.0)
                 .fill(accent)
                 .label("New connection")
+                // The dialog it opens must hand focus back here, so the trigger
+                // has to take focus (it was pointer-only).
+                .focusable(true)
                 .child(icon(&ICON_PLUS, 13.0).color(on_accent()))
                 .child(text("New connection").font(type_::LABEL).color(on_accent()))
                 .on_press(|state: &mut AppState| state.open_connection_dialog()),

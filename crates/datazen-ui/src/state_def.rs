@@ -124,8 +124,15 @@ pub struct AppState {
     pub(crate) connections_show_all: bool,
     /// The connection form dialog is open over the home.
     pub(crate) connection_dialog_open: bool,
+    /// The generation of a connection dialog open (`Dialog::open_epoch`):
+    /// bumped by `open_connection_dialog`, so a reopened dialog's body starts
+    /// at the top instead of at the offset it had before it closed.
+    pub(crate) connection_dialog_epoch: u64,
     /// The import dialog (the React share dialog's import mode) is open.
     pub(crate) import_dialog_open: bool,
+    /// The generation of an import dialog open; see
+    /// [`Self::connection_dialog_epoch`].
+    pub(crate) import_dialog_epoch: u64,
     /// The export file the import dialog picked (None until chosen).
     pub(crate) import_file: Option<String>,
     pub(crate) connection_name: TextEdit,
@@ -310,7 +317,9 @@ impl Default for AppState {
             connection_search: TextEdit::new(String::new()),
             connections_show_all: false,
             connection_dialog_open: false,
+            connection_dialog_epoch: 0,
             import_dialog_open: false,
+            import_dialog_epoch: 0,
             import_file: None,
             connection_name: TextEdit::new(String::new()),
             connection_engine: TextEdit::new(String::new()),
