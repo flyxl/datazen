@@ -142,19 +142,36 @@ impl<S: 'static> Slider<S> {
             let fill_w = (ratio as f32 * w).clamp(0.0, w);
             let thumb_left = ratio as f32 * w - thumb_size / 2.0;
             let fill = el()
-                .key(format!("{}-fill", self.key))
-                .absolute(0.0, track_y)
-                .w(fill_w.max(0.0))
-                .h(track_h)
-                .radius(track_radius)
-                .fill(c.bg_accent);
+                .absolute(0.0, 0.0)
+                .w(w)
+                .h(hit_h)
+                .child(
+                    el()
+                        .absolute(0.0, track_y)
+                        .w(fill_w.max(0.0))
+                        .h(track_h)
+                        .radius(track_radius)
+                        .fill(c.bg_accent),
+                );
+            // Visual thumb moves with ratio; keyed probe reports the same rect.
             let thumb = el()
-                .key(format!("{}-thumb", self.key))
-                .absolute(thumb_left, thumb_y)
-                .size(thumb_size, thumb_size)
-                .radius(thumb_size / 2.0)
-                .fill(c.knob)
-                .border(1.0, c.border_strong);
+                .absolute(0.0, 0.0)
+                .w(w)
+                .h(hit_h)
+                .child(
+                    el()
+                        .absolute(thumb_left, thumb_y)
+                        .size(thumb_size, thumb_size)
+                        .radius(thumb_size / 2.0)
+                        .fill(c.knob)
+                        .border(1.0, c.border_strong)
+                        .child(
+                            el()
+                                .key(format!("{}-thumb", self.key))
+                                .w_full()
+                                .h_full(),
+                        ),
+                );
             (fill, thumb)
         } else {
             let fill = el()
@@ -187,9 +204,9 @@ impl<S: 'static> Slider<S> {
                         .child(el().grow(ratio.max(0.0) as f32).min_w(0.0).h(thumb_size))
                         .child(
                             el()
-                                .key(format!("{}-thumb", self.key))
                                 .w(0.0)
-                                .h(thumb_size),
+                                .h(thumb_size)
+                                .child(el().key(format!("{}-thumb", self.key)).w(0.0).h(thumb_size)),
                         )
                         .child(el().grow((1.0 - ratio).max(0.0) as f32).min_w(0.0).h(thumb_size)),
                 );

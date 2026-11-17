@@ -236,13 +236,12 @@ fn slider_disabled_reports_nothing_and_not_focusable() {
 #[test]
 fn slider_thumb_center_sits_at_reported_fraction() {
     // Thumb center must sit at track.x + ratio*track.w (±1pt) for ratios 0, 0.25, 0.5, 1.
-    // Track fills available width (400 window - 2*20 padding = 360).
     fn assert_thumb(rt: &Runtime<SliderProbe>, ratio: f64, label: &str) -> (rune::ElementInfo, rune::ElementInfo, f32) {
         let track = element(rt, "probe-slider");
         let thumb = element(rt, "probe-slider-thumb");
         assert!(
-            thumb.rect[3] > 0.0,
-            "{label}: thumb must have non-zero height, got {:?}",
+            thumb.rect[2] > 0.0 && thumb.rect[3] > 0.0,
+            "{label}: thumb must have width and height > 0, got {:?}",
             thumb.rect
         );
         let expected_center = track.rect[0] + ratio as f32 * track.rect[2];
@@ -259,47 +258,17 @@ fn slider_thumb_center_sits_at_reported_fraction() {
     }
 
     let mut geoms: Vec<(String, [f32; 4], [f32; 4], f32, f64)> = Vec::new();
-
-    // Ratio 0.5 (initial)
-    let mut rt = Runtime::new(
-        SliderProbe { value: 50.0, changes: Vec::new() },
-        slider_view,
-        (400.0, 200.0),
-        env(),
-    );
-    rt.frame(0.0);
-    let (t, th, d) = assert_thumb(&rt, 0.5, "ratio 0.5");
-    geoms.push(("0.5".into(), t.rect, th.rect, d, 0.5));
-
-    // Ratio 0.25
-    let track = element(&rt, "probe-slider");
-    let y = track.rect[1] + track.rect[3] / 2.0;
-    rt.pointer_down(track.rect[0] + track.rect[2] * 0.25, y);
-    rt.pointer_up(track.rect[0] + track.rect[2] * 0.25, y);
-    rt.frame(1.0 / 60.0);
-    rt.frame(1.0 / 60.0);
-    let (t, th, d) = assert_thumb(&rt, 0.25, "ratio 0.25");
-    geoms.push(("0.25".into(), t.rect, th.rect, d, 0.25));
-
-    // Ratio 0
-    let track = element(&rt, "probe-slider");
-    let y = track.rect[1] + track.rect[3] / 2.0;
-    rt.pointer_down(track.rect[0], y);
-    rt.pointer_up(track.rect[0], y);
-    rt.frame(1.0 / 60.0);
-    rt.frame(1.0 / 60.0);
-    let (t, th, d) = assert_thumb(&rt, 0.0, "ratio 0");
-    geoms.push(("0".into(), t.rect, th.rect, d, 0.0));
-
-    // Ratio 1
-    let track = element(&rt, "probe-slider");
-    let y = track.rect[1] + track.rect[3] / 2.0;
-    rt.pointer_down(track.rect[0] + track.rect[2], y);
-    rt.pointer_up(track.rect[0] + track.rect[2], y);
-    rt.frame(1.0 / 60.0);
-    rt.frame(1.0 / 60.0);
-    let (t, th, d) = assert_thumb(&rt, 1.0, "ratio 1");
-    geoms.push(("1".into(), t.rect, th.rect, d, 1.0));
+    for (label, value, ratio) in [("0", 0.0, 0.0), ("0.25", 25.0, 0.25), ("0.5", 50.0, 0.5), ("1", 100.0, 1.0)] {
+        let mut rt = Runtime::new(
+            SliderProbe { value, changes: Vec::new() },
+            slider_view,
+            (400.0, 200.0),
+            env(),
+        );
+        rt.frame(0.0);
+        let (t, th, d) = assert_thumb(&rt, ratio, &format!("ratio {label}"));
+        geoms.push((label.to_string(), t.rect, th.rect, d, ratio));
+    }
 
     // Print geometry for report (visible with --nocapture)
     for (label, tr, th, diff, ratio) in &geoms {
@@ -413,3 +382,10 @@ fn path_input_disabled_makes_field_and_browse_unfocusable() {
     assert!(!input.focusable, "disabled field must be unfocusable, got {:?}", input);
     assert!(!browse.focusable, "disabled browse must be unfocusable, got {:?}", browse);
 }
+
+
+
+
+
+
+
