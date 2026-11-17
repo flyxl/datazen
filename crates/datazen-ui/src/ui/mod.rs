@@ -4,6 +4,8 @@
 //! views (for example the connection navigator) compose consistent controls
 //! instead of ad-hoc styling.
 
+pub(crate) mod banner;
+pub(crate) mod copyable;
 pub(crate) mod dialog;
 pub(crate) mod field;
 pub(crate) mod kit;
