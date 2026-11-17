@@ -9,6 +9,15 @@
 //! and invoke `on_change`; the host rebuilds with the new active tab so roving
 //! focus follows the active item. Enter/Space activate the focused tab.
 //!
+//! ## Accessibility
+//!
+//! Tab selection is exposed with `focus_selected(selected)` on each tab (the active
+//! tab reports selected, others unselected) while roving tabindex keeps only the
+//! active tab focusable. In panel mode the tabpanel is associated by name via
+//! `role("tabpanel")` and a label matching the active tab's accessible label; rune
+//! does not currently expose `aria-controls`, so this name-based association is used
+//! until upstream provides it.
+//!
 //! ## Key convention
 //!
 //! | part        | key                |
@@ -61,7 +70,11 @@ pub(crate) struct Tabs<S: 'static> {
 
 #[allow(dead_code)] // reusable base; remove when view callers land
 impl<S: 'static> Tabs<S> {
-    pub(crate) fn new(key: impl Into<String>, items: Vec<TabItem>, active_id: impl Into<String>) -> Self {
+    pub(crate) fn new(
+        key: impl Into<String>,
+        items: Vec<TabItem>,
+        active_id: impl Into<String>,
+    ) -> Self {
         Self {
             key: key.into(),
             items,
@@ -95,6 +108,15 @@ impl<S: 'static> Tabs<S> {
             .iter()
             .position(|i| i.id == self.active_id)
             .unwrap_or(0);
+        let active_label = self
+            .items
+            .get(active_index)
+            .map(|item| {
+                item.aria_label
+                    .clone()
+                    .unwrap_or_else(|| item.label.clone())
+            })
+            .unwrap_or_default();
         let panel_key = format!("{}-panel", self.key);
 
         let on_change = Arc::new(self.on_change);
@@ -106,7 +128,9 @@ impl<S: 'static> Tabs<S> {
             .items_center()
             .gap(4.0)
             .min_w(0.0)
-            .scroll(rune::ScrollSpec { stick_bottom: false });
+            .scroll(rune::ScrollSpec {
+                stick_bottom: false,
+            });
         if let Some(label) = &self.aria_label {
             list = list.label(label.clone());
         }
@@ -121,17 +145,34 @@ impl<S: 'static> Tabs<S> {
                 .key(format!("{}-tab-{}", self.key, item.id))
                 .role("tab")
                 .focusable(selected) // roving tabindex: only active tab is a Tab stop
+                .focus_selected(selected)
                 .h(28.0)
                 .px(10.0)
                 .center()
                 .radius(k.radius.sm)
-                .fill(if selected { k.c.layer_02 } else { Color::TRANSPARENT })
+                .fill(if selected {
+                    k.c.layer_02
+                } else {
+                    Color::TRANSPARENT
+                })
                 .hover(if selected { k.c.layer_02 } else { k.c.hover })
-                .label(item.aria_label.clone().unwrap_or_else(|| item.label.clone()))
+                .label(
+                    item.aria_label
+                        .clone()
+                        .unwrap_or_else(|| item.label.clone()),
+                )
                 .child(
                     text(item.label.clone())
-                        .font(if selected { k.ty.text_small_medium } else { k.ty.text_small })
-                        .color(if selected { k.c.text_base } else { k.c.text_muted })
+                        .font(if selected {
+                            k.ty.text_small_medium
+                        } else {
+                            k.ty.text_small
+                        })
+                        .color(if selected {
+                            k.c.text_base
+                        } else {
+                            k.c.text_muted
+                        })
                         .a11y_hidden(),
                 );
 
@@ -199,6 +240,7 @@ impl<S: 'static> Tabs<S> {
                     col()
                         .key(panel_key)
                         .role("tabpanel")
+                        .label(active_label)
                         .w_full()
                         .grow(1.0)
                         .min_h(0.0)

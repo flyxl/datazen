@@ -1,6 +1,6 @@
 //! T0-11 chrome small parts: Spinner / Badge / Tabs / ToolbarButton / ToolbarShell / Label.
 
-use rune::{Cx, El, Env, Key, KeyEvent, Mods, Runtime, col, row, text};
+use rune::{col, row, text, Cx, El, Env, Key, KeyEvent, Mods, Runtime};
 
 use crate::ui::badge::{Badge, BadgeTone};
 use crate::ui::label::Label;
@@ -34,7 +34,10 @@ fn click<S>(rt: &mut Runtime<S>, key: &str) {
 }
 
 fn press<S>(rt: &mut Runtime<S>, key: Key) {
-    rt.key(KeyEvent { key, mods: Mods::default() });
+    rt.key(KeyEvent {
+        key,
+        mods: Mods::default(),
+    });
     rt.frame(1.0 / 60.0);
 }
 
@@ -93,8 +96,14 @@ fn spinner_unlabeled_is_decorative_and_hidden_from_a11y() {
     let mut rt = Runtime::new(SpinnerProbe, spinner_plain_view, (960.0, 640.0), env());
     rt.frame(0.0);
     let root = element(&rt, "sp");
-    assert_ne!(root.role, "progressbar", "unlabeled spinner must not be progressbar");
-    assert!(root.label.is_none(), "unlabeled spinner has no accessible label");
+    assert_ne!(
+        root.role, "progressbar",
+        "unlabeled spinner must not be progressbar"
+    );
+    assert!(
+        root.label.is_none(),
+        "unlabeled spinner has no accessible label"
+    );
     assert!(has_key(&rt, "sp-indicator"), "indicator present");
     assert!(!has_key(&rt, "sp-label"), "no label text without label");
 }
@@ -139,19 +148,42 @@ fn badge_variants_view(_s: &BadgeProbe, _cx: &mut Cx<BadgeProbe>) -> El {
         .h_full()
         .padding(16.0)
         .gap(8.0)
-        .child(Badge::new("b-neutral", "Neutral").tone(BadgeTone::Neutral).build(true))
-        .child(Badge::new("b-success", "Success").tone(BadgeTone::Success).build(true))
-        .child(Badge::new("b-warning", "Warning").tone(BadgeTone::Warning).build(true))
-        .child(Badge::new("b-danger", "Danger").tone(BadgeTone::Danger).build(true))
-        .child(Badge::new("b-accent", "Accent").tone(BadgeTone::Accent).build(true))
+        .child(
+            Badge::new("b-neutral", "Neutral")
+                .tone(BadgeTone::Neutral)
+                .build(true),
+        )
+        .child(
+            Badge::new("b-success", "Success")
+                .tone(BadgeTone::Success)
+                .build(true),
+        )
+        .child(
+            Badge::new("b-warning", "Warning")
+                .tone(BadgeTone::Warning)
+                .build(true),
+        )
+        .child(
+            Badge::new("b-danger", "Danger")
+                .tone(BadgeTone::Danger)
+                .build(true),
+        )
+        .child(
+            Badge::new("b-accent", "Accent")
+                .tone(BadgeTone::Accent)
+                .build(true),
+        )
 }
 
 fn badge_truncate_view(_s: &BadgeProbe, _cx: &mut Cx<BadgeProbe>) -> El {
     col().w_full().h_full().padding(16.0).child(
         row().w(120.0).child(
-            Badge::new("b-long", "A very very very very long badge label that must truncate")
-                .tone(BadgeTone::Neutral)
-                .build(true),
+            Badge::new(
+                "b-long",
+                "A very very very very long badge label that must truncate",
+            )
+            .tone(BadgeTone::Neutral)
+            .build(true),
         ),
     )
 }
@@ -207,7 +239,10 @@ struct TabsProbe {
 
 impl Default for TabsProbe {
     fn default() -> Self {
-        Self { active: "a".to_owned(), changes: Vec::new() }
+        Self {
+            active: "a".to_owned(),
+            changes: Vec::new(),
+        }
     }
 }
 
@@ -243,11 +278,24 @@ fn tabs_panel_mode_renders_roles_and_roving_tabindex() {
     assert_eq!(element(&rt, "tabs-tablist").role, "tablist");
     assert_eq!(element(&rt, "tabs-panel").role, "tabpanel");
     for id in ["a", "b", "c"] {
-        assert_eq!(element(&rt, &format!("tabs-tab-{id}")).role, "tab", "{id} role");
+        assert_eq!(
+            element(&rt, &format!("tabs-tab-{id}")).role,
+            "tab",
+            "{id} role"
+        );
     }
-    assert!(element(&rt, "tabs-tab-a").focusable, "active tab is Tab stop");
-    assert!(!element(&rt, "tabs-tab-b").focusable, "inactive tab not Tab stop");
-    assert!(!element(&rt, "tabs-tab-c").focusable, "inactive tab not Tab stop");
+    assert!(
+        element(&rt, "tabs-tab-a").focusable,
+        "active tab is Tab stop"
+    );
+    assert!(
+        !element(&rt, "tabs-tab-b").focusable,
+        "inactive tab not Tab stop"
+    );
+    assert!(
+        !element(&rt, "tabs-tab-c").focusable,
+        "inactive tab not Tab stop"
+    );
     for (w, h) in [(960.0, 640.0), (1440.0, 816.0)] {
         let mut rt = Runtime::new(TabsProbe::default(), tabs_panel_view, (w, h), env());
         rt.frame(0.0);
@@ -362,7 +410,10 @@ fn toolbar_shell_groups_and_stays_in_window_at_small_size() {
         assert_in_window(&rt, w, h, &format!("toolbar many {w}x{h}"));
         // no horizontal overflow of container/root content beyond window
         let bar = element(&rt, "tbar").rect;
-        assert!(bar[0] >= -1.0 && bar[0] + bar[2] <= w + 1.0, "shell within width: {bar:?}");
+        assert!(
+            bar[0] >= -1.0 && bar[0] + bar[2] <= w + 1.0,
+            "shell within width: {bar:?}"
+        );
     }
 }
 
@@ -377,7 +428,12 @@ fn label_view(_s: &LabelProbe, _cx: &mut Cx<LabelProbe>) -> El {
         .h(200.0)
         .padding(16.0)
         .gap(12.0)
-        .child(Label::new("lbl-a", "Name").required(true).hint("Shown on profile").build(true))
+        .child(
+            Label::new("lbl-a", "Name")
+                .required(true)
+                .hint("Shown on profile")
+                .build(true),
+        )
         .child(Label::new("lbl-b", "Notes").build(true))
 }
 
@@ -387,13 +443,107 @@ fn label_renders_text_required_marker_and_hint() {
     rt.frame(0.0);
     assert_eq!(element(&rt, "lbl-a-text").text.as_deref(), Some("Name"));
     assert_eq!(element(&rt, "lbl-a-required").text.as_deref(), Some("*"));
-    assert_eq!(element(&rt, "lbl-a-hint").text.as_deref(), Some("Shown on profile"));
+    assert_eq!(
+        element(&rt, "lbl-a-hint").text.as_deref(),
+        Some("Shown on profile")
+    );
     assert!(has_key(&rt, "lbl-b-text"));
-    assert!(!has_key(&rt, "lbl-b-required"), "no required marker when not required");
+    assert!(
+        !has_key(&rt, "lbl-b-required"),
+        "no required marker when not required"
+    );
     assert!(!has_key(&rt, "lbl-b-hint"), "no hint when absent");
     for (w, h) in [(960.0, 640.0), (1440.0, 816.0)] {
         let mut rt = Runtime::new(LabelProbe, label_view, (w, h), env());
         rt.frame(0.0);
         assert_in_window(&rt, w, h, &format!("label {w}x{h}"));
     }
+}
+
+// ---- Tabs defects (focus_selected, panel label, Enter/Space activation) ------
+
+#[test]
+fn tabs_expose_selected_state_for_active_tab_and_unselected_for_others() {
+    let mut rt = Runtime::new(TabsProbe::default(), tabs_panel_view, (960.0, 640.0), env());
+    rt.frame(0.0);
+    assert!(
+        element(&rt, "tabs-tab-a").item_selected,
+        "active tab states include selected"
+    );
+    assert!(
+        !element(&rt, "tabs-tab-b").item_selected,
+        "inactive tab b states include unselected"
+    );
+    assert!(
+        !element(&rt, "tabs-tab-c").item_selected,
+        "inactive tab c states include unselected"
+    );
+
+    click(&mut rt, "tabs-tab-b");
+    rt.frame(0.0);
+    assert!(
+        !element(&rt, "tabs-tab-a").item_selected,
+        "a unselected after switch"
+    );
+    assert!(
+        element(&rt, "tabs-tab-b").item_selected,
+        "b selected after switch"
+    );
+    assert!(
+        !element(&rt, "tabs-tab-c").item_selected,
+        "c remains unselected"
+    );
+}
+
+#[test]
+fn tabs_panel_label_matches_active_tab_and_updates_on_switch() {
+    let mut rt = Runtime::new(TabsProbe::default(), tabs_panel_view, (960.0, 640.0), env());
+    rt.frame(0.0);
+    assert_eq!(
+        element(&rt, "tabs-panel").label.as_deref(),
+        Some("Alpha"),
+        "panel label matches initial active tab"
+    );
+
+    click(&mut rt, "tabs-tab-b");
+    rt.frame(0.0);
+    assert_eq!(
+        element(&rt, "tabs-panel").label.as_deref(),
+        Some("Bravo"),
+        "panel label follows active tab after switch"
+    );
+
+    click(&mut rt, "tabs-tab-c");
+    rt.frame(0.0);
+    assert_eq!(
+        element(&rt, "tabs-panel").label.as_deref(),
+        Some("Charlie"),
+        "panel label follows active tab after another switch"
+    );
+}
+
+#[test]
+fn tabs_enter_and_space_activate_focused_tab_via_callback() {
+    let mut rt = Runtime::new(TabsProbe::default(), tabs_panel_view, (960.0, 640.0), env());
+    rt.frame(0.0);
+    click(&mut rt, "tabs-tab-a");
+    assert_eq!(
+        rt.state.changes,
+        vec!["a".to_string()],
+        "click activates tab and fires callback"
+    );
+
+    press(&mut rt, Key::Enter);
+    assert_eq!(
+        rt.state.changes,
+        vec!["a".to_string(), "a".to_string()],
+        "Enter activates focused tab and fires callback"
+    );
+
+    press(&mut rt, Key::Text(" ".into()));
+    assert_eq!(
+        rt.state.changes,
+        vec!["a".to_string(), "a".to_string(), "a".to_string()],
+        "Space activates focused tab and fires callback"
+    );
 }
