@@ -38,7 +38,7 @@ LimitationsDialog 2、WebContextMenuHost 1、ConfirmDialog 1、Slider 1、Radio 
 
 | # | task | 落点 | 验收 |
 | --: | --- | --- | --- |
-| T0-01 | Button（primary/secondary/ghost/danger × size × icon × disabled × loading） | `crates/datazen-ui/src/ui/button.rs` | 6 种组合的矩形与文字基线断言 + 点击回调 |
+| T0-01 | Button（primary/secondary/ghost/danger × size × icon × disabled × loading） | `crates/datazen-ui/src/ui/button.rs` | 已落地 `d91ed3001`：四变体共用 36pt 高与同一文字基线，`the_button_variants_keep_one_height_and_baseline` 覆盖 |
 | T0-02 | Spinner（小/中，tone，可 label） | `crates/datazen-ui/src/ui/spinner.rs` | 动画帧不改变占位矩形 |
 | T0-03 | 图标集对齐 lucide 实际用例 | `crates/datazen-ui/src/icons.rs` | 缺失清单清零，未用图标删除 |
 | T0-04 | CopyableError + 复制反馈定时 | `crates/datazen-ui/src/ui/copyable.rs` | 复制后 1.5s 复位 |
