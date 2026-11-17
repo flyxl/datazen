@@ -76,3 +76,5 @@ mod components;
 mod choice_extra;
 // Toast / Tooltip / HoverCard overlay base (T0-10).
 mod overlay;
+// Independent audit for T0-10 overlay base.
+mod overlay_audit;
