@@ -27,72 +27,74 @@ use rune::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct SettingsSectionDef {
     pub(crate) id: &'static str,
-    pub(crate) label: &'static str,
+    pub(crate) label_key: &'static str,
     pub(crate) group: &'static str,
 }
 
-pub(crate) const SETTINGS_NAV_GROUPS: [(&str, &str); 2] =
-    [("app", "Application"), ("integration", "AI & Integrations")];
+pub(crate) const SETTINGS_NAV_GROUPS: [(&str, &str); 2] = [
+    ("app", "settings.nav.group.app"),
+    ("integration", "settings.nav.group.integration"),
+];
 
 pub(crate) const SETTINGS_SECTIONS: [SettingsSectionDef; 12] = [
     SettingsSectionDef {
         id: "general",
-        label: "General",
+        label_key: "settings.general",
         group: "app",
     },
     SettingsSectionDef {
         id: "appearance",
-        label: "Appearance",
+        label_key: "settings.appearance",
         group: "app",
     },
     SettingsSectionDef {
         id: "dataBrowsing",
-        label: "Data Browsing",
+        label_key: "settings.dataBrowsing",
         group: "app",
     },
     SettingsSectionDef {
         id: "editor",
-        label: "Editor",
+        label_key: "settings.editor",
         group: "app",
     },
     SettingsSectionDef {
         id: "behavior",
-        label: "Behavior",
+        label_key: "settings.behavior",
         group: "app",
     },
     SettingsSectionDef {
         id: "logging",
-        label: "Logging",
+        label_key: "settings.logging",
         group: "app",
     },
     SettingsSectionDef {
         id: "ai",
-        label: "AI Assistant",
+        label_key: "common.aiAssistant",
         group: "integration",
     },
     SettingsSectionDef {
         id: "prompts",
-        label: "Prompts",
+        label_key: "settings.prompts",
         group: "integration",
     },
     SettingsSectionDef {
         id: "mcpServer",
-        label: "MCP Server",
+        label_key: "settings.mcp.title",
         group: "integration",
     },
     SettingsSectionDef {
         id: "mcpClient",
-        label: "MCP Client",
+        label_key: "settings.mcpClient.title",
         group: "integration",
     },
     SettingsSectionDef {
         id: "tunnels",
-        label: "Tunnels",
+        label_key: "settings.tunnels.title",
         group: "integration",
     },
     SettingsSectionDef {
         id: "extensions",
-        label: "Extensions",
+        label_key: "settings.extensions.title",
         group: "integration",
     },
 ];

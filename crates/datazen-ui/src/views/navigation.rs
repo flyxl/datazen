@@ -3,6 +3,7 @@
 //! Built on shared UI primitives in `crate::ui` so the connection navigator can
 //! be styled consistently and reused as a base for richer tree interactions.
 
+use crate::i18n::t;
 use crate::icons;
 use crate::state_def::AppState;
 use crate::ui::nav::{
@@ -154,7 +155,7 @@ pub(crate) fn navigator_panel(state: &AppState, theme: tok::Theme, dark: bool) -
         .gap(4.0)
         .center_y()
         .child(
-            text("Databases")
+            text(t("nav.databases"))
                 .key("navigator-title")
                 .font(type_::TITLE)
                 .color(theme.text)
