@@ -18,6 +18,21 @@
 //! drag and drop, and the `Tree`'s own on-select/on-open plumbing. Rows here show an optional
 //! icon and a label; richer rows are a later base.
 //!
+//! Style: only `TreeStyle`'s public fields take effect — `row_height`, `indent`, `padding`,
+//! `guides`, `guide` and `selected`. Hover tint, label font and colors, `gap`, the corner
+//! radius and the chevron tones are private to rune-kit, so they stay at the kit's defaults and
+//! `.style(...)` cannot change them. A later base that needs different values has to expose its
+//! own style struct instead of leaning on `TreeStyle`.
+//!
+//! The icon lane is always reserved (16pt), so labels align whether or not a row has a glyph:
+//! `<key>-row-<i>-icon` is mounted for every row and holds the glyph when there is one.
+//!
+//! Page Up/Page Down need a height to page by: a `.height(h)` tree pages by `h`; a `.grow()`
+//! tree pages by the height its viewport last measured, which the app keeps in its own state
+//! and hands in with [`DataTree::viewport`]. With neither, the page is one row. The base keeps
+//! no state of its own between frames (no global registry), so two trees with the same key page
+//! by their own heights.
+//!
 //! | part         | key                          |
 //! |--------------|------------------------------|
 //! | container    | `<key>`                      |
@@ -44,12 +59,11 @@
 //! behaviour); a double press opens a leaf.
 
 // The views that call this land in later migration tasks; `tests/tree.rs` is the only caller
-// today, so the lib target would otherwise warn about every item.
-#![allow(dead_code)]
+// today. Each item below carries its own `dead_code` exception so the list disappears one call
+// site at a time (T0-09 callers: the connection tree and the schema outline), never as a
+// module-wide blanket.
 
 use std::borrow::Cow;
-use std::cell::RefCell;
-use std::collections::HashMap;
 use std::f32::consts::FRAC_PI_2;
 use std::rc::Rc;
 
@@ -61,19 +75,14 @@ use super::kit::kit;
 /// One `on_select` / `on_open` handler: the model already moved before it runs.
 type Handler<S> = Rc<dyn Fn(&mut S, &str)>;
 
-thread_local! {
-    /// The viewport height each tree key last measured. `TreeModel` keeps its own viewport for
-    /// Page Up/Page Down, but that field is private to the kit, so the base records the
-    /// measurement here (one UI thread per process, one entry per tree on screen).
-    static VIEWPORTS: RefCell<HashMap<String, f32>> = RefCell::new(HashMap::new());
-}
+/// Writes the measured viewport height back into the app's state.
+type ViewportWriter<S> = Rc<dyn Fn(&mut S, f32)>;
 
-/// The viewport height `key` last laid out at, 0 when it has not been laid out yet.
-fn viewport_height(key: &str) -> f32 {
-    VIEWPORTS.with(|m| m.borrow().get(key).copied().unwrap_or(0.0))
-}
+/// The empty state's height; a hugging root opens at least this tall so the line is not clipped.
+const EMPTY_HEIGHT: f32 = 40.0;
 
 /// A tree over a [`TreeModel`] in the app's state `S`, drawing the rows with DataZen's keys.
+#[allow(dead_code)] // Used once the connection tree and schema outline migrate to this base.
 pub(crate) struct DataTree<S, T> {
     key: String,
     get: fn(&S) -> &TreeModel<T>,
@@ -87,8 +96,11 @@ pub(crate) struct DataTree<S, T> {
     empty_text: Option<String>,
     height: Option<f32>,
     grow: bool,
+    read_viewport: Option<fn(&S) -> f32>,
+    write_viewport: Option<ViewportWriter<S>>,
 }
 
+#[allow(dead_code)] // Used once the connection tree and schema outline migrate to this base.
 impl<S: 'static, T: 'static> DataTree<S, T> {
     /// `get` and `get_mut` find the model in the state; `label` names a node for its row (and
     /// for typing to jump). `key` names the tree; the model should carry the same key.
@@ -111,6 +123,8 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
             empty_text: None,
             height: None,
             grow: false,
+            read_viewport: None,
+            write_viewport: None,
         }
     }
 
@@ -162,6 +176,19 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
         self
     }
 
+    /// Where the app keeps this instance's measured viewport height. Page Up/Page Down read it
+    /// back and the viewport writes it on layout. Use this for a `.grow()` tree; a `.height(h)`
+    /// tree pages by `h` already. Storing it in `S` keeps two trees with the same key apart.
+    pub(crate) fn viewport(
+        mut self,
+        read: fn(&S) -> f32,
+        write: impl Fn(&mut S, f32) + 'static,
+    ) -> DataTree<S, T> {
+        self.read_viewport = Some(read);
+        self.write_viewport = Some(Rc::new(write));
+        self
+    }
+
     /// Builds the tree. `s` is read for the model; handlers write it back.
     pub(crate) fn build(self, s: &S, dark: bool) -> El {
         let DataTree {
@@ -177,10 +204,19 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
             empty_text,
             height,
             grow,
+            read_viewport,
+            write_viewport,
         } = self;
         let k = kit(dark);
         let style = style.unwrap_or_else(|| TreeStyle::from_kit(k));
         let count = get(s).visible_len();
+        let cursor = get(s).cursor().map(str::to_owned);
+        // Rows are keyed by visible position, not node id, so the active descendant is the
+        // cursor row's own key (the same key assistive tech reads from the row element).
+        let cursor_key = cursor
+            .as_deref()
+            .and_then(|id| get(s).visible_row(id))
+            .map(|row| format!("{key}-row-{row}"));
         let empty = empty_text.unwrap_or_else(|| crate::i18n::t("dataTable.empty").to_owned());
         let row_height = style.row_height;
 
@@ -226,46 +262,52 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
                 build_row,
             );
 
-        let measured_key = key.clone();
-        let viewport = col()
+        let mut viewport = col()
             .key(format!("{key}-viewport"))
             .w_full()
             .grow(1.0)
             .min_h(0.0)
             .scroll(ScrollSpec {
                 stick_bottom: false,
-            })
+            });
+        // The layout hook is what lets the runtime measure the scrolling window and widen the
+        // mounted row range; keep it even when the app does not store the height.
+        if read_viewport.is_none() {
+            viewport = viewport.on_layout_tx(|_s: &mut S, _r: [f32; 4], _tx: &mut Tx| {});
+        }
+        if let (Some(read), Some(write)) = (read_viewport, write_viewport.clone()) {
             // A scroll inside a page reports every frame; only a new height changes what the
-            // window reads (the kit tree's own layout hook).
-            .on_layout_tx(move |_s: &mut S, r: [f32; 4], tx: &mut Tx| {
-                let before = viewport_height(&measured_key);
+            // window reads (the kit tree's own layout hook). The height lives in the app's
+            // state, not in a process-wide registry, so instances with the same key stay apart.
+            viewport = viewport.on_layout_tx(move |s: &mut S, r: [f32; 4], tx: &mut Tx| {
+                let before = read(&*s);
                 if before == r[3] {
                     tx.live_only();
                 } else {
-                    VIEWPORTS.with(|m| m.borrow_mut().insert(measured_key.clone(), r[3]));
+                    write(s, r[3]);
                 }
-            })
-            .child(if count == 0 {
-                el().key(format!("{key}-empty"))
-                    .role("status")
-                    .label(empty.clone())
-                    .w_full()
-                    .h(40.0)
-                    .px(style.padding)
-                    .center_y()
-                    .child(
-                        text(empty)
-                            .font(k.ty.ui)
-                            .color(k.c.text_muted)
-                            .truncate()
-                            .min_w(0.0),
-                    )
-            } else {
-                rows
             });
+        }
+        viewport = viewport.child(if count == 0 {
+            el().key(format!("{key}-empty"))
+                .role("status")
+                .label(empty.clone())
+                .w_full()
+                .h(EMPTY_HEIGHT)
+                .px(style.padding)
+                .center_y()
+                .child(
+                    text(empty)
+                        .font(k.ty.ui)
+                        .color(k.c.text_muted)
+                        .truncate()
+                        .min_w(0.0),
+                )
+        } else {
+            rows
+        });
 
         let key_handler = key.clone();
-        let page_key = key.clone();
         let select = on_select.clone();
         let open = on_open.clone();
         let mut root = col()
@@ -277,13 +319,20 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
         if let Some(name) = name {
             root = root.label(name);
         }
+        if let Some(row_key) = cursor_key {
+            // The focus stays on the tree; a screen reader follows the cursor row.
+            root = root.active_descendant(row_key);
+        }
+        let page_height = height;
         root = match height {
             Some(height) => root.h(height),
             None => {
                 if grow {
                     root.grow(1.0).min_h(0.0)
+                } else if count == 0 {
+                    root.h(EMPTY_HEIGHT)
                 } else {
-                    root.h(row_height * count.max(1) as f32)
+                    root.h(row_height * count as f32)
                 }
             }
         };
@@ -293,22 +342,29 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
             }
             let before = get_mut(s).cursor().map(str::to_owned);
             // The model's page height is private to the kit's own view, so page here by
-            // repeating the arrow key across the measured viewport.
+            // repeating the arrow key across the height this tree owns.
+            let measured = match read_viewport {
+                Some(read) => read(&*s),
+                None => page_height.unwrap_or(0.0),
+            };
+            // One page keeps the focused row as context: it steps by the rows a page shows
+            // minus one, and the first page selects the top (or bottom) row before stepping.
+            let page = ((measured / row_height).floor() as usize)
+                .saturating_sub(1)
+                .max(1);
+            let step = page.saturating_sub(1).max(1);
             let out = {
                 let m = get_mut(s);
                 match ev.key {
-                    Key::PageUp | Key::PageDown => {
-                        let measured = viewport_height(&page_key);
-                        let page = ((measured / row_height).floor() as usize)
-                            .saturating_sub(1)
-                            .max(1);
+                    Key::PageUp | Key::PageDown if measured > 0.0 => {
                         let key = if matches!(ev.key, Key::PageDown) {
                             Key::Down
                         } else {
                             Key::Up
                         };
                         let mut last = TreeKey::Handled;
-                        for _ in 0..page {
+                        let presses = step + usize::from(before.is_none());
+                        for _ in 0..presses {
                             last = m.handle_key(
                                 &KeyEvent {
                                     key: key.clone(),
@@ -355,7 +411,8 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
     }
 }
 
-/// One row: indent guides, the chevron lane, the optional icon and the label.
+/// One row: indent guides, the chevron lane, the icon lane and the label.
+#[allow(dead_code)] // Used once the connection tree and schema outline migrate to this base.
 fn tree_row<T>(
     k: &rune_kit::Kit,
     style: &TreeStyle,
@@ -374,6 +431,7 @@ fn tree_row<T>(
         .role("treeitem")
         .label(name)
         .level(r.depth + 1)
+        .focus_selected(r.selected)
         .w_full()
         .h(style.row_height)
         .pl(pad + r.depth as f32 * style.indent)
@@ -416,14 +474,16 @@ fn tree_row<T>(
         );
     }
     e = e.child(lane);
+    // The icon lane is always reserved, so a row without a glyph lines its label up with one
+    // that has it (the kit's own rows only reserve the lane when an icon exists).
+    let mut icon_lane = el()
+        .key(format!("{row_key}-icon"))
+        .size(16.0, 16.0)
+        .a11y_hidden();
     if let Some(glyph) = icon_fn.and_then(|f| f(data)) {
-        e = e.child(
-            icon(glyph, 16.0)
-                .key(format!("{row_key}-icon"))
-                .color(k.c.icon_muted)
-                .a11y_hidden(),
-        );
+        icon_lane = icon_lane.child(icon(glyph, 16.0).color(k.c.icon_muted).a11y_hidden());
     }
+    e = e.child(icon_lane);
     e.child(
         text(name)
             .key(format!("{row_key}-label"))

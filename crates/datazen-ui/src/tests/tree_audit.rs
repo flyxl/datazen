@@ -250,7 +250,6 @@ fn page_view(state: &PageProbe, _cx: &mut Cx<PageProbe>) -> El {
 }
 
 #[test]
-#[ignore = "known defect: the measured page height is keyed only by the tree key, so two windows share it"]
 fn two_windows_with_the_same_key_page_by_their_own_height() {
     let mut short = Runtime::new(page_probe(200.0), page_view, (960.0, 640.0), env());
     short.frame(0.0);
@@ -283,7 +282,6 @@ fn two_windows_with_the_same_key_page_by_their_own_height() {
 }
 
 #[test]
-#[ignore = "known defect: the empty state is 40pt tall but a hug ended root is one 24pt row"]
 fn an_empty_hugging_tree_keeps_its_status_line_inside() {
     let rt = probe(Probe::empty_hug(), (960.0, 640.0));
     let root = element(&rt, KEY);
@@ -297,7 +295,6 @@ fn an_empty_hugging_tree_keeps_its_status_line_inside() {
 }
 
 #[test]
-#[ignore = "known defect: an icon row shifts its label 20pt left of a row without one"]
 fn rows_without_an_icon_keep_the_icon_lane() {
     let rt = probe(Probe::icon_first(), (960.0, 640.0));
     let with = element(&rt, &format!("{KEY}-row-0-label")).rect[0];
@@ -310,7 +307,6 @@ fn rows_without_an_icon_keep_the_icon_lane() {
 }
 
 #[test]
-#[ignore = "known defect: a selected row never sets item_selected for assistive tech"]
 fn the_selected_row_reports_its_state() {
     let mut rt = probe(Probe::range(5), (960.0, 640.0));
     press(&mut rt, Key::Tab);

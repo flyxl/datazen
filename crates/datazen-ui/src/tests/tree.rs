@@ -4,7 +4,8 @@
 use crate::ui::kit::kit;
 use crate::ui::tree::DataTree;
 use rune::{col, el, Cx, El, Env, Key, KeyEvent, Mods, Runtime};
-use rune_kit::{TreeModel, TreeStyle};
+use rune_kit::{glyphs, TreeModel, TreeStyle};
+use serde_json::Value;
 
 const KEY: &str = "tree";
 
@@ -35,6 +36,15 @@ struct Probe {
     empty_text: Option<&'static str>,
     /// A focusable sibling after the tree, so Tab has somewhere to go.
     outside: bool,
+    /// Hands the viewport height to the tree through state, the `.grow()` contract.
+    wired: bool,
+    /// Hug the content instead of growing or taking a fixed height.
+    hug: bool,
+    /// Draw a glyph on the first row only, to prove the icon lane stays reserved.
+    icons: bool,
+    viewport: f32,
+    /// A fixed frame around a `.grow()` tree, so the measured viewport is known.
+    frame: Option<f32>,
 }
 
 impl Probe {
@@ -77,6 +87,31 @@ impl Probe {
         }
     }
 
+    fn range_at(n: usize, height: f32) -> Probe {
+        Probe {
+            height: Some(height),
+            ..Probe::range(n)
+        }
+    }
+
+    /// A `.grow()` tree inside a 200pt frame that pages by the height the app stores in `S`.
+    fn growing(n: usize) -> Probe {
+        Probe {
+            height: None,
+            wired: true,
+            frame: Some(200.0),
+            ..Probe::range(n)
+        }
+    }
+
+    fn hugging(labels: &[&'static str]) -> Probe {
+        Probe {
+            height: None,
+            hug: true,
+            ..Probe::flat(labels)
+        }
+    }
+
     fn selected_ids(&self) -> Vec<String> {
         self.model.selected().map(str::to_owned).collect()
     }
@@ -93,16 +128,24 @@ fn view(state: &Probe, _cx: &mut Cx<Probe>) -> El {
     .on_open(|s: &mut Probe, id| s.opens.push(id.to_owned()));
     tree = match state.height {
         Some(height) => tree.height(height),
+        None if state.hug => tree,
         None => tree.grow(),
     };
+    if state.icons {
+        tree = tree.icon(|n: &Item| (n.label == "node-0").then_some(&glyphs::CHECK));
+    }
+    if state.wired {
+        tree = tree.viewport(|s: &Probe| s.viewport, |s: &mut Probe, h| s.viewport = h);
+    }
     if let Some(text) = state.empty_text {
         tree = tree.empty_text(text);
     }
-    let mut root = col()
-        .w_full()
-        .h_full()
-        .padding(24.0)
-        .child(tree.build(state, true));
+    let built = tree.build(state, true);
+    let mut root = col().w_full().h_full().padding(24.0);
+    root = match state.frame {
+        Some(height) => root.child(col().w_full().h(height).child(built)),
+        None => root.child(built),
+    };
     if state.outside {
         root = root.child(el().key("outside").focusable(true).h(20.0));
     }
@@ -191,7 +234,7 @@ fn row_keys<S>(rt: &Runtime<S>) -> Vec<String> {
 fn rows_take_the_kit_geometry_and_roles() {
     let mut rt = probe(Probe::nested(), (1440.0, 816.0));
     rt.state.model.expand_all();
-    rt.frame(0.0);
+    settle(&mut rt);
 
     let tree = element(&rt, KEY);
     assert_eq!(tree.role, "tree");
@@ -217,7 +260,8 @@ fn rows_take_the_kit_geometry_and_roles() {
         assert!(near(row.rect[2], 1392.0), "row {i} w {}", row.rect[2]);
     }
 
-    // The chevron sits in the row's left padding (6), 16 wide; the label follows it.
+    // The chevron sits in the row's left padding (6), 16 wide, then the always-reserved
+    // 16pt icon lane; the label follows both (6 + 16 + 4 + 16 + 4 = 46 from the row's left).
     let depth0 = element(&rt, &format!("{KEY}-row-0-chevron"));
     assert!(
         near(depth0.rect[0], 30.0) && near(depth0.rect[2], 16.0),
@@ -226,7 +270,7 @@ fn rows_take_the_kit_geometry_and_roles() {
     );
     let label0 = element(&rt, &format!("{KEY}-row-0-label"));
     let label1 = element(&rt, &format!("{KEY}-row-1-label"));
-    assert!(near(label0.rect[0], 50.0), "label0 x {}", label0.rect[0]);
+    assert!(near(label0.rect[0], 70.0), "label0 x {}", label0.rect[0]);
     assert!(
         near(label1.rect[0] - label0.rect[0], 14.0),
         "one indent step: {} -> {}",
@@ -343,13 +387,22 @@ fn page_keys_move_by_the_measured_page() {
 #[test]
 fn virtual_rows_mount_only_the_window_and_scroll_without_repeating_keys() {
     let mut rt = probe(Probe::range(500), (1440.0, 816.0));
-    let mounted = row_keys(&rt);
     let visible = (200.0f32 / 24.0).ceil() as usize;
-    // `virtual_rows` keeps two viewports of overscan per side, so the mounted window is the
-    // visible rows plus that budget, never the 500-row model.
+    // `virtual_rows` stages rows in across frames; the first frame mounts fewer than the
+    // settled window.
+    let first = row_keys(&rt).len();
+    settle(&mut rt);
+    let mounted = row_keys(&rt);
     assert!(
-        mounted.len() >= visible && mounted.len() <= visible * 3 + 2,
-        "{} rows mounted for a {visible}-row window",
+        first < mounted.len(),
+        "rows stage in: {first} first frame, {} settled",
+        mounted.len()
+    );
+    // 9 visible rows with two viewports of overscan per side settle at exactly 24.
+    assert_eq!(
+        mounted.len(),
+        24,
+        "settled window for a {visible}-row viewport: {:?}",
         mounted.len()
     );
     assert!(
@@ -461,7 +514,7 @@ fn a_single_level_tree_indents_every_row_alike() {
     let xs: Vec<f32> = (0..3)
         .map(|i| element(&rt, &format!("{KEY}-row-{i}-label")).rect[0])
         .collect();
-    assert!(near(xs[0], 50.0), "first label {}", xs[0]);
+    assert!(near(xs[0], 70.0), "first label {}", xs[0]);
     assert!(xs.iter().all(|x| near(*x, xs[0])), "labels {xs:?}");
     assert_eq!(row_keys(&rt).len(), 3);
     rt.frame(0.0);
@@ -480,7 +533,7 @@ fn the_tree_stays_inside_a_1440x816_window() {
 fn assert_inside((w, h): (f32, f32)) {
     let mut rt = probe(Probe::nested(), (w, h));
     rt.state.model.expand_all();
-    rt.frame(0.0);
+    settle(&mut rt);
     let tree = element(&rt, KEY);
     assert!(
         near(tree.rect[2], w - 48.0) && near(tree.rect[3], 240.0),
@@ -490,15 +543,22 @@ fn assert_inside((w, h): (f32, f32)) {
     let mut outside = 0;
     let mut nodes = 0;
     for e in rt.elements() {
-        if e.key.as_deref().is_some_and(|k| k.starts_with(KEY)) {
-            nodes += 1;
+        let Some(key) = e.key.as_deref() else {
+            continue;
+        };
+        if !key.starts_with(KEY) {
+            continue;
         }
-        if e.key.as_deref().is_some_and(|k| k.starts_with(KEY)) {
-            let [x, y, ew, eh] = e.rect;
-            if x < -0.5 || y < -0.5 || x + ew > w + 0.5 || y + eh > h + 0.5 {
-                outside += 1;
-                eprintln!("{} leaves {w}x{h}: {:?}", e.key.unwrap_or_default(), e.rect);
-            }
+        nodes += 1;
+        // The row list is the scroll viewport's virtual extent: it is deliberately taller
+        // than the window and clipped, so it is not part of the visible-node fit.
+        if key == format!("{KEY}-rows") {
+            continue;
+        }
+        let [x, y, ew, eh] = e.rect;
+        if x < -0.5 || y < -0.5 || x + ew > w + 0.5 || y + eh > h + 0.5 {
+            outside += 1;
+            eprintln!("{key} leaves {w}x{h}: {:?}", e.rect);
         }
     }
     eprintln!(
@@ -506,4 +566,160 @@ fn assert_inside((w, h): (f32, f32)) {
         tree.rect
     );
     assert_eq!(outside, 0, "tree nodes leave a {w}x{h} window");
+}
+
+fn find_json_key<'a>(node: &'a Value, key: &str) -> Option<&'a Value> {
+    if node.get("key").and_then(Value::as_str) == Some(key) {
+        return Some(node);
+    }
+    node.get("children")?
+        .as_array()?
+        .iter()
+        .find_map(|c| find_json_key(c, key))
+}
+
+fn json_states(node: &Value) -> Vec<&str> {
+    node.get("states")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default()
+}
+
+#[test]
+fn the_selected_row_is_the_accessible_selection() {
+    let mut rt = probe(Probe::range(5), (960.0, 640.0));
+    press(&mut rt, Key::Tab);
+    press(&mut rt, Key::Down);
+    settle(&mut rt);
+    let row = element(&rt, &format!("{KEY}-row-0"));
+    assert!(row.item_selected, "the row reports item_selected");
+
+    let json = rt.accessibility_json();
+    let tree = find_json_key(&json, KEY).expect("the tree is in the a11y tree");
+    assert_eq!(
+        tree.get("activeDescendant").and_then(Value::as_str),
+        Some("tree-row-0"),
+        "the tree points at its cursor row: {tree}"
+    );
+    let row = find_json_key(&json, &format!("{KEY}-row-0")).expect("the row is in the a11y tree");
+    assert!(
+        json_states(row).contains(&"selected"),
+        "the painted selection is the accessible one: {row}"
+    );
+}
+
+#[test]
+fn two_trees_with_the_same_key_page_by_their_own_height() {
+    let mut short = probe(Probe::range_at(60, 200.0), (960.0, 640.0));
+    press(&mut short, Key::Tab);
+    press(&mut short, Key::PageDown);
+    settle(&mut short);
+    assert_eq!(
+        short.state.selects.last().map(String::as_str),
+        Some("node-6")
+    );
+    press(&mut short, Key::PageDown);
+    settle(&mut short);
+    assert_eq!(
+        short.state.selects.last().map(String::as_str),
+        Some("node-12")
+    );
+
+    // A second window with the same tree key pages by its own 400pt viewport.
+    let mut tall = probe(Probe::range_at(60, 400.0), (960.0, 640.0));
+    press(&mut tall, Key::Tab);
+    press(&mut tall, Key::PageDown);
+    settle(&mut tall);
+    assert_eq!(
+        tall.state.selects.last().map(String::as_str),
+        Some("node-14"),
+        "the tall window paged by the short window's height"
+    );
+    press(&mut short, Key::PageDown);
+    settle(&mut short);
+    assert_eq!(
+        short.state.selects.last().map(String::as_str),
+        Some("node-18"),
+        "the short window kept its own page height"
+    );
+}
+
+#[test]
+fn a_growing_tree_pages_by_the_viewport_stored_in_state() {
+    let mut rt = probe(Probe::growing(60), (960.0, 640.0));
+    press(&mut rt, Key::Tab);
+    press(&mut rt, Key::PageDown);
+    settle(&mut rt);
+    assert_eq!(
+        rt.state.viewport, 200.0,
+        "the viewport wrote its height to S"
+    );
+    assert_eq!(
+        rt.state.selects.last().map(String::as_str),
+        Some("node-6"),
+        "a 200pt viewport pages seven rows"
+    );
+}
+
+#[test]
+fn rows_without_a_glyph_keep_the_icon_lane() {
+    let mut rt = probe(
+        Probe {
+            icons: true,
+            ..Probe::range(4)
+        },
+        (960.0, 640.0),
+    );
+    rt.frame(0.0);
+    let with = element(&rt, &format!("{KEY}-row-0-label")).rect[0];
+    let without = element(&rt, &format!("{KEY}-row-1-label")).rect[0];
+    assert!(
+        near(with, without),
+        "the icon lane is reserved for every row: {with} vs {without}"
+    );
+    assert!(
+        has(&rt, &format!("{KEY}-row-1-icon")),
+        "the empty lane is mounted"
+    );
+}
+
+#[test]
+fn an_empty_hugging_tree_keeps_its_status_line_inside() {
+    let rt = probe(Probe::hugging(&[]), (960.0, 640.0));
+    let root = element(&rt, KEY);
+    let empty = element(&rt, &format!("{KEY}-empty"));
+    eprintln!("root {:?}, empty {:?}", root.rect, empty.rect);
+    assert!(
+        empty.rect[3] <= root.rect[3] + 0.5,
+        "the 40pt empty line is clipped by a {}pt root",
+        root.rect[3]
+    );
+}
+
+#[test]
+fn a_five_hundred_row_tree_stays_inside_both_windows_except_the_extent() {
+    for (w, h) in [(960.0, 640.0), (1440.0, 816.0)] {
+        let rt = probe(Probe::range(500), (w, h));
+        let extent = element(&rt, &format!("{KEY}-rows"));
+        assert!(
+            extent.rect[3] > 200.0,
+            "the virtual extent is the long scroll content: {:?}",
+            extent.rect
+        );
+        let mut outside = 0;
+        for e in rt.elements() {
+            let Some(key) = e.key.as_deref() else {
+                continue;
+            };
+            if !key.starts_with(KEY) || key == format!("{KEY}-rows") {
+                continue;
+            }
+            let [x, y, ew, eh] = e.rect;
+            if x < -0.5 || y < -0.5 || x + ew > w + 0.5 || y + eh > h + 0.5 {
+                outside += 1;
+                eprintln!("{key} leaves {w}x{h}: {:?}", e.rect);
+            }
+        }
+        assert_eq!(outside, 0, "500-row tree nodes leave a {w}x{h} window");
+    }
 }
