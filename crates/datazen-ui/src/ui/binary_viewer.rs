@@ -7,10 +7,15 @@
 //!
 //! ## What it owns
 //!
-//! - A read-only hex + ASCII table: offset column (8 hex digits), hex bytes, and
-//!   ASCII gutter, `row_bytes` bytes per line (default 16).
-//! - Incomplete trailing rows are padded with spaces in the hex column but no
-//!   placeholder bytes are invented; non-printable ASCII bytes render as `.`.
+//! - A read-only hex + ASCII table: offset column (8 hex digits), whole-row hex
+//!   bytes text, and ASCII gutter, `row_bytes` bytes per line (default 16).
+//! - Hex row shape matches React `hexRows`: each present byte is `"xx "`, each
+//!   missing slot in the final (incomplete) row is `"   "`, and the row hex string
+//!   is `trimEnd()`ed. ASCII is the bare string of existing bytes only (no `|...|`
+//!   wrapper), with non-printable bytes rendered as `.`.
+//! - Body is clamped to `max_h(360.0)` and scrolls internally. Rendering is capped
+//!   at `MAX_HEX_ROWS` (4096) rows; when truncated a `{key}-hex-truncated` marker is
+//!   shown (4 KB / 256 rows is not truncated).
 //! - Empty input renders no data lines (zero rows).
 //!
 //! Everything visual comes from [`Kit`] (`k.ty.mono`, `c.*`, `k.radius.*`); no
@@ -19,18 +24,24 @@
 //! ## What it leaves out
 //!
 //! - Image sniffing/preview and save-as-file actions (React-only concerns owned
-//!   by callers/host integration), row-count truncation footer, and copy/export.
+//!   by callers/host integration), and copy/export.
 //!
-//! ## Key convention
+//! ## Key convention and React mapping
 //!
-//! | part      | key                    |
-//! |-----------|------------------------|
-//! | root      | `<key>`                |
-//! | body      | `<key>-body`           |
-//! | row       | `<key>-line-{i}`       |
-//! | offset    | `<key>-offset-{i}`     |
-//! | hex cell  | `<key>-hex-{i}-{j}`    |
-//! | ascii     | `<key>-ascii-{i}`      |
+//! Caller passes a prefix key (e.g. `bv`).
+//!
+//! | React testid/suffix      | Rune key                | Notes |
+//! |--------------------------|-------------------------|-------|
+//! | `<key>`                  | `<key>`                 | Equivalent root container |
+//! | `<key>-hex`              | `<key>-hex`             | Equivalent hex/body container (scrollable, clamped) |
+//! | *(row, not keyed in React)* | `<key>-line-{i}`    | Rune-specific row container |
+//! | *(offset text)*          | `<key>-offset-{i}`      | 8-digit hex offset |
+//! | `<key>-hex-bytes`        | `<key>-hex-bytes-{i}`   | Whole-row hex string (React uses one testid for all rows; Rune keys per row for assertions) |
+//! | *(ascii text)*           | `<key>-ascii-{i}`       | Bare ASCII gutter string (no `|` wrapper), existing bytes only |
+//! | `<key>-hex-truncated`    | `<key>-hex-truncated`   | Truncation notice when `rows > MAX_HEX_ROWS` |
+//!
+//! Per-byte hex cell keys (`-hex-{i}-{j}`) are intentionally removed: hex is rendered
+//! as a single row string for React parity.
 // No `views/` caller uses this yet; it is a reusable base for later migration tasks.
 #![allow(dead_code)]
 
@@ -39,6 +50,8 @@ use rune_kit::Kit;
 
 /// Default bytes rendered per row.
 pub(crate) const DEFAULT_ROW_BYTES: usize = 16;
+/// Max rows rendered for hex views (matches React), to keep large blobs bounded.
+pub(crate) const MAX_HEX_ROWS: usize = 4096;
 
 /// Hex + ASCII viewer for binary data.
 pub(crate) struct BinaryViewer {
@@ -78,21 +91,31 @@ impl BinaryViewer {
     pub(crate) fn build(self, dark: bool) -> El {
         let k = crate::ui::kit::kit(dark);
         let mut body = col()
-            .key(format!("{}-body", self.key))
+            .key(format!("{}-hex", self.key))
             .w_full()
+            .grow(1.0)
+            .min_h(0.0)
+            .max_h(360.0)
             .gap(0.0)
             .scroll(rune::ScrollSpec { stick_bottom: false });
 
-        if self.bytes.is_empty() {
-            // Empty input: zero data rows (explicit empty state).
-        } else {
+        if !self.bytes.is_empty() {
             let row_bytes = self.row_bytes;
             let total_rows = (self.bytes.len() + row_bytes - 1) / row_bytes;
-            for i in 0..total_rows {
+            let shown_rows = total_rows.min(MAX_HEX_ROWS);
+            for i in 0..shown_rows {
                 let start = i * row_bytes;
                 let end = (start + row_bytes).min(self.bytes.len());
                 let slice = &self.bytes[start..end];
                 body = body.child(self.build_row(k, i, start, slice, row_bytes));
+            }
+            if total_rows > shown_rows {
+                body = body.child(
+                    text(format!("… truncated: showing {shown_rows} of {total_rows} rows"))
+                        .key(format!("{}-hex-truncated", self.key))
+                        .font(k.ty.text_xsmall)
+                        .color(k.c.text_muted),
+                );
             }
         }
 
@@ -114,45 +137,42 @@ impl BinaryViewer {
     }
 
     fn build_row(&self, k: &Kit, i: usize, offset: usize, slice: &[u8], row_bytes: usize) -> El {
-        let mut line = row()
+        let offset_text = format!("{offset:08x}");
+        let mut hex = String::new();
+        let mut ascii = String::with_capacity(slice.len());
+        for j in 0..row_bytes {
+            if j < slice.len() {
+                hex.push_str(&format!("{:02x} ", slice[j]));
+                ascii.push(ascii_gutter(slice[j]));
+            } else {
+                hex.push_str("   ");
+            }
+        }
+        let hex = hex.trim_end().to_owned();
+
+        row()
             .key(format!("{}-line-{i}", self.key))
             .w_full()
             .items_start()
-            .gap(12.0);
-
-        let offset_text = format!("{offset:08x}");
-        line = line.child(
-            text(offset_text)
-                .key(format!("{}-offset-{i}", self.key))
-                .font(k.ty.mono)
-                .color(k.c.text_muted),
-        );
-
-        let mut hex_row = row().gap(4.0);
-        for j in 0..row_bytes {
-            let cell = if j < slice.len() {
-                format!("{:02x}", slice[j])
-            } else {
-                "  ".to_owned()
-            };
-            hex_row = hex_row.child(
-                text(cell)
-                    .key(format!("{}-hex-{i}-{j}", self.key))
+            .gap(12.0)
+            .child(
+                text(offset_text)
+                    .key(format!("{}-offset-{i}", self.key))
+                    .font(k.ty.mono)
+                    .color(k.c.text_muted),
+            )
+            .child(
+                text(hex)
+                    .key(format!("{}-hex-bytes-{i}", self.key))
                     .font(k.ty.mono)
                     .color(k.c.text_base),
-            );
-        }
-        line = line.child(hex_row);
-
-        let ascii: String = slice.iter().map(|&b| ascii_gutter(b)).collect();
-        line = line.child(
-            text(format!("|{ascii}|"))
-                .key(format!("{}-ascii-{i}", self.key))
-                .font(k.ty.mono)
-                .color(k.c.text_muted),
-        );
-
-        line
+            )
+            .child(
+                text(ascii)
+                    .key(format!("{}-ascii-{i}", self.key))
+                    .font(k.ty.mono)
+                    .color(k.c.text_muted),
+            )
     }
 }
 

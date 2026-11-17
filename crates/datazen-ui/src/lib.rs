@@ -28,7 +28,7 @@ pub use constants::TABLE_PAGE_SIZE;
 pub(crate) use constants::{APP_FONTS, APP_FONT_FAMILIES, NAVIGATOR_WIDTH_DEFAULT, NAVIGATOR_WIDTH_KEY, NAVIGATOR_WIDTH_MAX, NAVIGATOR_WIDTH_MIN, RAIL_WIDTH_COLLAPSED, RAIL_WIDTH_EXPANDED, SIDEBAR_RAIL_WIDTH_KEY};
 pub use state_def::AppState;
 pub(crate) use types::{Section, TableView, Tool};
-pub use app::{app_with_adapter, run, run_with_adapter};
+pub use app::{app_with_adapter, run, run_viewer_capture, run_with_adapter};
 #[cfg(target_arch = "wasm32")]
 pub use app::start;
 pub(crate) use app::{app_ime, app_key, app_poll, view};

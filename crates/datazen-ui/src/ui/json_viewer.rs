@@ -9,11 +9,13 @@
 //! - Four views from the same original text: `tree` (collapsible, read-only),
 //!   `raw` (exact original), `pretty` (two-space indent), and `minify` (single line).
 //! - A mode bar with focusable mode buttons and an optional `on_mode` callback.
-//! - Parse-on-build via `serde_json::Value`; unparseable text shows an invalid
-//!   branch (`{key}-invalid`) instead of a blank panel.
+//! - Parse-on-build via `serde_json::Value`. When unparseable (including empty or
+//!   whitespace-only input), modes collapse to `raw` only, a parse-error bar is shown,
+//!   and the original text remains visible as raw content (never hidden).
 //! - Default-open depth (default 2): nodes at depth `< open_depth` start expanded.
 //!   Collapsed branch children are not generated at all, so large documents only
 //!   render opened nodes.
+//! - Text/tree content bodies are clamped in height (`max_h(360.0)`) and scroll internally.
 //!
 //! Everything visual comes from [`Kit`] (`c.*`, `k.ty.*`, `k.radius.*`); no
 //! colour literals live here.
@@ -27,18 +29,23 @@
 //!   navigation inside the tree (arrow-key traversal) — recorded as follow-up
 //!   gaps; mode buttons are focusable and activatable.
 //!
-//! ## Key convention
+//! ## Key convention and React mapping
 //!
-//! | part        | key                    |
-//! |-------------|------------------------|
-//! | root        | `<key>`                |
-//! | mode bar    | `<key>-modes`          |
-//! | mode button | `<key>-mode-{id}`      | (`tree`, `raw`, `pretty`, `minify`)
-//! | body        | `<key>-body`           |
-//! | invalid     | `<key>-invalid`        |
-//! | tree        | `<key>-tree`           |
-//! | node        | `<key>-node-{path}`    |
-//! | toggle      | `<key>-toggle-{path}`  |
+//! Caller passes a prefix key (e.g. `jv`). Suffixes align with React testids where
+//! applicable; tree node/toggle keys remain path-based (Rune-specific) for stable
+//! element-level assertions.
+//!
+//! | React testid/suffix      | Rune key                | Notes |
+//! |--------------------------|-------------------------|-------|
+//! | `<key>`                  | `<key>`                 | Equivalent root container |
+//! | `<key>-mode-bar`         | `<key>-mode-bar`        | Equivalent mode bar |
+//! | `<key>-mode-{id}`        | `<key>-mode-{id}`       | Equivalent mode button (`tree/raw/pretty/minify`) |
+//! | `<key>-parse-error`      | `<key>-parse-error`     | Equivalent parse error badge/bar; shown when unparseable |
+//! | `<key>-text`            | `<key>-text`            | Equivalent text content container (raw/pretty/minify, incl. unparseable raw) |
+//! | `<key>-tree`             | `<key>-tree`            | Equivalent tree container (valid JSON, tree mode) |
+//! | *(none in React)*        | `<key>-node-{path}`     | Rune-specific: path-keyed tree node (`root`, `.key`, `[i]`) for assertions |
+//! | *(none in React)*        | `<key>-toggle-{path}`   | Rune-specific: path-keyed expand/collapse control |
+//! | *(none in React)*        | `<key>-slot-*-{open\|closed}` | Rune-internal reconciliation slot, not part of React contract |
 //!
 //! `path` is `root` for the document root, then `.<name>` for object members and
 //! `[i]` for array items (for example `root.a[0]`).
@@ -50,6 +57,8 @@ use std::collections::BTreeSet;
 use rune::{col, row, text, El};
 use rune_kit::Kit;
 use serde_json::Value;
+
+use crate::i18n;
 
 /// Display mode for a JSON document.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -196,7 +205,6 @@ impl JsonViewer {
         };
 
         let modes_bar = self.build_modes_bar(k, &available_modes, active_mode);
-
         let mut root = col().key(self.key.clone()).w_full().gap(8.0).child(modes_bar);
         if self.grow {
             root = root.grow(1.0).min_h(0.0);
@@ -206,17 +214,15 @@ impl JsonViewer {
         }
 
         if let Some(err) = parse_error {
-            // Unparseable: only {key}-invalid, no {key}-body.
-            let invalid = text(format!("Invalid JSON · {err}"))
-                .key(format!("{}-invalid", self.key))
+            // Unparseable (including empty/whitespace-only): restrict to raw mode,
+            // show parse error, and keep original text visible as raw content.
+            let invalid = text(format!("{} · {err}", i18n::t("jsonViewer.invalid")))
+                .key(format!("{}-parse-error", self.key))
                 .font(k.ty.text_xsmall)
                 .color(k.c.warning.fg)
                 .wrap_anywhere();
-            return col()
-                .key(self.key.clone())
-                .w_full()
-                .gap(8.0)
-                .child(invalid);
+            let body = self.build_text_body(k, &self.text);
+            return root.child(invalid).child(body);
         }
 
         if let Some(val) = value {
@@ -245,7 +251,7 @@ impl JsonViewer {
         active: JsonDisplayMode,
     ) -> El {
         let mut bar = row()
-            .key(format!("{}-modes", self.key))
+            .key(format!("{}-mode-bar", self.key))
             .gap(4.0)
             .items_start();
         for mode in modes {
@@ -280,10 +286,11 @@ impl JsonViewer {
 
     fn build_text_body(&self, k: &Kit, content: &str) -> El {
         col()
-            .key(format!("{}-body", self.key))
+            .key(format!("{}-text", self.key))
             .w_full()
             .grow(1.0)
             .min_h(0.0)
+            .max_h(360.0)
             .scroll(rune::ScrollSpec { stick_bottom: false })
             .fill(k.c.layer_01)
             .border(1.0, k.c.border_base)
@@ -301,22 +308,17 @@ impl JsonViewer {
     fn build_tree_body(&self, k: &Kit, value: &Value) -> El {
         let nodes = self.build_tree_node(k, "root", None, value, 0);
         col()
-            .key(format!("{}-body", self.key))
+            .key(format!("{}-tree", self.key))
             .w_full()
             .grow(1.0)
             .min_h(0.0)
+            .max_h(360.0)
             .scroll(rune::ScrollSpec { stick_bottom: false })
             .fill(k.c.layer_01)
             .border(1.0, k.c.border_base)
             .radius(k.radius.md)
             .padding(8.0)
-            .child(
-                col()
-                    .key(format!("{}-tree", self.key))
-                    .w_full()
-                    .gap(2.0)
-                    .child(nodes),
-            )
+            .child(col().w_full().gap(2.0).child(nodes))
     }
 
     fn is_expanded(&self, path: &str, depth: usize) -> bool {

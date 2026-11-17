@@ -80,30 +80,25 @@ fn single_row_has_offset_hex_and_ascii_sections() {
         Some("00000000"),
         "offset"
     );
-    assert_eq!(text_of(&rt, "bv-hex-0-0").as_deref(), Some("48"), "H");
-    assert_eq!(text_of(&rt, "bv-hex-0-1").as_deref(), Some("65"), "e");
-    assert_eq!(text_of(&rt, "bv-hex-0-4").as_deref(), Some("6f"), "o");
-    assert_eq!(text_of(&rt, "bv-hex-0-13").as_deref(), Some("00"), "nul byte");
+    assert_eq!(
+        text_of(&rt, "bv-hex-bytes-0").as_deref(),
+        Some("48 65 6c 6c 6f 2c 20 77 6f 72 6c 64 21 00 01 02"),
+        "whole-row hex bytes"
+    );
     let ascii = text_of(&rt, "bv-ascii-0").expect("ascii");
-    assert_eq!(ascii, "|Hello,.world!...|", "ascii gutter");
+    assert_eq!(ascii, "Hello,.world!...", "bare ascii gutter (no pipes)");
 }
 
 #[test]
 fn incomplete_row_pads_hex_but_not_ascii_placeholders_and_nonprintable_is_dot() {
     let mut rt = Runtime::new(Probe, pad_view, (960.0, 640.0), env());
     rt.frame(0.0);
-    assert_eq!(text_of(&rt, "bv-hex-0-0").as_deref(), Some("41"));
-    assert_eq!(text_of(&rt, "bv-hex-0-1").as_deref(), Some("00"));
-    assert_eq!(text_of(&rt, "bv-hex-0-2").as_deref(), Some("7f"));
-    assert_eq!(
-        text_of(&rt, "bv-hex-0-3").as_deref(),
-        Some("  "),
-        "padded with spaces"
-    );
+    // present bytes "xx " + missing "   " then trimEnd() => trailing missing slots removed
+    assert_eq!(text_of(&rt, "bv-hex-bytes-0").as_deref(), Some("41 00 7f"));
     assert_eq!(
         text_of(&rt, "bv-ascii-0").as_deref(),
-        Some("|A..|"),
-        "ascii has no placeholders, nonprintable -> dot"
+        Some("A.."),
+        "ascii has no placeholders, nonprintable -> dot, no pipes"
     );
 }
 
@@ -112,8 +107,9 @@ fn empty_input_renders_zero_data_rows() {
     let mut rt = Runtime::new(Probe, empty_view, (960.0, 640.0), env());
     rt.frame(0.0);
     assert!(has_key(&rt, "bv"), "root present");
-    assert!(has_key(&rt, "bv-body"), "body present");
+    assert!(has_key(&rt, "bv-hex"), "hex body present");
     assert!(!has_key(&rt, "bv-line-0"), "no data rows for empty input");
+    assert!(!has_key(&rt, "bv-hex-truncated"), "no truncation marker");
 }
 
 #[test]

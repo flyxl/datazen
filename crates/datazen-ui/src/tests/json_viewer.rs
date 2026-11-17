@@ -110,7 +110,7 @@ fn raw_mode_text_is_identical_to_input() {
         .into_iter()
         .any(|e| e.text.as_deref() == Some(RAW_SAMPLE));
     assert!(found, "raw text must be present exactly as input");
-    assert!(rt.find("jv-body").is_some(), "body present");
+    assert!(rt.find("jv-text").is_some(), "text body present");
 }
 
 #[test]
@@ -182,11 +182,21 @@ fn tree_default_shows_root_and_first_level_and_hides_deep_level_and_toggle_works
 }
 
 #[test]
-fn unparseable_text_shows_only_invalid_without_body() {
+fn unparseable_text_shows_parse_error_mode_bar_and_raw_text() {
     let mut rt = Runtime::new(Probe::default(), invalid_view, (960.0, 640.0), env());
     rt.frame(0.0);
-    assert!(rt.find("jv-invalid").is_some(), "invalid marker present");
-    assert!(rt.find("jv-body").is_none(), "body must not exist when unparseable");
+    assert!(rt.find("jv-parse-error").is_some(), "parse-error marker present");
+    assert!(rt.find("jv-mode-bar").is_some(), "mode bar present");
+    assert!(rt.find("jv-mode-raw").is_some(), "raw mode available");
+    assert!(rt.find("jv-mode-tree").is_none(), "tree mode not available on parse error");
+    assert!(rt.find("jv-mode-pretty").is_none(), "pretty mode not available on parse error");
+    assert!(rt.find("jv-mode-minify").is_none(), "minify mode not available on parse error");
+    assert!(rt.find("jv-text").is_some(), "raw text body present");
+    let has_original = rt
+        .elements()
+        .into_iter()
+        .any(|e| e.text.as_deref() == Some(INVALID_SRC));
+    assert!(has_original, "original unparseable text must remain visible");
 }
 
 #[test]
@@ -198,7 +208,7 @@ fn mode_keys_exist_and_are_focusable() {
         let e = element(&rt, &key);
         assert!(e.focusable, "{key} focusable");
     }
-    assert!(rt.find("jv-modes").is_some(), "modes bar present");
+    assert!(rt.find("jv-mode-bar").is_some(), "mode bar present");
 }
 
 #[test]

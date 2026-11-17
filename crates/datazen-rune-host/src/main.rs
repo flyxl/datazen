@@ -5,6 +5,11 @@
 //! same adapter seam.
 
 fn main() {
+    if let Ok(scene) = std::env::var("DATAZEN_VIEWER_CAPTURE") {
+        datazen_ui::run_viewer_capture(&scene);
+        return;
+    }
+
     let path = datazen_rune_host::default_connections_path();
     let repository = match datazen_rune_host::FileConnectionRepository::open(&path) {
         Ok(repository) => std::sync::Arc::new(repository),
