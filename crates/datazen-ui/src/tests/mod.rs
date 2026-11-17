@@ -92,6 +92,8 @@ mod overlay_audit;
 mod overlay_retest;
 // zh-CN table wiring: the keys the rune views took over still resolve.
 mod i18n_usage;
+// Independent audit of the settings/rail i18n batch.
+mod i18n_usage_audit;
 
 // T0-11 error display bases.
 mod banner;
