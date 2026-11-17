@@ -457,3 +457,301 @@ fn context_menu_wrapper_mounts_at_point() {
         "context menu closes when point is cleared"
     );
 }
+
+#[test]
+fn submenu_item_selection_runs_handler_and_close_on_select() {
+    #[derive(Default)]
+    struct S {
+        open: bool,
+        close_calls: u32,
+        selected: Vec<String>,
+    }
+
+    fn view(state: &S, _cx: &mut rune::Cx<S>) -> El {
+        let k = kit(true);
+        let mut layer = Vec::new();
+        let menu = Menu::new("subm")
+            .trigger(row().key("subm-trigger").size(40.0, 24.0))
+            .open(state.open)
+            .at(100.0, 100.0)
+            .item(
+                Item::new("More").submenu(
+                    vec![crate::ui::menu::Entry::item(Item::new("Copy").on_select(|s: &mut S| {
+                        s.selected.push("copy".into());
+                    }))],
+                    true,
+                ),
+            )
+            .on_close(|s: &mut S| {
+                s.close_calls += 1;
+                s.open = false;
+            });
+        let root = menu.build(k, &mut layer);
+        let mut out = col().key("subm-root").w_full().h_full().child(root);
+        for el in layer {
+            out = out.child(el);
+        }
+        out
+    }
+
+    let state = S {
+        open: true,
+        ..S::default()
+    };
+    let mut rt = Runtime::new(state, view, (960.0, 640.0), env());
+    rt.frame(0.0);
+    assert!(rt.find("subm-item0-sub-menu").is_some(), "submenu surface present");
+    let (x, y) = rt
+        .find("subm-item0-sub-item0")
+        .expect("submenu leaf item present");
+    rt.pointer_down(x + 2.0, y + 2.0);
+    rt.pointer_up(x + 2.0, y + 2.0);
+    rt.frame(0.0);
+    assert_eq!(rt.state.selected, vec!["copy".to_string()]);
+    assert_eq!(
+        rt.state.close_calls, 1,
+        "leaf submenu selection should trigger close callback by default"
+    );
+}
+
+#[test]
+fn menu_item_capabilities_are_reflected_in_tree() {
+    #[derive(Default)]
+    struct S {
+        open: bool,
+    }
+
+    fn view(state: &S, _cx: &mut rune::Cx<S>) -> El {
+        let k = kit(true);
+        let mut layer = Vec::new();
+        let menu = Menu::new("cap")
+            .trigger(row().key("cap-trigger").size(40.0, 24.0))
+            .open(state.open)
+            .at(80.0, 80.0)
+            .item(
+                Item::new("Cut")
+                    .shortcut("Ctrl+X")
+                    .description("Cut selection"),
+            )
+            .item(Item::new("Check").checked(true))
+            .item(Item::new("Delete").danger(true))
+            .on_close(|s: &mut S| {
+                s.open = false;
+            });
+        let root = menu.build(k, &mut layer);
+        let mut out = col().key("cap-root").w_full().h_full().child(root);
+        for el in layer {
+            out = out.child(el);
+        }
+        out
+    }
+
+    let state = S { open: true };
+    let mut rt = Runtime::new(state, view, (960.0, 640.0), env());
+    rt.frame(0.0);
+    let tree = rt.accessibility_json();
+
+    fn find<'a>(v: &'a serde_json::Value, key: &str) -> Option<&'a serde_json::Value> {
+        if v["key"] == key {
+            return Some(v);
+        }
+        v["children"]
+            .as_array()?
+            .iter()
+            .find_map(|c| find(c, key))
+    }
+
+    let cut = find(&tree, "cap-item0").expect("cut item in a11y tree");
+    assert_eq!(
+        cut["shortcut"].as_str(),
+        Some("Ctrl+X"),
+        "shortcut should be exposed in accessibility tree"
+    );
+    assert!(
+        cut["description"]
+            .as_str()
+            .is_some_and(|d| d.contains("Cut selection")),
+        "description should be exposed in accessibility tree: {cut}"
+    );
+
+    let check = find(&tree, "cap-item1").expect("checked item in a11y tree");
+    let states = check["states"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|v| v.as_str().map(str::to_owned))
+        .collect::<Vec<_>>();
+    assert!(
+        states.iter().any(|s| s == "checked"),
+        "checked item should expose checked state: {check}"
+    );
+
+    let del = find(&tree, "cap-item2").expect("danger item in a11y tree");
+    assert!(
+        rt.find("cap-item2").is_some() && del["name"].as_str() == Some("Delete"),
+        "danger item should render and be present in accessibility tree: {del}"
+    );
+}
+
+#[test]
+fn items_batch_matches_item_calls_for_keys() {
+    #[derive(Default)]
+    struct S {
+        open: bool,
+    }
+
+    fn view(state: &S, _cx: &mut rune::Cx<S>) -> El {
+        let k = kit(true);
+        let mut layer = Vec::new();
+        let by_item = Menu::<S>::new("mi")
+            .trigger(row().key("mi-trigger").size(30.0, 20.0))
+            .open(state.open)
+            .at(40.0, 40.0)
+            .item(Item::new("A"))
+            .item(Item::new("B"))
+            .separator()
+            .item(Item::new("C"));
+        let by_items = Menu::<S>::new("mb")
+            .trigger(row().key("mb-trigger").size(30.0, 20.0))
+            .open(state.open)
+            .at(240.0, 40.0)
+            .items([Item::new("A"), Item::new("B")])
+            .separator()
+            .items([Item::new("C")]);
+        let r1 = by_item.build(k, &mut layer);
+        let r2 = by_items.build(k, &mut layer);
+        let mut out = col().key("batch-root").w_full().h_full().child(r1).child(r2);
+        for el in layer {
+            out = out.child(el);
+        }
+        out
+    }
+
+    let state = S { open: true };
+    let mut rt = Runtime::new(state, view, (960.0, 640.0), env());
+    rt.frame(0.0);
+
+    for (a, b) in [
+        ("mi-item0", "mb-item0"),
+        ("mi-item1", "mb-item1"),
+        ("sep2", "sep2"),
+        ("mi-item3", "mb-item3"),
+    ] {
+        assert!(rt.find(a).is_some(), "expected key {a} from item() form");
+        assert!(rt.find(b).is_some(), "expected key {b} from items() form");
+    }
+}
+
+#[test]
+fn close_on_select_true_closes_and_false_keeps_open() {
+    #[derive(Default)]
+    struct S {
+        open: bool,
+        close_calls: u32,
+        selected: Vec<String>,
+    }
+
+    fn view(state: &S, _cx: &mut rune::Cx<S>) -> El {
+        let k = kit(true);
+        let mut layer = Vec::new();
+        let m_true = Menu::new("ct")
+            .trigger(row().key("ct-trigger").size(30.0, 20.0))
+            .open(state.open)
+            .at(40.0, 40.0)
+            .item(Item::new("A").on_select(|s: &mut S| {
+                s.selected.push("a".into());
+            }))
+            .on_close(|s: &mut S| {
+                s.close_calls += 1;
+                s.open = false;
+            });
+        let r1 = m_true.build(k, &mut layer);
+        let mut out = col().key("ct-root").w_full().h_full().child(r1);
+        for el in layer {
+            out = out.child(el);
+        }
+        out
+    }
+
+    fn view_false(state: &S, _cx: &mut rune::Cx<S>) -> El {
+        let k = kit(true);
+        let mut layer = Vec::new();
+        let m_false = Menu::new("cf")
+            .trigger(row().key("cf-trigger").size(30.0, 20.0))
+            .open(state.open)
+            .at(40.0, 40.0)
+            .close_on_select(false)
+            .item(Item::new("A").on_select(|s: &mut S| {
+                s.selected.push("a".into());
+            }))
+            .on_close(|s: &mut S| {
+                s.close_calls += 1;
+                s.open = false;
+            });
+        let r1 = m_false.build(k, &mut layer);
+        let mut out = col().key("cf-root").w_full().h_full().child(r1);
+        for el in layer {
+            out = out.child(el);
+        }
+        out
+    }
+
+    let mut rt = Runtime::new(S { open: true, ..S::default() }, view, (960.0, 640.0), env());
+    rt.frame(0.0);
+    let (x, y) = rt.find("ct-item0").expect("item");
+    rt.pointer_down(x + 2.0, y + 2.0);
+    rt.pointer_up(x + 2.0, y + 2.0);
+    rt.frame(0.0);
+    assert_eq!(rt.state.selected, vec!["a".to_string()]);
+    assert_eq!(rt.state.close_calls, 1, "close_on_select(true) should invoke close callback");
+    assert!(!rt.state.open, "close_on_select(true) should close");
+
+    let mut rt = Runtime::new(S { open: true, ..S::default() }, view_false, (960.0, 640.0), env());
+    rt.frame(0.0);
+    let (x, y) = rt.find("cf-item0").expect("item");
+    rt.pointer_down(x + 2.0, y + 2.0);
+    rt.pointer_up(x + 2.0, y + 2.0);
+    rt.frame(0.0);
+    assert_eq!(rt.state.selected, vec!["a".to_string()]);
+    assert_eq!(rt.state.close_calls, 0, "close_on_select(false) should not invoke close callback");
+    assert!(rt.state.open, "close_on_select(false) should keep menu open");
+}
+
+#[test]
+fn outside_click_triggers_close_once() {
+    #[derive(Default)]
+    struct S {
+        open: bool,
+        close_calls: u32,
+    }
+
+    fn view(state: &S, _cx: &mut rune::Cx<S>) -> El {
+        let k = kit(true);
+        let mut layer = Vec::new();
+        let menu = Menu::new("once")
+            .trigger(row().key("once-trigger").size(40.0, 24.0))
+            .open(state.open)
+            .at(120.0, 120.0)
+            .item(Item::new("Only"))
+            .on_close(|s: &mut S| {
+                s.close_calls += 1;
+                s.open = false;
+            });
+        let root = menu.build(k, &mut layer);
+        let mut out = col().key("once-root").w_full().h_full().child(root);
+        for el in layer {
+            out = out.child(el);
+        }
+        out
+    }
+
+    let mut rt = Runtime::new(S { open: true, ..S::default() }, view, (960.0, 640.0), env());
+    rt.frame(0.0);
+    assert!(rt.find("once-scrim").is_some(), "scrim present");
+    rt.pointer_down(5.0, 5.0);
+    rt.pointer_up(5.0, 5.0);
+    rt.frame(0.0);
+    assert_eq!(rt.state.close_calls, 1, "outside click should call on_close exactly once");
+    assert!(!rt.state.open);
+}
