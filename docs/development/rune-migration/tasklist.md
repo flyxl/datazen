@@ -37,7 +37,7 @@
 - [ ] T026 · components/filter · 0.80d · components/filter/NamedViewMenu.tsx
 - [ ] T027 · components/schema · 0.50d · components/schema/SchemaDiffPanel.tsx
 - [ ] T028 · components/history · 1.30d · components/history/GlobalQueryHistoryDialog.tsx · split
-- [ ] T029 · components/history · 1.00d · components/history/HistoryEntryCard.tsx components/history/HistoryFilterBar.tsx
+- [~] T029 · components/history · 1.00d · components/history/HistoryEntryCard.tsx components/history/HistoryFilterBar.tsx
 - [ ] T030 · components/query · 0.30d · components/query/ExplainPlanTree.tsx
 - [ ] T031 · components/query · 0.90d · components/query/QueryArtifactExport.tsx
 - [ ] T032 · components/query · 1.00d · components/query/QueryContextSelectors.tsx components/query/QueryErrorPanel.tsx
