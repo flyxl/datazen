@@ -125,6 +125,20 @@ impl AppState {
         }
     }
 
+    /// The active appearance: the persisted theme setting (from the desktop
+    /// adapter) or the system preference when none is saved. Memory-workspace
+    /// fallback settings are not treated as a persisted theme choice.
+    pub(crate) fn dark_theme(&self) -> bool {
+        let saved = match self.desktop.read_ui_settings() {
+            Ok(settings) => settings.into_iter().find_map(|setting| match setting {
+                Setting::Theme { dark } => Some(dark),
+                _ => None,
+            }),
+            Err(_) => None,
+        };
+        saved.unwrap_or_else(|| self.system_dark.get())
+    }
+
     /// The snippets in force (T3): the host's once its file store persists
     /// them, the memory port's while it does not. The host's read answers
     /// from its loaded file — memory-speed, like the settings read.

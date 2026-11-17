@@ -3,6 +3,7 @@
 use crate::data_grid::DataGrid;
 use crate::sql_editor::SqlEditor;
 use crate::types::{QuerySidebarPanel, ResultView, Section, TableView, Tool};
+use std::cell::Cell;
 
 /// A3: one query result tab. Multiple executions produce multiple tabs; pinned
 /// tabs stay across later runs.
@@ -265,6 +266,9 @@ pub struct AppState {
     /// While `Some`, `splitter_size` returns this instead of the persisted
     /// value; a cancelled or finished drag clears it.
     pub(crate) splitter_preview: Option<(String, u32)>,
+    /// The system appearance preference, updated by the root view so helpers
+    /// like `dark_theme()` can fall back consistently when no theme is saved.
+    pub(crate) system_dark: Cell<bool>,
 }
 
 impl Default for AppState {
@@ -401,6 +405,7 @@ impl Default for AppState {
             workflow_generation: 0,
             workflow_loading: None,
             splitter_preview: None,
+            system_dark: Cell::new(true),
         }
     }
 }

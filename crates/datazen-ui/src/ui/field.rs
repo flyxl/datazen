@@ -1,21 +1,25 @@
 //! Text fields: the component that owns a field's height, its centred line and
 //! the chrome around it.
 //!
-//! It follows the shape `rune-kit` uses for its components (`Button`, `TextInput`):
-//! a builder whose methods set the look and the bindings, and whose `build`
-//! paints the element. Rune lays a field's line out from the top of its content
-//! box and its `center_y` only aligns children, so a fixed-height field built by
-//! hand leaves the text and the caret pinned to the top; this component hands the
-//! surplus height back as symmetric padding instead, which centres the line while
-//! keeping the whole field clickable (a field squeezed to its line height would
-//! leave only 15 points to hit).
+//! `TextField` is the app's stable builder over `rune-kit::TextInput`: callers
+//! keep their builder chains, and `build` delegates focus, hit-testing and the
+//! single-line editor to the kit while applying the app's chrome overrides on
+//! top. Rune lays a field's line out from the top of its content box, so a
+//! fixed-height field centres its text by structure rather than a top offset;
+//! the kit's outer row (`role("textbox")`, `h`, `center_y`) owns that, and
+//! clicking anywhere in the box — including the vertical padding — routes focus
+//! to the inner editor (probed in `tests::field_kit`).
 
 use rune::tok::type_;
 use rune::{text_input, Color, El, TextEdit, TextStyle};
 
-/// Vertical padding that centres one line of `style` inside a `height`-tall field.
+use super::kit::kit;
+
+/// Vertical padding that would centre one line of `style` inside a
+/// `height`-tall box.
 ///
-/// Exposed for the geometry test; fields themselves go through [`TextField`].
+/// The kit-delegated field centres through its outer row; the legacy
+/// (custom-ink) path uses this padding directly.
 pub(crate) fn centered_pad(style: TextStyle, height: f32) -> f32 {
     ((height - style.line_px()) / 2.0).max(0.0)
 }
@@ -30,8 +34,14 @@ pub(crate) fn centered_pad(style: TextStyle, height: f32) -> f32 {
 ///     .fill(theme.card)
 ///     .border(1.0, theme.card_border)
 ///     .on_edit(|state: &mut AppState| &mut state.connection_name)
-///     .build()
+///     .build(dark)
 /// ```
+///
+/// The kit supplies the default shell (fill, border, focus ring, hover); any
+/// chrome a caller sets (`fill`/`border`/`radius`/`pad_x`) is applied on top
+/// of the built element so the caller's intent wins. Placeholder colour and
+/// the default text colour are decided by the kit; `.ink(...)` opts into the
+/// direct-build path so the requested text colour reaches the editor.
 pub(crate) struct TextField<'a> {
     key: String,
     edit: &'a TextEdit,
@@ -45,12 +55,15 @@ pub(crate) struct TextField<'a> {
     radius: Option<f32>,
     fill: Option<Color>,
     border: Option<(f32, Color)>,
-    placeholder: Option<(String, Color)>,
+    placeholder: Option<String>,
     ink: Option<Color>,
     secure: bool,
     label: Option<String>,
     bound: bool,
-    acts: Vec<Box<dyn FnOnce(El) -> El>>,
+    on_edit_act: Option<Box<dyn FnOnce(rune_kit::TextInput) -> rune_kit::TextInput>>,
+    on_submit_act: Option<Box<dyn FnOnce(rune_kit::TextInput) -> rune_kit::TextInput>>,
+    on_edit_el: Option<Box<dyn FnOnce(El) -> El>>,
+    on_submit_el: Option<Box<dyn FnOnce(El) -> El>>,
 }
 
 impl<'a> TextField<'a> {
@@ -74,7 +87,10 @@ impl<'a> TextField<'a> {
             secure: false,
             label: None,
             bound: false,
-            acts: Vec::new(),
+            on_edit_act: None,
+            on_submit_act: None,
+            on_edit_el: None,
+            on_submit_el: None,
         }
     }
 
@@ -141,13 +157,15 @@ impl<'a> TextField<'a> {
         self
     }
 
-    /// Placeholder text and the colour it is drawn in, until the field has a value.
-    pub(crate) fn placeholder(mut self, text: impl Into<String>, ink: Color) -> Self {
-        self.placeholder = Some((text.into(), ink));
+    /// Placeholder text shown until the field has a value. The colour is
+    /// determined by the kit's theme tokens.
+    pub(crate) fn placeholder(mut self, text: impl Into<String>) -> Self {
+        self.placeholder = Some(text.into());
         self
     }
 
-    /// The typed text's colour, in place of the runtime's default.
+    /// The typed text's colour, in place of the kit/theme default. Setting
+    /// this opts into the direct-build path so the colour reaches the editor.
     pub(crate) fn ink(mut self, ink: Color) -> Self {
         self.ink = Some(ink);
         self
@@ -167,28 +185,138 @@ impl<'a> TextField<'a> {
 
     pub(crate) fn on_edit<S: 'static>(
         mut self,
-        f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
+        f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + Clone + 'static,
     ) -> Self {
         self.bound = true;
-        self.acts.push(Box::new(move |e: El| e.on_edit(f)));
+        let f1 = f.clone();
+        self.on_edit_act = Some(Box::new(move |e| e.on_edit(f1)));
+        self.on_edit_el = Some(Box::new(move |e: El| e.on_edit(f)));
         self
     }
 
-    pub(crate) fn on_submit<S: 'static>(mut self, f: impl Fn(&mut S, &mut rune::Tx) + 'static) -> Self {
-        self.acts.push(Box::new(move |e: El| e.on_submit(f)));
+    pub(crate) fn on_submit<S: 'static>(mut self, f: impl Fn(&mut S, &mut rune::Tx) + Clone + 'static) -> Self {
+        let f1 = f.clone();
+        self.on_submit_act = Some(Box::new(move |e| e.on_submit(f1)));
+        self.on_submit_el = Some(Box::new(move |e: El| e.on_submit(f)));
         self
     }
 
-    pub(crate) fn build(self) -> El {
+    pub(crate) fn build(self, dark: bool) -> El {
         // Rune focuses a text box only when it can reach the `TextEdit` it
         // edits (`can_focus` asks the input for its accessor), and that comes
         // from `on_edit`: a field without it never takes a caret.
         debug_assert!(self.bound, "a text field without on_edit cannot take focus");
-        let mut e = text_input(self.edit, self.style)
+
+        // A caller-specified ink colour must reach the editor text; kit's
+        // TextInput owns the inner element colour, so use the direct
+        // text_input path in that case (it still fills the full box height).
+        if self.ink.is_some() {
+            return self.build_direct(dark);
+        }
+
+        let k = kit(dark);
+
+        // A field embedded inside a caller-drawn container (nav search row,
+        // home filter row) sets no chrome of its own; render the kit field
+        // plain so it doesn't paint a second shell. Explicit chrome (fill /
+        // border / radius) or an explicit transparent fill means the caller
+        // wants to own the surface — plain keeps the kit's default shell out
+        // of the way and we apply the requested chrome after.
+        let embedded = self.border.is_none()
+            && self.fill.as_ref().map_or(true, |c| c.a == 0.0);
+
+        let mut ti = rune_kit::TextInput::new(self.edit)
+            .text_style(self.style)
+            .height(self.height)
+            .width(self.width);
+        if embedded {
+            ti = ti.plain();
+        }
+        if let Some(text) = &self.placeholder {
+            ti = ti.placeholder(text.clone());
+        }
+        if self.secure {
+            ti = ti.secure();
+        }
+        if let Some(label) = self.label {
+            ti = ti.label(label);
+        }
+        if let Some(act) = self.on_edit_act {
+            ti = act(ti);
+        }
+        if let Some(act) = self.on_submit_act {
+            ti = act(ti);
+        }
+        let mut e = ti.build(k).key(self.key);
+
+        // Kit gives a default shell; callers' explicit chrome wins. For a
+        // plain/embedded field there is no shell to fight, so only the
+        // properties the caller actually set are applied.
+        if let Some(fill) = self.fill {
+            e = e.fill(fill);
+        }
+        if let Some((width, color)) = self.border {
+            e = e.border(width, color);
+        }
+        if let Some(radius) = self.radius {
+            e = e.radius(radius);
+        }
+        if self.pad_x > 0.0 {
+            e = e.px(self.pad_x);
+        }
+        if self.grow {
+            e = e.grow(1.0).min_w(0.0);
+        }
+        if let Some(min) = self.min_width {
+            e = e.min_w(min);
+        }
+        if self.shrink {
+            e = e.shrink();
+        }
+        e
+    }
+
+    /// Direct `text_input` build used when the caller needs control the kit
+    /// cannot express (custom text/placeholder ink). Keeps the whole box as
+    /// the hit target and exposes an inner "input" element so audits/tests can
+    /// inspect the editor, mirroring the kit's structure.
+    fn build_direct(self, dark: bool) -> El {
+        let mut input = text_input(self.edit, self.style)
+            .key("input")
+            .grow(1.0)
+            .shrink()
+            .min_w(0.0)
+            .single_line();
+        if let Some(text) = self.placeholder {
+            // No caller-specified placeholder colour in the kit-delegated
+            // contract; use a theme-aware hint colour.
+            let hint = if dark { Color::WHITE.alpha(0.45) } else { Color::BLACK.alpha(0.45) };
+            input = input.placeholder(text, hint);
+        }
+        if let Some(ink) = self.ink {
+            input = input.color(ink);
+        }
+        if self.secure {
+            input = input.secure();
+        }
+        if let Some(label) = self.label {
+            input = input.label(label);
+        }
+        if let Some(act) = self.on_edit_el {
+            input = act(input);
+        }
+        if let Some(act) = self.on_submit_el {
+            input = act(input);
+        }
+
+        // Wrap in a full-height row that centres the editor line, so the whole
+        // box remains a hit target (matching the kit's outer structure).
+        use rune::row;
+        let mut e = row()
             .key(self.key)
             .h(self.height)
-            .py(centered_pad(self.style, self.height))
-            .single_line();
+            .center_y()
+            .child(input);
         match self.width {
             Some(width) => e = e.w(width),
             None => e = e.w_full(),
@@ -213,21 +341,6 @@ impl<'a> TextField<'a> {
         }
         if let Some((width, color)) = self.border {
             e = e.border(width, color);
-        }
-        if let Some((text, ink)) = self.placeholder {
-            e = e.placeholder(text, ink);
-        }
-        if let Some(ink) = self.ink {
-            e = e.color(ink);
-        }
-        if self.secure {
-            e = e.secure();
-        }
-        if let Some(label) = self.label {
-            e = e.label(label);
-        }
-        for act in self.acts {
-            e = act(e);
         }
         e
     }

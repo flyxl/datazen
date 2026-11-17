@@ -91,7 +91,7 @@ fn import_dialog(state: &AppState, theme: tok::Theme, dark: bool) -> Dialog {
         // past the cap scrolls.
         .body_max_height(448.0)
         .body_pad((20.0, 20.0))
-        .child(connections::import_dialog_body(state, theme))
+        .child(connections::import_dialog_body(state, theme, dark))
         .footer(
             Button::new(t("common.cancel"))
                 .variant(ButtonVariant::Ghost)
@@ -125,7 +125,7 @@ fn connection_dialog(state: &AppState, theme: tok::Theme, dark: bool) -> Dialog 
         .footer_pad((24.0, 12.0))
         .footer_height(64.0)
         .sidebar(connection_type_sidebar(state, theme, dark))
-        .child(connections::connection_form_fields(state, theme))
+        .child(connections::connection_form_fields(state, theme, dark))
         .footer(
             Button::new(t("newConn.testConnection"))
                 .variant(ButtonVariant::Neutral)

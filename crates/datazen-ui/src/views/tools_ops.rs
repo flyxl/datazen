@@ -19,7 +19,7 @@ use rune::{col, row, text, Color, Cx, El};
 use crate::ui::palette;
 use rune::{FileDialogOptions, TextEdit, Tx};
 
-pub(crate) fn value_search_tool(state: &AppState, theme: tok::Theme) -> El {
+pub(crate) fn value_search_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let mut section = col()
         .key("value-search-tool")
         .w_full()
@@ -41,7 +41,7 @@ pub(crate) fn value_search_tool(state: &AppState, theme: tok::Theme) -> El {
                         .height(24.0)
                         .width(220.0)
                         .on_edit(|state: &mut AppState| &mut state.value_search_value)
-                        .build(),
+                        .build(dark),
                 )
                 .child(
                     row()

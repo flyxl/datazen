@@ -84,7 +84,7 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: boo
                             state.sql.find_from_bar();
                             tx.blur();
                         })
-                        .build(),
+                        .build(dark),
                 )
                 .child(
                     text("Find next")
@@ -105,7 +105,7 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: boo
                             state.sql.replace_current_from_bar();
                             tx.blur();
                         })
-                        .build(),
+                        .build(dark),
                 )
                 .child(
                     text("Replace")

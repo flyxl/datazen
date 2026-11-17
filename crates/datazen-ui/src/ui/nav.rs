@@ -34,9 +34,9 @@ pub(crate) fn search_field(
     edit: &TextEdit,
     placeholder: &str,
     theme: tok::Theme,
+    dark: bool,
     on_edit: fn(&mut AppState) -> &mut TextEdit,
 ) -> El {
-    let palette = nav_palette(theme, false);
     // Keep the legacy `navigator-filter-input` key on the editable input for
     // existing tests and scripted interactions.
     let input_key = if key == "navigator-filter" {
@@ -50,9 +50,9 @@ pub(crate) fn search_field(
         .radius(NAV_RADIUS)
         .fill(Color::TRANSPARENT)
         .ink(theme.text)
-        .placeholder(placeholder.to_owned(), palette.text_faint)
+        .placeholder(placeholder.to_owned())
         .on_edit(on_edit)
-        .build();
+        .build(dark);
     row()
         .key(key.to_owned())
         .w_full()

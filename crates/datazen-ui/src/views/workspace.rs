@@ -23,9 +23,9 @@ pub(crate) fn page_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     match state.active {
         Section::Connections => connection_list(state, theme, dark),
         Section::Workspace => workspace_body(state, theme, dark),
-        Section::Settings => settings_page(state, theme),
+        Section::Settings => settings_page(state, theme, dark),
         Section::Tools => tools_page(state, theme, dark),
-        Section::Dashboards => dashboards_page(state, theme),
+        Section::Dashboards => dashboards_page(state, theme, dark),
         Section::Workflows => workflows_page(state, theme, dark),
         Section::Wapps => wapps_page(theme),
     }
@@ -88,7 +88,7 @@ pub(crate) fn table_workspace(state: &AppState, theme: tok::Theme, dark: bool) -
             dark,
         ),
         TableView::Ddl => ddl_view(state, &title, theme),
-        TableView::Columns => columns_view(state, &title, theme),
+        TableView::Columns => columns_view(state, &title, theme, dark),
         TableView::Indexes => indexes_view(state, &title, theme),
         TableView::ForeignKeys => foreign_keys_view(state, &title, theme),
     };
@@ -504,7 +504,7 @@ fn result_workspace(
     dark: bool,
 ) -> El {
     let toggle = result_view_toggle(state, theme);
-    let find_bar = result_find_bar(state, grid, theme);
+    let find_bar = result_find_bar(state, grid, theme, dark);
     let status = result_status_bar(state, grid, theme);
     let body = match state.result_view {
         ResultView::Table => crate::data_grid::result_panel(
@@ -564,7 +564,7 @@ fn result_view_toggle(state: &AppState, theme: tok::Theme) -> El {
 }
 
 /// A5: find bar for the query result grid — search, next/prev, match count.
-fn result_find_bar(state: &AppState, grid: &crate::data_grid::DataGrid, theme: tok::Theme) -> El {
+fn result_find_bar(state: &AppState, grid: &crate::data_grid::DataGrid, theme: tok::Theme, dark: bool) -> El {
     let count = grid.find_hit_count();
     let current = grid.find_current_index();
     let count_label = if grid.find_needle().trim().is_empty() {
@@ -589,7 +589,7 @@ fn result_find_bar(state: &AppState, grid: &crate::data_grid::DataGrid, theme: t
                     state.apply_result_find();
                     tx.blur();
                 })
-                .build(),
+                .build(dark),
         )
         .child(
             row()
