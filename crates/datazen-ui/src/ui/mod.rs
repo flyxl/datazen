@@ -6,5 +6,6 @@
 
 pub(crate) mod field;
 pub(crate) mod kit;
+pub(crate) mod menu;
 pub(crate) mod nav;
 pub(crate) mod theme;

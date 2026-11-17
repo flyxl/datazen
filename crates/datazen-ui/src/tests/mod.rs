@@ -70,3 +70,5 @@ mod chrome_metrics;
 mod query_workspace;
 // Rail alignment and modal dialogs.
 mod rail_modals;
+// Menu and context-menu base.
+mod menus;
