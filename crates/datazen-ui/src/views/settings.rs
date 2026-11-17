@@ -296,11 +296,9 @@ fn placeholder_section(id: &str, label: &str, theme: tok::Theme) -> El {
         .gap(8.0)
         .child(section_title(label, theme))
         .child(
-            text(format!(
-                "{label} settings are not available in this Rune build yet."
-            ))
-            .font(type_::LABEL)
-            .color(theme.text_secondary)
+            text(format!("{label}设置在此 Rune 构建中尚不可用"))
+                .font(type_::LABEL)
+                .color(theme.text_secondary)
             .w_full()
             .wrap(),
         )
