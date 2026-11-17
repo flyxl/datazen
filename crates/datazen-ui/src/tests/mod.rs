@@ -74,3 +74,5 @@ mod rail_modals;
 mod components;
 // Independent review coverage: select (T0-06) and checkbox/switch/radio (T0-09).
 mod choice_extra;
+// Toast / Tooltip / HoverCard overlay base (T0-10).
+mod overlay;
