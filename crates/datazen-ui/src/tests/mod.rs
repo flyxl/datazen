@@ -16,6 +16,7 @@ pub(crate) mod tokens;
 mod tree;
 // T0-09 audit: virtual staging, page height, edges and the selected a11y state.
 mod tree_audit;
+mod tree_rowmath_audit;
 pub(crate) use support::*;
 
 pub(crate) fn runtime() -> Runtime<AppState> {
