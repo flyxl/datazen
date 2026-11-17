@@ -124,3 +124,6 @@ mod base_geometry;
 
 // T0-11 temporal value input: typing, validation and commit keys.
 mod temporal_input;
+
+// T0-11 audit: independent probes for the temporal editor contract.
+mod temporal_input_audit;
