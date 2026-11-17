@@ -78,3 +78,5 @@ mod choice_extra;
 mod overlay;
 // Independent audit for T0-10 overlay base.
 mod overlay_audit;
+// Second-round independent recheck for T0-10 fixes.
+mod overlay_retest;
