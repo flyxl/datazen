@@ -71,9 +71,20 @@ fn the_hint_strip_is_a_one_point_sr_only_box() {
         root.rect
     );
     assert!(
-        root.opacity <= 0.01,
-        "sr-only paints nothing; opacity is {}",
+        root.opacity > 0.01,
+        "sr-only must stay above rune's gone threshold; opacity is {}",
         root.opacity
+    );
+    let hint = element(&rt, "audit-hints-hint");
+    assert_eq!(
+        hint.text_color.map(|c| c.a),
+        Some(0.0),
+        "sr-only glyphs are painted transparent"
+    );
+    let json = rt.accessibility_json();
+    assert!(
+        find_json(&json, "audit-hints-hint").is_some(),
+        "the 1pt box remains readable by assistive tech"
     );
 }
 
@@ -104,7 +115,6 @@ fn find_json<'a>(node: &'a Value, key: &str) -> Option<&'a Value> {
 }
 
 #[test]
-#[ignore = "known defect: opacity(0.0) drops the sr-only subtree from the a11y tree"]
 fn the_sr_only_text_stays_in_the_accessibility_tree() {
     let mut rt = Runtime::new(Hints, hints, (960.0, 640.0), env(true));
     rt.frame(0.0);
@@ -217,22 +227,22 @@ fn the_derived_keys_are_the_ones_in_the_tree() {
 }
 
 #[test]
-fn the_sr_only_text_is_currently_dropped_from_the_accessibility_tree() {
-    // Defect pin: this is the opposite of React's `sr-only`. Keeping the check
-    // explicit makes the regression visible even while the failing probe above
-    // is ignored.
+fn the_sr_only_text_is_readable_in_the_accessibility_tree() {
+    // This used to be the defect pin for `opacity(0.0)` dropping the subtree.
+    // The fix hides glyphs with `color.alpha(0.0)` instead, so the same check
+    // now proves the opposite: the localized hint reaches the AT tree.
     let mut rt = Runtime::new(Hints, hints, (960.0, 640.0), env(true));
     rt.frame(0.0);
     let json = rt.accessibility_json();
     assert!(
-        find_json(&json, "audit-hints-hint").is_none(),
-        "opacity(0.0) should have dropped the hint from the a11y tree"
+        find_json(&json, "audit-hints-hint").is_some(),
+        "the sr-only hint must stay in the accessibility tree"
     );
     assert!(
-        !serde_json::to_string(&json)
+        serde_json::to_string(&json)
             .unwrap()
             .contains(t("tableView.shortcut.hint")),
-        "no hint text should reach the current a11y tree"
+        "the localized hint text should reach the AT tree"
     );
 }
 
