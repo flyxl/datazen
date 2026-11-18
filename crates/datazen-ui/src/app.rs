@@ -12,11 +12,13 @@ use datazen_ui_api::UseCaseAdapter;
 use datazen_ui_api::DesktopAdapter;
 use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, Titlebar, Tx};
 
-/// The app's single view entry: the main window's composition root
-/// (T020, React `MainPage.tsx`) — the chrome slot, the connection page, the
-/// dialog hosts and the store's first load, branch by branch.
+/// The app's single view entry: the root component (T051, React `App.tsx`) —
+/// the window router the host's one window is handed through. The router
+/// composes the main window's root (T020) directly; the layers React wraps
+/// it in (lazy/Suspense, the error boundary, the global hosts) are the
+/// documented seams in `views/app_root.rs`.
 pub(crate) fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
-    views::main_page(state, cx)
+    views::app_root(state, cx)
 }
 
 /// The app's window chrome (L3): self-drawn 40pt titlebar and a minimum size
