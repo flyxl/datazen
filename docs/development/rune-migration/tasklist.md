@@ -40,7 +40,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T024 · components/filter · 0.90d · components/filter/FilterConditionEditor.tsx
 - [ ] T025 · components/filter · 0.30d · components/filter/FilterConnectorToggle.tsx
 - [ ] T026 · components/filter · 0.90d · components/filter/FilterSqlPreviewDialog.tsx
-- [ ] T027 · components/filter · 0.80d · components/filter/FilterTokenInput.tsx components/filter/FilterValueInput.tsx
+- [x] T027 · components/filter · 0.80d · components/filter/FilterTokenInput.tsx components/filter/FilterValueInput.tsx
 - [ ] T028 · components/filter · 0.80d · components/filter/NamedViewMenu.tsx
 - [x] T029 · components/schema · 0.50d · components/schema/SchemaDiffPanel.tsx
 - [x] T030 · components/history · 1.30d · components/history/GlobalQueryHistoryDialog.tsx · split
