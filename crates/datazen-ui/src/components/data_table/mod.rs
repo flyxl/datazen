@@ -9,6 +9,7 @@
 //! | `DataTableSelectionBar.tsx`           | `data_table_selection_bar`  |
 //! | `TableHeader.tsx`                    | `table_header`              |
 
+pub(crate) mod cell_renderer;
 pub(crate) mod column_stats_dialog;
 pub(crate) mod data_table_selection_bar;
 pub(crate) mod default_order_select;
