@@ -269,3 +269,5 @@ mod ai_chat_panel_section_audit;
 mod ai_write_proposal_host;
 // T012 independent audit: fresh vectors against the React source and zh-CN packs.
 mod ai_write_proposal_host_audit;
+// T013: AdminCreateDialog (state machine + dialog / name field / schema fields / error render).
+mod admin_create_dialog;
