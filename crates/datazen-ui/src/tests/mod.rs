@@ -145,3 +145,4 @@ mod temporal_input_audit;
 
 // React parity: DefaultOrderSelect and GridKeyboardHints ports.
 mod data_table_selects;
+mod data_table_ports_audit;
