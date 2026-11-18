@@ -153,3 +153,5 @@ mod history_components_audit;
 
 // T029 fix round: CopyButton base feedback + filter bar metrics.
 mod copy_button;
+// T253-T256: the .ts support layer semantics.
+mod support_layer_audit;

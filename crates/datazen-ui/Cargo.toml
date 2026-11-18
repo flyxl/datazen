@@ -17,9 +17,13 @@ datazen-ui-api = { workspace = true }
 rune = { workspace = true }
 rune-kit = { workspace = true }
 serde_json = { workspace = true }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { workspace = true }
+# `Local` falls back to UTC without `wasmbind`; the hosted build needs the
+# browser's zone for formatLastConnected, so the wasm target opts in here.
+chrono = { version = "0.4", default-features = false, features = ["clock", "wasmbind"] }
 
 # T2: native Open/Save dialogs — rfd on macOS and Windows, the XDG desktop
 # portal over zbus on Linux. The wasm target keeps the scripted-only surface
