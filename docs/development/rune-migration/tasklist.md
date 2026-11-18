@@ -17,7 +17,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T001 · components/ui · 0.90d · components/ui/Dialog.tsx components/ui/ErrorBanner.tsx components/ui/Select.tsx
 - [ ] T002 · components/ui · 0.30d · components/ui/Spinner.tsx
 - [ ] T003 · components/ui · 0.90d · components/ui/WebContextMenu.tsx
-- [ ] T004 · components/DataTable · 0.80d · components/DataTable/CellRenderer.tsx components/DataTable/ColumnStatsDialog.tsx
+- [~] T004 · components/DataTable · 0.80d · components/DataTable/CellRenderer.tsx components/DataTable/ColumnStatsDialog.tsx
 - [ ] T005 · components/DataTable · 1.30d · components/DataTable/DataExportDialog.tsx · split
 - [ ] T006 · components/DataTable · 4.00d · components/DataTable/DataTable.tsx · split
 - [ ] T007 · components/DataTable · 0.90d · components/DataTable/DataTableSelectionBar.tsx
@@ -34,9 +34,9 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T018 · components/DataTable · 0.90d · components/DataTable/QuickLookDialog.tsx
 - [x] T019 · components/DataTable · 0.80d · components/DataTable/TableHeader.tsx
 - [ ] T020 · components/DataTable · 3.10d · components/DataTable/VirtualBody.tsx · split
-- [ ] T021 · components/filter · 0.60d · components/filter/FilterBetweenInput.tsx components/filter/FilterConditionChip.tsx
+- [~] T021 · components/filter · 0.60d · components/filter/FilterBetweenInput.tsx components/filter/FilterConditionChip.tsx
 - [ ] T022 · components/filter · 0.90d · components/filter/FilterConditionEditor.tsx
-- [ ] T023 · components/filter · 0.30d · components/filter/FilterConnectorToggle.tsx
+- [~] T023 · components/filter · 0.30d · components/filter/FilterConnectorToggle.tsx
 - [ ] T024 · components/filter · 0.90d · components/filter/FilterSqlPreviewDialog.tsx
 - [ ] T025 · components/filter · 0.80d · components/filter/FilterTokenInput.tsx components/filter/FilterValueInput.tsx
 - [ ] T026 · components/filter · 0.80d · components/filter/NamedViewMenu.tsx
