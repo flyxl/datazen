@@ -3,6 +3,7 @@
 use crate::data_grid::DataGrid;
 use crate::sql_editor::SqlEditor;
 use crate::types::{QuerySidebarPanel, ResultView, Section, TableView, Tool};
+use crate::views::WorkflowExecutionResult;
 use std::cell::Cell;
 
 /// A3: one query result tab. Multiple executions produce multiple tabs; pinned
@@ -257,6 +258,14 @@ pub struct AppState {
     pub(crate) workflow_yaml: SqlEditor,
     /// The last workflow run's results.
     pub(crate) workflow_results: Vec<WorkflowStepResult>,
+    /// T019: the same run as the ported execution-result panel's view model
+    /// (the honest projection of `workflow_results`; see
+    /// `WorkflowExecutionResult::from_step_results`).
+    pub(crate) workflow_execution: Option<WorkflowExecutionResult>,
+    /// T019: the panel's per-step interaction state — step ids whose rows are
+    /// expanded, and step ids currently showing the chart view.
+    pub(crate) workflow_step_expanded: std::collections::BTreeSet<String>,
+    pub(crate) workflow_step_chart: std::collections::BTreeSet<String>,
     /// T8: the workflow run's generation and its in-flight marker. The host's
     /// engine runs as a job; a delivery from a generation the state has moved
     /// past is dropped.
@@ -402,6 +411,9 @@ impl Default for AppState {
             workflow_editing: None,
             workflow_yaml: SqlEditor::new(),
             workflow_results: Vec::new(),
+            workflow_execution: None,
+            workflow_step_expanded: std::collections::BTreeSet::new(),
+            workflow_step_chart: std::collections::BTreeSet::new(),
             workflow_generation: 0,
             workflow_loading: None,
             splitter_preview: None,

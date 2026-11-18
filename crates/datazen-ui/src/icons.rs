@@ -187,6 +187,25 @@ pub(crate) static ICON_RING_ARC: rune::Icon = rune::Icon {
     body: "<path stroke=\"currentColor\" stroke-width=\"2.5\" fill=\"none\" stroke-linecap=\"round\" d=\"M12 3a9 9 0 1 1-9 9\"/>",
 };
 
+// T019 (workflow result panel): the React panel's ⏭/⏱ status marks are text
+// glyphs the app font pool cannot shape (no cmap entry in Inter, Noto Sans SC
+// or IBM Plex Mono), so those two marks render as their lucide counterparts.
+pub(crate) static ICON_SKIP_FORWARD: rune::Icon = rune::Icon {
+    name: "skip-forward",
+    view: 24.0,
+    body: "<polygon stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"5 4 15 12 5 20 5 4\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"19\" x2=\"19\" y1=\"5\" y2=\"19\"/>",
+};
+pub(crate) static ICON_BAR_CHART_3: rune::Icon = rune::Icon {
+    name: "bar-chart-3",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 3v18h18\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M18 17V9\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M13 17V5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M8 17v-3\"/>",
+};
+pub(crate) static ICON_ALERT_TRIANGLE: rune::Icon = rune::Icon {
+    name: "alert-triangle",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 9v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 17h.01\"/>",
+};
+
 pub(crate) fn section_icon(section: Section) -> &'static rune::Icon {
     match section {
         Section::Connections => &ICON_CONNECTIONS,

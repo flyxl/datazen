@@ -647,9 +647,11 @@ impl AppState {
                 if generation != self.workflow_generation {
                     return;
                 }
+                // T019: the lite report and the execution-result panel's
+                // projection of it land together.
                 match results {
-                    Ok(results) => self.workflow_results = results,
-                    Err(_) => self.workflow_results.clear(),
+                    Ok(results) => self.set_workflow_results(results),
+                    Err(_) => self.clear_workflow_results(),
                 }
             }
         }
