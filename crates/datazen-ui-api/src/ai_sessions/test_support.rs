@@ -485,7 +485,14 @@ pub fn fixture_detail() -> AiSessionDetail {
                 role: AiMessageRole::User,
                 content: "hello".to_string(),
                 status: AiMessageStatus::Complete,
-                metadata: Some(serde_json::json!({ "memoryUsed": [{ "id": "mem-1" }] })),
+                metadata: Some(serde_json::json!({ "memoryUsed": [{
+                    "reference": "M1",
+                    "id": "mem-1",
+                    "subject": "prefer lowercase",
+                    "kind": "preference",
+                    "scope": "user",
+                    "score": 0.5
+                }] })),
                 created_at: "2026-01-01T00:00:00Z".to_string(),
             },
             AiSessionMessage {

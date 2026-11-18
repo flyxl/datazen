@@ -488,6 +488,7 @@ mod tests {
     use super::super::store::{AiSessionBackend, SessionClock, SessionListParams};
     use super::super::test_support::{NOW_ISO, env, fixture_summary, legacy_local_json};
     use super::*;
+    use crate::ai_types::AiMemoryReference;
     use std::cell::{Cell, RefCell};
     use std::rc::Rc;
 
@@ -522,12 +523,16 @@ mod tests {
         assert_eq!(session.messages[2].status, Some(AiMessageStatus::Failed));
         assert_eq!(
             session.messages[0].memory_used,
-            Some(serde_json::json!([{ "id": "mem-1" }]))
+            Some(vec![AiMemoryReference {
+                reference: "M1".to_string(),
+                id: "mem-1".to_string(),
+                subject: "prefer lowercase".to_string(),
+                kind: "preference".to_string(),
+                scope: "user".to_string(),
+                score: 0.5,
+            }])
         );
-        assert_eq!(
-            session.messages[1].reasoning,
-            Some(serde_json::Value::String("thinking".to_string()))
-        );
+        assert_eq!(session.messages[1].reasoning.as_deref(), Some("thinking"));
         assert_eq!(restored.migration_error, None);
         assert_eq!(restored.migration_success, 0);
         // The list call carries the `?? ''` spelling of the scope.

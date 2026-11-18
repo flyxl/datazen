@@ -9,6 +9,7 @@
 //! [`AiSessionStore`](super::store::AiSessionStore) methods pass their
 //! injected clock through to these.
 
+use serde::Serialize;
 use serde_json::{Map as JsonMap, Value};
 
 use super::local::StoredSession;
@@ -17,6 +18,28 @@ use super::model::{
     AiSessionMessage, AiSessionMessageInput, AiSessionUpsertInput, ExportFormat, SessionScope,
     compute_session_key, normalize_loaded_skills,
 };
+
+/// Serializes one typed pass-through field back to its JSON wire form.
+/// Every shape here is infallible for `to_value` (no non-string map keys),
+/// so the fallback arm is unreachable and merely keeps `?` out of the
+/// signature.
+fn pass_through_json<T: Serialize>(value: &T) -> Value {
+    serde_json::to_value(value).unwrap_or(Value::Null)
+}
+
+/// Reads one typed pass-through field out of a row's metadata spread.
+/// Absent → `None`; present-but-malformed → `None`. React's unchecked
+/// spread would carry a malformed value verbatim — the typed T042 twin
+/// cannot, and nothing in sessions.ts reads these fields beyond passing
+/// them on, so the drop is inert for this module (a documented deviation
+/// of the T042 unification).
+fn typed_pass_through<T: serde::de::DeserializeOwned>(
+    extra: Option<&JsonMap<String, Value>>,
+    key: &str,
+) -> Option<T> {
+    let value = extra?.get(key)?;
+    serde_json::from_value(value.clone()).ok()
+}
 
 /// React's private `messageStatus(message)`:
 /// 1. a persisted status wins;
@@ -38,27 +61,29 @@ pub fn message_status(message: &AiChatMessage) -> AiMessageStatus {
 
 /// React's private `messageMetadata(message)`: the metadata object carried
 /// into the AppDb — every pass-through field that is present (`!== undefined`
-/// in React, `Some` here — including explicit nulls) lands in it; `None`
-/// when nothing is set.
+/// in React, `Some` here) lands in it; `None` when nothing is set. The
+/// fields are the typed T042 shapes now; their serialization **is** the wire
+/// React spreads, so a well-formed message produces the same metadata JSON
+/// as before the unification.
 pub fn message_metadata(message: &AiChatMessage) -> Option<Value> {
     let mut metadata = JsonMap::new();
     if let Some(reasoning) = &message.reasoning {
-        metadata.insert("reasoning".to_string(), reasoning.clone());
+        metadata.insert("reasoning".to_string(), pass_through_json(reasoning));
     }
     if let Some(questions) = &message.questions {
-        metadata.insert("questions".to_string(), questions.clone());
+        metadata.insert("questions".to_string(), pass_through_json(questions));
     }
     if let Some(tool_calls) = &message.tool_calls {
-        metadata.insert("toolCalls".to_string(), tool_calls.clone());
+        metadata.insert("toolCalls".to_string(), pass_through_json(tool_calls));
     }
     if let Some(tool_call_id) = &message.tool_call_id {
-        metadata.insert("toolCallId".to_string(), tool_call_id.clone());
+        metadata.insert("toolCallId".to_string(), pass_through_json(tool_call_id));
     }
     if let Some(cancelled) = message.cancelled {
         metadata.insert("cancelled".to_string(), Value::Bool(cancelled));
     }
     if let Some(memory_used) = &message.memory_used {
-        metadata.insert("memoryUsed".to_string(), memory_used.clone());
+        metadata.insert("memoryUsed".to_string(), pass_through_json(memory_used));
     }
     if metadata.is_empty() {
         None
@@ -109,9 +134,10 @@ pub fn message_from_stored(
 ///
 /// Per message, React spreads the row's metadata over the message first
 /// (`...extra`) and then overrides the detail's own fields; the spread is
-/// observable only through the pass-through keys, which land verbatim —
-/// including `null` values (kept as `Some(Value::Null)`). `cancelled` is
-/// always computed: the row's status, or a metadata `cancelled: true`.
+/// observable only through the pass-through keys, which land as the typed
+/// T042 shapes — a malformed value folds away (see [`typed_pass_through`])
+/// and a `null` reads as `None`. `cancelled` is always computed: the row's
+/// status, or a metadata `cancelled: true`.
 pub fn chat_session_from_detail(detail: &AiSessionDetail) -> AiChatSession {
     AiChatSession {
         id: detail.id.clone(),
@@ -125,13 +151,12 @@ pub fn chat_session_from_detail(detail: &AiSessionDetail) -> AiChatSession {
             .iter()
             .map(|message| {
                 let extra = message.metadata.as_ref().and_then(Value::as_object);
-                let pass_through = |key: &str| extra.and_then(|fields| fields.get(key)).cloned();
                 AiChatMessage {
-                    reasoning: pass_through("reasoning"),
-                    questions: pass_through("questions"),
-                    tool_calls: pass_through("toolCalls"),
-                    tool_call_id: pass_through("toolCallId"),
-                    memory_used: pass_through("memoryUsed"),
+                    reasoning: typed_pass_through(extra, "reasoning"),
+                    questions: typed_pass_through(extra, "questions"),
+                    tool_calls: typed_pass_through(extra, "toolCalls"),
+                    tool_call_id: typed_pass_through(extra, "toolCallId"),
+                    memory_used: typed_pass_through(extra, "memoryUsed"),
                     id: Some(message.id.clone()),
                     role: message.role,
                     content: message.content.clone(),
@@ -156,10 +181,11 @@ pub fn chat_session_from_detail(detail: &AiSessionDetail) -> AiChatSession {
             // React reads now only when an entry lacks loadedAt; the caller
             // of this pure mapper has no clock, and a missing loadedAt in a
             // backend row is not a path sessions.ts can observe, so the
-            // timestamp is the empty marker here. T042/T128 own the live
+            // timestamp is the empty marker here. T128 owns the live
             // normalization with a real clock.
             "",
         ),
+        injection: None,
         request_id: None,
         attribution: None,
     }
@@ -201,6 +227,7 @@ pub fn chat_session_from_stored(
         stream_memory_used: None,
         memory_used: None,
         loaded_skills,
+        injection: None,
         request_id: None,
         attribution: None,
     }
@@ -275,6 +302,7 @@ pub fn new_chat_session(
         stream_memory_used: None,
         memory_used: None,
         loaded_skills: Vec::new(),
+        injection: None,
         request_id: None,
         attribution: None,
     }
@@ -399,9 +427,10 @@ pub fn export_filename(detail: &AiSessionDetail, format: ExportFormat) -> String
 
 #[cfg(test)]
 mod tests {
+    use super::super::local::StoredSession;
     use super::super::model::{AiMessageStatus, SessionScope};
-    use super::super::local::{StoredSession};
     use super::*;
+    use crate::ai_types::{AiMemoryReference, AiToolCall};
 
     /// The React suite's `detail` fixture (sessions.backend.test.ts).
     fn fixture_detail() -> AiSessionDetail {
@@ -423,7 +452,9 @@ mod tests {
                     role: AiMessageRole::User,
                     content: "hello".to_string(),
                     status: AiMessageStatus::Complete,
-                    metadata: Some(serde_json::json!({ "memoryUsed": [{ "id": "mem-1" }] })),
+                    metadata: Some(
+                        serde_json::json!({ "memoryUsed": [memory_reference()] }),
+                    ),
                     created_at: "2026-01-01T00:00:00Z".to_string(),
                 },
                 AiSessionMessage {
@@ -453,6 +484,25 @@ mod tests {
             counter.set(next);
             format!("gen-{next}")
         }
+    }
+
+    /// Decodes a stored message, failing loudly on malformed wire (the
+    /// pass-through fields are typed since the T042 unification).
+    fn decode_message(wire: Value) -> AiChatMessage {
+        serde_json::from_value(wire)
+            .unwrap_or_else(|error| panic!("message decode failed: {error}"))
+    }
+
+    /// The well-formed `AiMemoryReference` spelling the fixtures use.
+    fn memory_reference() -> Value {
+        serde_json::json!({
+            "reference": "M1",
+            "id": "mem-1",
+            "subject": "prefer lowercase",
+            "kind": "preference",
+            "scope": "user",
+            "score": 0.5
+        })
     }
 
     #[test]
@@ -487,19 +537,28 @@ mod tests {
 
     #[test]
     fn message_metadata_carries_every_present_pass_through_field() {
+        // The pass-through fields are the typed T042 shapes now; their
+        // serialization is the wire React spreads (camelCase keys).
         let mut message = AiChatMessage::new(AiMessageRole::Assistant, "reply");
-        message.reasoning = Some(Value::String("thinking".to_string()));
-        message.tool_calls = Some(serde_json::json!([{ "name": "t" }]));
-        message.tool_call_id = Some(Value::String("call-1".to_string()));
+        message.reasoning = Some("thinking".to_string());
+        message.tool_calls = Some(vec![AiToolCall {
+            id: "call-0".to_string(),
+            name: "t".to_string(),
+            arguments: "{}".to_string(),
+        }]);
+        message.tool_call_id = Some("call-1".to_string());
         message.cancelled = Some(false);
-        message.memory_used = Some(serde_json::json!([{ "id": "mem-1" }]));
+        message.memory_used = serde_json::from_value(
+            serde_json::json!([memory_reference()]),
+        )
+        .ok();
         let metadata = message_metadata(&message);
         let expected = serde_json::json!({
             "reasoning": "thinking",
-            "toolCalls": [{ "name": "t" }],
+            "toolCalls": [{ "id": "call-0", "name": "t", "arguments": "{}" }],
             "toolCallId": "call-1",
             "cancelled": false,
-            "memoryUsed": [{ "id": "mem-1" }]
+            "memoryUsed": [memory_reference()]
         });
         assert_eq!(metadata, Some(expected));
         // A bare message yields None (React's undefined check).
@@ -507,14 +566,21 @@ mod tests {
     }
 
     #[test]
-    fn message_metadata_keeps_explicit_nulls() {
-        // React: `!== undefined` — a null reasoning lands in the metadata.
-        let mut message = AiChatMessage::new(AiMessageRole::Assistant, "r");
-        message.reasoning = Some(Value::Null);
-        assert_eq!(
-            message_metadata(&message),
-            Some(serde_json::json!({ "reasoning": null }))
-        );
+    fn message_metadata_folds_a_stored_null_to_absent() {
+        // The typed twin cannot hold an explicit null pass-through
+        // (`reasoning?: string` has no null arm), so a stored `null` reads
+        // as `None` and the metadata key stays absent — where React's
+        // `!== undefined` check would have kept `"reasoning": null`.
+        // Documented unification deviation, pinned end-to-end here.
+        let message = decode_message(serde_json::json!({
+            "role": "assistant",
+            "content": "r",
+            "reasoning": null,
+            "memoryUsed": null
+        }));
+        assert_eq!(message.reasoning, None);
+        assert_eq!(message.memory_used, None);
+        assert_eq!(message_metadata(&message), None);
     }
 
     #[test]
@@ -552,8 +618,11 @@ mod tests {
         assert_eq!(session.title.as_deref(), Some("Saved conversation"));
         assert_eq!(session.metadata, Some(serde_json::json!({ "templateId": "default" })));
         assert_eq!(session.messages.len(), 3);
-        assert_eq!(session.messages[0].memory_used, Some(serde_json::json!([{ "id": "mem-1" }])));
-        assert_eq!(session.messages[1].reasoning, Some(Value::String("thinking".to_string())));
+        assert_eq!(
+            session.messages[0].memory_used,
+            serde_json::from_value(serde_json::json!([memory_reference()])).ok()
+        );
+        assert_eq!(session.messages[1].reasoning.as_deref(), Some("thinking"));
         assert_eq!(session.messages[1].status, Some(AiMessageStatus::Cancelled));
         assert!(session.messages[1].cancelled.unwrap_or(false));
         assert_eq!(session.messages[2].status, Some(AiMessageStatus::Failed));
@@ -614,7 +683,7 @@ mod tests {
         // check carries it — exactly React's payload.
         assert_eq!(
             input.messages[0].metadata,
-            Some(serde_json::json!({ "memoryUsed": [{ "id": "mem-1" }], "cancelled": false }))
+            Some(serde_json::json!({ "memoryUsed": [memory_reference()], "cancelled": false }))
         );
         assert_eq!(input.messages[1].role, AiMessageRole::Assistant);
         assert_eq!(input.messages[1].status, Some(AiMessageStatus::Cancelled));
@@ -765,5 +834,22 @@ mod tests {
         // 60-character cap.
         detail.title = "a".repeat(80);
         assert_eq!(export_filename(&detail, ExportFormat::Json), format!("{}.json", "a".repeat(60)));
+    }
+
+    /// T042-tester D2 pin: the typed pass-through seam folds a
+    /// present-but-malformed field to `None` (absent stays `None`,
+    /// well-formed still reads) — the documented T042 unification deviation.
+    #[test]
+    fn a_malformed_typed_pass_through_folds_to_none() {
+        let mut extra = JsonMap::new();
+        extra.insert("reasoning".to_string(), serde_json::json!({ "not": "a string" }));
+        assert_eq!(typed_pass_through::<String>(Some(&extra), "reasoning"), None);
+        extra.insert("reasoning".to_string(), serde_json::json!("plain text"));
+        assert_eq!(
+            typed_pass_through::<String>(Some(&extra), "reasoning"),
+            Some("plain text".to_string())
+        );
+        assert_eq!(typed_pass_through::<String>(None, "reasoning"), None);
+        assert_eq!(typed_pass_through::<String>(Some(&JsonMap::new()), "reasoning"), None);
     }
 }

@@ -4,16 +4,16 @@
 //! T040, split marker: this file owns the sessions.ts semantics only — the
 //! sibling `stores/ai/streaming.ts`, `stores/ai/types.ts` and `stores/aiStore.ts`
 //! are separate tasks). sessions.ts imports its vocabulary from
-//! `types/ai.ts` and `lib/aiSkills.ts`; those files are **not** ported here.
-//! The Rust crate has no AI type family yet, so this module carries *minimal
-//! mirrors* of exactly the fields sessions.ts reads or writes, each marked
-//! with the task that owns the full twin:
+//! `types/ai.ts` and `lib/aiSkills.ts`. **Since T042** (`types/ai.ts` port,
+//! [`crate::ai_types`]) the message/session/summary/detail/upsert vocabulary
+//! is defined there in full and re-exported by this module — one source, the
+//! wire profiles byte-identical to the T040 mirrors:
 //!
-//! - `types/ai.ts` message/session/summary/detail/upsert vocabulary → T042
-//!   (`types/ai.ts` port). Mirrored here: [`AiChatMessage`], [`AiChatSession`],
-//!   [`AiSessionSummary`], [`AiSessionDetail`], [`AiSessionMessage`],
-//!   [`AiSessionMessageInput`], [`AiSessionUpsertInput`],
-//!   [`AiMessageRole`], [`AiMessageStatus`].
+//! - `types/ai.ts` message/session/summary/detail/upsert vocabulary →
+//!   [`crate::ai_types`] (T042). Re-exported here: [`AiChatMessage`],
+//!   [`AiChatSession`], [`AiSessionSummary`], [`AiSessionDetail`],
+//!   [`AiSessionMessage`], [`AiSessionMessageInput`], [`AiSessionUpsertInput`],
+//!   [`AiMessageRole`], [`AiMessageStatus`], [`AiLoadedSkill`].
 //! - `lib/aiSkills.ts` `normalizeLoadedSkills` → T230. Mirrored here as
 //!   [`normalize_loaded_skills`] (sessions.ts calls it on every restore).
 //! - the live store half (`stores/aiStore.ts` + `stores/ai/types.ts`) → T128;
@@ -29,15 +29,23 @@
 //! distinction is observable only where code branches on `!== undefined`
 //! *and* assigns through — [`message_metadata`](super::mapping::message_metadata)
 //! on the per-message pass-through fields (a `null` reasoning lands in the
-//! AppDb metadata; an absent one does not). The message mirror keeps that
-//! distinction via `Option<serde_json::Value>` (`None` = key absent, `Some(
-//! Value::Null)` = explicit null). Everywhere else (`connectionId`, `database`,
+//! AppDb metadata; an absent one does not). The typed T042 twin cannot carry
+//! an explicit null on those fields (`reasoning?: string` has no null arm),
+//! so a stored `null` folds to `None` and the metadata key then stays
+//! absent — the fold is inert for this file's logic (nothing branches on
+//! key presence of the pass-through keys) and is pinned by the tests below.
+//! Everywhere else (`connectionId`, `database`,
 //! `metadata`, inert streaming fields) sessions.ts only checks truthiness or
-//! `??`-coalesces, so the mirror folds `null`/`undefined` into `None`; the
+//! `??`-coalesces, so the mirrors fold `null`/`undefined` into `None`; the
 //! folds are inert for this file's logic and are noted on the fields.
 
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+pub use crate::ai_types::{
+    AiChatMessage, AiChatSession, AiLoadedSkill, AiMessageRole, AiMessageStatus,
+    AiSessionDetail, AiSessionMessage, AiSessionMessageInput, AiSessionSummary,
+    AiSessionUpsertInput,
+};
 
 /// React `export type SessionKey = string` — the `(identity, database)`
 /// isolation key. Newtype-free alias: keys are built, compared and stored as
@@ -68,278 +76,6 @@ impl SessionScope {
     ) -> Self {
         Self { connection_id, db_session_id, database }
     }
-}
-
-/// React `AiMessageStatus = 'complete' | 'cancelled' | 'failed'`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum AiMessageStatus {
-    Complete,
-    Cancelled,
-    Failed,
-}
-
-impl AiMessageStatus {
-    /// The wire spelling (`'complete' | 'cancelled' | 'failed'`).
-    pub fn as_str(self) -> &'static str {
-        match self {
-            AiMessageStatus::Complete => "complete",
-            AiMessageStatus::Cancelled => "cancelled",
-            AiMessageStatus::Failed => "failed",
-        }
-    }
-}
-
-/// React message role `'system' | 'user' | 'assistant' | 'tool'`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum AiMessageRole {
-    System,
-    User,
-    Assistant,
-    Tool,
-}
-
-/// React `AiChatMessage` (types/ai.ts, T042 owns the full twin) — only the
-/// fields sessions.ts touches are mirrored.
-///
-/// Pass-through-only fields stay opaque JSON so they round-trip byte-identical
-/// through the metadata mapping: `reasoning`, `questions`, `toolCalls`,
-/// `toolCallId`, `memoryUsed` are moved verbatim by
-/// [`message_metadata`](super::mapping::message_metadata) and spread back by
-/// [`chat_session_from_detail`](super::mapping::chat_session_from_detail),
-/// and their object shapes belong to T042. Fields this file branches on stay
-/// typed: `cancelled` (truthiness), `status`, `role`/`content`
-/// (Error:-prefix rule), `id`, `createdAt`.
-///
-/// Unknown keys inside a stored message are dropped by deserialization —
-/// React's unchecked cast would carry them onto the object, but nothing in
-/// sessions.ts reads them, so the drop is unobservable through this module.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AiChatMessage {
-    /// Stable message id; `??`-fallbacks mint one at the seams.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-    pub role: AiMessageRole,
-    pub content: String,
-    /// Pass-through (`?: string` in React; opaque here, see type docs).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reasoning: Option<Value>,
-    /// Pass-through (`?: AiQuestion[]` in React; opaque here).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub questions: Option<Value>,
-    /// Pass-through (`?: AiToolCall[]` in React; opaque here).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tool_calls: Option<Value>,
-    /// Pass-through (`?: string` in React; opaque here).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tool_call_id: Option<Value>,
-    /// Terminal marker read by the status derivation.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cancelled: Option<bool>,
-    /// Persisted terminal state; survives reload.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub status: Option<AiMessageStatus>,
-    /// Stable creation timestamp (ISO string).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub created_at: Option<String>,
-    /// Pass-through (`?: AiMemoryReference[]` in React; opaque here).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub memory_used: Option<Value>,
-}
-
-impl AiChatMessage {
-    /// A minimal message, handy for tests and host fixtures.
-    pub fn new(role: AiMessageRole, content: impl Into<String>) -> Self {
-        Self {
-            id: None,
-            role,
-            content: content.into(),
-            reasoning: None,
-            questions: None,
-            tool_calls: None,
-            tool_call_id: None,
-            cancelled: None,
-            status: None,
-            created_at: None,
-            memory_used: None,
-        }
-    }
-}
-
-/// React `AiLoadedSkill` (types/ai.ts, T042/T230 own the full twins) — the
-/// fields [`normalize_loaded_skills`] reads and writes.
-#[derive(Clone, Debug, PartialEq)]
-pub struct AiLoadedSkill {
-    pub id: Option<String>,
-    pub name: String,
-    pub source: Option<String>,
-    pub loaded_at: String,
-}
-
-/// React `AiChatSession` (types/ai.ts, T042 owns the full twin).
-///
-/// The streaming half (`isStreaming`, `stream*`, `memoryUsed`,
-/// `requestId`, `attribution`) is present because sessions.ts *constructs*
-/// sessions with fixed defaults on every restore/new path — those defaults
-/// are this file's contract. Their transitions belong to `stores/aiStore.ts`
-/// (T128) and `stores/ai/streaming.ts`. React writes explicit `null` for
-/// several of them; nothing here reads them, so they fold to `None` (see the
-/// module docs on null folding). `injection` is never constructed here at all
-/// (React's constructors omit it → `undefined`) and is therefore not
-/// mirrored on this struct.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct AiChatSession {
-    pub id: String,
-    /// Session isolation key used for localStorage persistence.
-    pub session_key: String,
-    /// Connection/database scope used by the backend session list.
-    pub connection_id: Option<String>,
-    pub database: Option<String>,
-    pub title: Option<String>,
-    /// Prompt template / memory policy metadata retained with the session.
-    pub metadata: Option<Value>,
-    pub messages: Vec<AiChatMessage>,
-    /// Inert here: always `false` right after restore/new (T128 owns flips).
-    pub is_streaming: bool,
-    /// Inert streaming half — see type docs.
-    pub stream_content: String,
-    pub stream_reasoning: String,
-    pub stream_mcp_tool_name: Option<String>,
-    pub egress_summary: Option<String>,
-    pub stream_memory_used: Option<Value>,
-    pub memory_used: Option<Value>,
-    /// Skills whose bodies were loaded in this session (session-scoped).
-    pub loaded_skills: Vec<AiLoadedSkill>,
-    /// Inert here: always `None` right after restore/new.
-    pub request_id: Option<String>,
-    /// Inert here: always `None` right after restore/new (non-secret
-    /// attribution union; T042/T128 own the typed twin).
-    pub attribution: Option<Value>,
-}
-
-/// React `AiSessionSummary` (types/ai.ts, T042 owns the full twin).
-/// `connectionId`/`database` are `string | null | undefined` in React; the
-/// distinction is inert for this file (only truthiness and `?? ''`
-/// normalization are observed), so both fold to `None`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AiSessionSummary {
-    pub id: String,
-    pub session_key: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub connection_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub database: Option<String>,
-    pub title: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Value>,
-    pub message_count: usize,
-    pub preview: String,
-    pub created_at: String,
-    pub updated_at: String,
-    pub last_access_at: String,
-}
-
-/// React `AiSessionMessage` (types/ai.ts, T042 owns the full twin).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AiSessionMessage {
-    pub id: String,
-    pub role: AiMessageRole,
-    pub content: String,
-    pub status: AiMessageStatus,
-    /// `Record<string, unknown> | null` in React; folds to `None`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Value>,
-    pub created_at: String,
-}
-
-/// React `AiSessionDetail extends AiSessionSummary` — flattened the same way
-/// (the detail JSON carries all summary fields at the top level).
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AiSessionDetail {
-    pub id: String,
-    pub session_key: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub connection_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub database: Option<String>,
-    pub title: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Value>,
-    pub message_count: usize,
-    pub preview: String,
-    pub created_at: String,
-    pub updated_at: String,
-    pub last_access_at: String,
-    pub messages: Vec<AiSessionMessage>,
-}
-
-impl AiSessionDetail {
-    /// The summary projection of this detail. React has no such helper —
-    /// its test double builds one by spread — but adapters converting a
-    /// detail row into a list entry need exactly this shape.
-    pub fn to_summary(&self) -> AiSessionSummary {
-        AiSessionSummary {
-            id: self.id.clone(),
-            session_key: self.session_key.clone(),
-            connection_id: self.connection_id.clone(),
-            database: self.database.clone(),
-            title: self.title.clone(),
-            metadata: self.metadata.clone(),
-            message_count: self.message_count,
-            preview: self.preview.clone(),
-            created_at: self.created_at.clone(),
-            updated_at: self.updated_at.clone(),
-            last_access_at: self.last_access_at.clone(),
-        }
-    }
-}
-
-/// React `AiSessionMessageInput` (types/ai.ts, T042 owns the full twin).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AiSessionMessageInput {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-    pub role: AiMessageRole,
-    pub content: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub status: Option<AiMessageStatus>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub created_at: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Value>,
-}
-
-/// React `AiSessionUpsertInput` (types/ai.ts, T042 owns the full twin).
-///
-/// `append` stays `Option<bool>` because sessions.ts distinguishes the two
-/// spellings it produces: `chatSessionToUpsertInput` writes an explicit
-/// `false`, the legacy migration omits the key entirely (backend default).
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AiSessionUpsertInput {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-    pub session_key: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub connection_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub database: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub last_access_at: Option<String>,
-    pub messages: Vec<AiSessionMessageInput>,
-    /// `None` = key omitted (backend default false); `Some(false)` = explicit.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub append: Option<bool>,
 }
 
 /// React `SessionRestoreResult`.

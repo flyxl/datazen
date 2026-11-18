@@ -35,7 +35,11 @@
 //! defaults* (the requested 缺字段容错 — matches React's own `?? 0`
 //! tolerances in the eviction comparator); the `messages` list and its
 //! entries degrade per-field (a non-array `messages` becomes empty, a
-//! message violating the declared shape is dropped); and a scalar field
+//! message violating the declared shape is dropped — and since the T042
+//! unification the declared shape is the full `types/ai.ts` twin, so a
+//! malformed pass-through value like a `toolCalls` entry without
+//! `arguments` now drops its message too, where the opaque mirror would
+//! have carried it); and a scalar field
 //! whose declared shape is violated (a non-string `id`) fails the whole
 //! load through the same clear-and-fresh branch React uses for unparseable
 //! data. React would instead keep the entry and crash at first use,
@@ -818,5 +822,28 @@ mod tests {
         storage.fail_set.set(true);
         mark_local_sessions_migrated(&mut storage, "now");
         assert_eq!(storage.raw(MIGRATION_MARKER_KEY).as_deref(), Some(""));
+    }
+
+    /// T042-tester D2 pin: a message entry that violates the declared
+    /// shape is dropped, and the load still yields the well-formed
+    /// siblings (the documented declared-shape policy).
+    #[test]
+    fn a_malformed_message_entry_is_dropped_not_the_whole_load() {
+        let payload = serde_json::json!({
+            "lastAccess": 12.5,
+            "messages": [
+                { "role": "user", "content": "keep me" },
+                { "bogus": true },
+                { "role": "user" }
+            ]
+        });
+        let stored: StoredSession = match serde_json::from_value(payload) {
+            Ok(stored) => stored,
+            Err(error) => panic!("the well-formed halves load: {error}"),
+        };
+        assert_eq!(stored.messages.len(), 1);
+        assert_eq!(stored.messages[0].content, "keep me");
+        // The LRU timestamp rides along untouched.
+        assert_eq!(stored.last_access, Some(12.5));
     }
 }
