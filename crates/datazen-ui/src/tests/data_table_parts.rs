@@ -37,6 +37,11 @@ struct Probe {
     resize_calls: Vec<(usize, f32)>,
     resize_ends: usize,
     menu: Option<usize>,
+    reorder_start: Vec<usize>,
+    reorder_over: Vec<usize>,
+    reorder_drops: usize,
+    reorder_drag: Option<usize>,
+    reorder_spot: Option<usize>,
 }
 
 fn columns() -> Vec<Column> {
@@ -80,6 +85,8 @@ fn view(state: &Probe, _cx: &mut Cx<Probe>) -> El {
     let header = TableHeader::new(state.columns.clone(), state.sorts.clone())
         .grid_semantics(true)
         .sort_menu(state.menu)
+        .reorder_drag(state.reorder_drag)
+        .reorder_drop(state.reorder_spot)
         .column_widths(WIDTHS.to_vec())
         .on_sort(|state: &mut Probe, column: &str, descending: bool| {
             state.sort_calls.push((column.to_owned(), descending));
@@ -103,6 +110,19 @@ fn view(state: &Probe, _cx: &mut Cx<Probe>) -> El {
             state.menu = Some(column);
         })
         .on_sort_menu_close(|state: &mut Probe| state.menu = None)
+        .on_reorder_start(|state: &mut Probe, column: usize| {
+            state.reorder_start.push(column);
+            state.reorder_drag = Some(column);
+        })
+        .on_reorder_over(|state: &mut Probe, column: usize| {
+            state.reorder_over.push(column);
+            state.reorder_spot = Some(column);
+        })
+        .on_reorder_drop(|state: &mut Probe| {
+            state.reorder_drops += 1;
+            state.reorder_drag = None;
+            state.reorder_spot = None;
+        })
         .build(state.dark, &mut layer);
     let body = col()
         .key("probe-page")
@@ -133,6 +153,11 @@ fn element(rt: &Runtime<Probe>, key: &str) -> rune::ElementInfo {
         .into_iter()
         .find(|element| element.key.as_deref() == Some(key))
         .unwrap_or_else(|| panic!("{key} is laid out"))
+}
+
+fn centre(rt: &Runtime<Probe>, key: &str) -> (f32, f32) {
+    let [x, y, w, h] = element(rt, key).rect;
+    (x + w / 2.0, y + h / 2.0)
 }
 
 fn text_of(rt: &Runtime<Probe>, key: &str) -> String {
@@ -558,5 +583,105 @@ fn the_strip_and_the_header_share_one_page_column() {
     assert!(
         (strip[1] + strip[3] - 816.0).abs() < 0.5,
         "the strip ends it: {strip:?}"
+    );
+}
+
+
+#[test]
+fn pressing_the_name_sorts_the_column() {
+    let mut rt = runtime(probe(TotalRowsKind::Exact), (1440.0, 816.0));
+    click(&mut rt, "data-table-header-label-0");
+    assert_eq!(
+        rt.state.sort_calls,
+        vec![("name".to_owned(), false)],
+        "the label block is the sort surface, as in React"
+    );
+}
+
+#[test]
+fn a_reorder_reports_the_column_under_the_pointer() {
+    let mut rt = runtime(probe(TotalRowsKind::Exact), (1440.0, 816.0));
+    let (x0, y0) = centre(&rt, "data-table-header-col-0");
+    let (x2, y2) = centre(&rt, "data-table-header-col-2");
+    rt.pointer_down(x0, y0);
+    rt.pointer_move(x2, y2);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(
+        rt.state.reorder_start,
+        vec![0],
+        "the drag starts on the pressed column"
+    );
+    assert_eq!(
+        rt.state.reorder_over.last().copied(),
+        Some(2),
+        "the pointer is over column 2, so that is the drop target: {:?}",
+        rt.state.reorder_over
+    );
+    rt.pointer_up(x2, y2);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(rt.state.reorder_drops, 1, "one release commits once");
+}
+
+#[test]
+fn the_sort_menu_chevron_sits_inside_its_cell() {
+    let rt = runtime(probe(TotalRowsKind::Exact), (1440.0, 816.0));
+    let cell = element(&rt, "data-table-header-col-0").rect;
+    let chevron = element(&rt, "data-table-header-sort-0").rect;
+    assert!(
+        chevron[0] >= cell[0] && chevron[0] + chevron[2] <= cell[0] + cell[2],
+        "the chevron {chevron:?} sits outside its cell {cell:?}"
+    );
+    assert!(
+        chevron[1] >= cell[1] && chevron[1] + chevron[3] <= cell[1] + cell[3],
+        "the chevron {chevron:?} sits above or below its cell {cell:?}"
+    );
+}
+
+#[test]
+fn the_sort_badge_announces_its_rank() {
+    let mut state = probe(TotalRowsKind::Exact);
+    state.sorts = vec![
+        SortCondition::new("name", false),
+        SortCondition::new("size", true),
+    ];
+    let rt = runtime(state, (1440.0, 816.0));
+    let badge = element(&rt, "data-table-header-sort-position-0");
+    assert_eq!(badge.help.as_deref(), Some("#1"), "React's #1 tooltip");
+    assert_eq!(
+        badge.label.as_deref(),
+        Some("#1"),
+        "assistive tech hears the rank, not just a bare digit"
+    );
+}
+
+#[test]
+fn the_sort_arrow_keeps_a_sixteen_point_slot() {
+    let mut state = probe(TotalRowsKind::Exact);
+    state.sorts = vec![SortCondition::new("name", false)];
+    let rt = runtime(state, (1440.0, 816.0));
+    let arrow = element(&rt, "data-table-header-sort-direction-0").rect;
+    assert_eq!(
+        [arrow[2], arrow[3]],
+        [16.0, 16.0],
+        "React's h-4 w-4 slot: {arrow:?}"
+    );
+}
+
+#[test]
+fn the_drop_marker_sits_on_the_left_edge() {
+    let mut state = probe(TotalRowsKind::Exact);
+    state.reorder_drag = Some(1);
+    state.reorder_spot = Some(2);
+    let rt = runtime(state, (1440.0, 816.0));
+    let cell = element(&rt, "data-table-header-col-2").rect;
+    let marker = element(&rt, "data-table-header-drop-marker-2").rect;
+    assert!(
+        (marker[0] - cell[0]).abs() < 0.5,
+        "React's border-l-2 marks the left edge: marker {marker:?} vs cell {cell:?}"
+    );
+    assert_eq!(marker[2], 2.0, "the marker is 2pt wide: {marker:?}");
+    assert_eq!(
+        marker[3], cell[3],
+        "the marker spans the cell height: {marker:?} vs {cell:?}"
     );
 }

@@ -41,8 +41,11 @@
 //!   kit's 12pt type scale to stay on tokens.
 //! * The resize grip reports pointer moves itself (`on_resize_move` /
 //!   `on_resize_end`) instead of React's window-level mouse listeners.
-//! * `onDragStart`/`onDragOver`/`onDrop` map to `El::on_drag` (Down/Move/Up); the
-//!   pressed cell receives the Up, so the drop commit reads the app state.
+//! * `onDragStart`/`onDragOver`/`onDrop` map to `El::on_drag` (Down/Move/Up). Rune
+//!   sends every phase to the pressed cell only, so `on_reorder_over` hit-tests the
+//!   pointer against the header's column offsets instead of receiving a hovered
+//!   cell; the pressed cell also receives the Up, so the drop commit reads the app
+//!   state. The insertion marker is a pinned 2pt left strip (`border-l-2` in React).
 //! * React's `aria-label="Filter"` is hardcoded English; it uses the existing
 //!   `filter.filter` key here (no dedicated `dataTable.*` key exists).
 //! * There is no `min-w-max`: a Rune row cannot size itself from its children and
@@ -64,7 +67,7 @@ const DEFAULT_COLUMN_WIDTH: f32 = 160.0;
 const CELL_PAD: f32 = 12.0;
 const CELL_GAP: f32 = 8.0;
 const GRIP_WIDTH: f32 = 5.0;
-const SORT_GLYPH: f32 = 14.0;
+const SORT_GLYPH: f32 = 16.0;
 
 /// `ColumnDef` from the React props.
 #[derive(Clone, Debug, Default)]
@@ -243,19 +246,13 @@ impl<S: 'static> TableHeader<S> {
     }
 
     /// The menu's third item; also the third press of the sort cycle.
-    pub(crate) fn on_remove_sort(
-        mut self,
-        f: impl Fn(&mut S, &str) + 'static,
-    ) -> TableHeader<S> {
+    pub(crate) fn on_remove_sort(mut self, f: impl Fn(&mut S, &str) + 'static) -> TableHeader<S> {
         self.on_remove_sort = Some(Rc::new(f));
         self
     }
 
     /// The per-cell filter button.
-    pub(crate) fn on_filter_column(
-        mut self,
-        f: impl Fn(&mut S, &str) + 'static,
-    ) -> TableHeader<S> {
+    pub(crate) fn on_filter_column(mut self, f: impl Fn(&mut S, &str) + 'static) -> TableHeader<S> {
         self.on_filter_column = Some(Rc::new(f));
         self
     }
@@ -285,12 +282,16 @@ impl<S: 'static> TableHeader<S> {
     }
 
     /// A drag left the pressed cell (React `onDragStart`).
-    pub(crate) fn on_reorder_start(mut self, f: impl Fn(&mut S, usize) + 'static) -> TableHeader<S> {
+    pub(crate) fn on_reorder_start(
+        mut self,
+        f: impl Fn(&mut S, usize) + 'static,
+    ) -> TableHeader<S> {
         self.on_reorder_start = Some(Rc::new(f));
         self
     }
 
-    /// The pointer is over a new column (React `onDragOver`).
+    /// The column under the pointer (React `onDragOver`); hit-tested from the
+    /// pressed cell's local drag position, so it can differ from the pressed column.
     pub(crate) fn on_reorder_over(mut self, f: impl Fn(&mut S, usize) + 'static) -> TableHeader<S> {
         self.on_reorder_over = Some(Rc::new(f));
         self
@@ -352,6 +353,20 @@ impl<S: 'static> TableHeader<S> {
                 .and_then(|widths| widths.get(index).copied())
                 .unwrap_or(DEFAULT_COLUMN_WIDTH)
         };
+        let widths: Vec<f32> = (0..columns.len()).map(width_of).collect();
+        // Where each column starts inside the header, gutter included: the reorder
+        // hit test reads the pointer position against these offsets.
+        let column_lefts: Vec<f32> = {
+            let mut lefts = Vec::with_capacity(widths.len());
+            let mut left = if show_row_numbers { GUTTER_WIDTH } else { 0.0 };
+            for width in &widths {
+                lefts.push(left);
+                left += width;
+            }
+            lefts
+        };
+        let reorder_lefts = Rc::new(column_lefts.clone());
+        let reorder_widths = Rc::new(widths.clone());
         // Frozen columns stack from the gutter: each keeps the left edge of the
         // columns before it, so a scroll slides content under the pinned block.
         let mut frozen_lefts = Vec::with_capacity(columns.len());
@@ -418,10 +433,9 @@ impl<S: 'static> TableHeader<S> {
                 && reorder_drag.is_some_and(|drag| drag != col_index);
 
             // The cell's right edge is the normal rule, a stronger accent edge at the
-            // end of the frozen block, and the accent edge of the insertion marker.
-            let (right_border, right_color) = if is_drop_marker {
-                (2.0, c.bg_accent)
-            } else if last_frozen {
+            // end of the frozen block. React's reorder marker is `border-l-2`, so the
+            // left edge is a pinned strip and both edges keep their own colour.
+            let (right_border, right_color) = if last_frozen {
                 (2.0, k.alpha(c.bg_accent, 0.4))
             } else {
                 (1.0, c.border_weak)
@@ -443,6 +457,15 @@ impl<S: 'static> TableHeader<S> {
             }
             if frozen {
                 cell = cell.sticky_left(frozen_lefts[col_index]).fill(c.layer_01);
+            }
+            if is_drop_marker {
+                cell = cell.child(
+                    el().key(format!("{key}-drop-marker-{col_index}"))
+                        .pin(Some(0.0), Some(0.0), None, Some(0.0))
+                        .w(2.0)
+                        .fill(c.bg_accent)
+                        .a11y_hidden(),
+                );
             }
 
             // A press cycles none → ascending → descending → (remove sort | ascending).
@@ -476,6 +499,8 @@ impl<S: 'static> TableHeader<S> {
                 let start = on_reorder_start.clone();
                 let over = on_reorder_over.clone();
                 let drop = on_reorder_drop.clone();
+                let lefts = Rc::clone(&reorder_lefts);
+                let widths_at = Rc::clone(&reorder_widths);
                 cell = cell.on_drag(move |state: &mut S, drag: &mut rune::Drag, _tx| {
                     if drag.cancelled() {
                         if let Some(drop) = &drop {
@@ -491,7 +516,22 @@ impl<S: 'static> TableHeader<S> {
                         }
                         rune::Phase::Move => {
                             if let Some(over) = &over {
-                                over(state, col_index);
+                                // Rune hands the drag only to the pressed cell, so the
+                                // pointer is hit-tested against the column offsets. The
+                                // header's window x follows from the pressed cell: the
+                                // pointer's window x, less its local x, less the cell's
+                                // own offset.
+                                let window_x = drag.window_point()[0];
+                                let header_left = window_x - drag.x - lefts[col_index];
+                                let pointer = window_x - header_left;
+                                let mut target = lefts.len().saturating_sub(1);
+                                for (index, left) in lefts.iter().enumerate() {
+                                    if pointer < left + widths_at[index] {
+                                        target = index;
+                                        break;
+                                    }
+                                }
+                                over(state, target);
                             }
                         }
                         rune::Phase::Up => {
@@ -546,6 +586,10 @@ impl<S: 'static> TableHeader<S> {
                 // Only with several sorts does the position matter.
                 if sorts.len() > 1 {
                     if let Some(position) = sort_position {
+                        // React's `title="#1"`, read out by assistive tech too.
+                        // There is no `dataTable.sortPosition` key; the rank is the
+                        // whole label, as in React.
+                        let rank = format!("#{}", position + 1);
                         cell = cell.child(
                             text((position + 1).to_string())
                                 .key(format!("{key}-sort-position-{col_index}"))
@@ -555,7 +599,8 @@ impl<S: 'static> TableHeader<S> {
                                 .align(Align::Center)
                                 .fill(k.alpha(c.bg_accent, 0.15))
                                 .radius(k.radius.sm)
-                                .a11y_hidden(),
+                                .label(rank.clone())
+                                .help(rank),
                         );
                     }
                 }
@@ -631,7 +676,7 @@ impl<S: 'static> TableHeader<S> {
                     let close = Rc::clone(close);
                     menu = menu.on_close(move |state: &mut S| close(state));
                 }
-                header = header.child(menu.build(k, layer));
+                cell = cell.child(menu.build(k, layer));
             }
 
             if let (Some(start), true) = (&on_resize_start, col_index < columns.len()) {

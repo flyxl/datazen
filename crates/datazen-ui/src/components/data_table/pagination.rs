@@ -400,8 +400,7 @@ impl<S: 'static> Pagination<S> {
             }
             TotalRowsView::Estimated(value) => format!(
                 "{from}-{to} / {}",
-                t("pagination.rowCountEstimated")
-                    .replace("{count}", &format_row_count(value))
+                t("pagination.rowCountEstimated").replace("{count}", &format_row_count(value))
             ),
             TotalRowsView::Unknown => {
                 format!("{from}-{to} / {}", t("pagination.rowCountUnknown"))
@@ -591,10 +590,7 @@ impl<S: 'static> Pagination<S> {
         right = right.child(per_page);
 
         // Previous / page label / next.
-        let mut nav = row()
-            .key("data-table-pagination-nav")
-            .gap(4.0)
-            .center_y();
+        let mut nav = row().key("data-table-pagination-nav").gap(4.0).center_y();
         let mut prev = IconButton::new(&ICON_CHEVRON_LEFT)
             .control_size(ControlSize::Large)
             .label(t("pagination.prev"))
