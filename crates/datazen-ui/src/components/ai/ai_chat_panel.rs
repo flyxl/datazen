@@ -62,7 +62,10 @@
 //!   (`remove {label}`), because the label itself is already translated text.
 //! * After submit React returns `null` (unmounts); Rune keeps an empty keyed
 //!   `question-block` shell with no children, so the parent's layout slot
-//!   stays stable. The shell is zero-size.
+//!   stays stable. The shell is not instantly zero-size: it folds away over
+//!   successive frames (measured 288.5pt before submit, 274.5pt on the submit
+//!   frame, then ~x0.74 per frame, under 0.5pt after ~30 frames, width 928pt
+//!   throughout, no overflow or overlap), so the slot is eventually vacated.
 //! * The submit button's Send glyph is [`crate::icons::ICON_SEND`], added to
 //!   the registry with this slice.
 
@@ -545,7 +548,9 @@ impl<'a, S: 'static> QuestionBlock<'a, S> {
 
     pub(crate) fn build(self, dark: bool) -> El {
         // React returns null once submitted; the Rune shell keeps the key
-        // with no children so the parent's slot stays stable (zero-size).
+        // with no children so the parent's slot stays stable, folding away
+        // over successive frames (see the module docs) rather than
+        // vanishing instantly.
         if self.state.submitted {
             return col().key("question-block").w_full().min_w(0.0);
         }
