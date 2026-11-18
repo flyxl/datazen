@@ -194,6 +194,16 @@ pub(crate) static ICON_RING_ARC: rune::Icon = rune::Icon {
     body: "<path stroke=\"currentColor\" stroke-width=\"2.5\" fill=\"none\" stroke-linecap=\"round\" d=\"M12 3a9 9 0 1 1-9 9\"/>",
 };
 
+// Lucide "triangle-alert" 0.487.0 (the confirm dialog's warning glyph, the
+// registry addition of the T038 port; React imports it under the deprecated
+// `AlertTriangle` alias — same body; body data from the pinned
+// lucide-static package).
+pub(crate) static ICON_ALERT_TRIANGLE: rune::Icon = rune::Icon {
+    name: "triangle-alert",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 9v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 17h.01\"/>",
+};
+
 pub(crate) fn section_icon(section: Section) -> &'static rune::Icon {
     match section {
         Section::Connections => &ICON_CONNECTIONS,

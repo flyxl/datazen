@@ -4,6 +4,7 @@
 //! implementations. Platform adapters will be added behind typed UI ports.
 
 pub(crate) mod components;
+pub(crate) mod hooks; // the hooks/ ports (T038: useConfirmDialog is its first)
 pub mod data_grid;
 pub mod splitter;
 pub mod sql_editor;

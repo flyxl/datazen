@@ -37,6 +37,8 @@ mod add_to_dashboard_dialog_audit;
 mod brand_sidebar_audit;
 // T025: the schema-diff deploy panel port (dialect gates, confirm journey).
 mod schema_diff_deploy_panel_audit;
+// T038: the useConfirmDialog port (request ids, resolve identity, preview).
+mod confirm_dialog_hook_audit;
 mod column_stats_dialog;
 // T002: the single DataTable cell — formatting, colour, plan and geometry.
 mod cell_renderer;
