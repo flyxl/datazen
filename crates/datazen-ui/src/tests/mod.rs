@@ -236,6 +236,8 @@ mod column_mapping_row;
 mod column_mapping_row_audit;
 // T023-S2: ColumnMappingEditor shell (target table + create-new toggle, auto-match/clear, warning, header, row assembly).
 mod column_mapping_editor;
+// T023-S2 independent audit: fresh vectors against React + transferMappingView.ts.
+mod column_mapping_editor_audit;
 
 // T008: ChartCanvas dispatcher, measured viewport and honest placeholders.
 mod chart_canvas;
