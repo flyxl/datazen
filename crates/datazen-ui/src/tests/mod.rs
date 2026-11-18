@@ -27,6 +27,8 @@ mod tree_rowmath_audit;
 
 // T004: the column-statistics dialog's four branches, dismissal and bounds.
 mod column_stats_audit;
+// T015: the AI context settings section — budgets, editor rejections, flows.
+mod ai_context_settings_audit;
 mod column_stats_dialog;
 // T002: the single DataTable cell — formatting, colour, plan and geometry.
 mod cell_renderer;
