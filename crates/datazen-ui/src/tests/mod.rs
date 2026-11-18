@@ -154,6 +154,8 @@ mod temporal_input_audit;
 // T029: history components (entry card + filter bar).
 mod history_components;
 mod history_components_audit;
+// T005: the global query-history dialog port.
+mod global_query_history_dialog;
 
 // T029 fix round: CopyButton base feedback + filter bar metrics.
 mod copy_button;
