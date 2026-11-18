@@ -213,6 +213,8 @@ mod migration_failure_audit;
 mod migration_endpoints_bar;
 // T010 independent audit: label-vs-id display, close-on-choice, geometry.
 mod migration_endpoints_audit;
+// T010 independent retest of the D1/D2 fix: label resolution, selection, fallback, value on_choose.
+mod migration_endpoints_retest;
 
 // T008: ChartCanvas dispatcher, measured viewport and honest placeholders.
 mod chart_canvas;
