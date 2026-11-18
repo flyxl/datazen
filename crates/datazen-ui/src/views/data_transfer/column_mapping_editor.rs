@@ -423,10 +423,12 @@ impl<'a, S: 'static> ColumnMappingEditor<'a, S> {
             .w_full()
             .min_w(0.0);
 
-        // `flex min-w-[12rem] flex-1 flex-col gap-1 text-sm`.
+        // `flex min-w-[12rem] flex-1 flex-col gap-1 text-sm`. The
+        // `min-w-[12rem]` (192pt) is deliberately not set: `El::min_w`
+        // is set semantics, so a 192 here would be dead — the
+        // `.min_w(0.0)` below overwrites it.
         let mut label_col = col()
             .key("data-transfer-target-table-label")
-            .min_w(192.0)
             .grow(1.0)
             .min_w(0.0)
             .gap(4.0);

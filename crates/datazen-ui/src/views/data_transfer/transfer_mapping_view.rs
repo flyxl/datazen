@@ -132,7 +132,9 @@ pub(crate) fn show_target_type(structure_mode: bool, table: &TransferTableVm) ->
 /// (`transferMappingView.ts:4-17`): every source column gets a mapping row.
 /// Absent `sourceColumns` falls back to the distinct sources of the
 /// stored mappings, in first-seen order; a source with no stored mapping
-/// is synthesised as `{ targetColumn: '', skip: true }`.
+/// is synthesised as `{ targetColumn: '', skip: true }`. When the stored
+/// mappings repeat a source, the last one wins — TS builds the lookup as
+/// `new Map(...)`, so a later entry overwrites the earlier one.
 pub(crate) fn normalize_column_mappings(table: &TransferTableVm) -> Vec<TransferColumnMapping> {
     let source_columns = match &table.source_columns {
         Some(columns) => columns.clone(),
@@ -149,9 +151,11 @@ pub(crate) fn normalize_column_mappings(table: &TransferTableVm) -> Vec<Transfer
     source_columns
         .iter()
         .map(|source_column| {
+            // Last wins, as in the TS `new Map(...)`: search from the back.
             table
                 .column_mappings
                 .iter()
+                .rev()
                 .find(|m| &m.source_column == source_column)
                 .cloned()
                 .unwrap_or(TransferColumnMapping {
@@ -168,7 +172,10 @@ pub(crate) fn normalize_column_mappings(table: &TransferTableVm) -> Vec<Transfer
 /// (`transferMappingView.ts:20-37`): match source columns to target
 /// columns by identical name. A matched row takes the source name as its
 /// target and `skip: false`; an unmatched row is emptied and skipped.
-/// A row's `targetNativeType` override survives the match.
+/// A row's `targetNativeType` override survives the match. When the
+/// existing rows repeat a source, the last one wins — TS builds
+/// `existingBySource` as a `Map`, so a later entry overwrites the
+/// earlier one.
 pub(crate) fn auto_match_column_mappings(
     source_columns: &[String],
     target_columns: &[String],
@@ -178,8 +185,10 @@ pub(crate) fn auto_match_column_mappings(
         .iter()
         .map(|source_column| {
             let matched = target_columns.iter().any(|c| c == source_column);
+            // Last wins, as in the TS `new Map(...)`: search from the back.
             let prev = existing
                 .iter()
+                .rev()
                 .find(|m| &m.source_column == source_column);
             TransferColumnMapping {
                 source_column: source_column.clone(),
