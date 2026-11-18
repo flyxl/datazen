@@ -8,7 +8,7 @@
 //! boundaries, the dynamic `filter.<operator>` keys, and a single filter row
 //! and a narrow filter column.
 
-use rune::{col, row, Color, Cx, El, Runtime, TextEdit};
+use rune::{col, row, Color, Cx, El, Key, KeyEvent, Mods, Runtime, TextEdit};
 
 use crate::components::filter::{
     condition_summary, is_inverted, FilterBetweenInput, FilterCondition, FilterConditionChip,
@@ -155,6 +155,21 @@ fn runtime(state: Probe, size: (f32, f32), dark: bool) -> Runtime<Probe> {
     );
     rt.frame(0.0);
     rt
+}
+
+fn focused_key(rt: &Runtime<Probe>) -> Option<String> {
+    rt.elements()
+        .into_iter()
+        .find(|e| e.focused)
+        .and_then(|e| e.key)
+}
+
+fn press(rt: &mut Runtime<Probe>, key: Key) {
+    rt.key(KeyEvent {
+        key,
+        mods: Mods::default(),
+    });
+    rt.frame(0.0);
 }
 
 fn element(rt: &Runtime<Probe>, key: &str) -> rune::ElementInfo {
@@ -387,9 +402,8 @@ fn the_chip_pill_keeps_the_react_geometry() {
 }
 
 #[test]
-#[ignore = "DEFECT 23b973021: the chip remove is a bare row with role=button but focusable=false; React's button is keyboard reachable"]
 fn the_chip_remove_is_keyboard_reachable() {
-    let rt = runtime(
+    let mut rt = runtime(
         Probe {
             scene: Scene::Chip,
             ..Probe::default()
@@ -397,12 +411,59 @@ fn the_chip_remove_is_keyboard_reachable() {
         DESIGN,
         true,
     );
-    let remove = element(&rt, "chip-remove");
     assert!(
-        remove.focusable,
-        "the remove button must be a keyboard stop: role={:?} label={:?}",
-        remove.role, remove.label
+        element(&rt, "chip-remove").focusable,
+        "the remove button must be a keyboard stop"
     );
+    let mut first = None;
+    let mut reached = false;
+    for _ in 0..4 {
+        press(&mut rt, Key::Tab);
+        let focus = focused_key(&rt);
+        if first.is_none() {
+            first = focus.clone();
+        }
+        println!("TAB focus={focus:?}");
+        if focus.as_deref() == Some("chip-remove") {
+            reached = true;
+            break;
+        }
+    }
+    assert!(reached, "Tab must reach the remove button; sequence starts {first:?}");
+    assert_eq!(
+        first.as_deref(),
+        Some("chip-edit"),
+        "the chip's edit action comes first in the React button order"
+    );
+    press(&mut rt, Key::Enter);
+    assert_eq!(rt.state.removes, 1, "Enter presses remove exactly once");
+    press(&mut rt, Key::Text(" ".to_owned()));
+    assert_eq!(rt.state.removes, 2, "Space presses remove exactly once");
+}
+
+#[test]
+fn a_disabled_chip_remove_is_not_reachable_or_dispatchable() {
+    let mut rt = runtime(
+        Probe {
+            scene: Scene::Chip,
+            disabled: true,
+            ..Probe::default()
+        },
+        DESIGN,
+        true,
+    );
+    assert!(!element(&rt, "chip-remove").focusable, "disabled remove");
+    for _ in 0..6 {
+        press(&mut rt, Key::Tab);
+        assert_ne!(
+            focused_key(&rt).as_deref(),
+            Some("chip-remove"),
+            "disabled remove must not enter the tab order"
+        );
+    }
+    press(&mut rt, Key::Enter);
+    press(&mut rt, Key::Text(" ".to_owned()));
+    assert_eq!(rt.state.removes, 0, "disabled remove dispatches nothing");
 }
 
 #[test]
