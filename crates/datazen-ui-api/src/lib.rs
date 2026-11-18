@@ -9,6 +9,7 @@ mod connection_views;
 mod context_items;
 mod context_menu_position;
 mod metadata;
+mod platform_shared;
 mod relation_prediction;
 mod tabs;
 
@@ -59,6 +60,11 @@ pub use metadata::{
     BatchFlush, ExecutionTarget, MetadataBatcher, MetadataBatcherOptions, MetadataClock,
     MetadataIdentityInput, MetadataSessionIdentity, MetadataTarget, NamespaceTarget, ObjectTarget,
     metadata_batch_bucket, metadata_cache_key, metadata_config_bucket, metadata_session_key,
+};
+pub use platform_shared::{
+    McpContentBlock, McpError, McpFetch, McpHttpResponse, McpJsonRpcError, McpRequestInit,
+    McpToolCallResult, WebMcpClient, WebMcpClientManager, WebMcpConnectedServer,
+    WebMcpServerConfig, WebMcpToolInfo, format_call_tool_result, mcp_qualified_name,
 };
 pub use relation_prediction::{
     ColumnSchema, DeclaredForeignKey, ForeignKeyInfo, IndexInfo, PredictionColumn, PredictionTable,
