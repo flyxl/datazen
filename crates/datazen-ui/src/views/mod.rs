@@ -4,6 +4,9 @@ mod chrome;
 mod connections;
 mod connections_home;
 mod dashboards_workflows;
+// The windows/dashboard subtree ports (T018: AddToDashboardDialog is its
+// first); the dashboards page itself stays in dashboards_workflows.rs.
+pub(crate) mod dashboard;
 mod modals;
 mod navigation;
 mod settings;

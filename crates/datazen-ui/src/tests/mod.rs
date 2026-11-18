@@ -31,6 +31,8 @@ mod column_stats_audit;
 mod ai_context_settings_audit;
 // T017: the WappIcon port (manifest icon or puzzle, the onError cycle).
 mod wapp_icon_audit;
+// T018: the add-to-dashboard dialog port (load gate, picker, create branch).
+mod add_to_dashboard_dialog_audit;
 mod column_stats_dialog;
 // T002: the single DataTable cell — formatting, colour, plan and geometry.
 mod cell_renderer;
