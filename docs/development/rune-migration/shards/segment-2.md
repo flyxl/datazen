@@ -68,6 +68,7 @@
 - [ ] T385 · lib · 0.90d · lib/connectionEditor.ts
 - [ ] T394 · lib · 0.80d · lib/connectionFormModel.ts lib/connectionGroups.ts
 - [ ] T403 · lib · 1.30d · lib/connectionLocator.ts · split
+- [x] T029 · lib/connectionViews · 0.90d · lib/connectionViews/types.ts lib/contextItems.ts lib/contextMenuPosition.ts
 - [ ] T412 · lib · 0.90d · lib/connectionShare.ts
 - [ ] T421 · lib · 0.90d · lib/connectionShareError.ts lib/connectionTabContextMenu.ts lib/connectionViews/index.ts
 - [ ] T429 · lib · 0.30d · lib/createDismissPrefs.ts
