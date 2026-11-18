@@ -211,6 +211,8 @@ mod migration_failure_audit;
 
 // T010: the controlled source/target endpoint bar port.
 mod migration_endpoints_bar;
+// T010 independent audit: label-vs-id display, close-on-choice, geometry.
+mod migration_endpoints_audit;
 
 // T008: ChartCanvas dispatcher, measured viewport and honest placeholders.
 mod chart_canvas;
