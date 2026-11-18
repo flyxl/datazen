@@ -32,22 +32,152 @@
 //!
 //! ## Key convention
 //!
+//! `CopyableError`:
+//!
 //! | part | key             |
 //! |------|-----------------|
 //! | root | `<key>`         |
 //! | text | `<key>-text`    |
 //! | copy | `<key>-copy`    |
+//!
+//! `CopyButton` (kit [`Button`] base; the root keeps the caller's key):
+//!
+//! | part   | key                                        |
+//! |--------|--------------------------------------------|
+//! | root   | `<key>`                                    |
+//! | glyph  | kit-internal `icon` (hidden from AT)       |
+//! | label  | kit-internal `label` (hidden from AT)      |
 #![allow(dead_code)]
 
 use std::time::Duration;
 
-use rune::{col, icon, row, text, El, Tx};
-use rune_kit::Kit;
+use rune::{col, icon, row, text, El, Icon, Tx};
+use rune_kit::{Button, ButtonVariant, ControlSize, Kit};
 
 use crate::i18n;
+use crate::icons::{ICON_CHECK, ICON_COPY};
 
 /// Duration the "copied" feedback stays visible after a copy press.
 const COPIED_FEEDBACK_MS: u64 = 1500;
+
+/// Height of the kit's small push button, in points.
+pub(crate) const BUTTON_SM: f32 = 24.0;
+
+/// A copy control with timed "copied" feedback, built on the kit small button.
+///
+/// React's history card used a plain action button, then hand-wired `tx.copy` +
+/// `wake_after(1500ms)` in two identical branches. This base owns that contract:
+/// a press copies [`CopyButton::text`], schedules a
+/// [`COPIED_FEEDBACK_MS`] wake so the caller's state can flip back after the
+/// deadline, then runs the caller callback. `copied` drives `common.copied` +
+/// `ICON_CHECK`; otherwise the caller label (default `common.copy`) +
+/// [`ICON_COPY`].
+#[derive(Default)]
+pub(crate) struct CopyButton<'a> {
+    key: String,
+    text: &'a str,
+    icon: Option<&'static Icon>,
+    label: Option<&'a str>,
+    height: f32,
+    copied: bool,
+    help: Option<&'a str>,
+    acts: Vec<Box<dyn FnOnce(El) -> El>>,
+}
+
+impl<'a> CopyButton<'a> {
+    pub(crate) fn new(key: impl Into<String>, text: &'a str) -> Self {
+        Self {
+            key: key.into(),
+            text,
+            icon: None,
+            label: None,
+            height: BUTTON_SM,
+            copied: false,
+            help: None,
+            acts: Vec::new(),
+        }
+    }
+
+    /// Glyph shown while not copied. Defaults to [`ICON_COPY`].
+    pub(crate) fn icon(mut self, icon: &'static Icon) -> Self {
+        self.icon = Some(icon);
+        self
+    }
+
+    /// Label shown while not copied. Defaults to `common.copy`.
+    pub(crate) fn label(mut self, label: &'a str) -> Self {
+        self.label = Some(label);
+        self
+    }
+
+    /// Button height in points. Defaults to [`BUTTON_SM`].
+    pub(crate) fn height(mut self, height: f32) -> Self {
+        self.height = height;
+        self
+    }
+
+    /// Show feedback (`common.copied` + check glyph) when true.
+    pub(crate) fn copied(mut self, copied: bool) -> Self {
+        self.copied = copied;
+        self
+    }
+
+    /// Tooltip/description text (the React `title` prop).
+    pub(crate) fn help(mut self, help: &'a str) -> Self {
+        self.help = Some(help);
+        self
+    }
+
+    /// Called after the text is copied and the feedback wake is scheduled (record
+    /// `copied_until = tx.clock() + 1.5` in state).
+    pub(crate) fn on_copy_tx<S: 'static>(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
+        let text = self.text.to_owned();
+        self.acts.push(Box::new(move |e: El| {
+            e.on_press_tx(move |s: &mut S, tx: &mut Tx| {
+                tx.copy(text.clone());
+                tx.wake_after(Duration::from_millis(COPIED_FEEDBACK_MS));
+                f(s, tx);
+            })
+        }));
+        self
+    }
+
+    /// Build the copy control. Without an `on_copy_tx` handler a press still copies
+    /// and schedules the feedback wake.
+    pub(crate) fn build<S: 'static>(self, dark: bool) -> El {
+        let k = crate::ui::kit::kit(dark);
+        let label = if self.copied {
+            i18n::t("common.copied")
+        } else {
+            self.label.unwrap_or_else(|| i18n::t("common.copy"))
+        };
+        let glyph = if self.copied {
+            &ICON_CHECK
+        } else {
+            self.icon.unwrap_or(&ICON_COPY)
+        };
+        let mut btn = Button::new(label)
+            .variant(ButtonVariant::Ghost)
+            .control_size(ControlSize::Small)
+            .icon(glyph);
+        if let Some(help) = self.help {
+            btn = btn.help(help);
+        }
+        let mut e = btn.build(&k).key(self.key.clone()).h(self.height);
+        if self.acts.is_empty() {
+            let text = self.text.to_owned();
+            e = e.on_press_tx(move |_s: &mut S, tx: &mut Tx| {
+                tx.copy(text.clone());
+                tx.wake_after(Duration::from_millis(COPIED_FEEDBACK_MS));
+            });
+        } else {
+            for bind in self.acts {
+                e = bind(e);
+            }
+        }
+        e
+    }
+}
 
 type CopyBind = Box<dyn FnOnce(El) -> El>;
 

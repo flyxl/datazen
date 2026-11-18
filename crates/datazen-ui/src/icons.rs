@@ -154,6 +154,25 @@ pub(crate) static ICON_FILTER: rune::Icon = rune::Icon {
     name: "filter",
     view: 24.0,
     body: "<polygon stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3\"/>",
+pub(crate) static ICON_CHECK: rune::Icon = rune::Icon {
+    name: "check",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 6 9 17l-5-5\"/>",
+};
+pub(crate) static ICON_STAR: rune::Icon = rune::Icon {
+    name: "star",
+    view: 24.0,
+    body: "<polygon stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2\"/>",
+};
+pub(crate) static ICON_EXTERNAL_LINK: rune::Icon = rune::Icon {
+    name: "external-link",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 3h6v6\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M10 14 21 3\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6\"/>",
+};
+pub(crate) static ICON_TRASH: rune::Icon = rune::Icon {
+    name: "trash-2",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 6h18\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"10\" x2=\"10\" y1=\"11\" y2=\"17\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"14\" x2=\"14\" y1=\"11\" y2=\"17\"/>",
 };
 
 pub(crate) static ICON_LOADER2: rune::Icon = rune::Icon {

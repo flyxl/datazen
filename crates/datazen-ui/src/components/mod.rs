@@ -5,3 +5,4 @@
 //! name the module, so a port keeps the React file's identity.
 
 pub(crate) mod data_table;
+pub(crate) mod history;
