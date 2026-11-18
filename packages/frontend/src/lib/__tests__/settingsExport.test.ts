@@ -63,6 +63,7 @@ describe('settingsExport', () => {
     gridAlternatingRows: true,
     gridRowNumbers: true,
     gridAutoHideScrollbar: false,
+    valuePresentation: { version: 1, renderers: {} },
   };
 
   it('exports only whitelisted safe editor and snippet properties', () => {

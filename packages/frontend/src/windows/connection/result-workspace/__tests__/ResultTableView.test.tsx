@@ -114,7 +114,7 @@ describe('ResultTableView', () => {
     render(
       <ResultTableView
         result={writableResult()}
-        onCellEdit={vi.fn().mockResolvedValue(undefined)}
+        onCommitResultCells={vi.fn().mockResolvedValue(undefined)}
         onRowDetail={onRowDetail}
       />,
     );
@@ -131,7 +131,7 @@ describe('ResultTableView', () => {
     render(
       <ResultTableView
         result={{ ...writableResult(), runtimeBinding: null }}
-        onCellEdit={vi.fn().mockResolvedValue(undefined)}
+        onCommitResultCells={vi.fn().mockResolvedValue(undefined)}
         onRowDetail={onRowDetail}
       />,
     );
@@ -143,48 +143,42 @@ describe('ResultTableView', () => {
     );
   });
 
-  it('CM-36/61 cancels an open editor when the original binding dies and never submits its stale edit', () => {
-    const onCellEdit = vi.fn().mockResolvedValue(undefined);
-    const live = writableResult();
-    const { rerender } = render(<ResultTableView result={live} onCellEdit={onCellEdit} />);
+  it('stages an edit and commits only on explicit commit', async () => {
+    const onCommitResultCells = vi.fn().mockResolvedValue(undefined);
+    render(<ResultTableView result={writableResult()} onCommitResultCells={onCommitResultCells} />);
+
     fireEvent.click(screen.getByRole('button', { name: 'edit result cell' }));
-    expect(dataTableMock.render).toHaveBeenLastCalledWith(
-      expect.objectContaining({ editingCell: { row: 0, col: 'id' } }),
-    );
-    // Closing/replacing the original runtime preserves the immutable result,
-    // but the open input must stop being a write path immediately.
-    rerender(
-      <ResultTableView result={{ ...live, runtimeBinding: null }} onCellEdit={onCellEdit} />,
-    );
-    expect(dataTableMock.render).toHaveBeenLastCalledWith(
-      expect.objectContaining({ rows: [[1]], editingCell: null }),
-    );
     fireEvent.click(screen.getByRole('button', { name: 'commit result cell' }));
-    expect(onCellEdit).not.toHaveBeenCalled();
-    expect(screen.getByText('query.resultEditRequiresRefresh')).toBeInTheDocument();
-    // A freshly queried result must not resurrect the previously typed edit.
+    expect(onCommitResultCells).not.toHaveBeenCalled();
+    expect(screen.getByTestId('pending-changes-bar')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('pending-commit'));
+    await screen.findByRole('grid');
+    expect(onCommitResultCells).toHaveBeenCalledWith([{ row: 0, column: 'id', value: 2 }]);
+  });
+
+  it('cancels staged edits when the original binding dies', async () => {
+    const onCommitResultCells = vi.fn().mockResolvedValue(undefined);
+    const live = writableResult();
+    const { rerender } = render(
+      <ResultTableView result={live} onCommitResultCells={onCommitResultCells} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'edit result cell' }));
+    fireEvent.click(screen.getByRole('button', { name: 'commit result cell' }));
+    expect(screen.getByTestId('pending-changes-bar')).toBeInTheDocument();
+
     rerender(
       <ResultTableView
-        result={{
-          ...live,
-          runtimeBinding: {
-            ...live.runtimeBinding!,
-            executionId: toId('execution-2')!,
-          },
-        }}
-        onCellEdit={onCellEdit}
+        result={{ ...live, runtimeBinding: null }}
+        onCommitResultCells={onCommitResultCells}
       />,
     );
-    expect(dataTableMock.render).toHaveBeenLastCalledWith(
-      expect.objectContaining({ editingCell: null }),
-    );
+    expect(screen.queryByTestId('pending-changes-bar')).not.toBeInTheDocument();
+    expect(onCommitResultCells).not.toHaveBeenCalled();
+    expect(screen.getByText('query.resultEditRequiresRefresh')).toBeInTheDocument();
   });
 
   it('refuses to open an editor when the write-back verdict refuses the result, and says why', () => {
-    // The narrow host-side check did not verify the mapping and the driver's
-    // origin verdict refuses the result: the grid must not enter edit mode,
-    // and it must say why — a read-only grid that says nothing is the
-    // "unresponsive grey cell" the contract forbids.
     usePanelResultEdit.setState({
       verdicts: {
         'session-1#0': {
@@ -204,14 +198,13 @@ describe('ResultTableView', () => {
       <ResultTableView
         result={result([[1]])}
         writeBackKey="session-1#0"
-        onCellEdit={vi.fn().mockResolvedValue(undefined)}
+        onCommitResultCells={vi.fn().mockResolvedValue(undefined)}
         onRowDetail={onRowDetail}
       />,
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'edit result cell' }));
 
-    // The row detail still opens; the editor must not.
     expect(onRowDetail).toHaveBeenCalledWith(0);
     expect(dataTableMock.render).toHaveBeenLastCalledWith(
       expect.objectContaining({ editingCell: null }),
@@ -229,14 +222,13 @@ describe('ResultTableView', () => {
     render(
       <ResultTableView
         result={writableResult()}
-        onCellEdit={vi.fn().mockResolvedValue(undefined)}
+        onCommitResultCells={vi.fn().mockResolvedValue(undefined)}
         onRowDetail={onRowDetail}
       />,
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'edit result cell' }));
 
-    // Row detail still opens, but the cell editor must never activate.
     expect(onRowDetail).toHaveBeenCalledWith(0);
     expect(dataTableMock.render).toHaveBeenLastCalledWith(
       expect.objectContaining({ editingCell: null }),

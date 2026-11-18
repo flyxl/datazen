@@ -6,6 +6,7 @@ export const SHARED_EXPORT_FORMAT_OPTIONS: { value: ExportFormat; label: string 
   { value: 'json', label: 'JSON' },
   { value: 'markdown', label: 'Markdown' },
   { value: 'xlsx', label: 'Excel (XLSX)' },
+  { value: 'parquet', label: 'Parquet' },
   { value: 'sql_insert', label: 'SQL INSERT' },
 ];
 
@@ -24,6 +25,7 @@ export const ARRAY_EXPORT_FORMAT_OPTIONS: { value: ExportFormat; label: string }
   { value: 'json', label: 'JSON' },
   { value: 'markdown', label: 'Markdown' },
   { value: 'xlsx', label: 'Excel (XLSX)' },
+  { value: 'parquet', label: 'Parquet' },
   { value: 'sql_insert', label: 'SQL INSERT' },
   { value: 'sql_update', label: 'SQL UPDATE' },
 ];
@@ -41,7 +43,10 @@ export interface ExportFormatOption {
   /** Offered but greyed out — the format stays visible with its reason. */
   disabled?: boolean;
   /** i18n key of the explanation shown while this format is disabled. */
-  disabledReasonKey?: 'export.formatDisabledNoKey' | 'export.formatDisabledWebSqlScope';
+  disabledReasonKey?:
+    | 'export.formatDisabledNoKey'
+    | 'export.formatDisabledWebSqlScope'
+    | 'export.formatDisabledParquetRustOnly';
 }
 
 /**
@@ -52,6 +57,10 @@ export interface ExportFormatOption {
  *   frontend for the provided scopes, the Rust BinaryFormatter for the
  *   SQL scopes. The old streaming-scope XLSX ban is obsolete and stays
  *   dropped.
+ * - Parquet is Rust-only (PRD §4 F8): the desktop streaming scopes reach
+ *   the Rust batch exporter, but the provided scopes have no frontend
+ *   writer and web has no Rust path — offered but greyed out with its
+ *   reason there, never hidden.
  * - SQL UPDATE needs a key column for its WHERE; without one it is
  *   disabled rather than silently writing `WHERE <first column> = …`.
  * - Web has no SQL path: the streaming scopes (entire table / filter
@@ -76,6 +85,17 @@ export function buildExportFormatOptions(opts: {
     // stay on screen (DBR-06 showed both too).
     if (option.value === 'sql_update' && !opts.hasKeyColumn) {
       return { ...option, disabled: true, disabledReasonKey: 'export.formatDisabledNoKey' };
+    }
+    // Parquet runs through the Rust batch exporter only (PRD §4 F8): it
+    // stays available on the desktop streaming scopes and is greyed out
+    // everywhere else — the provided scopes (no frontend writer, provided
+    // Parquet is a PRD non-goal) and all of web (no Rust path).
+    if (option.value === 'parquet' && (!opts.isDesktop || !isStreamingScope)) {
+      return {
+        ...option,
+        disabled: true,
+        disabledReasonKey: 'export.formatDisabledParquetRustOnly',
+      };
     }
     if (!opts.isDesktop && isStreamingScope && option.value !== 'csv') {
       return {

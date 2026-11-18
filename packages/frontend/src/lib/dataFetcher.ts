@@ -162,6 +162,11 @@ export class ProvidedDataFetcher implements DataFetcher {
         format: 'xlsx',
       });
       saved = await this.saveBinary(dataBase64, filename, extension, mimeType);
+    } else if (dataFormat === 'parquet') {
+      // Provided-data Parquet is a PRD non-goal (the dialogs grey it out for
+      // these scopes); a smuggled request fails loudly instead of silently
+      // rendering a wrong-format file.
+      throw new Error("provided-data export cannot format 'parquet'");
     } else {
       const { content, extension, mimeType } = formatRowsAsText({
         tableName,
@@ -193,12 +198,9 @@ export class ProvidedDataFetcher implements DataFetcher {
     mimeType: string,
   ): Promise<boolean> {
     if (IS_DESKTOP_BUILD) {
-      return fileCommands.saveTextWithDialog(
-        content,
-        filename,
-        extension.toUpperCase(),
-        [extension],
-      );
+      return fileCommands.saveTextWithDialog(content, filename, extension.toUpperCase(), [
+        extension,
+      ]);
     }
     downloadBlob(content, filename, mimeType);
     return true;
@@ -212,12 +214,9 @@ export class ProvidedDataFetcher implements DataFetcher {
     mimeType: string,
   ): Promise<boolean> {
     if (IS_DESKTOP_BUILD) {
-      return fileCommands.saveBase64WithDialog(
-        dataBase64,
-        filename,
-        extension.toUpperCase(),
-        [extension],
-      );
+      return fileCommands.saveBase64WithDialog(dataBase64, filename, extension.toUpperCase(), [
+        extension,
+      ]);
     }
     downloadBlob(base64ToBytes(dataBase64), filename, mimeType);
     return true;
@@ -231,12 +230,8 @@ export class ProvidedDataFetcher implements DataFetcher {
  * the old `exportSingleTableViaRust` made.
  */
 export interface SqlDataFetcherDeps {
-  exportTables?: (
-    request: ExportTablesRequest,
-  ) => Promise<ExportTablesResult | null>;
-  subscribeProgress?: (
-    handler: (event: ExportProgressEvent) => void,
-  ) => Promise<() => void>;
+  exportTables?: (request: ExportTablesRequest) => Promise<ExportTablesResult | null>;
+  subscribeProgress?: (handler: (event: ExportProgressEvent) => void) => Promise<() => void>;
   /**
    * Injectable cancel for tests; defaults to the tables-exporter port's
    * `cancelExportTables` (desktop). A form without one (web) has no
@@ -313,16 +308,8 @@ export class SqlDataFetcher implements DataFetcher {
   }
 
   async fetch(): Promise<'saved' | 'cancelled' | 'aborted'> {
-    const {
-      dbSessionId,
-      databaseType,
-      database,
-      schema,
-      tableName,
-      dataFormat,
-      sql,
-      primaryKey,
-    } = this.ctx;
+    const { dbSessionId, databaseType, database, schema, tableName, dataFormat, sql, primaryKey } =
+      this.ctx;
 
     if (!dbSessionId) {
       throw new Error('Missing connection');
@@ -347,9 +334,7 @@ export class SqlDataFetcher implements DataFetcher {
           primaryKey: primaryKey ?? undefined,
           // DDL travels only when the caller carries one (structure
           // modes); a data-only request keeps the old shape exactly.
-          ...(this.ctx.ddl !== undefined && this.ctx.ddl !== null
-            ? { ddl: this.ctx.ddl }
-            : {}),
+          ...(this.ctx.ddl !== undefined && this.ctx.ddl !== null ? { ddl: this.ctx.ddl } : {}),
         },
       ],
     };

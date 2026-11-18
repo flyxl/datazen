@@ -1,12 +1,14 @@
 /** @vitest-environment node */
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { describe, expect, it } from 'vitest';
 import {
   BUILD_PROFILE,
   buildTauriArgs,
+  bundleResourceSources,
   checkProStagingReady,
+  mirrorBundleResources,
   resolveTauriCli,
   REQUIRED_PRO_STAGED_PATHS,
   UPDATER_CONFIG,
@@ -115,6 +117,77 @@ describe('ci-tauri-build args', () => {
     // target/<triple>/<profile>; if that ever drifts from what tauri builds,
     // the matrix looks for binaries in a directory that never gets written.
     expect(BUILD_PROFILE).toBe('release');
+  });
+});
+
+describe('ci-tauri-build bundle resource mirroring', () => {
+  function makeFakeSourceTree(root: string) {
+    // Mirrors the two `bundle.resources` entries in tauri.conf.json:
+    // crates/datazen/resources/prompts and
+    // crates/datazen-desktop/resources/builtin-ep/sql-editor-pro.
+    mkdirSync(join(root, 'crates', 'datazen', 'resources', 'prompts'), { recursive: true });
+    writeFileSync(join(root, 'crates', 'datazen', 'resources', 'prompts', 'chat.md'), 'x');
+    mkdirSync(
+      join(root, 'crates', 'datazen-desktop', 'resources', 'builtin-ep', 'sql-editor-pro'),
+      {
+        recursive: true,
+      },
+    );
+    writeFileSync(
+      join(
+        root,
+        'crates',
+        'datazen-desktop',
+        'resources',
+        'builtin-ep',
+        'sql-editor-pro',
+        'manifest.json',
+      ),
+      'x',
+    );
+  }
+
+  it('names exactly the trees listed in tauri.conf.json bundle.resources', () => {
+    expect(bundleResourceSources().map((r) => r.name)).toEqual(['prompts', 'builtin-ep']);
+  });
+
+  it('mirrors prompts and builtin-ep next to the raw binary for the portable layout', () => {
+    const root = mkdtempSync(join(tmpdir(), 'datazen-mirror-'));
+    makeFakeSourceTree(root);
+    const { outDir, results } = mirrorBundleResources({ root, target: 'x86_64-pc-windows-msvc' });
+    expect(outDir).toBe(join(root, 'target', 'x86_64-pc-windows-msvc', BUILD_PROFILE));
+    expect(results.map((r) => r.mirrored)).toEqual([true, true]);
+    // The Windows portable step reads release/prompts and release/builtin-ep
+    // (its first candidates), so the mirrored names must match those exactly.
+    expect(existsSync(join(outDir, 'prompts', 'chat.md'))).toBe(true);
+    expect(existsSync(join(outDir, 'builtin-ep', 'sql-editor-pro', 'manifest.json'))).toBe(true);
+  });
+
+  it('places the mirror under target/release when no explicit target was given', () => {
+    const root = mkdtempSync(join(tmpdir(), 'datazen-mirror-'));
+    makeFakeSourceTree(root);
+    const { outDir } = mirrorBundleResources({ root });
+    expect(outDir).toBe(join(root, 'target', BUILD_PROFILE));
+  });
+
+  it('skips builtin-ep without failing when nothing was staged (community edition)', () => {
+    const root = mkdtempSync(join(tmpdir(), 'datazen-mirror-'));
+    mkdirSync(join(root, 'crates', 'datazen', 'resources', 'prompts'), { recursive: true });
+    writeFileSync(join(root, 'crates', 'datazen', 'resources', 'prompts', 'chat.md'), 'x');
+    const { results } = mirrorBundleResources({ root });
+    expect(results.find((r) => r.name === 'builtin-ep')?.mirrored).toBe(false);
+    expect(existsSync(join(root, 'target', 'release', 'prompts', 'chat.md'))).toBe(true);
+  });
+
+  it('replaces the destination instead of merging stale files from a cached target dir', () => {
+    const root = mkdtempSync(join(tmpdir(), 'datazen-mirror-'));
+    makeFakeSourceTree(root);
+    const outDir = join(root, 'target', 'x86_64-pc-windows-msvc', BUILD_PROFILE);
+    mkdirSync(join(outDir, 'prompts'), { recursive: true });
+    writeFileSync(join(outDir, 'prompts', 'stale-from-previous-build.md'), 'stale');
+    mirrorBundleResources({ root, target: 'x86_64-pc-windows-msvc' });
+    expect(existsSync(join(outDir, 'prompts', 'stale-from-previous-build.md'))).toBe(false);
+    expect(existsSync(join(outDir, 'prompts', 'chat.md'))).toBe(true);
   });
 });
 

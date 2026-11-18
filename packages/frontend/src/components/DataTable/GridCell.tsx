@@ -8,6 +8,7 @@ import { fkSelectorLabel } from './fkSelectorText';
 import { cn } from '../../lib/cn';
 import type { CellType } from '../../lib/cellTypes';
 import type { CellEditingContext, ColumnEditorInfo } from '../../lib/cellEditorKind';
+import type { ColumnPresentationPlan } from '../../lib/valuePresentation/presentationPlan';
 import type { Value } from '../../types';
 
 /**
@@ -146,6 +147,12 @@ export interface GridCellProps {
    * middle-click keeps the browser's default (autoscroll), as before.
    */
   onCellQuickLook?: (rowIndex: number, columnName: string) => void;
+  /**
+   * The column's presentation plan (issue-32 T05): forwarded to
+   * CellRenderer, which consults it after the editing / NULL branches.
+   * Omitted ⇒ the cell renders exactly as before (default-off).
+   */
+  presentationPlan?: ColumnPresentationPlan;
   onCellDoubleClick: (rowIndex: number, columnName: string) => void;
   onCellEdit: (rowIndex: number, columnName: string, value: unknown) => void;
   onCellEditCancel: () => void;
@@ -175,6 +182,7 @@ export const GridCell = memo(function GridCell({
   onCellEdit,
   onCellEditCancel,
   columnInfo,
+  presentationPlan,
 }: GridCellProps) {
   /** Why the cell cannot be edited, if it cannot. */
   const readOnlyReason = editor?.readOnlyReason ?? columnInfo?.readOnlyReason ?? null;
@@ -285,6 +293,7 @@ export const GridCell = memo(function GridCell({
           // as a candidates dropdown, not as a plain input — the same editor
           // the enumeration columns take, fed from the target table.
           editorKindOverride={editing && fk?.pickable ? 'enum' : undefined}
+          presentationPlan={presentationPlan}
         />
       </div>
       {fk?.navigable && !editing && (

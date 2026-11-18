@@ -50,7 +50,7 @@ pub(crate) async fn write_all_via_part(path: &Path, bytes: &[u8]) -> std::io::Re
 
 const ALLOWED_EXTENSIONS: &[&str] = &[
     "csv", "tsv", "json", "sql", "md", "txt", "xml", "yaml", "yml", "png", "svg", "zip", "gz",
-    "dump", "xlsx",
+    "dump", "xlsx", "parquet",
     // DBR-05: the binary "load from file" of a BLOB column offers the common
     // binary payload types; every one of them is also a *pickable* file, so
     // the dialog filter and the extension check stay in one list.

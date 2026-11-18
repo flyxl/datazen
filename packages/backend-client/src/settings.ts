@@ -67,6 +67,104 @@ export interface SettingsOnboardingState {
 /** How a table read obtains its row count (form-split F4: behavior field, shared). */
 export type SettingsRowCountMode = 'auto' | 'exact' | 'estimated' | 'none';
 
+/**
+ * Value-presentation renderer options (issue-32 T06, design §5).
+ *
+ * Mirror of the canonical `TimestampOptions` in
+ * `packages/frontend/src/lib/valuePresentation/timestampConfig.ts` — written
+ * field by field, never imported from frontend (backend-client sits below
+ * frontend in the layering). Only the timestamp renderer exists in v1; other
+ * renderers carry their own option JSON under the same
+ * `{ enabled, options }` entry shape.
+ */
+export type SettingsTimestampInterpretation =
+  | { kind: 'native' }
+  | { kind: 'unix'; unit: 'seconds' | 'milliseconds' }
+  | { kind: 'text' };
+
+export type SettingsTimeZoneSpec =
+  | { kind: 'utc' }
+  | { kind: 'local' }
+  | { kind: 'iana'; name: string };
+
+export interface SettingsTimestampOptions {
+  interpretation: SettingsTimestampInterpretation;
+  format: 'iso' | 'iso-tz' | 'locale';
+  displayTimeZone: SettingsTimeZoneSpec;
+  sourceTimeZone?: SettingsTimeZoneSpec;
+}
+
+/** One renderer's stored settings: global switch + its (validated) options. */
+export interface SettingsValuePresentationRendererSettings {
+  enabled: boolean;
+  options: SettingsTimestampOptions;
+}
+
+/**
+ * A name pattern inside a rule match (issue-32 T08, design §5).
+ * Mirror of `ValuePresentationNamePattern` in
+ * `packages/frontend/src/lib/valuePresentation/valuePresentationRules.ts`
+ * — written field by field, never imported from frontend. Only the
+ * pattern source and restricted flags are stored, never a RegExp.
+ */
+export type SettingsValuePresentationNamePattern =
+  | { kind: 'exact'; value: string }
+  | { kind: 'regex'; source: string; flags?: string };
+
+/** One rule's match conditions: all present conditions are ANDed. */
+export interface SettingsValuePresentationRuleMatch {
+  connectionId?: string;
+  database?: string;
+  namespace?: string;
+  table?: SettingsValuePresentationNamePattern;
+  column?: SettingsValuePresentationNamePattern;
+  databaseTypeName?: SettingsValuePresentationNamePattern;
+}
+
+/**
+ * One global value-presentation rule (issue-32 T08, design §5).
+ * Mirror of `ValuePresentationRule` in
+ * `packages/frontend/src/lib/valuePresentation/valuePresentationRules.ts`.
+ */
+export interface SettingsValuePresentationRule {
+  name: string;
+  enabled: boolean;
+  match: SettingsValuePresentationRuleMatch;
+  options: SettingsTimestampOptions;
+}
+
+/**
+ * One table-column override (issue-32 T10, design §5).
+ * Mirror of `ColumnPresentationOverride` in
+ * `packages/extension-points/src/valuePresentation/contracts.ts` — the
+ * record key is the host-side `columnOverrideKey` (connection / database /
+ * namespace / table / column, case preserved, missing vs empty distinct).
+ * `custom` only supports the timestamp renderer in practice, but its
+ * options stay `unknown` here exactly as in the canonical contract (the
+ * frontend validates them through the target renderer's validateConfig).
+ * `inherit` entries are dropped at the frontend parse boundary
+ * (`validateStoredColumnOverrides`) — `inherit` is the absence of an
+ * entry, never a stored value — but the type keeps the canonical union
+ * so `toSharedSettings` stays assignable from the frontend stored type.
+ */
+export type SettingsValuePresentationColumnOverride =
+  | { readonly mode: 'inherit' }
+  | { readonly mode: 'raw' }
+  | { readonly mode: 'custom'; readonly rendererId: string; readonly options: unknown };
+
+/**
+ * Versioned value-presentation settings, namespaced per renderer id.
+ * `rules` (T08) is an optional array of global rules; `columnOverrides`
+ * (T10) is an optional record of table-column overrides, keyed by the
+ * host-side column override key.
+ */
+export interface SettingsValuePresentationSettings {
+  version: number;
+  renderers: Record<string, SettingsValuePresentationRendererSettings>;
+  rules?: ReadonlyArray<SettingsValuePresentationRule>;
+  columnOverrides?: Readonly<Record<string, SettingsValuePresentationColumnOverride>>;
+}
+
 /** Dashboard monitor settings (form-split F4: behavior field, shared). Mirrors `datazen::dashboard::types::MonitorSettings`. */
 export interface SettingsMonitorEmailSettings {
   enabled?: boolean;
@@ -96,6 +194,8 @@ export interface SharedSettings {
   monitor: SettingsMonitorSettings;
   onboarding: SettingsOnboardingState | null;
   rowCountMode: SettingsRowCountMode;
+  /** Value-presentation settings (issue-32 T06, design §5/§6). */
+  valuePresentation: SettingsValuePresentationSettings;
 }
 
 /** Whitelist projection: no native config or credentials enter the shared transport. */
@@ -105,6 +205,7 @@ export function toSharedSettings(
       monitor?: SettingsMonitorSettings;
       onboarding?: SettingsOnboardingState | null;
       rowCountMode?: SettingsRowCountMode;
+      valuePresentation?: SettingsValuePresentationSettings;
     },
 ): SharedSettings {
   const {
@@ -188,6 +289,10 @@ export function toSharedSettings(
     monitor: settings.monitor ?? defaultMonitorSettings(),
     onboarding: settings.onboarding ?? null,
     rowCountMode: settings.rowCountMode ?? 'auto',
+    // Issue-32 T06: passed through verbatim, never validated here — option
+    // validation happens at the frontend host boundary when the snapshot is
+    // built; unknown renderers and unknown versions are preserved as-is.
+    valuePresentation: settings.valuePresentation ?? { version: 1, renderers: {} },
   };
 }
 

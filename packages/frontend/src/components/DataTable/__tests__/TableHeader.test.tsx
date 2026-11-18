@@ -26,24 +26,41 @@ const COLS = [
 ];
 
 describe('TableHeader sort interaction (DBR-SORT, Navicat-aligned)', () => {
-  it('hides the direction indicator for unsorted columns but keeps the menu chevron', () => {
+  it('shows a default sort icon for every unsorted column', () => {
     const { container } = render(
       <TableHeader columns={COLS} sorts={[]} onSort={() => {}} sortable />,
     );
-    // No column is sorted: no direction indicator anywhere…
-    expect(container.querySelectorAll('[data-sort-indicator]').length).toBe(0);
-    // …but every sortable column carries the chevron that opens its menu.
+    // Every column always shows one of the three sort-state icons.
+    expect(container.querySelectorAll('[data-sort-indicator]').length).toBe(COLS.length);
     expect(container.querySelectorAll('[data-sort-menu]').length).toBe(COLS.length);
+    expect(container.querySelectorAll('[data-sort-menu][data-sort-state="none"]').length).toBe(
+      COLS.length,
+    );
+    expect(container.querySelectorAll('[data-sort-menu] .lucide-arrow-up-down').length).toBe(
+      COLS.length,
+    );
   });
 
-  it('shows the direction indicator only for the actively sorted column', () => {
+  it('shows the ascending sort icon on the sorted column', () => {
     const sorts: SortCondition[] = [{ column: 'name', descending: false }];
     const { container } = render(
       <TableHeader columns={COLS} sorts={sorts} onSort={() => {}} sortable />,
     );
-    const indicators = container.querySelectorAll('[data-sort-indicator]');
-    expect(indicators.length).toBe(1);
-    expect(indicators[0].querySelector('.lucide-arrow-up')).toBeTruthy();
+    expect(container.querySelectorAll('[data-sort-indicator]').length).toBe(COLS.length);
+    const nameHeader = container.querySelector('[data-col-header="name"]')!;
+    const sortControl = nameHeader.querySelector('[data-sort-menu]')!;
+    expect(sortControl.getAttribute('data-sort-state')).toBe('asc');
+    expect(sortControl.querySelector('.lucide-arrow-up-narrow-wide')).toBeTruthy();
+    expect(sortControl.querySelector('.lucide-arrow-up-down')).toBeNull();
+  });
+
+  it('does not render per-column filter buttons', () => {
+    const { container } = render(
+      <TableHeader columns={COLS} sorts={[]} onSort={() => {}} sortable />,
+    );
+    expect(container.querySelectorAll('[data-col-header] button[aria-label="Filter"]').length).toBe(
+      0,
+    );
   });
 
   it('a single click sorts an unsorted column ascending', () => {
@@ -113,14 +130,14 @@ describe('TableHeader sort interaction (DBR-SORT, Navicat-aligned)', () => {
     expect(onSort).toHaveBeenCalledWith({ column: 'id', descending: false });
   });
 
-  it('the chevron opens the three single-column entries without sorting', () => {
+  it('the adaptive sort control opens the three single-column entries without sorting', () => {
     const onSort = vi.fn();
     vi.mocked(showNativeContextMenu).mockClear();
     const { container } = render(
       <TableHeader columns={COLS} sorts={[]} onSort={onSort} sortable />,
     );
     const menus = container.querySelectorAll('[data-sort-menu]');
-    fireEvent.click(menus[1]); // "name" column's chevron
+    fireEvent.click(menus[1]); // "name" column's sort control
 
     // Opening the menu sorts nothing on its own.
     expect(onSort).not.toHaveBeenCalled();
@@ -245,9 +262,13 @@ describe('TableHeader multi-column sort badges (DB-11)', () => {
     // order is the ORDER BY order.
     expect(badges[0].textContent).toBe('2'); // name, second in the list
     expect(badges[1].textContent).toBe('1'); // price, first in the list
-    // Both sorted columns show their indicator, in their own direction.
-    const indicators = container.querySelectorAll('[data-sort-indicator]');
-    expect(indicators.length).toBe(2);
+    // Every column shows an icon; sorted ones carry direction-specific state.
+    expect(container.querySelectorAll('[data-sort-indicator]').length).toBe(COLS.length);
+    expect(
+      container.querySelectorAll(
+        '[data-sort-menu][data-sort-state="asc"], [data-sort-menu][data-sort-state="desc"]',
+      ).length,
+    ).toBe(2);
   });
 
   it('shows the direction of the second sorted column, not only the first', () => {
@@ -264,15 +285,13 @@ describe('TableHeader multi-column sort badges (DB-11)', () => {
     const priceHeader = [...headers].find(
       (header) => header.getAttribute('data-col-header') === 'price',
     )!;
-    const priceIndicator = priceHeader.querySelector('[data-sort-indicator]')!;
-    expect(priceIndicator.querySelector('.lucide-arrow-down')).toBeTruthy();
-    expect(priceIndicator.querySelector('.lucide-arrow-up')).toBeNull();
+    const sortControl = priceHeader.querySelector('[data-sort-menu]')!;
+    expect(sortControl.getAttribute('data-sort-state')).toBe('desc');
+    expect(sortControl.querySelector('.lucide-arrow-down-wide-narrow')).toBeTruthy();
+    expect(sortControl.querySelector('.lucide-arrow-up-narrow-wide')).toBeNull();
   });
 
-  it('offers every sorted column the multi-column menu entry set', () => {
-    // The badges and arrows of the multi-sort stay as they were — the menu
-    // chevron adds itself without replacing anything (see the interaction
-    // describe above for the menu's own behaviour).
+  it('keeps sort icons visible on every column in a multi-column sort', () => {
     const sorts: SortCondition[] = [
       { column: 'price', descending: true },
       { column: 'name', descending: false },
@@ -280,7 +299,8 @@ describe('TableHeader multi-column sort badges (DB-11)', () => {
     const { container } = render(
       <TableHeader columns={COLS} sorts={sorts} onSort={() => {}} sortable />,
     );
-    expect(container.querySelectorAll('[data-sort-indicator]').length).toBe(2);
+    expect(container.querySelectorAll('[data-sort-indicator]').length).toBe(COLS.length);
+    expect(container.querySelectorAll('[data-sort-menu][data-sort-state="none"]').length).toBe(1);
   });
 });
 

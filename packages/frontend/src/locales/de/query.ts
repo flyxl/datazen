@@ -183,6 +183,10 @@ const pack = {
     'In diesem Tab laufen {count} Abfragen. Trotzdem schließen?',
   'query.resultEditRequiresRefresh':
     'Führen Sie die Abfrage erneut aus, bevor Sie dieses beibehaltene Ergebnis bearbeiten.',
+  'query.resultEditCommitted':
+    'Änderungen übernommen. Sie können dieses Ergebnis weiter bearbeiten.',
+  'query.resultEditCommitRetryHint':
+    'Commit fehlgeschlagen. Prüfen Sie den Fehler; wenn sich Zieldaten geändert haben oder die Sitzung ungültig ist, führen Sie die Abfrage erneut aus und versuchen Sie es noch einmal.',
   'query.session.openNew': 'Neue Sitzung öffnen',
   'query.session.disconnected':
     'Die Verbindung wurde unterbrochen. Öffnen Sie erneut eine Sitzung, um fortzufahren.',
@@ -629,6 +633,8 @@ const pack = {
     'SQL UPDATE benötigt eine Primärschllüsselspalte für die WHERE-Klausel.',
   'export.formatDisabledWebSqlScope':
     'Im Web unterstützen Exporte der gesamten Tabelle und gefilterter Ergebnisse nur CSV — es gibt keinen SQL-Exportpfad.',
+  'export.formatDisabledParquetRustOnly':
+    'Der Parquet-Export läuft über den Desktop-Rust-Exporter; für die aktuelle Seite / ausgewählte Zeilen und im Web nicht verfügbar.',
   'export.progressRows': '{rows} Zeilen geschrieben…',
   'export.cancelExport': 'Export abbrechen',
   'export.cancelling': 'Wird abgebrochen…',

@@ -242,6 +242,7 @@ export type {
 import type { UserPreferences, ExecutionSettings } from '@datazen/backend-client';
 import type { DefaultTableSort, GridDensity, RowCountMode } from './settings';
 import type { PagePagingInfo } from './keyset';
+import type { StoredValuePresentationSettings } from '../lib/valuePresentation/settings';
 
 export type { DefaultTableSort, GridDensity, RowCountMode } from './settings';
 
@@ -312,6 +313,15 @@ export interface AppSettings extends UserPreferences, ExecutionSettings {
    * hovered. Default `false` — scrollbars stay visible, as they always were.
    */
   gridAutoHideScrollbar: boolean;
+  /**
+   * Value-presentation settings (issue-32 T06, design §5/§6): versioned,
+   * namespaced per renderer id. Default is version 1 with no renderers
+   * (everything off). The storage type lives in
+   * `lib/valuePresentation/settings` (no cycle: that module imports only
+   * timestampConfig / presentationPlan, never `types`); the backend-client
+   * mirror is `SettingsValuePresentationSettings`.
+   */
+  valuePresentation: StoredValuePresentationSettings;
 }
 
 export interface SortCondition {

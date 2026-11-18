@@ -119,6 +119,10 @@ export interface UseDataTableContextMenuOptions {
      menu — driver grids are unaffected. ── */
   /** Ask for the server-side aggregates of the right-clicked column. */
   onColumnStats?: (column: string) => void;
+  /* ── Column display (issue-32 T09). Omitted ⇒ no "Display…" entry in
+     the header menu — driver grids are unaffected. ── */
+  /** Open the column presentation dialog for the right-clicked column. */
+  onColumnPresentation?: (column: string) => void;
   /** i18n translate function. */
   t: (key: string, params?: Record<string, string | number>) => string;
 }
@@ -171,6 +175,7 @@ export function useDataTableContextMenu(
     onFreezeThrough,
     onUnfreezeColumns,
     onColumnStats,
+    onColumnPresentation,
     t,
   } = options;
 
@@ -193,6 +198,9 @@ export function useDataTableContextMenu(
       // The stats entry (DB-12) is bound to the right-clicked header column;
       // a click on a cell never offers it.
       const headerStats = hitHeaderCol && onColumnStats ? { column: hitHeaderCol } : undefined;
+      // The column-display entry (issue-32 T09): same binding as stats.
+      const headerPresentation =
+        hitHeaderCol && onColumnPresentation ? { column: hitHeaderCol } : undefined;
       const effectiveColName = hit ? hit.columnName : hitHeaderCol;
       const effectiveColIdx = effectiveColName ? columnNames.indexOf(effectiveColName) : -1;
       const hitRow = hit ? rows[hit.rowIndex] : undefined;
@@ -330,6 +338,7 @@ export function useDataTableContextMenu(
             freezeThrough: t('dataTable.freezeThrough'),
             unfreezeColumns: t('dataTable.unfreezeColumns'),
             columnStats: t('dataTable.columnStats'),
+            columnPresentation: t('dataTable.columnPresentation'),
           },
           handlers: {
             onCopy:
@@ -521,12 +530,14 @@ export function useDataTableContextMenu(
             onFreezeThrough,
             onUnfreezeColumns,
             onColumnStats,
+            onColumnPresentation,
           },
           hasCellContext,
           hasHeaderContext: !!hitHeaderCol,
           headerSort,
           headerFreeze,
           headerStats,
+          headerPresentation,
           hasSelectedRows,
           multiRowSelection,
           exportEnabled,
@@ -583,6 +594,7 @@ export function useDataTableContextMenu(
       onFreezeThrough,
       onUnfreezeColumns,
       onColumnStats,
+      onColumnPresentation,
     ],
   );
 

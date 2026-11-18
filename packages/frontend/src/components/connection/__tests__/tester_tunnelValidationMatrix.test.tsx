@@ -94,13 +94,13 @@ function editExisting(overrides: Partial<ConnectionConfig> = {}): ConnectionConf
 /**
  * `ConnectionConfig['databaseType']` is the codegen-derived union from
  * `generated.ts`, so it only admits the drivers the current `--drivers` set
- * injected — naming `sqlserver` under `--drivers=basic` is a type error even
- * though the matrix must cover it. This keeps the union and adds the ids the
+ * injected — naming drivers absent from a given build is a type error even
+ * though the matrix must cover them. This keeps the union and adds the ids the
  * matrix deliberately spans builds for; each one is still checked against the
  * live `DB_REGISTRY` at runtime (see the exhaustiveness guard and
  * `expectedFormVariant` below), so nothing here widens to an unchecked string.
  */
-type CrossBuildDatabaseType = ConnectionConfig['databaseType'] | 'sqlserver';
+type CrossBuildDatabaseType = ConnectionConfig['databaseType'] | 'sqlserver' | 'kiwi' | 'superset';
 
 interface Variant {
   label: string;
@@ -149,6 +149,26 @@ const VARIANTS: Variant[] = [
     hasDriverValidator: true,
     supportsSSH: true,
     base: { host: 'db.internal', port: 1433, database: 'master', username: 'sa' },
+  },
+  {
+    label: 'server-url (kiwi)',
+    databaseType: 'kiwi',
+    formVariant: 'kiwi',
+    hasDriverValidator: false,
+    supportsSSH: false,
+    base: { host: 'https://kiwi.akusre.com', port: 4, username: 'kiwi-user' },
+  },
+  {
+    label: 'driver-validator (superset)',
+    databaseType: 'superset',
+    formVariant: 'superset',
+    hasDriverValidator: true,
+    supportsSSH: false,
+    base: {
+      host: 'https://superset.example.com',
+      username: 'superset-user',
+      password: 'superset-password',
+    },
   },
 ];
 
@@ -210,7 +230,7 @@ describe('[tester] validate() variant matrix is exhaustive for this build', () =
     // from going vacuous — emptying `hasDriverValidator` would shrink `declared` until
     // nothing could ever be uncovered while the matrix stopped exercising those forms.
     const declared = VARIANTS.filter((v) => v.hasDriverValidator).map((v) => v.formVariant);
-    expect(declared).toEqual(['redis', 'sqlserver']);
+    expect(declared).toEqual(['redis', 'sqlserver', 'superset']);
 
     // One direction only, the same shape as the connectionForm guard above: every form
     // this build registers a validator for needs a VARIANTS row declaring it. The reverse

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import {
   Database,
   Download,
@@ -6,12 +7,14 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Puzzle,
+  RotateCw,
   Settings,
   Workflow,
   type LucideIcon,
 } from 'lucide-react';
 import { ThemedIcon } from '../../components/ThemedIcon';
 import { useI18n } from '../../hooks/useI18n';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import type { UiIconId } from '../../lib/iconIds';
 import type { WorkspaceMode } from './connectionPageUtils';
 import { useUpdateReminderStore } from '../../stores/updateReminderStore';
@@ -76,22 +79,50 @@ export function WorkspaceModeSidebar({
 }: Readonly<WorkspaceModeSidebarProps>) {
   const { t } = useI18n();
   const availableVersion = useUpdateReminderStore((state) => state.availableVersion);
+  const pendingRestartVersion = useUpdateReminderStore((state) => state.pendingRestartVersion);
   const isInstalling = useUpdateReminderStore((state) => state.isInstalling);
   const progress = useUpdateReminderStore((state) => state.progress);
   const error = useUpdateReminderStore((state) => state.error);
   const installUpdate = useUpdateReminderStore((state) => state.installUpdate);
+  const restartToApplyUpdate = useUpdateReminderStore((state) => state.restartToApplyUpdate);
+  const promptedRestartFor = useRef<string | null>(null);
+  const [confirmRestart, confirmRestartDialog] = useConfirmDialog();
+
+  useEffect(() => {
+    if (!pendingRestartVersion || promptedRestartFor.current === pendingRestartVersion) return;
+    promptedRestartFor.current = pendingRestartVersion;
+    const message = t('settings.updater.restartPrompt').replace('{version}', pendingRestartVersion);
+    void (async () => {
+      const restartNow = await confirmRestart({
+        title: t('settings.updater.title'),
+        message,
+        confirmLabel: t('settings.updater.restartNow'),
+        cancelLabel: t('settings.updater.restartLater'),
+        kind: 'info',
+      });
+      if (restartNow) {
+        await restartToApplyUpdate();
+      }
+    })();
+  }, [confirmRestart, pendingRestartVersion, restartToApplyUpdate, t]);
+
   const progressLabel =
-    progress?.phase === 'downloading' && progress.total
-      ? t('settings.updater.downloading').replace(
-          '{pct}',
-          String(Math.min(100, Math.round((progress.downloaded / progress.total) * 100))),
-        )
+    progress?.phase === 'downloading'
+      ? progress.total
+        ? t('settings.updater.downloading').replace(
+            '{pct}',
+            String(Math.min(100, Math.round((progress.downloaded / progress.total) * 100))),
+          )
+        : t('settings.updater.downloadingIndeterminate')
       : progress?.phase === 'installing'
         ? t('settings.updater.installing')
         : t('settings.updater.sidebarInstalling');
+  const updateVersion = availableVersion ?? pendingRestartVersion;
   const updateLabel = isInstalling
     ? progressLabel
-    : t('settings.updater.sidebarAvailable').replace('{version}', availableVersion ?? '');
+    : pendingRestartVersion
+      ? t('settings.updater.sidebarRestartReady').replace('{version}', pendingRestartVersion)
+      : t('settings.updater.sidebarAvailable').replace('{version}', updateVersion ?? '');
 
   return (
     <aside
@@ -147,24 +178,76 @@ export function WorkspaceModeSidebar({
         />
       </div>
       <div className="mt-auto flex flex-col">
-        {availableVersion && (
+        {(availableVersion || pendingRestartVersion) && (
           <button
             type="button"
             data-testid="workspace-nav-update"
             aria-label={updateLabel}
             title={error ?? updateLabel}
             disabled={isInstalling}
-            onClick={() => void installUpdate()}
+            onClick={() => {
+              if (pendingRestartVersion) {
+                void restartToApplyUpdate();
+                return;
+              }
+              void installUpdate();
+            }}
             className={`flex h-10 w-full items-center text-xs transition-colors disabled:cursor-wait ${
               sidebarExpanded ? 'justify-start gap-2.5 px-3' : 'justify-center'
             } text-accent hover:bg-accent/10`}
           >
-            <span className="relative">
-              <Download className="h-4 w-4 shrink-0" />
-              <span
-                aria-hidden="true"
-                className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-danger ring-1 ring-surface-alt"
-              />
+            <span className="relative inline-flex h-4 w-4 items-center justify-center">
+              {isInstalling ? (
+                (() => {
+                  const size = 16;
+                  const stroke = 2;
+                  const r = (size - stroke) / 2;
+                  const c = 2 * Math.PI * r;
+                  const pct =
+                    progress?.phase === 'downloading' && progress.total
+                      ? Math.min(100, Math.max(0, (progress.downloaded / progress.total) * 100))
+                      : null;
+                  return (
+                    <svg
+                      className={`h-4 w-4 ${pct == null ? 'animate-spin' : ''}`}
+                      viewBox={`0 0 ${size} ${size}`}
+                      aria-hidden="true"
+                    >
+                      <circle
+                        cx={size / 2}
+                        cy={size / 2}
+                        r={r}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={stroke}
+                        className="opacity-25"
+                      />
+                      <circle
+                        cx={size / 2}
+                        cy={size / 2}
+                        r={r}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={stroke}
+                        strokeLinecap="round"
+                        strokeDasharray={c}
+                        strokeDashoffset={pct == null ? c * 0.75 : c * (1 - pct / 100)}
+                        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+                      />
+                    </svg>
+                  );
+                })()
+              ) : pendingRestartVersion ? (
+                <RotateCw className="h-4 w-4 shrink-0" />
+              ) : (
+                <Download className="h-4 w-4 shrink-0" />
+              )}
+              {!isInstalling && (
+                <span
+                  aria-hidden="true"
+                  className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-danger ring-1 ring-surface-alt"
+                />
+              )}
             </span>
             {sidebarExpanded && <span className="truncate">{updateLabel}</span>}
           </button>
@@ -194,6 +277,7 @@ export function WorkspaceModeSidebar({
           {sidebarExpanded && <span className="truncate">{t('connWin.collapseSidebar')}</span>}
         </button>
       </div>
+      {confirmRestartDialog}
     </aside>
   );
 }

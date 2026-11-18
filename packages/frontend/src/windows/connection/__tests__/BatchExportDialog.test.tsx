@@ -62,8 +62,7 @@ function bindFakeExporter(): void {
     },
     tablesExporter: {
       exportTables: (...args: unknown[]) => exportTablesStream(...(args as [never])),
-      cancelExportTables: (...args: unknown[]) =>
-        cancelExportTablesMock(...(args as [never])),
+      cancelExportTables: (...args: unknown[]) => cancelExportTablesMock(...(args as [never])),
     },
   });
 }
@@ -111,13 +110,22 @@ describe('BatchExportDialog formats (item 3d)', () => {
 
   it('offers every format the Rust exporter supports', () => {
     renderDialog();
-    const values = Array.from(
-      (screen.getByTestId('data-format') as HTMLSelectElement).options,
-    ).map((o) => o.value);
-    expect(values).toEqual(['csv', 'tsv', 'json', 'markdown', 'xlsx', 'sql_insert', 'sql_update']);
+    const values = Array.from((screen.getByTestId('data-format') as HTMLSelectElement).options).map(
+      (o) => o.value,
+    );
+    expect(values).toEqual([
+      'csv',
+      'tsv',
+      'json',
+      'markdown',
+      'xlsx',
+      'parquet',
+      'sql_insert',
+      'sql_update',
+    ]);
   });
 
-  it.each([['xlsx'], ['sql_update'], ['tsv'], ['markdown']] as const)(
+  it.each([['xlsx'], ['parquet'], ['sql_update'], ['tsv'], ['markdown']] as const)(
     'routes %s through the Rust batch exporter',
     async (format) => {
       renderDialog();
@@ -400,7 +408,10 @@ describe('BatchExportDialog cancellation (item 1b)', () => {
   it('cancels mid-flight and reports the partial file deleted', async () => {
     let resolveExport!: (result: unknown) => void;
     exportTablesStream.mockImplementation(
-      () => new Promise((resolve) => { resolveExport = resolve; }),
+      () =>
+        new Promise((resolve) => {
+          resolveExport = resolve;
+        }),
     );
     renderDialog();
     fireEvent.click(screen.getByText('batchExport.export'));
@@ -418,9 +429,7 @@ describe('BatchExportDialog cancellation (item 1b)', () => {
     expect(cancelExportTablesMock).toHaveBeenCalledWith(request.cancelToken);
 
     resolveExport({ Aborted: { partialDeleted: true } });
-    await waitFor(() =>
-      expect(screen.getByTestId('export-aborted-panel')).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByTestId('export-aborted-panel')).toBeInTheDocument());
     expect(screen.getByText('export.cancelledPartialDeleted')).toBeInTheDocument();
     expect(screen.queryByText('batchExport.success')).not.toBeInTheDocument();
   });
@@ -428,16 +437,17 @@ describe('BatchExportDialog cancellation (item 1b)', () => {
   it('reports the partial file kept when the backend could not delete it', async () => {
     let resolveExport!: (result: unknown) => void;
     exportTablesStream.mockImplementation(
-      () => new Promise((resolve) => { resolveExport = resolve; }),
+      () =>
+        new Promise((resolve) => {
+          resolveExport = resolve;
+        }),
     );
     renderDialog();
     fireEvent.click(screen.getByText('batchExport.export'));
     await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByText('export.cancelExport'));
     resolveExport({ Aborted: { partialDeleted: false } });
-    await waitFor(() =>
-      expect(screen.getByTestId('export-aborted-panel')).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByTestId('export-aborted-panel')).toBeInTheDocument());
     expect(screen.getByText('export.cancelledPartialKept')).toBeInTheDocument();
   });
 
@@ -464,12 +474,14 @@ describe('BatchExportDialog web limits (task 6, plan §2.8)', () => {
     envState.desktop = false;
   });
 
-  function renderWebDialog(onExport?: (opts: {
-    selectedTables: string[];
-    mode: string;
-    dataFormat: string;
-    outputMode: string;
-  }) => Promise<void>) {
+  function renderWebDialog(
+    onExport?: (opts: {
+      selectedTables: string[];
+      mode: string;
+      dataFormat: string;
+      outputMode: string;
+    }) => Promise<void>,
+  ) {
     const loadTableExportData = vi.fn(async (name: string) => mockTable(name));
     render(
       <BatchExportDialog
@@ -494,9 +506,9 @@ describe('BatchExportDialog web limits (task 6, plan §2.8)', () => {
 
   it('offers CSV only: batch export is always a SQL-scope export on web', () => {
     renderWebDialog();
-    const values = Array.from(
-      (screen.getByTestId('data-format') as HTMLSelectElement).options,
-    ).map((o) => o.value);
+    const values = Array.from((screen.getByTestId('data-format') as HTMLSelectElement).options).map(
+      (o) => o.value,
+    );
     expect(values).toEqual(['csv']);
   });
 

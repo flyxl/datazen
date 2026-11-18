@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowDown, ArrowUp, ChevronDown, Filter } from 'lucide-react';
+import { ArrowDownWideNarrow, ArrowUpDown, ArrowUpNarrowWide } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import type { SortCondition } from '../../types';
@@ -38,7 +38,6 @@ export interface TableHeaderProps {
   columnWidths?: number[];
   onResizeStart?: (colIndex: number, startX: number) => void;
   sortable?: boolean;
-  onFilterColumn?: (column: string) => void;
   /**
    * The driver's own column-type rules (`DatabaseTypeMeta.cellTypes`).
    *
@@ -81,7 +80,6 @@ export function TableHeader({
   columnWidths,
   onResizeStart,
   sortable = true,
-  onFilterColumn,
   cellTypeHints,
   gridSemantics = false,
   onReorderColumns,
@@ -95,9 +93,9 @@ export function TableHeader({
 
   /**
    * The header's own sort menu (DBR-SORT): three single-column entries, opened
-   * from the chevron every sortable column carries. The entries are **replace**
-   * semantics — the Navicat behaviour the click cycle also implements — while
-   * the right-click menu keeps its multi-column builder; the two never mix.
+   * from the single adaptive sort control every sortable column carries. The
+   * entries are **replace** semantics — the Navicat behaviour the click cycle
+   * also implements — while the right-click menu keeps its multi-column builder.
    */
   const openSortMenu = (
     event: React.MouseEvent<HTMLButtonElement>,
@@ -222,7 +220,7 @@ export function TableHeader({
               setDropIndex(null);
             }}
             className={cn(
-              'group relative flex h-10 shrink-0 select-none items-center justify-between gap-2 border-r border-edge px-3',
+              'group relative flex h-10 shrink-0 select-none items-center justify-between gap-1 border-r border-edge pl-3 pr-1.5',
               // The frozen edge (DB-12): the last pinned column needs a
               // visible seam so the scroll boundary reads as intentional.
               lastFrozen && 'border-r-2 border-r-accent/40',
@@ -270,19 +268,6 @@ export function TableHeader({
                 </div>
               ) : null}
             </div>
-            {onFilterColumn && (
-              <button
-                type="button"
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-fg-muted hover:bg-surface hover:text-accent"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onFilterColumn(col.name);
-                }}
-                aria-label="Filter"
-              >
-                <Filter className="h-3.5 w-3.5" />
-              </button>
-            )}
             {sortable && sorted !== 'none' && sorts.length > 1 && (
               <span
                 data-sort-badge
@@ -292,32 +277,31 @@ export function TableHeader({
                 {sortPosition + 1}
               </span>
             )}
-            {sortable && sorted !== 'none' && (
-              <span
-                data-sort-indicator
-                aria-hidden
-                className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-accent"
-              >
-                {sorted === 'asc' ? (
-                  <ArrowUp className="h-3.5 w-3.5" />
-                ) : (
-                  <ArrowDown className="h-3.5 w-3.5" />
-                )}
-              </span>
-            )}
             {sortable && (
               <button
                 type="button"
                 data-sort-menu
+                data-sort-state={sorted}
+                draggable={false}
                 className={cn(
-                  'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-muted opacity-0 transition-opacity hover:bg-surface hover:text-accent',
-                  'focus-visible:opacity-100 group-hover:opacity-100',
+                  'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm transition-colors hover:bg-surface-raised',
+                  sorted === 'none' ? 'text-fg-muted' : 'text-accent',
                 )}
+                onPointerDown={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => openSortMenu(e, col.name, sorted)}
                 aria-label={t('dataTable.sortMenuLabel')}
                 title={t('dataTable.sortMenuLabel')}
               >
-                <ChevronDown className="h-3.5 w-3.5" />
+                <span data-sort-indicator aria-hidden className="inline-flex">
+                  {sorted === 'asc' ? (
+                    <ArrowUpNarrowWide className="h-3.5 w-3.5" />
+                  ) : sorted === 'desc' ? (
+                    <ArrowDownWideNarrow className="h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowUpDown className="h-3.5 w-3.5" />
+                  )}
+                </span>
               </button>
             )}
             {onResizeStart && (

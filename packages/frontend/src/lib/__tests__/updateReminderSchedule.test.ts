@@ -11,6 +11,7 @@ vi.mock('../updater', () => ({
   getUpdateChannel: mocks.channel,
   checkForUpdates: mocks.check,
   downloadAndInstallUpdate: mocks.install,
+  relaunchToApplyUpdate: vi.fn(),
 }));
 
 import { startUpdateReminderSchedule } from '../updateReminderSchedule';

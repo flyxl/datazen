@@ -99,6 +99,9 @@ const pack = {
   'query.session.closeTabActiveExecutionMany':
     '이 탭에 실행 중인 쿼리가 {count}개 있습니다. 그래도 닫을까요?',
   'query.resultEditRequiresRefresh': '이 보관된 결과를 편집하려면 쿼리를 다시 실행하세요.',
+  'query.resultEditCommitted': '변경 사항이 커밋되었습니다. 이 결과를 계속 편집할 수 있습니다.',
+  'query.resultEditCommitRetryHint':
+    '커밋에 실패했습니다. 오류를 확인하세요. 대상 데이터가 변경되었거나 세션이 유효하지 않으면 쿼리를 다시 실행한 뒤 다시 시도하세요.',
   'query.session.openNew': '새 세션 열기',
   'query.session.disconnected': '연결이 끊어졌습니다. 계속하려면 세션을 다시 여세요.',
   'query.session.executionFailed': '쿼리가 실패했습니다: {message}',
@@ -527,6 +530,8 @@ const pack = {
   'export.formatDisabledNoKey': 'SQL UPDATE는 WHERE 절을 만들 기본 키 열이 필요합니다.',
   'export.formatDisabledWebSqlScope':
     '웹에서는 전체 테이블/필터 결과 내보내기가 CSV만 지원되며, SQL 내보내기 경로가 없습니다.',
+  'export.formatDisabledParquetRustOnly':
+    'Parquet 내보내기는 데스크톱 Rust 익스포터를 거칩니다. 현재 페이지 / 선택 행 범위와 웹에서는 사용할 수 없습니다.',
   'export.progressRows': '{rows}행 기록됨…',
   'export.cancelExport': '내보내기 취소',
   'export.cancelling': '취소 중…',

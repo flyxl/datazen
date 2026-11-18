@@ -101,6 +101,9 @@ const pack = {
     'このタブには {count} 件の実行中のクエリがあります。それでも閉じますか？',
   'query.resultEditRequiresRefresh':
     'この保持された結果を編集する前に、もう一度クエリを実行してください。',
+  'query.resultEditCommitted': '変更をコミットしました。この結果を引き続き編集できます。',
+  'query.resultEditCommitRetryHint':
+    'コミットに失敗しました。エラーを確認してください。対象データが変更されたかセッションが無効な場合は、クエリを再実行してから再試行してください。',
   'query.session.openNew': '新しいセッションを開く',
   'query.session.disconnected': '接続が失われました。続行するにはセッションを開き直してください。',
   'query.session.executionFailed': 'クエリが失敗しました: {message}',
@@ -532,6 +535,8 @@ const pack = {
   'export.formatDisabledNoKey': 'SQL UPDATE には WHERE 句を構成する主キー列が必要です。',
   'export.formatDisabledWebSqlScope':
     'Web では、全テーブル／フィルター結果のエクスポートは CSV のみ対応で、SQL エクスポート経路はありません。',
+  'export.formatDisabledParquetRustOnly':
+    'Parquet エクスポートはデスクトップの Rust エクスポーターを経由します。現在ページ / 選択行のスコープと Web では利用できません。',
   'export.progressRows': '{rows} 行を書き込みました…',
   'export.cancelExport': 'エクスポートをキャンセル',
   'export.cancelling': 'キャンセル中…',

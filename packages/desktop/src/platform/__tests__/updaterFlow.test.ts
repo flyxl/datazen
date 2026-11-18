@@ -36,7 +36,12 @@ vi.mock('@datazen/frontend/testing/extensions/generated.ts', () => ({
   DATAZEN_UPDATER_CHANNEL: true,
 }));
 
-import { checkForUpdates, downloadAndInstallUpdate, maybeCheckOnStartup } from '../desktop/updater';
+import {
+  checkForUpdates,
+  downloadAndInstallUpdate,
+  maybeCheckOnStartup,
+  relaunchToApplyUpdate,
+} from '../desktop/updater';
 
 describe('updater flows without Tauri', () => {
   it('checkForUpdates returns error', async () => {
@@ -76,7 +81,7 @@ describe('updater flows with Tauri', () => {
     expect(result).toEqual({ status: 'error', message: 'network fail' });
   });
 
-  it('downloadAndInstallUpdate reports progress and relaunches', async () => {
+  it('downloadAndInstallUpdate reports progress and installs without relaunching', async () => {
     mockCheck.mockResolvedValue({
       version: '2.0.0',
       downloadAndInstall: mockDownloadAndInstall,
@@ -89,7 +94,6 @@ describe('updater flows with Tauri', () => {
         cb({ event: 'Finished', data: {} });
       },
     );
-    mockRelaunch.mockResolvedValue(undefined);
 
     const progress: string[] = [];
     const result = await downloadAndInstallUpdate((p) => progress.push(p.phase));
@@ -103,7 +107,13 @@ describe('updater flows with Tauri', () => {
       'done',
     ]);
     expect(result).toEqual({ status: 'installed', version: '2.0.0' });
-    expect(mockRelaunch).toHaveBeenCalled();
+    expect(mockRelaunch).not.toHaveBeenCalled();
+  });
+
+  it('relaunchToApplyUpdate relaunches the app', async () => {
+    mockRelaunch.mockResolvedValue(undefined);
+    await relaunchToApplyUpdate();
+    expect(mockRelaunch).toHaveBeenCalledOnce();
   });
 
   it('downloadAndInstallUpdate returns upToDate when no update', async () => {
@@ -180,9 +190,9 @@ describe('updater flows refuse a manifest belonging to another SKU', () => {
       downloadAndInstall: mockDownloadAndInstall,
     });
     mockDownloadAndInstall.mockResolvedValue(undefined);
-    mockRelaunch.mockResolvedValue(undefined);
 
     expect(await downloadAndInstallUpdate()).toEqual({ status: 'installed', version: '2.0.0' });
+    expect(mockRelaunch).not.toHaveBeenCalled();
   });
 });
 

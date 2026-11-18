@@ -1,5 +1,6 @@
 import { toSharedSettings, useBackendClient, type SharedSettings } from '@datazen/backend-client';
 import { requireHostSettings } from '../platform/contracts';
+import { DEFAULT_VALUE_PRESENTATION_SETTINGS } from '../lib/valuePresentation/settings';
 import type { AppSettings } from '../types';
 
 /**
@@ -22,6 +23,9 @@ function flattenShared(shared: SharedSettings): Partial<AppSettings> {
     onboarding: shared.onboarding ?? undefined,
     rowCountMode: shared.rowCountMode,
     sqlSyntaxTheme: shared.preferences.sqlSyntaxTheme ?? undefined,
+    // Issue-32 T06: shared 侧缺失时给默认——toSharedSettings 已保证缺省，
+    // 这里再兜底一次，防旧后端 payload。
+    valuePresentation: shared.valuePresentation ?? DEFAULT_VALUE_PRESENTATION_SETTINGS,
   };
 }
 

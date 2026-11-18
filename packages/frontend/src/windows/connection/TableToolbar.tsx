@@ -1,8 +1,6 @@
 import { Plus, RefreshCw } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
-import { DefaultOrderSelect } from '../../components/DataTable/DefaultOrderSelect';
-import type { DefaultOrderOverride } from '../../lib/defaultSort';
 import { TableFilterToolbar, type NamedViewMenuConfig } from './TableFilterToolbar';
 import type { ColumnSchema, FilterCondition } from '../../types';
 
@@ -37,15 +35,6 @@ export interface TableToolbarProps {
   onClearFilters: () => void;
   /** Append a new-row draft. */
   onAddDraftRow: () => void;
-  /**
-   * The panel's temporary override of the global default order. Rendered at
-   * the right end of the row (DBR-SORT) — the pager no longer carries it.
-   */
-  defaultOrderOverride?: DefaultOrderOverride;
-  /** Change the panel's temporary default order override. */
-  onDefaultOrderOverrideChange?: (value: DefaultOrderOverride) => void;
-  /** How many primary-key columns the table has (the composite-key rules). */
-  primaryKeyCount?: number;
   /**
    * The saved views of this table.
    *
@@ -85,9 +74,6 @@ export function TableToolbar({
   onSetFilters,
   onClearFilters,
   onAddDraftRow,
-  defaultOrderOverride,
-  onDefaultOrderOverrideChange,
-  primaryKeyCount,
   namedView,
 }: TableToolbarProps) {
   const { t } = useI18n();
@@ -109,15 +95,6 @@ export function TableToolbar({
       onSetFilters={onSetFilters}
       onClearFilters={onClearFilters}
       namedView={namedView}
-      trailingControls={
-        onDefaultOrderOverrideChange ? (
-          <DefaultOrderSelect
-            value={defaultOrderOverride ?? 'inherit'}
-            onChange={onDefaultOrderOverrideChange}
-            primaryKeyCount={primaryKeyCount ?? 0}
-          />
-        ) : undefined
-      }
     >
       <button
         type="button"

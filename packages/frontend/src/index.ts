@@ -49,6 +49,7 @@ export {
   isUpdaterSupported,
   manifestBelongsToBuild,
   readManifestVariant,
+  relaunchToApplyUpdate,
   type UpdateChannel,
 } from './lib/updater';
 export type { AppSettings, McpHttpStatus } from './types/index';

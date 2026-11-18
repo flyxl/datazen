@@ -65,7 +65,8 @@ export type ExportDataFormat =
   | 'markdown'
   | 'sql_insert'
   | 'sql_update'
-  | 'xlsx';
+  | 'xlsx'
+  | 'parquet';
 export type ExportOutputMode = 'single' | 'zip';
 
 /**

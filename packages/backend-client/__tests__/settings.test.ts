@@ -59,6 +59,57 @@ describe('portable settings boundary', () => {
     expect(snapshot.onboarding).toEqual({ completed: true, version: 1 });
     expect(snapshot.rowCountMode).toBe('auto');
   });
+  it('defaults valuePresentation when absent and passes it through verbatim', () => {
+    // `source` carries no valuePresentation: the projection fills the default.
+    expect(toSharedSettings(source).valuePresentation).toEqual({
+      version: 1,
+      renderers: {},
+    });
+
+    const stored = {
+      version: 1,
+      renderers: {
+        'datazen.timestamp': {
+          enabled: true,
+          options: {
+            interpretation: { kind: 'native' as const },
+            format: 'iso' as const,
+            displayTimeZone: { kind: 'utc' as const },
+          },
+        },
+        // Unknown renderers are preserved as-is; no option validation here.
+        'acme.future': {
+          enabled: false,
+          options: {
+            interpretation: { kind: 'native' as const },
+            format: 'locale' as const,
+            displayTimeZone: { kind: 'local' as const },
+          },
+        },
+      },
+    };
+    expect(toSharedSettings({ ...source, valuePresentation: stored }).valuePresentation).toEqual(
+      stored,
+    );
+  });
+  it('preserves an unknown valuePresentation version instead of rewriting it', () => {
+    const stored = {
+      version: 99,
+      renderers: {
+        'acme.future': {
+          enabled: true,
+          options: {
+            interpretation: { kind: 'native' as const },
+            format: 'iso' as const,
+            displayTimeZone: { kind: 'utc' as const },
+          },
+        },
+      },
+    };
+    expect(toSharedSettings({ ...source, valuePresentation: stored }).valuePresentation).toEqual(
+      stored,
+    );
+  });
   it('routes shared reads and writes through the selected backend facade', async () => {
     const snapshot = toSharedSettings(source);
     const calls: Array<{ method: keyof MethodMap; payload: unknown }> = [];

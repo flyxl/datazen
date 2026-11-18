@@ -21,6 +21,7 @@ import { maybeCheckOnStartup } from './updater';
 import {
   checkForUpdates as desktopCheckForUpdates,
   downloadAndInstallUpdate as desktopDownloadAndInstallUpdate,
+  relaunchToApplyUpdate as desktopRelaunchToApplyUpdate,
 } from './updater';
 
 export function createDesktopHostServices(): DesktopHostServices {
@@ -78,6 +79,9 @@ export function createDesktopHostServices(): DesktopHostServices {
       onProgress?: (progress: UpdateProgress) => void,
     ): Promise<UpdateCheckResult> {
       return desktopDownloadAndInstallUpdate(onProgress);
+    },
+    relaunchToApplyUpdate(): Promise<void> {
+      return desktopRelaunchToApplyUpdate();
     },
   };
 }

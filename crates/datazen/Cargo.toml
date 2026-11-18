@@ -111,7 +111,6 @@ language_packs = [
 export = [
     "dep:serde_json",
     "dep:zip",
-    "dep:rust_xlsxwriter",
     "dep:tokio",
     "dep:tokio-util",
     "dep:tracing",
@@ -120,6 +119,11 @@ export = [
     "execution",
     "jobs",
 ]
+# Parquet export T1 (PRD F9): binary-format deps split out of `export` so
+# the base package is not dragged bigger by either binary tree; the desktop
+# host opens both sub-features, the server opens neither.
+export-xlsx = ["dep:rust_xlsxwriter"]
+export-parquet = ["dep:parquet", "dep:arrow"]
 # D6 item 1：查询历史与迁移运行历史（词汇/仓储端口/用例门面）。
 # 轻量：serde/chrono 常驻（B248e153 后 chrono 为常驻依赖）+ async-trait（端口）
 # + tracing（降级告警）。
@@ -395,6 +399,12 @@ zip = { workspace = true, optional = true }
 # Export cleanup item 3a: XLSX writer (BinaryFormatter). Only dependency is
 # its own zip v9 — coexists with the workspace zip v2 (see root Cargo.toml).
 rust_xlsxwriter = { workspace = true, optional = true }
+# Parquet export T1 (PRD §8 Q1): parquet 58.x / arrow 58.x — versions pinned
+# to the workspace "58" line (see root Cargo.toml); a single arrow in the
+# graph, shared with the duckdb driver. Used from T2 (DataFormat::Parquet)
+# and T4 (ParquetFormatter) on; T1 only wires the feature split.
+parquet = { workspace = true, optional = true }
+arrow = { workspace = true, optional = true }
 # D5 data_transfer：sql_file 的 gzip 读写（.sql.gz 导入导出）。
 flate2 = { version = "1.1.9", optional = true }
 hmac = { workspace = true, optional = true }

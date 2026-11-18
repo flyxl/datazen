@@ -147,19 +147,41 @@ pub(super) fn session(
     }
 }
 pub(super) fn runtime(error: rt::RuntimeError) -> ApiError {
+    use crate::execution::runtime::connection::RuntimeError;
     // The admission refusal already carries the two numbers the user can act
-    // on. Keep every other runtime failure collapsed into the fixed category
-    // text: their payloads may carry identifiers and are not caller-facing.
-    if let rt::RuntimeError::PhysicalCapacityExceeded { limit, used } = &error {
+    // on. Keep every other runtime failure collapsed into safe, actionable
+    // text: payloads may carry identifiers and are not caller-facing.
+    if let RuntimeError::PhysicalCapacityExceeded { limit, used } = &error {
         return ApiError::new(
             ApiErrorCode::ResourceBusy,
             format!("连接数已达上限（上限 {limit}，当前 {used}），请关闭部分连接后重试"),
         );
     }
-    ApiError::new(
-        error.api_code().unwrap_or(ApiErrorCode::OutcomeUnknown),
-        "connection runtime operation failed",
-    )
+    tracing::warn!(
+        code = ?error.api_code(),
+        reason = error.reason(),
+        error = %error,
+        "runtime operation failed"
+    );
+    let code = error.api_code().unwrap_or(ApiErrorCode::OutcomeUnknown);
+    let message = match &error {
+        RuntimeError::UnknownSession(_) | RuntimeError::SessionClosed(_) => {
+            "连接会话不存在或已失效，请重新连接后重试"
+        }
+        RuntimeError::SessionLost(_) | RuntimeError::SessionQuarantined(_) => {
+            "连接会话已断开或不可用，请重新连接后重试"
+        }
+        RuntimeError::ContextRevisionMismatch { .. } => "连接上下文已变更，请刷新后重试",
+        RuntimeError::BudgetExhausted("sessionQuota") => {
+            "当前连接的会话数已达上限，请关闭部分编辑器或会话后重试"
+        }
+        RuntimeError::BudgetExhausted(_) => "连接资源繁忙，请稍后重试",
+        RuntimeError::CloseRejected(_) => "当前会话存在未结束的事务，请先提交或回滚后重试",
+        RuntimeError::CancelFailed(_) => "取消请求未能送达，请稍后重试",
+        RuntimeError::InvariantBroken(_) => "连接运行时内部状态异常，请重新连接后重试",
+        RuntimeError::PhysicalCapacityExceeded { .. } => unreachable!("handled above"),
+    };
+    ApiError::new(code, message)
 }
 /// 活连接出口端口的错误映射。
 ///
@@ -217,8 +239,13 @@ mod tests {
     }
 
     #[test]
-    fn other_runtime_failures_stay_redacted_category_text() {
+    fn runtime_failures_use_safe_actionable_messages() {
         let mapped = runtime(rt::RuntimeError::BudgetExhausted("resourceOpenBusy"));
-        assert_eq!(mapped.message, "connection runtime operation failed");
+        assert_eq!(mapped.code, ApiErrorCode::ResourceBusy);
+        assert_eq!(mapped.message, "连接资源繁忙，请稍后重试");
+
+        let mapped = runtime(rt::RuntimeError::UnknownSession("dbs_1".into()));
+        assert_eq!(mapped.code, ApiErrorCode::SessionNotFound);
+        assert_eq!(mapped.message, "连接会话不存在或已失效，请重新连接后重试");
     }
 }

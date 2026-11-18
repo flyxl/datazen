@@ -21,6 +21,15 @@ function fieldInputs(container: HTMLElement): HTMLInputElement[] {
   return Array.from(container.querySelectorAll('input')).slice(1) as HTMLInputElement[];
 }
 
+/**
+ * BUG-005: editable fields now start in display state — click the display
+ * container (in column order) to open the editor for that field.
+ */
+function openEditor(container: HTMLElement, index = 0): void {
+  const displays = container.querySelectorAll('aside [role="button"]');
+  fireEvent.click(displays[index]);
+}
+
 describe('DetailPanel', () => {
   it('returns null when closed', () => {
     const { container } = render(
@@ -62,6 +71,8 @@ describe('DetailPanel', () => {
         onFieldEdit={onFieldEdit}
       />,
     );
+    // BUG-005: the editor opens from the display container, not on mount.
+    openEditor(container, 0);
     const idInput = fieldInputs(container)[0];
     fireEvent.focus(idInput);
     fireEvent.change(idInput, { target: { value: '42' } });
@@ -81,14 +92,18 @@ describe('DetailPanel', () => {
         onFieldEdit={onFieldEdit}
       />,
     );
+    // BUG-005: the editor opens from the display container, not on mount —
+    // one field at a time, so the meta textarea is opened first (display 2)…
+    openEditor(container, 2);
     const textareas = container.querySelectorAll('textarea');
     fireEvent.focus(textareas[0]);
     fireEvent.change(textareas[0], { target: { value: '{"b":2}' } });
     fireEvent.blur(textareas[0]);
     expect(onFieldEdit).toHaveBeenCalledWith(0, 'meta', { b: 2 });
 
-    // editable fields: id, name, active (meta is textarea)
-    const activeInput = fieldInputs(container)[2];
+    // …then the active input (display 3); it is the only input on screen.
+    openEditor(container, 3);
+    const activeInput = fieldInputs(container)[0];
     fireEvent.focus(activeInput);
     fireEvent.change(activeInput, { target: { value: 'true' } });
     fireEvent.blur(activeInput);
@@ -107,12 +122,19 @@ describe('DetailPanel', () => {
         onFieldEdit={onFieldEdit}
       />,
     );
+    // BUG-005: the editor opens from the display container, not on mount.
+    openEditor(container, 0);
     const input = fieldInputs(container)[0];
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: 'temp' } });
     fireEvent.keyDown(input, { key: 'Escape' });
     expect(onFieldEdit).not.toHaveBeenCalled();
-    await waitFor(() => expect(input).toHaveValue('Bob'));
+    // BUG-005: Escape returns to the display state — the editor unmounts
+    // and the presented value is back, instead of a reset input lingering.
+    await waitFor(() => {
+      expect(fieldInputs(container)).toHaveLength(0);
+      expect(container.querySelector('aside pre')).toHaveTextContent('Bob');
+    });
   });
 
   it('commits null when text field cleared', () => {
@@ -127,6 +149,8 @@ describe('DetailPanel', () => {
         onFieldEdit={onFieldEdit}
       />,
     );
+    // BUG-005: the editor opens from the display container, not on mount.
+    openEditor(container, 0);
     const input = fieldInputs(container)[0];
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: '' } });

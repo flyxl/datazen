@@ -5,6 +5,7 @@ import { t } from '../locales/t';
 import type { CountStrategy } from '@datazen/backend-client';
 import type { ColumnSchema, DatabaseType, FilterCondition, SortCondition } from '../types';
 import { DB_REGISTRY } from '../lib/databaseTypes';
+import { capabilitiesForDbSession, relationSchemaFor } from '../lib/driverCapabilities';
 import {
   buildRowIdentity,
   duplicateRowIdentityKeys,
@@ -398,6 +399,13 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       );
       // The boundary of the page, or nothing: an unvisited page has none.
       const keysetRequest = keysetRequestFor(existing, page);
+      const dbMeta = context.driverType
+        ? DB_REGISTRY[context.driverType as DatabaseType]
+        : undefined;
+      const requestSchema =
+        dbMeta?.namespaceEnsure === 'path-hierarchy'
+          ? null
+          : relationSchemaFor(capabilitiesForDbSession(context.dbSessionId), context.schema);
       const res = await databaseCommands.getTableData({
         context,
         manualHandle: tableManualHandle(panelId),
@@ -432,7 +440,8 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         database: context.database,
         // The table's own schema, not a guess: without it the host falls back
         // to the connection default and a table outside it reads as missing.
-        schema: context.schema ?? null,
+        // Path-hierarchy / schema-less drivers encode namespace in `database`.
+        schema: requestSchema,
       });
       commitFetchedPage(get, set, panelId, context, requestRevision, res, keysetRequest);
     } catch (e) {

@@ -1,5 +1,13 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { DEFAULT_THEME_PREFERENCE } from '../../types/theme';
+import type { StoredValuePresentationSettings } from '../../lib/valuePresentation/settings';
+import {
+  columnOverrideKey,
+  withColumnOverride,
+  withTimestampRenderer,
+  withValuePresentationRules,
+  type ValuePresentationRule,
+} from '../../lib/valuePresentation/index';
 
 const mockSettingsCommands = {
   getSettings: vi.fn(),
@@ -367,5 +375,509 @@ describe('settingsStore', () => {
     expect(settings.rowCountEstimateThreshold).toBe(1000);
     expect(settings.defaultTableSort).toBe('none');
     expect(mockSettingsCommands.saveSettings).toHaveBeenCalled();
+  });
+
+  // Issue-32 T06: valuePresentation 持久化链路与 revision 计数。
+  it('loadSettings parses valuePresentation and bumps the revision when it differs', async () => {
+    const stored: StoredValuePresentationSettings = {
+      version: 1,
+      renderers: {
+        'datazen.timestamp': {
+          enabled: true,
+          options: {
+            interpretation: { kind: 'native' },
+            format: 'iso',
+            displayTimeZone: { kind: 'utc' },
+          },
+        },
+      },
+    };
+    mockSettingsCommands.getSettings.mockResolvedValueOnce({
+      theme: { mode: 'dark', packId: null },
+      language: 'en',
+      valuePresentation: stored,
+    });
+
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(0);
+    await useSettingsStore.getState().loadSettings();
+
+    expect(useSettingsStore.getState().settings.valuePresentation).toEqual(stored);
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(1);
+  });
+
+  it('loadSettings keeps the revision at 0 when the loaded value equals the default', async () => {
+    mockSettingsCommands.getSettings.mockResolvedValueOnce({
+      theme: { mode: 'dark', packId: null },
+      language: 'en',
+      valuePresentation: { version: 1, renderers: {} },
+    });
+
+    await useSettingsStore.getState().loadSettings();
+
+    expect(useSettingsStore.getState().settings.valuePresentation).toEqual({
+      version: 1,
+      renderers: {},
+    });
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(0);
+  });
+
+  it('loadSettings falls back to the default for a malformed valuePresentation (old payload)', async () => {
+    mockSettingsCommands.getSettings.mockResolvedValueOnce({
+      theme: { mode: 'dark', packId: null },
+      language: 'en',
+      valuePresentation: { version: 'x', renderers: 'nope' },
+    });
+
+    await useSettingsStore.getState().loadSettings();
+
+    expect(useSettingsStore.getState().settings.valuePresentation).toEqual({
+      version: 1,
+      renderers: {},
+    });
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(0);
+  });
+
+  it('loadSettings round-trips valuePresentation through save and reload', async () => {
+    const stored: StoredValuePresentationSettings = {
+      version: 1,
+      renderers: {
+        'datazen.timestamp': {
+          enabled: true,
+          options: {
+            interpretation: { kind: 'unix', unit: 'milliseconds' },
+            format: 'iso-tz',
+            displayTimeZone: { kind: 'iana', name: 'Asia/Shanghai' },
+          },
+        },
+      },
+    };
+    mockSettingsCommands.getSettings.mockResolvedValueOnce({
+      theme: { mode: 'dark', packId: null },
+      language: 'en',
+      valuePresentation: stored,
+    });
+    await useSettingsStore.getState().loadSettings();
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(1);
+
+    mockSettingsCommands.saveSettings.mockResolvedValue(undefined);
+    await useSettingsStore.getState().updateSettings({ defaultPageSize: 100 });
+    const saved = mockSettingsCommands.saveSettings.mock.lastCall?.[0] as {
+      valuePresentation: unknown;
+    };
+    expect(saved.valuePresentation).toEqual(stored);
+    // 往返中 JSON 不变，revision 不动。
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(1);
+    expect(useSettingsStore.getState().settings.valuePresentation).toEqual(stored);
+  });
+
+  it('updateSettings bumps the revision only when valuePresentation JSON changes', async () => {
+    mockSettingsCommands.saveSettings.mockResolvedValue(undefined);
+    const next: StoredValuePresentationSettings = {
+      version: 1,
+      renderers: {
+        'datazen.timestamp': {
+          enabled: true,
+          options: {
+            interpretation: { kind: 'native' },
+            format: 'iso',
+            displayTimeZone: { kind: 'utc' },
+          },
+        },
+      },
+    };
+
+    await useSettingsStore.getState().updateSettings({ valuePresentation: next });
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(1);
+    expect(mockSettingsCommands.saveSettings).toHaveBeenLastCalledWith(
+      expect.objectContaining({ valuePresentation: next }),
+    );
+
+    // 同值再写：revision 不动（load/save 往返重建等值对象也不触发重建）。
+    await useSettingsStore.getState().updateSettings({
+      valuePresentation: JSON.parse(JSON.stringify(next)) as typeof next,
+    });
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(1);
+  });
+
+  it('updateValuePresentationSettings replaces the stored value through the normal save path', async () => {
+    mockSettingsCommands.saveSettings.mockResolvedValue(undefined);
+    const next: StoredValuePresentationSettings = {
+      version: 1,
+      renderers: {
+        'datazen.timestamp': {
+          enabled: false,
+          options: {
+            interpretation: { kind: 'native' },
+            format: 'locale',
+            displayTimeZone: { kind: 'local' },
+          },
+        },
+      },
+    };
+
+    await useSettingsStore.getState().updateValuePresentationSettings(next);
+
+    expect(useSettingsStore.getState().settings.valuePresentation).toEqual(next);
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(1);
+    expect(mockSettingsCommands.saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ valuePresentation: next }),
+    );
+  });
+
+  it('applySettingsLocally syncs valuePresentation and its revision without saving', async () => {
+    applyThemePack.mockResolvedValue({ ok: true });
+    const { applySettingsLocally } = await import('../settingsStore');
+    const next: StoredValuePresentationSettings = {
+      version: 1,
+      renderers: {
+        'datazen.timestamp': {
+          enabled: true,
+          options: {
+            interpretation: { kind: 'native' },
+            format: 'iso',
+            displayTimeZone: { kind: 'utc' },
+          },
+        },
+      },
+    };
+
+    await applySettingsLocally({
+      ...useSettingsStore.getState().settings,
+      valuePresentation: next,
+    });
+
+    expect(useSettingsStore.getState().settings.valuePresentation).toEqual(next);
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(1);
+    expect(mockSettingsCommands.saveSettings).not.toHaveBeenCalled();
+
+    // 同值再同步：revision 不动。
+    await applySettingsLocally({
+      ...useSettingsStore.getState().settings,
+      valuePresentation: JSON.parse(JSON.stringify(next)) as typeof next,
+    });
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(1);
+  });
+
+  // Issue-32 T11：跨窗口同步——路径化保存（保存前重读权威值）与加载代次。
+  const T11_RULE: ValuePresentationRule = {
+    name: 'unix-ms',
+    enabled: true,
+    match: { column: { kind: 'exact', value: 'epoch_ms' } },
+    options: {
+      interpretation: { kind: 'unix', unit: 'milliseconds' },
+      format: 'iso-tz',
+      displayTimeZone: { kind: 'iana', name: 'Asia/Shanghai' },
+    },
+  };
+
+  const T11_ISO_UTC = {
+    interpretation: { kind: 'native' },
+    format: 'iso',
+    displayTimeZone: { kind: 'utc' },
+  } as const;
+
+  const T11_ISO_TZ_SHANGHAI = {
+    interpretation: { kind: 'native' },
+    format: 'iso-tz',
+    displayTimeZone: { kind: 'iana', name: 'Asia/Shanghai' },
+  } as const;
+
+  it('updateValuePresentationSettings applies an updater to the authoritative value', async () => {
+    // 本地 store 是旧基底（无规则、无覆盖）；权威端已有 B 窗保存的规则与覆盖。
+    const authoritative: StoredValuePresentationSettings = {
+      version: 1,
+      renderers: {
+        'datazen.timestamp': { enabled: true, options: { ...T11_ISO_UTC } },
+      },
+      rules: [T11_RULE],
+      columnOverrides: {
+        [columnOverrideKey({
+          connectionId: 'conn-1',
+          database: 'shop',
+          namespace: 'public',
+          table: 'orders',
+          column: 'epoch_ms',
+        })]: { mode: 'raw' },
+      },
+    };
+    mockSettingsCommands.getSettings.mockResolvedValueOnce({
+      theme: { mode: 'dark', packId: null },
+      language: 'en',
+      valuePresentation: authoritative,
+    });
+    mockSettingsCommands.saveSettings.mockResolvedValue(undefined);
+
+    await useSettingsStore
+      .getState()
+      .updateValuePresentationSettings((fresh) =>
+        withTimestampRenderer(fresh, true, { ...T11_ISO_TZ_SHANGHAI }),
+      );
+
+    const saved = mockSettingsCommands.saveSettings.mock.lastCall?.[0] as {
+      valuePresentation: StoredValuePresentationSettings;
+    };
+    expect(saved.valuePresentation.renderers['datazen.timestamp']?.options.format).toBe('iso-tz');
+    // B 窗同时保存的规则与覆盖原样保留。
+    expect(saved.valuePresentation.rules).toEqual([T11_RULE]);
+    expect(saved.valuePresentation.columnOverrides).toEqual(authoritative.columnOverrides);
+    expect(useSettingsStore.getState().settings.valuePresentation).toEqual(saved.valuePresentation);
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(1);
+  });
+
+  it('updateValuePresentationSettings with a whole object takes other fields from the authoritative read', async () => {
+    mockSettingsCommands.getSettings.mockResolvedValueOnce({
+      theme: { mode: 'dark', packId: null },
+      language: 'en',
+      defaultPageSize: 99,
+      valuePresentation: { version: 1, renderers: {} },
+    });
+    mockSettingsCommands.saveSettings.mockResolvedValue(undefined);
+    const next: StoredValuePresentationSettings = {
+      version: 1,
+      renderers: {
+        'datazen.timestamp': { enabled: true, options: { ...T11_ISO_UTC } },
+      },
+    };
+
+    await useSettingsStore.getState().updateValuePresentationSettings(next);
+
+    const saved = mockSettingsCommands.saveSettings.mock.lastCall?.[0] as {
+      defaultPageSize: number;
+      valuePresentation: StoredValuePresentationSettings;
+    };
+    // 其他字段取权威读到的值，不是本窗口陈旧的本地值（本地默认 50）。
+    expect(saved.defaultPageSize).toBe(99);
+    expect(saved.valuePresentation).toEqual(next);
+  });
+
+  it('updateValuePresentationSettings falls back to the local base when the authoritative re-read fails', async () => {
+    useSettingsStore.setState({
+      settings: { ...useSettingsStore.getState().settings, defaultPageSize: 77 },
+    });
+    mockSettingsCommands.getSettings.mockRejectedValueOnce(new Error('backend down'));
+    mockSettingsCommands.saveSettings.mockResolvedValue(undefined);
+
+    await useSettingsStore
+      .getState()
+      .updateValuePresentationSettings((fresh) =>
+        withTimestampRenderer(fresh, true, { ...T11_ISO_UTC }),
+      );
+
+    const saved = mockSettingsCommands.saveSettings.mock.lastCall?.[0] as {
+      defaultPageSize: number;
+      valuePresentation: StoredValuePresentationSettings;
+    };
+    expect(saved.defaultPageSize).toBe(77);
+    expect(saved.valuePresentation.renderers['datazen.timestamp']?.options.format).toBe('iso');
+  });
+
+  it('updateValuePresentationSettings keeps the local valuePresentation when the authoritative response has none', async () => {
+    const local: StoredValuePresentationSettings = {
+      version: 1,
+      renderers: {
+        'datazen.timestamp': { enabled: true, options: { ...T11_ISO_UTC } },
+      },
+      rules: [T11_RULE],
+    };
+    useSettingsStore.setState({
+      settings: { ...useSettingsStore.getState().settings, valuePresentation: local },
+      valuePresentationRevision: 1,
+    });
+    // 旧后端响应：有其他字段，但无 valuePresentation——整份重读作废，
+    // 回落本地基底（不拿缺省默认覆盖本地已有规则）。
+    mockSettingsCommands.getSettings.mockResolvedValueOnce({
+      theme: { mode: 'dark', packId: null },
+      language: 'en',
+      defaultPageSize: 99,
+    });
+    mockSettingsCommands.saveSettings.mockResolvedValue(undefined);
+
+    await useSettingsStore
+      .getState()
+      .updateValuePresentationSettings((fresh) =>
+        withTimestampRenderer(fresh, true, { ...T11_ISO_TZ_SHANGHAI }),
+      );
+
+    const saved = mockSettingsCommands.saveSettings.mock.lastCall?.[0] as {
+      valuePresentation: StoredValuePresentationSettings;
+    };
+    expect(saved.valuePresentation.rules).toEqual([T11_RULE]);
+    expect(saved.valuePresentation.renderers['datazen.timestamp']?.options.format).toBe('iso-tz');
+  });
+
+  // T11-BUG-001 回归：未知版本（v99）权威值——含未来版本才有的字段。
+  // StoredValuePresentationSettings 类型本身没有 futureField：用交叉
+  // 类型表示“未知版本可能带任意顶层字段”的原文。
+  type UnknownVersionValuePresentation = StoredValuePresentationSettings & {
+    futureField: { kept: boolean };
+  };
+
+  function v99Authoritative(): UnknownVersionValuePresentation {
+    return {
+      version: 99,
+      renderers: {
+        'datazen.timestamp': { enabled: true, options: { ...T11_ISO_UTC } },
+      },
+      rules: [T11_RULE],
+      columnOverrides: {
+        [columnOverrideKey({
+          connectionId: 'conn-1',
+          database: 'shop',
+          namespace: 'public',
+          table: 'orders',
+          column: 'epoch_ms',
+        })]: { mode: 'raw' },
+      },
+      futureField: { kept: true },
+    };
+  }
+
+  it('updateValuePresentationSettings keeps unknown-version fields when saving the timestamp renderer (T11-BUG-001, P7b)', async () => {
+    const authoritative = v99Authoritative();
+    mockSettingsCommands.getSettings.mockResolvedValueOnce({
+      theme: { mode: 'dark', packId: null },
+      language: 'en',
+      valuePresentation: authoritative,
+    });
+    mockSettingsCommands.saveSettings.mockResolvedValue(undefined);
+
+    await useSettingsStore
+      .getState()
+      .updateValuePresentationSettings((fresh) =>
+        withTimestampRenderer(fresh, true, { ...T11_ISO_TZ_SHANGHAI }),
+      );
+
+    const saved = mockSettingsCommands.saveSettings.mock.lastCall?.[0] as {
+      valuePresentation: UnknownVersionValuePresentation;
+    };
+    expect(saved.valuePresentation.version).toBe(99);
+    expect(saved.valuePresentation.renderers['datazen.timestamp']?.options.format).toBe('iso-tz');
+    // 未知版本字段原样保留：rules / columnOverrides / 未知顶层字段。
+    expect(saved.valuePresentation.rules).toEqual([T11_RULE]);
+    expect(saved.valuePresentation.columnOverrides).toEqual(authoritative.columnOverrides);
+    expect(saved.valuePresentation.futureField).toEqual({ kept: true });
+    // store 内的副本仍是 parse 后的值（T06 既有行为：未知版本不解析
+    // rules / columnOverrides）；丢的是 store 副本的未知字段，不是
+    // 后端写回值。
+    expect(useSettingsStore.getState().settings.valuePresentation).toEqual({
+      version: 99,
+      renderers: {
+        'datazen.timestamp': { enabled: true, options: { ...T11_ISO_TZ_SHANGHAI } },
+      },
+    });
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(1);
+  });
+
+  it('updateValuePresentationSettings keeps unknown-version fields when saving rules (T11-BUG-001, P7c)', async () => {
+    const authoritative = v99Authoritative();
+    mockSettingsCommands.getSettings.mockResolvedValueOnce({
+      theme: { mode: 'dark', packId: null },
+      language: 'en',
+      valuePresentation: authoritative,
+    });
+    mockSettingsCommands.saveSettings.mockResolvedValue(undefined);
+
+    // 换一份规则列表：未知版本不按 v1 解释 rules，写回的仍是原文 rules。
+    await useSettingsStore
+      .getState()
+      .updateValuePresentationSettings((fresh) =>
+        withValuePresentationRules(fresh, [{ ...T11_RULE, name: 'other-rule' }]),
+      );
+
+    const saved = mockSettingsCommands.saveSettings.mock.lastCall?.[0] as {
+      valuePresentation: UnknownVersionValuePresentation;
+    };
+    expect(saved.valuePresentation.version).toBe(99);
+    expect(saved.valuePresentation.rules).toEqual([T11_RULE]);
+    expect(saved.valuePresentation.columnOverrides).toEqual(authoritative.columnOverrides);
+    expect(saved.valuePresentation.futureField).toEqual({ kept: true });
+  });
+
+  it('updateValuePresentationSettings keeps unknown-version fields when saving a column override (T11-BUG-001)', async () => {
+    const authoritative = v99Authoritative();
+    mockSettingsCommands.getSettings.mockResolvedValueOnce({
+      theme: { mode: 'dark', packId: null },
+      language: 'en',
+      valuePresentation: authoritative,
+    });
+    mockSettingsCommands.saveSettings.mockResolvedValue(undefined);
+
+    await useSettingsStore
+      .getState()
+      .updateValuePresentationSettings((fresh) =>
+        withColumnOverride(
+          fresh,
+          { connectionId: 'conn-1', database: 'shop', namespace: 'public', table: 'orders' },
+          'epoch_ms',
+          { mode: 'raw' },
+        ),
+      );
+
+    const saved = mockSettingsCommands.saveSettings.mock.lastCall?.[0] as {
+      valuePresentation: UnknownVersionValuePresentation;
+    };
+    // withColumnOverride 对非 v1 原样返回 fresh：写回值就是权威原文。
+    expect(saved.valuePresentation).toEqual(authoritative);
+  });
+
+  it('loadSettings discards a stale response that resolves after a newer load', async () => {
+    let resolveFirst: (value: unknown) => void = () => {};
+    let resolveSecond: (value: unknown) => void = () => {};
+    const first = new Promise<unknown>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const second = new Promise<unknown>((resolve) => {
+      resolveSecond = resolve;
+    });
+    mockSettingsCommands.getSettings.mockReturnValueOnce(first).mockReturnValueOnce(second);
+    const firstLoad = useSettingsStore.getState().loadSettings();
+    const secondLoad = useSettingsStore.getState().loadSettings();
+    resolveSecond({
+      theme: { mode: 'light', packId: null },
+      language: 'en',
+      valuePresentation: { version: 1, renderers: {} },
+    });
+    await secondLoad;
+    resolveFirst({
+      theme: { mode: 'dark', packId: null },
+      language: 'ja',
+      valuePresentation: {
+        version: 1,
+        renderers: {
+          'datazen.timestamp': { enabled: true, options: { ...T11_ISO_UTC } },
+        },
+      },
+    });
+    await firstLoad;
+
+    expect(useSettingsStore.getState().settings.language).toBe('en');
+    expect(useSettingsStore.getState().settings.theme.mode).toBe('light');
+    expect(useSettingsStore.getState().settings.valuePresentation).toEqual({
+      version: 1,
+      renderers: {},
+    });
+  });
+
+  it('loadSettings keeps the last valid snapshot when a refresh fails', async () => {
+    const stored: StoredValuePresentationSettings = {
+      version: 1,
+      renderers: {
+        'datazen.timestamp': { enabled: true, options: { ...T11_ISO_UTC } },
+      },
+    };
+    mockSettingsCommands.getSettings.mockResolvedValueOnce({
+      theme: { mode: 'dark', packId: null },
+      language: 'en',
+      valuePresentation: stored,
+    });
+    await useSettingsStore.getState().loadSettings();
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(1);
+
+    mockSettingsCommands.getSettings.mockRejectedValueOnce(new Error('backend down'));
+    await useSettingsStore.getState().loadSettings();
+
+    expect(useSettingsStore.getState().settings.valuePresentation).toEqual(stored);
+    expect(useSettingsStore.getState().valuePresentationRevision).toBe(1);
+    expect(useSettingsStore.getState().settings.language).toBe('en');
   });
 });

@@ -43,13 +43,16 @@ export function formatExtension(format: ExportDataFormat): string {
       return 'sql';
     case 'xlsx':
       return 'xlsx';
+    case 'parquet':
+      return 'parquet';
   }
 }
 
 /** Binary formats ride the parallel `BinaryFormatter` branch and can never
- * be concatenated as text — `DataFormat::is_binary` (today: XLSX only). */
+ * be concatenated as text — `DataFormat::is_binary` (XLSX and Parquet; both
+ * are Rust-only on desktop, but the planning mirror stays platform-free). */
 export function isBinaryFormat(format: ExportDataFormat): boolean {
-  return format === 'xlsx';
+  return format === 'xlsx' || format === 'parquet';
 }
 
 /** SQL data formats carry their DDL as a prefix in the same `.sql` file. */
@@ -261,10 +264,7 @@ export function prepareExport(request: ExportTablesRequest): {
  * `{table}.sql` plans), so it is `.sql` whatever the data format says; a
  * zip container is `.zip`; everything else keeps the data format's extension.
  */
-export function defaultExportExtension(
-  request: ExportTablesRequest,
-  useZip: boolean,
-): string {
+export function defaultExportExtension(request: ExportTablesRequest, useZip: boolean): string {
   if (useZip) {
     return 'zip';
   }

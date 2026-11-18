@@ -52,6 +52,31 @@ describe('formatExtension / isBinaryFormat / isSqlDataFormat', () => {
     expect(isBinaryFormat('sql_insert')).toBe(false);
   });
 
+  it("treats 'parquet' as a binary format with its own extension (T6 wires the planner mirrors)", () => {
+    // T2 grew the `ExportDataFormat` union with 'parquet' (file.ts) and this
+    // test pinned only the wire type; T6 wires the planner mirrors, so the
+    // full contract is asserted now: extension and binary flag (same shape
+    // as the Rust `DataFormat::extension` / `is_binary`), plus the multi-table
+    // zip rule — parquet plans are never `.sql`, so a multi-table parquet
+    // export always zips, same as XLSX.
+    const request = REQUEST({ dataFormat: 'parquet' });
+    expect(request.dataFormat).toBe('parquet');
+    expect(formatExtension('parquet')).toBe('parquet');
+    expect(isBinaryFormat('parquet')).toBe(true);
+    expect(isSqlDataFormat('parquet')).toBe(false);
+    const { plans, useZip } = prepareExport(
+      REQUEST({
+        dataFormat: 'parquet',
+        tables: [
+          { tableName: 'users', columns: ['id'] },
+          { tableName: 'orders', columns: ['id'] },
+        ],
+      }),
+    );
+    expect(useZip).toBe(true);
+    expect(plans.map((plan) => plan.filename)).toEqual(['users.parquet', 'orders.parquet']);
+  });
+
   it('marks only the sql formats as sql formats', () => {
     expect(isSqlDataFormat('sql_insert')).toBe(true);
     expect(isSqlDataFormat('sql_update')).toBe(true);
@@ -123,15 +148,7 @@ describe('resolveDdl / ddlForStructure', () => {
 });
 
 describe('buildProvidedExportFilename parity with build_file_plans (task 6)', () => {
-  it.each([
-    'csv',
-    'tsv',
-    'json',
-    'markdown',
-    'sql_insert',
-    'sql_update',
-    'xlsx',
-  ] as const)(
+  it.each(['csv', 'tsv', 'json', 'markdown', 'sql_insert', 'sql_update', 'xlsx'] as const)(
     'names a provided %s export exactly like the Rust data-only plan ({table}.{ext})',
     (dataFormat: ExportDataFormat) => {
       const plans = buildFilePlans(
@@ -163,7 +180,8 @@ describe('validateTableSource', () => {
     ).toThrow("SQL data source 'users' must not be empty");
   });
 
-  it('rejects provided data without columns, with duplicate columns, or with a short row', () => {    expect(() =>
+  it('rejects provided data without columns, with duplicate columns, or with a short row', () => {
+    expect(() =>
       validateTableSource({
         tableName: 'users',
         columns: [],
@@ -367,11 +385,7 @@ describe('defaultExportName', () => {
       'export_structure_2026-11-09-05-00-00.sql',
     );
     expect(
-      defaultExportName(
-        REQUEST({ mode: 'structure_only', dataFormat: 'xlsx' }),
-        false,
-        PINNED_NOW,
-      ),
+      defaultExportName(REQUEST({ mode: 'structure_only', dataFormat: 'xlsx' }), false, PINNED_NOW),
     ).toBe('export_structure_2026-11-09-05-00-00.sql');
     expect(defaultExportName(REQUEST({ mode: 'data_and_structure' }), false, PINNED_NOW)).toBe(
       'export_full_2026-11-09-05-00-00.csv',
@@ -386,11 +400,7 @@ describe('defaultExportName', () => {
       'export_data_2026-11-09-05-00-00.zip',
     );
     expect(
-      defaultExportName(
-        REQUEST({ mode: 'structure_only', dataFormat: 'xlsx' }),
-        true,
-        PINNED_NOW,
-      ),
+      defaultExportName(REQUEST({ mode: 'structure_only', dataFormat: 'xlsx' }), true, PINNED_NOW),
     ).toBe('export_structure_2026-11-09-05-00-00.zip');
   });
 });

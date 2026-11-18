@@ -62,7 +62,7 @@ it('uses the same pane controller and session command with bind values', async (
   );
   expect(runtime.execute).toHaveBeenCalledExactlyOnceWith({
     command: 'explain',
-    input: { sql: 'SELECT :id', params: { id: 73 } },
+    input: { sql: 'SELECT :id', params: { id: 73 }, database: 'A', schema: 's' },
   });
   expect(runtime.refresh).toHaveBeenCalledOnce();
 });

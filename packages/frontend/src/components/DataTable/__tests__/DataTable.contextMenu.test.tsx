@@ -271,7 +271,14 @@ describe('DataTable context menu equivalence', () => {
     renderGrid({ selectedRows: new Set([0]), target: 'header', exportTableName: 'users' });
     const items = await menuItems();
 
-    expect(rootIds(items)).toEqual(['copy-column-name', 'copy-column-data', 'export']);
+    // Issue-32 T09: the header menu gains the "Display…" entry, first
+    // among the column inspections (next to "Column Stats" when offered).
+    expect(rootIds(items)).toEqual([
+      'column-presentation',
+      'copy-column-name',
+      'copy-column-data',
+      'export',
+    ]);
     expect(submenuIds(items)).toEqual([]);
   });
 

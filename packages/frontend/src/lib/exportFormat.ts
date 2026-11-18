@@ -37,8 +37,10 @@ import { formatExtension } from '../platform/exportPlan';
 import { escapeCsvField, serializeCells } from './gridClipboard';
 import type { ExportFormat } from './exportData';
 
-/** Text formats handled by {@link formatRowsAsText}; XLSX is binary. */
-export type ExportTextFormat = Exclude<ExportFormat, 'xlsx'>;
+/** Text formats handled by {@link formatRowsAsText}; XLSX and Parquet are
+ * binary — Parquet even more so than XLSX: there is no frontend writer for
+ * it at all (PRD §3: provided-only Parquet is out of scope). */
+export type ExportTextFormat = Exclude<ExportFormat, 'xlsx' | 'parquet'>;
 
 /**
  * One column of already-loaded rows. `ColumnInfo` is the current provided
@@ -91,8 +93,7 @@ const TEXT_MIME_TYPES: Record<ExportTextFormat, string> = {
   sql_update: 'text/sql',
 };
 
-const XLSX_MIME_TYPE =
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const XLSX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 function columnNames(columns: ExportColumn[]): string[] {
   return columns.map((column) => column.name);
@@ -119,6 +120,7 @@ const BACKTICK_DIALECTS: ReadonlySet<string> = new Set([
   'starrocks',
   'manticore',
   'ob_oracle',
+  'kiwi',
 ]);
 // SQL Server brackets identifiers; the no-SQL drivers below leave
 // identifiers bare; everything else double-quotes (also the fallback for
@@ -140,6 +142,21 @@ function sqlQuoteChar(databaseType?: string): '`' | '"' | '[' | '' {
   if (NO_QUOTE_DIALECTS.has(databaseType)) return '';
   return '"';
 }
+
+/**
+ * Drivers whose metas declare `escapeSqlValue` (the MySQL-family escaper).
+ * Backtick quoting and backslash escaping are independent meta facts — `kiwi`
+ * quotes with backticks but keeps the default escaper — so this set is a
+ * strict subset of `BACKTICK_DIALECTS`.
+ */
+const MYSQL_ESCAPE_DIALECTS: ReadonlySet<string> = new Set([
+  'mysql',
+  'mariadb',
+  'doris',
+  'starrocks',
+  'manticore',
+  'ob_oracle',
+]);
 
 function escapeSqlIdent(name: string, databaseType?: string): string {
   const q = sqlQuoteChar(databaseType);
@@ -174,7 +191,7 @@ function mysqlEscapeSqlLiteral(value: unknown): string {
 }
 
 function escapeSqlLiteral(value: unknown, databaseType?: string): string {
-  if (databaseType && BACKTICK_DIALECTS.has(databaseType)) {
+  if (databaseType && MYSQL_ESCAPE_DIALECTS.has(databaseType)) {
     return mysqlEscapeSqlLiteral(value);
   }
   return defaultEscapeSqlLiteral(value);
@@ -188,20 +205,12 @@ function sqlCommitTransaction(): string {
   return 'COMMIT;';
 }
 
-function formatSqlInsertHeader(
-  tableName: string,
-  cols: string[],
-  databaseType?: string,
-): string {
+function formatSqlInsertHeader(tableName: string, cols: string[], databaseType?: string): string {
   const colList = cols.map((c) => escapeSqlIdent(c, databaseType)).join(', ');
   return `INSERT INTO ${escapeSqlIdent(tableName, databaseType)} (${colList}) VALUES`;
 }
 
-function formatSqlInsertTuple(
-  row: unknown[],
-  cols: string[],
-  databaseType?: string,
-): string {
+function formatSqlInsertTuple(row: unknown[], cols: string[], databaseType?: string): string {
   return `(${cols.map((_, i) => escapeSqlLiteral(cellAt(row, i), databaseType)).join(', ')})`;
 }
 
@@ -301,10 +310,7 @@ function toJsonValue(value: unknown): unknown {
   return value ?? null;
 }
 
-function rowsAsRecords(
-  cols: string[],
-  rows: unknown[][],
-): Record<string, unknown>[] {
+function rowsAsRecords(cols: string[], rows: unknown[][]): Record<string, unknown>[] {
   return rows.map((row) => {
     const obj: Record<string, unknown> = {};
     for (let i = 0; i < cols.length; i += 1) {
@@ -360,18 +366,14 @@ export function formatRowsAsText(options: FormatRowsTextOptions): TextExportResu
     case 'csv': {
       const header = cols.map((col) => applyCsvFormulaGuard(escapeCsvField(col))).join(',');
       const body = rows.map((row) =>
-        cols
-          .map((_, i) => applyCsvFormulaGuard(escapeCsvField(cellAt(row, i))))
-          .join(','),
+        cols.map((_, i) => applyCsvFormulaGuard(escapeCsvField(cellAt(row, i)))).join(','),
       );
       return { content: [header, ...body].join('\n'), extension, mimeType };
     }
 
     case 'tsv': {
       const header = cols.map((col) => escapeTsvField(col)).join('\t');
-      const body = rows.map((row) =>
-        cols.map((_, i) => escapeTsvField(cellAt(row, i))).join('\t'),
-      );
+      const body = rows.map((row) => cols.map((_, i) => escapeTsvField(cellAt(row, i))).join('\t'));
       return { content: [header, ...body].join('\n'), extension, mimeType };
     }
 
@@ -408,7 +410,8 @@ export function formatRowsAsText(options: FormatRowsTextOptions): TextExportResu
     }
 
     default: {
-      // Unreachable through the type (`ExportTextFormat` has no `'xlsx'`),
+      // Unreachable through the type (`ExportTextFormat` has neither `'xlsx'`
+      // nor `'parquet'`),
       // but a caller that smuggles one in must fail loudly, not silently
       // return `undefined` past the switch.
       const _exhaustive: never = format;
@@ -472,9 +475,6 @@ export function formatRowsAsXlsx(options: FormatRowsXlsxOptions): BinaryExportRe
  * data-only rule (extension via `exportPlan.formatExtension`, the same
  * `DataFormat::extension` mirror the Rust side uses).
  */
-export function buildProvidedExportFilename(
-  tableName: string,
-  format: ExportFormat,
-): string {
+export function buildProvidedExportFilename(tableName: string, format: ExportFormat): string {
   return `${tableName}.${formatExtension(format)}`;
 }

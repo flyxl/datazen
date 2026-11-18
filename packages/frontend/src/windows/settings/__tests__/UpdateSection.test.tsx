@@ -17,6 +17,7 @@ vi.mock('../../../lib/updater', () => ({
   currentVariant: () => mockCurrentVariant(),
   checkForUpdates: (...args: unknown[]) => mockCheckForUpdates(...args),
   downloadAndInstallUpdate: (...args: unknown[]) => mockDownloadAndInstallUpdate(...args),
+  relaunchToApplyUpdate: vi.fn(),
   isUpdaterSupported: () => mockIsUpdaterSupported(),
 }));
 

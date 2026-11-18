@@ -118,12 +118,14 @@ export interface DesktopHostServices {
    */
   checkForUpdates(): Promise<UpdateCheckResult>;
   /**
-   * Download and install the pending update (relaunches the app); returns
+   * Download and install the pending update (does not relaunch); returns
    * the same result shape the check does. Added by the form-split F6 prep.
    */
   downloadAndInstallUpdate(
     onProgress?: (progress: UpdateProgress) => void,
   ): Promise<UpdateCheckResult>;
+  /** Relaunch the app to apply an installed update. */
+  relaunchToApplyUpdate(): Promise<void>;
 }
 
 // ── Updater wire types (form-split F6 prep — shared by the port and lib/updater) ─
@@ -203,6 +205,8 @@ export interface HostSettingsPort {
   downloadAndInstallUpdate(
     onProgress?: (progress: UpdateProgress) => void,
   ): Promise<UpdateCheckResult>;
+  /** Relaunch the app to apply an installed update. */
+  relaunchToApplyUpdate(): Promise<void>;
 }
 
 /** The inert, web-shaped binding: extras are empty and every write is a no-op. */
@@ -253,6 +257,9 @@ export function inertHostSettingsPort(): HostSettingsPort {
     },
     async downloadAndInstallUpdate() {
       throw new Error('downloadAndInstallUpdate: no updater on a form without a host app.');
+    },
+    async relaunchToApplyUpdate() {
+      throw new Error('relaunchToApplyUpdate: no updater on a form without a host app.');
     },
   };
 }

@@ -177,6 +177,7 @@ pub fn contract_settings() -> SharedSettings {
         monitor: MonitorSettings::default(),
         onboarding: None,
         row_count_mode: "auto".into(),
+        value_presentation: Default::default(),
     }
 }
 

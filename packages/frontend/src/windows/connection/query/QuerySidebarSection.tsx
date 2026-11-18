@@ -86,11 +86,27 @@ export function useQueryContextPath({
 
   const applyContextPath = useCallback(
     async (next: string[]) => {
+      if (isPathHierarchy) {
+        // Path-hierarchy drivers take the namespace per request from the
+        // panel's bound target: root database + full `namespacePath`, from
+        // which `panelTargetDatabase` builds the driver pin at execution
+        // time. The runtime session context is deliberately NOT switched —
+        // multi-segment paths are unsupported by the resource kernel.
+        setContextPath(next);
+        updatePanel(panelId, {
+          database: next[0] ?? selectedDatabase ?? undefined,
+          schema: undefined,
+          namespacePath: next.length ? next : undefined,
+        });
+        if (next.length) await ensureNamespacePath(next, dbSessionId);
+        return;
+      }
+
       const desired = {
         database: next[0] ?? selectedDatabase ?? null,
         catalog: null,
-        schema: isPathHierarchy ? null : next[1] ?? null,
-        path: isPathHierarchy ? next : [],
+        schema: next[1] ?? null,
+        path: [] as string[],
       };
       // Publish selection only after the runtime accepts the replacement.
       // A cancelled transaction dialog or CAS conflict keeps the old selection.
@@ -102,20 +118,36 @@ export function useQueryContextPath({
       });
       if (result.status !== 'switched') {
         const key = switchResultPromptKey(result);
-        if (key) onSessionPrompt?.(key, result.status === 'failed' && result.error instanceof Error
-          ? result.error.message : undefined);
+        if (key)
+          onSessionPrompt?.(
+            key,
+            result.status === 'failed' && result.error instanceof Error
+              ? result.error.message
+              : undefined,
+          );
         return;
       }
       setContextPath(next);
       updatePanel(panelId, {
         database: desired.database ?? undefined,
         schema: desired.schema ?? undefined,
-        ...(isPathHierarchy ? { namespacePath: next.length ? next : undefined } : {}),
       });
       if (next.length) await ensureNamespacePath(next, dbSessionId);
     },
-    [dbSessionId, selectedDatabase, ensureNamespacePath, isPathHierarchy, panelId,
-      updatePanel, sessionController, confirmTransactionSwitch, onSessionPrompt],
+    [
+      dbSessionId,
+      selectedDatabase,
+      ensureNamespacePath,
+      isPathHierarchy,
+      panelId,
+      updatePanel,
+      sessionController,
+      confirmTransactionSwitch,
+      onSessionPrompt,
+      databases,
+      pathAliases,
+      namespaceTree,
+    ],
   );
 
   useEffect(() => {
@@ -125,7 +157,15 @@ export function useQueryContextPath({
       setContextPath(next);
       void ensureNamespacePath(next, dbSessionId);
     }
-  }, [isPathHierarchy, namespaceTree, pathAliases, databases, contextPath, ensureNamespacePath, dbSessionId]);
+  }, [
+    isPathHierarchy,
+    namespaceTree,
+    pathAliases,
+    databases,
+    contextPath,
+    ensureNamespacePath,
+    dbSessionId,
+  ]);
 
   const handleSelectContextLevel = useCallback(
     (index: number, value: string) => {

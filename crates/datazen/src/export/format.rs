@@ -189,7 +189,7 @@ impl StreamFormatter {
                 pending: Vec::new(),
             },
             DataFormat::SqlUpdate => FormatterState::SqlUpdate,
-            DataFormat::Xlsx => {
+            DataFormat::Xlsx | DataFormat::Parquet => {
                 // Binary formats never go through the text formatter; a
                 // caller that routes one here is a programming error, caught
                 // at the write_*_file dispatch instead. Keep a harmless
@@ -263,7 +263,7 @@ impl StreamFormatter {
                     .join(" | ");
                 format!("| {head} |\n| {separator} |\n")
             }
-            DataFormat::Xlsx => String::new(),
+            DataFormat::Xlsx | DataFormat::Parquet => String::new(),
         }
     }
 
@@ -446,9 +446,11 @@ impl StreamFormatter {
                 Ok(format!("{}COMMIT;\n", batched?))
             }
             DataFormat::SqlUpdate => Ok("COMMIT;\n".into()),
-            DataFormat::Csv | DataFormat::Tsv | DataFormat::Markdown | DataFormat::Xlsx => {
-                Ok(String::new())
-            }
+            DataFormat::Csv
+            | DataFormat::Tsv
+            | DataFormat::Markdown
+            | DataFormat::Xlsx
+            | DataFormat::Parquet => Ok(String::new()),
         }
     }
 }

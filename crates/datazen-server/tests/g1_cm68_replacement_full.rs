@@ -633,8 +633,8 @@ async fn cm68_a_stale_expected_context_revision_conflicts_and_leaves_the_old_ses
         "runtime ContextRevisionMismatch → contextConflict（api_code 单向映射）"
     );
     assert_eq!(
-        error.message, "connection runtime operation failed",
-        "固定文案：runtime 拒绝不外传句柄/版本差（脱敏分类）"
+        error.message, "连接上下文已变更，请刷新后重试",
+        "固定文案：runtime 拒绝不外传句柄/版本差，但给出可操作提示"
     );
     assert_eq!(
         status_for(ApiErrorCode::ContextConflict),

@@ -152,7 +152,7 @@ describe('a row that cannot be addressed', () => {
           [2, 20],
         ])}
         writeBackKey="session-1#0"
-        onCellEdit={onCellEdit}
+        onCommitResultCells={onCellEdit}
       />,
     );
 
@@ -175,7 +175,7 @@ describe('a row that cannot be addressed', () => {
           [2, 20],
         ])}
         writeBackKey="session-1#0"
-        onCellEdit={onCellEdit}
+        onCommitResultCells={onCellEdit}
       />,
     );
 
@@ -197,7 +197,7 @@ describe('a row that cannot be addressed', () => {
           [1, 20],
         ])}
         writeBackKey="session-1#0"
-        onCellEdit={onCellEdit}
+        onCommitResultCells={onCellEdit}
       />,
     );
 
@@ -234,7 +234,7 @@ describe('a row that cannot be addressed', () => {
           [2, 20],
         ])}
         writeBackKey="session-1#0"
-        onCellEdit={onCellEdit}
+        onCommitResultCells={onCellEdit}
       />,
     );
 

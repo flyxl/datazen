@@ -15,6 +15,7 @@ import type { CellCoord } from '../../stores/tableData/gridSelection';
 import type { DirtyCell, DirtyRowEntry } from '../../stores/tableData/dirtyIndex';
 import type { CellTypeHints } from '../../lib/cellTypes';
 import { cn } from '../../lib/cn';
+import type { ColumnPresentationPlan } from '../../lib/valuePresentation/presentationPlan';
 import type { Value } from '../../types';
 
 /**
@@ -172,6 +173,12 @@ export interface VirtualBodyProps {
    * pinned columns pin from the grid's left edge instead of behind it.
    */
   showRowNumbers?: boolean;
+  /**
+   * Column presentation plans (issue-32 T05), keyed by column name.
+   * Real rows look their column's plan up per cell; draft rows receive the
+   * whole map. Omitted ⇒ every cell renders exactly as before (default-off).
+   */
+  presentationPlanByColumn?: ReadonlyMap<string, ColumnPresentationPlan>;
 }
 
 interface VirtualRowProps {
@@ -230,6 +237,8 @@ interface VirtualRowProps {
   alternatingRows?: boolean;
   /** The row-number gutter (DB-17); see `VirtualBodyProps`. */
   showRowNumbers?: boolean;
+  /** Column presentation plans (issue-32 T05); see `VirtualBodyProps`. */
+  presentationPlanByColumn?: ReadonlyMap<string, ColumnPresentationPlan>;
 }
 
 const VirtualRow = memo(function VirtualRow({
@@ -268,6 +277,7 @@ const VirtualRow = memo(function VirtualRow({
   frozenColumns = 0,
   alternatingRows = true,
   showRowNumbers = true,
+  presentationPlanByColumn,
 }: VirtualRowProps) {
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -533,6 +543,7 @@ const VirtualRow = memo(function VirtualRow({
             onCellQuickLook={onCellQuickLook}
             onCellEdit={onCellEdit}
             onCellEditCancel={onCellEditCancel}
+            presentationPlan={presentationPlanByColumn?.get(col.name)}
           />
         );
       })}
@@ -577,6 +588,7 @@ export const VirtualBody = memo(function VirtualBody({
   frozenColumns = 0,
   alternatingRows = true,
   showRowNumbers = true,
+  presentationPlanByColumn,
 }: VirtualBodyProps) {
   const { t } = useI18n();
   /**
@@ -743,6 +755,7 @@ export const VirtualBody = memo(function VirtualBody({
             frozenColumns={frozenColumns}
             alternatingRows={alternatingRows}
             showRowNumbers={showRowNumbers}
+            presentationPlanByColumn={presentationPlanByColumn}
           />
         ) : (
           <DraftRow
@@ -756,6 +769,7 @@ export const VirtualBody = memo(function VirtualBody({
             editing={editingDraft}
             cellSelectionEnabled={cellSelectionEnabled}
             panelId={cellEditing?.panelId}
+            presentationPlanByColumn={presentationPlanByColumn}
             onDraftCellEdit={onDraftCellEdit}
             onDraftCellEditStart={onDraftCellEditStart}
             onDraftCellEditCancel={onDraftCellEditCancel}

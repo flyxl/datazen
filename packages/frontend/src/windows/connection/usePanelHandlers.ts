@@ -20,6 +20,7 @@ import {
   type ConnectionContext,
 } from '../../stores/panelStore';
 import { panelSchema } from '../../stores/panelTypes';
+import { capabilitiesForDbSession, relationSchemaFor } from '../../lib/driverCapabilities';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import { buildConnectionTabContextMenuItems } from '../../lib/connectionTabContextMenu';
 import {
@@ -163,8 +164,13 @@ export function usePanelHandlers({
       const currentPanels = usePanelStore
         .getState()
         .panels.filter((p) => p.connectionId === ctx.connectionId);
+      const meta = DB_REGISTRY[ctx.databaseType];
+      const normalizedSchema =
+        meta?.namespaceEnsure === 'path-hierarchy'
+          ? null
+          : relationSchemaFor(capabilitiesForDbSession(ctx.dbSessionId), schema);
       const isView = schemaViews.some(
-        (v) => v.name === table && (schema == null || v.schema === schema),
+        (v) => v.name === table && (normalizedSchema == null || v.schema === normalizedSchema),
       );
       if (isView) {
         const existing = currentPanels.find(
@@ -175,7 +181,7 @@ export function usePanelHandlers({
             // A caller that knows the schema must not land on another
             // schema's tab (DBR-03: same-name relations across schemas); a
             // caller without schema knowledge keeps the legacy match.
-            (schema == null || p.viewSchema === schema),
+            (normalizedSchema == null || p.viewSchema === normalizedSchema),
         );
         if (existing) {
           if (subTab) {
@@ -190,7 +196,7 @@ export function usePanelHandlers({
           id: nextPanelId('view'),
           viewName: table,
           database,
-          viewSchema: schema,
+          viewSchema: normalizedSchema,
           subTab: subTab ?? 'data',
         };
         addPanel(panel);
@@ -205,7 +211,7 @@ export function usePanelHandlers({
           // reuses another schema's tab (DBR-03 — the value search's
           // "open and locate" must not cross schemas); a null schema (the
           // caller does not know) keeps the legacy name+database match.
-          (schema == null || p.tableSchema === schema),
+          (normalizedSchema == null || p.tableSchema === normalizedSchema),
       );
       if (existing) {
         if (subTab) {
@@ -223,7 +229,7 @@ export function usePanelHandlers({
         id: nextPanelId('tbl'),
         tableName: table,
         database,
-        tableSchema: schema,
+        tableSchema: normalizedSchema,
         subTab: subTab ?? 'data',
         targetColumn,
       };

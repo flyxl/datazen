@@ -892,20 +892,17 @@ export function QueryPanel({
             >
               <QueryResultsPane
                 publishedArtifacts={exec.publishedArtifacts}
-                onCellEdit={(row, col, value) =>
-                  usePanelStore
-                    .getState()
-                    .updateResultCell(
-                      panelId,
-                      activeResultIdx,
-                      row,
-                      col,
-                      value,
-                      ...paneArgs(paneId),
-                    )
+                onCommitResultCells={(edits) =>
+                  usePanelStore.getState().updateResultCells(
+                    panelId,
+                    activeResultIdx,
+                    edits.map((e) => ({ row: e.row, col: e.column, value: e.value })),
+                    ...paneArgs(paneId),
+                  )
                 }
                 dbSessionId={dbSessionId}
                 databaseType={databaseType}
+                connectionId={connectionId}
                 sql={exec.sql}
                 running={exec.running}
                 error={exec.error}
@@ -917,6 +914,7 @@ export function QueryPanel({
                 resultDetailRowIndex={exec.resultDetailRowIndex}
                 queryResultExportCapability={queryResultExportCapability}
                 selectedDatabase={selectedDatabase}
+                selectedSchema={selectedSchema}
                 showExplain={workflows.showExplain}
                 explainLoading={workflows.explainLoading}
                 explainError={workflows.explainError}

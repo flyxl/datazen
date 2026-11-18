@@ -101,6 +101,9 @@ const pack = {
     'Esta pestaña tiene {count} consultas en curso. ¿Cerrarla de todos modos?',
   'query.resultEditRequiresRefresh':
     'Ejecute la consulta de nuevo antes de editar este resultado conservado.',
+  'query.resultEditCommitted': 'Cambios confirmados. Puedes seguir editando este resultado.',
+  'query.resultEditCommitRetryHint':
+    'Error al confirmar. Revisa el error; si las filas de destino cambiaron o la sesión ya no es válida, vuelve a ejecutar la consulta e inténtalo de nuevo.',
   'query.session.openNew': 'Abrir una sesión nueva',
   'query.session.disconnected': 'Se perdió la conexión. Vuelva a abrir una sesión para continuar.',
   'query.session.executionFailed': 'La consulta falló: {message}',
@@ -543,6 +546,8 @@ const pack = {
     'SQL UPDATE necesita una columna de clave primaria para construir su cláusula WHERE.',
   'export.formatDisabledWebSqlScope':
     'En la web, las exportaciones de tabla completa y de resultados filtrados solo admiten CSV: no hay ruta de exportación SQL.',
+  'export.formatDisabledParquetRustOnly':
+    'La exportación a Parquet pasa por el exportador de Rust del escritorio; no disponible para la página actual / las filas seleccionadas ni en la web.',
   'export.progressRows': '{rows} filas escritas…',
   'export.cancelExport': 'Cancelar exportación',
   'export.cancelling': 'Cancelando…',

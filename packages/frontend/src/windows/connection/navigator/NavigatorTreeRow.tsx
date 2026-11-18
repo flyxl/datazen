@@ -17,6 +17,8 @@ import { cn } from '../../../lib/cn';
 import { useSchemaStore } from '../../../stores/schemaStore';
 import type { I18nKey } from '../../../locales';
 import type { ConnectionConfig } from '../../../types';
+import { DB_REGISTRY } from '../../../lib/databaseTypes';
+import { capabilitiesForDbSession, relationSchemaFor } from '../../../lib/driverCapabilities';
 import type { ConnectionEntry } from '../../../stores/activeConnectionStore';
 import { LEAF_KIND_ICON } from '../schema-tree/schemaTreeCategories';
 import { setDragPayload } from '../schema-tree/schemaTreeDrag';
@@ -651,13 +653,18 @@ export function NavigatorTreeRow({
                 row.segments,
                 pathAliases,
               );
+              const meta = conn?.databaseType ? DB_REGISTRY[conn.databaseType] : undefined;
+              const openSchema =
+                meta?.namespaceEnsure === 'path-hierarchy'
+                  ? null
+                  : relationSchemaFor(capabilitiesForDbSession(row.dbSessionId), schema);
               const dbName = database ?? conn?.database ?? schemaState?.currentDatabase ?? '';
               const relationKind =
                 row.leafKind === 'view' || row.leafKind === 'materializedView' ? 'view' : 'table';
               setDragPayload(e.dataTransfer, {
                 kind: relationKind,
                 database: dbName,
-                schema: schema,
+                schema: openSchema,
                 table: tableName,
                 connectionId: row.connectionId,
                 dbSessionId: row.dbSessionId || undefined,
@@ -680,6 +687,12 @@ export function NavigatorTreeRow({
                   row.segments,
                   pathAliases,
                 );
+                const conn = connections.find((c) => c.id === row.connectionId);
+                const meta = conn?.databaseType ? DB_REGISTRY[conn.databaseType] : undefined;
+                const openSchema =
+                  meta?.namespaceEnsure === 'path-hierarchy'
+                    ? null
+                    : relationSchemaFor(capabilitiesForDbSession(row.dbSessionId), schema);
                 const parentSegments = row.segments.length > 1 ? row.segments.slice(0, -1) : [];
                 if (parentSegments.length > 0) {
                   await ensureNamespacePath(parentSegments, row.dbSessionId);
@@ -687,7 +700,7 @@ export function NavigatorTreeRow({
                 if (database) {
                   await activateDatabase(row.dbSessionId, database);
                 }
-                onSelectTable(tableName, schema, database ?? row.segments[0] ?? '');
+                onSelectTable(tableName, openSchema, database ?? row.segments[0] ?? '');
               })();
             }}
             onContextMenu={(e) => {
@@ -705,17 +718,22 @@ export function NavigatorTreeRow({
                 row.segments,
                 pathAliases,
               );
+              const connForMenu = connections.find((c) => c.id === row.connectionId);
+              const meta = connForMenu?.databaseType
+                ? DB_REGISTRY[connForMenu.databaseType]
+                : undefined;
+              const openSchema =
+                meta?.namespaceEnsure === 'path-hierarchy'
+                  ? null
+                  : relationSchemaFor(capabilitiesForDbSession(row.dbSessionId), schema);
               const dbName =
-                database ??
-                connections.find((c) => c.id === row.connectionId)?.database ??
-                schemaState?.currentDatabase ??
-                '';
+                database ?? connForMenu?.database ?? schemaState?.currentDatabase ?? '';
               const relationKind =
                 row.leafKind === 'view' || row.leafKind === 'materializedView' ? 'view' : 'table';
               handleTableContextMenu(e, {
                 kind: relationKind,
                 name: tableName,
-                schema,
+                schema: openSchema,
                 dbName,
                 connectionId: row.connectionId,
                 dbSessionId: row.dbSessionId,

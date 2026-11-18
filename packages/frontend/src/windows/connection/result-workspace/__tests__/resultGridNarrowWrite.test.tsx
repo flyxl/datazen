@@ -166,8 +166,12 @@ describe('the narrow write path, end to end', () => {
       <ResultTableView
         result={result('verified')}
         writeBackKey="sess-1#0"
-        onCellEdit={(row, column, value) =>
-          usePanelStore.getState().updateResultCell(PANEL.id, 0, row, column, value)
+        onCommitResultCells={(edits) =>
+          usePanelStore.getState().updateResultCells(
+            PANEL.id,
+            0,
+            edits.map((e) => ({ row: e.row, col: e.column, value: e.value })),
+          )
         }
       />,
     );
@@ -179,6 +183,8 @@ describe('the narrow write path, end to end', () => {
     const editor = editors(container)[0];
     fireEvent.change(editor, { target: { value: '11' } });
     fireEvent.keyDown(editor, { key: 'Enter' });
+
+    fireEvent.click(container.ownerDocument.querySelector('[data-testid="pending-commit"]')!);
 
     await vi.waitFor(() => {
       expect(calls).toContain('commitQueryResultCell');
@@ -193,8 +199,12 @@ describe('the narrow write path, end to end', () => {
       <ResultTableView
         result={result('readOnly')}
         writeBackKey="sess-1#0"
-        onCellEdit={(row, column, value) =>
-          usePanelStore.getState().updateResultCell(PANEL.id, 0, row, column, value)
+        onCommitResultCells={(edits) =>
+          usePanelStore.getState().updateResultCells(
+            PANEL.id,
+            0,
+            edits.map((e) => ({ row: e.row, col: e.column, value: e.value })),
+          )
         }
       />,
     );

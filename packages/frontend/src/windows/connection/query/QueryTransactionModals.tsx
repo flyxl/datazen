@@ -63,7 +63,10 @@ export function useQueryTransaction({
     if (!controller) throw new Error('Query transaction requires a persistent connection owner');
     const session = await controller.refresh();
     const state = session?.observedContext?.transactionState;
-    return state === 'active' || state === 'aborted' || state === 'unknown';
+    // `unknown` means unconfirmed/unobservable — do not present it as an
+    // active transaction (e.g. HTTP drivers with no transaction support).
+    // Runtime guards still protect real control operations.
+    return state === 'active' || state === 'aborted';
   }, [ownedController]);
 
   const transaction = useCallback(
@@ -322,9 +325,12 @@ export function FavoriteNameDialog({
 
 export interface QueryResultsPaneProps {
   publishedArtifacts?: QueryResultArtifacts;
-  onCellEdit?: (row: number, column: string, value: unknown) => Promise<void>;
+  onCommitResultCells?: (
+    edits: Array<{ row: number; column: string; value: unknown }>,
+  ) => Promise<void>;
   dbSessionId: string;
   databaseType?: string;
+  connectionId?: string;
   sql: string;
   running: boolean;
   error: string | null | undefined;
@@ -336,6 +342,7 @@ export interface QueryResultsPaneProps {
   resultDetailRowIndex: number | null | undefined;
   queryResultExportCapability: DataExportCapability;
   selectedDatabase?: string | null;
+  selectedSchema?: string | null;
   showExplain: boolean;
   explainLoading: boolean;
   explainError: string | null;
@@ -357,15 +364,15 @@ export interface QueryResultsPaneProps {
   onDiagnosisVisible: (visible: boolean) => void;
   onAddToDashboardOpen: (open: boolean) => void;
   onAddToDashboardConfirm: (dashboardId: string, newName?: string) => void;
-  /** S6-A: Send sanitized error context to AI Chat as a draft. */
   onAskInChat?: () => void;
 }
 
 export function QueryResultsPane({
   publishedArtifacts,
-  onCellEdit,
+  onCommitResultCells,
   dbSessionId,
   databaseType,
+  connectionId,
   sql,
   running,
   error,
@@ -377,6 +384,7 @@ export function QueryResultsPane({
   resultDetailRowIndex,
   queryResultExportCapability,
   selectedDatabase,
+  selectedSchema,
   showExplain,
   explainLoading,
   explainError,
@@ -422,7 +430,12 @@ export function QueryResultsPane({
   return (
     <>
       <div className="flex min-h-0 flex-1 flex-col">
-        {publishedArtifacts && <QueryArtifactExport key={publishedArtifacts.executionId} artifacts={publishedArtifacts} />}
+        {publishedArtifacts && (
+          <QueryArtifactExport
+            key={publishedArtifacts.executionId}
+            artifacts={publishedArtifacts}
+          />
+        )}
         {showExplain && !running && (
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="flex shrink-0 items-center gap-0 border-b border-edge bg-surface-alt px-1">
@@ -582,15 +595,17 @@ export function QueryResultsPane({
                   result={activeResult}
                   writeBackKey={resultEditKey(dbSessionId, activeResultIdx)}
                   cellTypeHints={
-                    databaseType
-                      ? DB_REGISTRY[databaseType as DatabaseType]?.cellTypes
-                      : undefined
+                    databaseType ? DB_REGISTRY[databaseType as DatabaseType]?.cellTypes : undefined
                   }
-                  onCellEdit={running ? undefined : onCellEdit}
+                  onCommitResultCells={running ? undefined : onCommitResultCells}
                   view={running ? 'table' : resultViewMode}
                   chartConfig={chartConfig}
                   rowDetailIndex={resultDetailRowIndex}
                   dataExportCapability={queryResultExportCapability}
+                  connectionId={connectionId}
+                  driverType={databaseType}
+                  database={selectedDatabase ?? null}
+                  schema={selectedSchema ?? null}
                   headerActions={
                     <>
                       {resultViewMode === 'chart' && chartConfig && (

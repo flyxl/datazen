@@ -108,6 +108,9 @@ const pack = {
   'query.session.closeTabActiveExecutionMany':
     'This tab has {count} running queries. Close it anyway?',
   'query.resultEditRequiresRefresh': 'Execute the query again before editing this retained result.',
+  'query.resultEditCommitted': 'Changes committed. You can continue editing this result.',
+  'query.resultEditCommitRetryHint':
+    'Commit failed. Review the error; if the target rows changed or the session is no longer valid, re-run the query and try again.',
   'query.session.openNew': 'Open new session',
   'query.session.disconnected': 'The connection was lost. Re-open a session to continue.',
   'query.session.executionFailed': 'The query failed: {message}',
@@ -391,6 +394,36 @@ const pack = {
   'dataTable.freezeThrough': 'Freeze through This Column',
   'dataTable.unfreezeColumns': 'Unfreeze Columns',
   'dataTable.columnStats': 'Column Stats',
+  'dataTable.columnPresentation': 'Display…',
+  // The column display dialog (issue-32 T09): one panel opened from the
+  // header menu and from the aside field menu, editing the same column
+  // configuration. en only; the other nine locales resolve them through
+  // the en fallback until the next release.
+  'columnPresentation.title': 'Display',
+  'columnPresentation.mode': 'Display mode',
+  'columnPresentation.mode.inherit': 'Follow rules',
+  'columnPresentation.mode.inherit.hint':
+    'Clear this column’s explicit override and use the global rules and default again.',
+  'columnPresentation.mode.raw': 'Raw value',
+  'columnPresentation.mode.raw.hint':
+    'Skip custom display and do not match the global rules for this column.',
+  'columnPresentation.mode.custom': 'Time',
+  'columnPresentation.mode.custom.hint':
+    'Show this column as a time, with an explicit time source, format and time zone.',
+  'columnPresentation.sourceTimeZone': 'Source time zone',
+  'columnPresentation.original': 'Original:',
+  'columnPresentation.preview.noSample': 'No sample value in the loaded rows.',
+  'columnPresentation.preview.unchanged': 'Shown unchanged',
+  'columnPresentation.notEnabled':
+    'Time display is not enabled yet. You can still edit and save this column’s setting.',
+  'columnPresentation.enable': 'Enable time display',
+  'columnPresentation.noSource':
+    'Query results have no reliable table source, so this cannot be saved as a table column override. The global default and rules that only depend on known metadata still apply.',
+  'columnPresentation.save': 'Save column display',
+  'columnPresentation.effectiveSource': 'Applies from',
+  'columnPresentation.source.override': 'Column override',
+  'columnPresentation.source.rule': 'Rule: {name}',
+  'columnPresentation.source.global': 'Global default',
   // The column-stats dialog (DB-12): six server-side aggregates of one
   // column, opened from the header menu. en only; same fallback as above.
   'columnStats.title': 'Column Stats',
@@ -732,6 +765,8 @@ const pack = {
   'export.formatDisabledNoKey': 'SQL UPDATE needs a primary key column to build its WHERE clause.',
   'export.formatDisabledWebSqlScope':
     'On the web, entire-table and filtered exports only support CSV — there is no SQL export path.',
+  'export.formatDisabledParquetRustOnly':
+    'Parquet export runs through the desktop Rust exporter; it is unavailable for the current page / selected rows and on the web.',
   'export.progressRows': '{rows} rows written…',
   'export.cancelExport': 'Cancel Export',
   'export.cancelling': 'Cancelling…',

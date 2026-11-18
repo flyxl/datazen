@@ -7,5 +7,5 @@ pub use application::{SettingsError, SettingsService};
 pub use domain::{
     ExecutionSettings, MonitorEmailSettings, MonitorSettings, OnboardingState,
     PortableThemePreference, SettingsRepository, SettingsRepositoryError, SharedSettings,
-    SqlFormatOptions, SqlSnippet, UserPreferences,
+    SqlFormatOptions, SqlSnippet, UserPreferences, ValuePresentationSettings,
 };

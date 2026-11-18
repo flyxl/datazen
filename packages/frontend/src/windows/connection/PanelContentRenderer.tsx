@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useI18n } from '../../hooks/useI18n';
+import { useValuePresentationSnapshot } from '../../hooks/useValuePresentationSnapshot';
 import { cn } from '../../lib/cn';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { formatPanelContextPath } from '../../lib/panelContextPath';
@@ -208,6 +209,10 @@ function SqlPanelContent({
   const panelIsReadOnly = panelDbMeta?.readOnly === true || savedConnection?.readOnly === true;
   const panelShowStructureEditor = canOpenStructureEditor(panelDbMeta) && !panelIsReadOnly;
   const panelExportScope = resolveExportScope(panelDbMeta);
+  // Value presentation (issue-32 T06): the stored snapshot threads through
+  // to the table / view grids below; DataTable falls back to its default
+  // snapshot when the stored config is empty (default-off).
+  const presentationSnapshot = useValuePresentationSnapshot();
 
   if (panel.type === 'table') {
     return (
@@ -235,6 +240,7 @@ function SqlPanelContent({
               readOnly={panelIsReadOnly}
               dataExportCapability={panelExportScope}
               onEditInSql={tablePanelEditInSql(panel, currentDatabase, callbacks)}
+              presentationSnapshot={presentationSnapshot}
             />
           )}
           {panel.subTab === 'structure' &&
@@ -325,6 +331,7 @@ function SqlPanelContent({
               // because the connection is (DB-05).
               readOnlyReason="view"
               dataExportCapability={panelExportScope}
+              presentationSnapshot={presentationSnapshot}
             />
           )}
           {(panel as ViewPanel).subTab === 'structure' && (

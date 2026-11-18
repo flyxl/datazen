@@ -718,6 +718,11 @@ jobs:
           path: artifacts/
 
       # ── Windows portable: includes runtime resources (prompts + Pro builtin-ep) ──
+      # The candidates under `release\prompts` / `release\builtin-ep` are
+      # mirrored there by scripts/ci-tauri-build.mjs right after the build:
+      # the bundler embeds bundle.resources into the NSIS installer only, and
+      # `resolve-pro --restore` deletes the staged builtin-ep tree from the
+      # checkout before this step runs, so the mirror is the only source left.
       - name: Package Windows portable archive
         if: runner.os == 'Windows'
         shell: pwsh
@@ -727,12 +732,17 @@ jobs:
             ForEach-Object { Join-Path $releaseDir $_ } |
             Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
             Select-Object -First 1
-          $prompts = Join-Path $releaseDir "prompts"
+          $promptsCandidates = @(
+            (Join-Path $releaseDir "prompts"),
+            (Join-Path $releaseDir "resources\prompts")
+          )
+          $prompts = $promptsCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Container } | Select-Object -First 1
           if (-not $executable -or -not (Test-Path -LiteralPath $executable -PathType Leaf)) {
             throw "Portable executable not found in $releaseDir (checked datazen.exe, DataZen.exe, datazen_desktop.exe)"
           }
-          if (-not (Test-Path -LiteralPath $prompts -PathType Container)) {
-            throw "Portable resources not found: $prompts"
+          if (-not $prompts) {
+            $checked = ($promptsCandidates -join ", ")
+            throw "Portable resources not found. Checked: $checked"
           }
 
           $stageDir = Join-Path $env:RUNNER_TEMP "datazen-portable"
@@ -744,12 +754,17 @@ jobs:
           Copy-Item -LiteralPath $prompts -Destination (Join-Path $stageDir "prompts") -Recurse
 
           # Include Pro extension resources (builtin-ep) for full feature parity with installers.
-          $builtinEp = Join-Path $releaseDir "builtin-ep"
-          if (Test-Path -LiteralPath $builtinEp -PathType Container) {
+          $builtinEpCandidates = @(
+            (Join-Path $releaseDir "builtin-ep"),
+            (Join-Path $releaseDir "resources\builtin-ep")
+          )
+          $builtinEp = $builtinEpCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Container } | Select-Object -First 1
+          if ($builtinEp) {
             Copy-Item -LiteralPath $builtinEp -Destination (Join-Path $stageDir "builtin-ep") -Recurse
-            Write-Host "Included builtin-ep (Pro extensions) in portable archive"
+            Write-Host "Included builtin-ep (Pro extensions) in portable archive from $builtinEp"
           } else {
-            Write-Warning "builtin-ep directory not found at $builtinEp — portable archive will not include Pro extensions"
+            $checkedBuiltin = ($builtinEpCandidates -join ", ")
+            Write-Warning "builtin-ep directory not found (checked: $checkedBuiltin) — portable archive will not include Pro extensions"
           }
 
           # Keep future adjacent runtime libraries with the portable executable.

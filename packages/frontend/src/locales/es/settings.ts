@@ -35,8 +35,13 @@ const pack = {
     'Reservado para opciones futuras como densidad, tamaño de fuente y más.',
   'settings.updater.title': 'Actualizaciones',
   'settings.updater.description': 'Buscar actualizaciones firmadas de Basic en GitHub Releases.',
+  'settings.updater.sidebarAvailable': 'Actualizar {version}',
+  'settings.updater.sidebarInstalling': 'Actualizando…',
+  'settings.updater.sidebarRestartReady': 'Reiniciar para {version}',
   'settings.updater.check': 'Buscar actualizaciones',
   'settings.updater.downloadInstall': 'Descargar e instalar',
+  'settings.updater.restartNow': 'Reiniciar ahora',
+  'settings.updater.restartLater': 'Más tarde',
   'settings.updater.checkOnStartup': 'Buscar actualizaciones al iniciar',
   'settings.updater.checking': 'Buscando actualizaciones…',
   'settings.updater.upToDate': 'Estás en la última versión',
@@ -45,7 +50,13 @@ const pack = {
   'settings.updater.downloading': 'Descargando… {pct}%',
   'settings.updater.downloadingIndeterminate': 'Descargando…',
   'settings.updater.installing': 'Instalando actualización…',
-  'settings.updater.installed': '{version} instalado — reiniciando…',
+  'settings.updater.readyToRestart':
+    'La versión {version} está lista — reinicia para aplicar la actualización.',
+  'settings.updater.restartPrompt':
+    'La versión {version} se ha descargado e instalado. ¿Reiniciar ahora para aplicar la actualización?\n\nSi eliges Cancelar, se aplicará en el próximo inicio.',
+  'settings.updater.restartLaterHint':
+    'La versión {version} está instalada y se aplicará en el próximo inicio.',
+  'settings.updater.installed': '{version} instalado — reinicia para aplicar la actualización.',
   'settings.updater.unavailable':
     'La actualización automática no está disponible en esta compilación',
   'settings.language': 'Idioma',

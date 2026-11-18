@@ -22,6 +22,7 @@ export type ExportFormat =
   | 'json'
   | 'markdown'
   | 'xlsx'
+  | 'parquet'
   | 'sql_insert'
   | 'sql_update';
 export type ExportScope = 'current_page' | 'selected' | 'entire_table' | 'filtered_table';
