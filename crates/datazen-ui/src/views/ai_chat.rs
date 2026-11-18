@@ -72,8 +72,8 @@ pub(crate) fn ai_chat_aside(
     );
     let panel = AiChatPanel::new(&state.ai_chat_panel)
         .panel_mut(|state: &mut AppState| &mut state.ai_chat_panel)
-        .on_insert_sql(|state: &mut AppState, sql: &str| state.insert_ai_sql(sql))
-        .on_new_query(|state: &mut AppState, sql: &str| state.open_ai_new_query(sql))
+        .on_insert_sql(AppState::insert_ai_sql)
+        .on_new_query(AppState::open_ai_new_query)
         .on_open_settings(|state: &mut AppState| {
             state.active = Section::Settings;
             state.set_settings_section("ai");
