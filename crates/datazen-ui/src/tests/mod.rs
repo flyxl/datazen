@@ -168,6 +168,8 @@ mod copy_button;
 mod support_layer_audit;
 // T034: React lib/session/counters.ts parity (counter + handle value logic).
 mod counters;
+// T034 independent audit: 2^53 gate, branch order, regex-vs-BigInt faithfulness.
+mod counters_audit;
 
 // Independent re-audit of merged T0-07 menu base.
 mod menus_merge_reaudit;
