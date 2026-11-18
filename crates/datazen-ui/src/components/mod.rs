@@ -6,6 +6,7 @@
 //! one `mod` line per ported file: parallel migration tracks each add their own
 //! line to the owning `mod.rs` instead of sharing a file.
 
+pub(crate) mod ai;
 pub(crate) mod connection;
 pub(crate) mod data_table;
 pub(crate) mod chart;
