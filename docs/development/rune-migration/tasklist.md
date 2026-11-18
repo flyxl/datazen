@@ -32,7 +32,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T013 · components/admin · 0.90d · components/admin/AdminCreateDialog.tsx
 - [ ] T014 · components/export · 0.60d · components/export/ExportSuccessPanel.tsx components/FilterBar.tsx
 - [ ] T015 · windows/settings · 0.90d · windows/settings/ai/AiContextSettings.tsx
-- [ ] T016 · windows/connection · 2.00d · windows/connection/BatchExportDialog.tsx · split
+- [x] T016 · windows/connection · 2.00d · windows/connection/BatchExportDialog.tsx · split
 - [ ] T017 · windows/workspace · 0.30d · windows/workspace/WappIcon.tsx
 - [ ] T018 · windows/dashboard · 0.90d · windows/dashboard/AddToDashboardDialog.tsx
 - [ ] T019 · windows/workflow · 0.80d · windows/workflow/WorkflowEditorActionBar.tsx windows/workflow/WorkflowExecutionResultPanel.tsx
