@@ -242,6 +242,9 @@ mod chart_toolbar;
 mod workflow_action_bar;
 // T019: the workflow execution result panel port.
 mod workflow_execution_panel;
+// T070: the workflow visual editor form port (draft model, field/variable/
+// step editors, command-input schema editor, both footer variants).
+mod workflow_form;
 
 // T051: the App.tsx root port — the window router the host's one window is
 // handed through (first-frame composition, bounds, and the wiring pin).

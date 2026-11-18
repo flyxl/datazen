@@ -5,6 +5,9 @@ use crate::sql_editor::SqlEditor;
 use crate::types::{QuerySidebarPanel, ResultView, Section, TableView, Tool};
 use crate::views::{InstallWappStep, WappPackagePreview};
 use crate::views::WorkflowExecutionResult;
+use crate::views::{
+    WorkflowCommandDefinition, WorkflowConnectionOption, WorkflowDraft, WorkflowFormSelect,
+};
 use std::cell::Cell;
 
 /// A3: one query result tab. Multiple executions produce multiple tabs; pinned
@@ -301,6 +304,42 @@ pub struct AppState {
     /// past is dropped.
     pub(crate) workflow_generation: u32,
     pub(crate) workflow_loading: Option<u32>,
+    /// T070: the visual workflow form's draft (React `WorkflowForm`'s
+    /// `draft` prop). The page mount that drives it is the WorkflowPage
+    /// port (T147); the form's tests drive the real state through
+    /// `workflow_form_slots()`.
+    #[allow(dead_code)]
+    pub(crate) workflow_draft: WorkflowDraft,
+    /// T070: the form's open listbox (React's `ui/Select` keeps its own open
+    /// state internally; immediate mode puts the one open select in `S`).
+    #[allow(dead_code)]
+    pub(crate) workflow_form_open: Option<WorkflowFormSelect>,
+    /// T070: the command-input text areas' editing state (React's
+    /// `CommandInputEditor` locals), keyed `step<i>.<field>` / `step<i>.raw`.
+    #[allow(dead_code)]
+    pub(crate) workflow_form_input_edits: std::collections::BTreeMap<String, TextEdit>,
+    /// T070: the connections the form offers (React's `connections` prop —
+    /// the page's `savedConnections`), held here for the page mount (T147)
+    /// and the form's probes.
+    #[allow(dead_code)]
+    pub(crate) workflow_form_connections: Vec<WorkflowConnectionOption>,
+    /// T070: the loaded command definitions per connection (React's
+    /// `commandsByConnection` — the loader itself is a host-side seam).
+    #[allow(dead_code)]
+    pub(crate) workflow_form_commands:
+        std::collections::BTreeMap<String, Vec<WorkflowCommandDefinition>>,
+    /// T070: the connections whose command list is in flight (React's
+    /// `loadingCommands`).
+    #[allow(dead_code)]
+    pub(crate) workflow_form_commands_loading: std::collections::BTreeSet<String>,
+    /// T070: the loaded database lists per multi-db connection (React's
+    /// `databasesByConn`; the `listDatabasesDedicated` loader is T467's).
+    #[allow(dead_code)]
+    pub(crate) workflow_form_databases: std::collections::BTreeMap<String, Vec<String>>,
+    /// T070: the connections whose database list is in flight (React's
+    /// `loadingDatabases`).
+    #[allow(dead_code)]
+    pub(crate) workflow_form_databases_loading: std::collections::BTreeSet<String>,
     /// Live size for the splitter being dragged (L2): (region key, points).
     /// While `Some`, `splitter_size` returns this instead of the persisted
     /// value; a cancelled or finished drag clears it.
@@ -454,6 +493,14 @@ impl Default for AppState {
             workflow_step_chart: std::collections::BTreeSet::new(),
             workflow_generation: 0,
             workflow_loading: None,
+            workflow_draft: WorkflowDraft::empty(),
+            workflow_form_open: None,
+            workflow_form_input_edits: std::collections::BTreeMap::new(),
+            workflow_form_connections: Vec::new(),
+            workflow_form_commands: std::collections::BTreeMap::new(),
+            workflow_form_commands_loading: std::collections::BTreeSet::new(),
+            workflow_form_databases: std::collections::BTreeMap::new(),
+            workflow_form_databases_loading: std::collections::BTreeSet::new(),
             splitter_preview: None,
             system_dark: Cell::new(true),
         }
