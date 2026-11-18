@@ -11,6 +11,7 @@ mod settings;
 mod structure;
 mod tools_ops;
 mod tools_sync;
+mod wapps;
 mod workflow;
 mod workspace;
 
@@ -25,5 +26,6 @@ pub(crate) use settings::*;
 pub(crate) use structure::*;
 pub(crate) use tools_ops::*;
 pub(crate) use tools_sync::*;
+pub(crate) use wapps::*;
 pub(crate) use workflow::*;
 pub(crate) use workspace::*;

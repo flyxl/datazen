@@ -3,6 +3,7 @@
 use crate::data_grid::DataGrid;
 use crate::sql_editor::SqlEditor;
 use crate::types::{QuerySidebarPanel, ResultView, Section, TableView, Tool};
+use crate::views::{InstallWappStep, WappPackagePreview};
 use crate::views::WorkflowExecutionResult;
 use std::cell::Cell;
 
@@ -146,6 +147,26 @@ pub struct AppState {
     pub(crate) import_dialog_epoch: u64,
     /// The export file the import dialog picked (None until chosen).
     pub(crate) import_file: Option<String>,
+    /// T022: the install-wapp dialog (React `InstallWappDialog.tsx`) is open
+    /// over the window; the root modal layer (`views/modals.rs`) mounts it.
+    pub(crate) install_wapp_open: bool,
+    /// The generation of an install-wapp dialog open (`Dialog::open_epoch`);
+    /// see [`Self::connection_dialog_epoch`].
+    pub(crate) install_wapp_epoch: u64,
+    /// T022: the dialog's step (React's `InstallStep`): the pick step, then
+    /// the review of the inspected package. The host inspect seam that
+    /// advances it is the wapps management page wiring (T073).
+    pub(crate) install_wapp_step: InstallWappStep,
+    /// T022: the picked package's preview — the pick token, the package label
+    /// and the inspected manifest (React's three `useState`s, set and cleared
+    /// together). The inspect use case is a host seam (T073).
+    pub(crate) install_wapp_preview: Option<WappPackagePreview>,
+    /// T022: the pick→inspect pass is in flight (React's `inspecting`).
+    pub(crate) install_wapp_inspecting: bool,
+    /// T022: the confirm→install pass is in flight (React's `installing`).
+    pub(crate) install_wapp_installing: bool,
+    /// T022: the install flow's last error (the dialog's error branch).
+    pub(crate) install_wapp_error: Option<String>,
     pub(crate) connection_name: TextEdit,
     pub(crate) connection_engine: TextEdit,
     pub(crate) connection_address: TextEdit,
@@ -344,6 +365,13 @@ impl Default for AppState {
             import_dialog_open: false,
             import_dialog_epoch: 0,
             import_file: None,
+            install_wapp_open: false,
+            install_wapp_epoch: 0,
+            install_wapp_step: InstallWappStep::Select,
+            install_wapp_preview: None,
+            install_wapp_inspecting: false,
+            install_wapp_installing: false,
+            install_wapp_error: None,
             connection_name: TextEdit::new(String::new()),
             connection_engine: TextEdit::new(String::new()),
             connection_address: TextEdit::new(String::new()),

@@ -142,9 +142,9 @@ impl Dialog {
         self
     }
 
-    /// Part of the base's surface for the dialogs after T0-05 (kit's own
-    /// `Dialog` has the same builder), so it is not used yet.
-    #[allow(dead_code)]
+    /// The dialog's description line under the title (React's `description`
+    /// prop). Carried by the dialogs after T0-05; the install-wapp dialog
+    /// (T022) is its first caller.
     pub(crate) fn description(mut self, description: impl Into<String>) -> Self {
         self.description = Some(description.into());
         self
