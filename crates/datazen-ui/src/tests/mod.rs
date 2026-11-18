@@ -259,3 +259,5 @@ mod ai_chat_panel_input_area_state;
 mod ai_chat_panel_input_area_audit;
 // T009-S6: AiChatPanel shell + session wiring (state machine + S3/S4/S5 assembly).
 mod ai_chat_panel_shell;
+// T009-S6 independent audit: fresh vectors against the React source and zh-CN packs.
+mod ai_chat_panel_shell_audit;
