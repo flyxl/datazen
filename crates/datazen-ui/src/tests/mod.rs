@@ -178,3 +178,6 @@ mod filter_parts_audit;
 
 // T021/T023 fixes: chip width, truncation, accent X, tooltips and pressed state.
 mod filter_fixes;
+
+// T030: ExplainPlanTree port (recursive rows, expansion state, badges, bounds).
+mod explain_plan_tree;
