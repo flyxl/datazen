@@ -170,3 +170,4 @@
 - [x] T079 · lib/metadata · 0.90d · lib/metadata/identity.ts
 - [x] T092 · platform/shared · 0.80d · platform/shared/mcpClient.ts
 - [x] T044 · platform/shared · 0.30d · platform/shared/index.ts
+- [x] T050 · App.tsx · 0.30d · App.tsx
