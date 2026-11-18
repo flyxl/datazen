@@ -247,3 +247,5 @@ mod ai_chat_panel_bubble_audit;
 mod ai_chat_panel_header;
 // T009-S3 independent audit: fresh vectors against the React source and zh-CN packs.
 mod ai_chat_panel_header_audit;
+// T009-S4: AiChatPanel message list (memory toasts, messages, streaming placeholder, jump-to-bottom).
+mod ai_chat_panel_message_list;
