@@ -3,6 +3,9 @@
 //! Hosts implement [`WorkspaceApi`]. The memory workspace is only a stand-in so the
 //! interface can run before the desktop and HTTP adapters exist.
 
+mod connection_views;
+mod context_items;
+mod context_menu_position;
 mod tabs;
 
 use std::collections::HashMap;
@@ -10,6 +13,15 @@ use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
 use datazen_driver_api::{ConnectionConfig, SslMode};
 
+pub use connection_views::{
+    ConnectionOpenTarget, ConnectionViewActions, ConnectionViewProps, NewQueryContext,
+    NodeContextMenuPayload, ObjectKind, TableContextInput, TableSqlActionKind,
+};
+pub use context_items::{ContextItem, ContextKind, SplitContextItems, split_context_items};
+pub use context_menu_position::{
+    CONTEXT_MENU_PAD, Point, Rect, RootMenuPosition, Size, SubmenuPosition, SubmenuSide, Viewport,
+    position_root_menu, position_root_menu_with_pad, position_submenu, position_submenu_with_pad,
+};
 pub use tabs::{Tab, TabKind, Tabs};
 
 /// One foreign key: this table's columns (a compound key stays together), the
