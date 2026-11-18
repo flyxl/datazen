@@ -4,7 +4,7 @@
 任务由 `node scripts/rune-parity.mjs --shard 2 --of 4` 给出。
 
 
-- [ ] T008 · components/chart · 2.00d · components/chart/ChartCanvas.tsx · split
+- [x] T008 · components/chart · 2.00d · components/chart/ChartCanvas.tsx · split
 - [ ] T014 · components/export · 0.60d · components/export/ExportSuccessPanel.tsx components/FilterBar.tsx
 - [ ] T019 · windows/workflow · 0.80d · windows/workflow/WorkflowEditorActionBar.tsx windows/workflow/WorkflowExecutionResultPanel.tsx
 - [ ] T020 · windows/main · 0.90d · windows/main/MainPage.tsx
