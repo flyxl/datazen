@@ -156,6 +156,7 @@ mod history_components;
 mod history_components_audit;
 // T005: the global query-history dialog port.
 mod global_query_history_dialog;
+mod global_query_history_audit;
 
 // T029 fix round: CopyButton base feedback + filter bar metrics.
 mod copy_button;
