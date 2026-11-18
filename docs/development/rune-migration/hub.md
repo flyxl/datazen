@@ -27,6 +27,15 @@
 3. `TEST_FAILED` → resume 原 Coder 仅修所列缺陷 → 全新 Tester 复测；同轨最多 5 轮。
 4. 四轨全部合流后跑 R 阶段全量回归。
 
+### 环境变更（2026-11-18，已全轨暂停→修复→恢复）
+
+应协调者指令，4 个 coder 全部回复 `PAUSED` 并冻结现场；期间完成：
+- 本机 stable 工具链 1.90.0 → **1.100.0**（`rustup check` 确认 up to date），1.99.1 亦在（Rune web build 脚本固定用该版本）。
+- `wasm32-unknown-unknown` target 分别装到 stable 与 1.99.1。
+- 主检出 `vendor/rune` 子模块补齐（`git submodule status` 前缀由 `-` 变空格）。
+- 主检出实测 `CARGO_TARGET_DIR=$PWD/target bash scripts/rune-migrate-gate.sh` → **gate: PASS**（已切到 1.100.0）。
+- 4 个 coder 已发「继续」恢复，要求从暂停现场接着做、不 revert；warning 数字因换工具链上升不算回归。
+
 ### Tester 会话
 
 （待 coder 返回后填入）
