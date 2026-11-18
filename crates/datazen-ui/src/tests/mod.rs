@@ -87,6 +87,7 @@ mod rail_modals;
 mod components;
 // T0-09 table base: geometry, sort, selection, keyboard, window fit.
 mod table;
+mod data_table_parts;
 mod table_audit;
 // Independent review coverage: select (T0-06) and checkbox/switch/radio (T0-09).
 mod choice_extra;
