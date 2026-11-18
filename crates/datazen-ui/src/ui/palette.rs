@@ -275,6 +275,27 @@ pub(crate) fn ai_shield_cloud_strict(_dark: bool) -> Color {
     rune::color::hex("#60a5fa").unwrap_or(Color::WHITE)
 }
 
+/// AI input-area amber (T009-S5): the egress notice and the draft-conflict
+/// bar use Tailwind's amber-500 / amber-200 verbatim (`AiEgressNotice.tsx`
+/// and `AiChatPanel.tsx:900` — `border-amber-500/30 bg-amber-500/10
+/// text-amber-200`), as oklch literals in this module only. The database
+/// line is the same amber-200 text at 70% opacity, applied by the caller
+/// through `kit.alpha`.
+pub(crate) fn ai_amber_border(_dark: bool) -> Color {
+    // Tailwind amber-500 (oklch 0.769 0.164 70.08) at 30% — `/30`.
+    rune::oklcha(0.769, 0.164, 70.08, 0.30)
+}
+
+pub(crate) fn ai_amber_fill(_dark: bool) -> Color {
+    // Tailwind amber-500 at 10% — `/10`.
+    rune::oklcha(0.769, 0.164, 70.08, 0.10)
+}
+
+pub(crate) fn ai_amber_text(_dark: bool) -> Color {
+    // Tailwind amber-200 (oklch 0.924 0.12 95.08).
+    rune::oklch(0.924, 0.12, 95.08)
+}
+
 /// ER diagram box background.
 pub(crate) fn er_box_fill(dark: bool) -> Color {
     if dark {

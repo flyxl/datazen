@@ -235,6 +235,15 @@ pub(crate) static ICON_RING_ARC: rune::Icon = rune::Icon {
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2.5\" fill=\"none\" stroke-linecap=\"round\" d=\"M12 3a9 9 0 1 1-9 9\"/>",
 };
+/// T009-S5: lucide `square`, the stop button glyph in `AiInput`
+/// (`AiInput.tsx` uses `Square`). The single rect is the whole icon;
+/// geometry verified against the lucide `square` icon (18×18 rect at
+/// 3,3 with rx 2, same rect the square-family icons share).
+pub(crate) static ICON_SQUARE: rune::Icon = rune::Icon {
+    name: "square",
+    view: 24.0,
+    body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/>",
+};
 
 pub(crate) fn section_icon(section: Section) -> &'static rune::Icon {
     match section {

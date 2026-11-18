@@ -6,6 +6,7 @@
 //! | `AiChatPanel.tsx` (`ChatBubble`, T009-S2) | `chat_bubble` |
 //! | `AiChatPanel.tsx` (header, T009-S3) | `ai_chat_header` |
 //! | `AiChatPanel.tsx` (message list, T009-S4) | `ai_chat_message_list` |
+//! | `AiChatPanel.tsx` (input area, T009-S5) | `ai_chat_input_area` (+ `ai_chat_input_area_state`) |
 //!
 //! These components currently have no production consumer in the Rune app;
 //! they are intended to be wired by the `AiChatPanel` / `ChatBubble` track
@@ -30,8 +31,16 @@ pub(crate) use ai_chat_header::{
 pub(crate) use ai_chat_message_list::AiChatMessageList;
 #[allow(unused_imports)] // consumers will be added by the AiChatPanel wiring
 pub(crate) use ai_chat_message_list_state::{AiChatMessageListState, AUTO_SCROLL_THRESHOLD};
+#[allow(unused_imports)] // consumers will be added by the AiChatPanel wiring
+pub(crate) use ai_chat_input_area::AiChatInputArea;
+#[allow(unused_imports)] // consumers will be added by the AiChatPanel wiring
+pub(crate) use ai_chat_input_area_state::{
+    AiChatInputAreaState, AiInjection, AiLoadedSkill, AiPendingDraft, ConflictResolution,
+};
 
 pub(crate) mod ai_chat_header;
+pub(crate) mod ai_chat_input_area;
+pub(crate) mod ai_chat_input_area_state;
 pub(crate) mod ai_chat_message_list;
 pub(crate) mod ai_chat_message_list_state;
 pub(crate) mod ai_chat_panel;
