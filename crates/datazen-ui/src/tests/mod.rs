@@ -148,3 +148,6 @@ mod filter_parts;
 
 // T021/T023 audit: independent probes for the filter parts against React.
 mod filter_parts_audit;
+
+// T021/T023 fixes: chip width, truncation, accent X, tooltips and pressed state.
+mod filter_fixes;

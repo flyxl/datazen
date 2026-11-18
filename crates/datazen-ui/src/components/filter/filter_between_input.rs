@@ -122,7 +122,7 @@ impl<'a, S: 'static> FilterBetweenInput<'a, S> {
                     .key(format!("{}-inverted", self.key))
                     .font(k.ty.small)
                     .color(k.c.warning.fg)
-                    .description(self.inverted_label),
+                    .help(self.inverted_label),
             );
         }
         line

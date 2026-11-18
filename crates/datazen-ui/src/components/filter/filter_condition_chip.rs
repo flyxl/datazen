@@ -21,8 +21,8 @@
 // rather than in a crate-wide allow.
 #![allow(dead_code)]
 
-use rune::{row, text, Color, El};
-use rune_kit::{Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant};
+use rune::{icon, row, text, Color, El};
+use rune_kit::{Button, ButtonVariant, ControlSize};
 
 use crate::i18n::t;
 use crate::icons::ICON_X;
@@ -77,7 +77,9 @@ pub(crate) fn condition_summary(filter: &FilterCondition) -> String {
     match &filter.value {
         FilterValue::None => format!("{} {}", filter.column, op),
         FilterValue::Single(value) => {
-            let shown = if value.is_empty() || value == "NULL" {
+            // React only elides an empty value; the literal text `NULL` is a value
+            // the user typed and stays visible.
+            let shown = if value.is_empty() {
                 "…".to_owned()
             } else {
                 value.clone()
@@ -146,20 +148,37 @@ impl FilterConditionChip {
             })
             .build(k)
             .key(format!("{}-edit", self.key))
-            .max_w(480.0);
+            .shrink()
+            // Rune's El has no fit-content or percent max-width, so the chip cannot
+            // clamp itself to the filter column; cap the summary so the pill still
+            // fits the 360pt narrow column (React truncates at the column edge).
+            .max_w(300.0);
         if let Some(act) = self.edit {
             if !self.disabled {
                 edit = act(edit);
             }
         }
 
-        let mut remove = IconButton::new(&ICON_X)
-            .variant(IconButtonVariant::GhostMuted)
-            .control_size(ControlSize::Mini)
-            .disabled(self.disabled)
+        // React paints the X in `text-accent/80`; the kit's GhostMuted variant would
+        // use the muted icon ink, and IconButton has no ink override in this Rune
+        // version, so the row carries the accent ink on its icon child.
+        let mut remove = row()
+            .role("button")
+            .size(16.0, 16.0)
+            .center()
+            .radius(k.radius.sm)
             .label(remove_label)
-            .build(k)
+            .help(remove_label)
+            .child(
+                icon(&ICON_X, 12.0)
+                    .key("icon")
+                    .color(k.alpha(k.c.text_accent, 0.8))
+                    .a11y_hidden(),
+            )
             .key(format!("{}-remove", self.key));
+        if self.disabled {
+            remove = remove.disabled(true).layer_opacity(0.5);
+        }
         if let Some(act) = self.remove {
             if !self.disabled {
                 remove = act(remove);
@@ -168,6 +187,8 @@ impl FilterConditionChip {
 
         let mut chip = row()
             .key(self.key)
+            .self_start()
+            .min_w(0.0)
             .gap(2.0)
             .center_y()
             .radius(999.0)
@@ -175,6 +196,7 @@ impl FilterConditionChip {
             .pr(2.0)
             .py(2.0)
             .max_w(560.0)
+            .disabled(self.disabled)
             .fill(Color::TRANSPARENT)
             .child(edit);
         chip = chip.child(remove);

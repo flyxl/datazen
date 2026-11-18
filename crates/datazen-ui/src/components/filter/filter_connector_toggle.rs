@@ -154,6 +154,7 @@ impl FilterConnectorToggle {
                     .color(if and_active { accent } else { muted })
             })
             .build(k)
+            .focus_selected(and_active)
             .key(format!("{}-and", self.key))
             .fill(if and_active {
                 k.alpha(accent, 0.15)
@@ -176,6 +177,7 @@ impl FilterConnectorToggle {
                     .color(if or_active { accent } else { muted })
             })
             .build(k)
+            .focus_selected(or_active)
             .key(format!("{}-or", self.key))
             .fill(if or_active {
                 k.alpha(accent, 0.15)
