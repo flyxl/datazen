@@ -81,7 +81,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T065 · components/ai · 0.90d · components/ai/Nl2SqlPanel.tsx
 - [ ] T066 · components/ai · 0.90d · components/ai/NlFilterInput.tsx
 - [ ] T067 · components/ai · 1.30d · components/ai/WorkflowChatPanel.tsx · split
-- [ ] T068 · components/ai · 1.30d · components/ai/WorkflowPanel.tsx · split
+- [x] T068 · components/ai · 1.30d · components/ai/WorkflowPanel.tsx · split
 - [ ] T069 · components/migration · 0.80d · components/migration/MigrationEndpointsBar.tsx
 - [ ] T070 · components/migration · 0.50d · components/migration/MigrationJobFailureNotice.tsx
 - [ ] T071 · components/migration · 1.30d · components/migration/MigrationJobVerdictPanel.tsx · split
