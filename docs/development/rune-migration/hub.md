@@ -36,6 +36,13 @@
 - 主检出实测 `CARGO_TARGET_DIR=$PWD/target bash scripts/rune-migrate-gate.sh` → **gate: PASS**（已切到 1.100.0）。
 - 4 个 coder 已发「继续」恢复，要求从暂停现场接着做、不 revert；warning 数字因换工具链上升不算回归。
 
+### origin/main 合并（2026-11-18 15:5x，协调者执行）
+
+- `git fetch origin main` → `git merge --no-ff origin/main` → `bec2d85ff`（+102 main commits，冲突仅 Cargo.lock）。
+- Cargo.lock 冲突解法：不能用三方并集（会保留 wasm-bindgen 0.2.127/0.2.129 双版本导致解析冲突）；改为恢复 ours 的干净 lock 后 `cargo metadata` 在线解析，让 Cargo 自动纳入 main 的 parquet/arrow 依赖 → 版本统一 0.2.129、parquet 58.4.0 入锁。门禁复验 gate: PASS（89/106/92 warnings）。
+- main 带来的 React 源码变动：`--tasklist` 刷新把台账 629 → **647 tasks**（+18）：valuePresentation 全套（lib 11 + hooks 3 + settings 窗口 2 + DataTable 的 ColumnPresentationDialog）、useColumnPresentationSession 等；10 个 done 状态按 T 编号保留，现算进度 10/647、11.7/641.9 人日。刷新提交 `71d1654a7`。
+- 注意：4 个 in-flight worktree 基于合并前的 HEAD（7288aa6ce），它们合回时需以合并后分支为 base 做冲突解决；本合并未触碰任何 `crates/datazen-ui` 文件，预期无代码冲突。
+
 ### 串行编译测试队列（2026-11-18，替代各轨自行 cargo）
 
 为避免 4 轨并发编译抢 CPU，所有 `cargo` / gate / test 收口到一个专属 build subagent 名下的单一串行 worker。
