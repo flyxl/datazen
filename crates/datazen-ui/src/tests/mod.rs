@@ -254,6 +254,11 @@ mod app_root;
 // retry, and the seams that must stay honest).
 mod main_page;
 
+// T071 (segment-2's T070): the running-execution close host port (the
+// prompt behind "close a tab whose query is still running": the ask
+// payload, the confirm dialog it opens, and the answer routing).
+mod running_execution_close_host;
+
 // T022: the install-wapp dialog port (two-step pick/review flow, the
 // native pickers, the honest host seams and the close/reset path).
 mod install_wapp_dialog;

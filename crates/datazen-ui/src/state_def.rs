@@ -3,7 +3,7 @@
 use crate::data_grid::DataGrid;
 use crate::sql_editor::SqlEditor;
 use crate::types::{QuerySidebarPanel, ResultView, Section, TableView, Tool};
-use crate::views::{InstallWappStep, WappPackagePreview};
+use crate::views::{InstallWappStep, RunningExecutionCloseRequest, WappPackagePreview};
 use crate::views::WorkflowExecutionResult;
 use crate::views::{
     WorkflowCommandDefinition, WorkflowConnectionOption, WorkflowDraft, WorkflowFormSelect,
@@ -344,6 +344,25 @@ pub struct AppState {
     /// While `Some`, `splitter_size` returns this instead of the persisted
     /// value; a cancelled or finished drag clears it.
     pub(crate) splitter_preview: Option<(String, u32)>,
+    /// T071 (segment-2's T070): the running-execution close host's pending
+    /// ask — React `useConfirmDialog`'s single pending request, installed by
+    /// `RunningExecutionCloseHost` (the prompt behind "close a tab whose
+    /// query is still running"). `Some` while the confirm dialog is on
+    /// screen; `ask_running_execution_close` opens it.
+    pub(crate) running_close_request: Option<RunningExecutionCloseRequest>,
+    /// T071: the prompt's open generation; each ask bumps it so a reopened
+    /// dialog starts at the top (`Dialog::open_epoch`).
+    pub(crate) running_close_epoch: u64,
+    /// T071: the last settled ask — `(request, allowed)`. The host's answer
+    /// routing (React `handleClose(result)` + the promise's resolve);
+    /// written by `answer_running_execution_close`, read by the close guard
+    /// when it ports (T396's `stores/runningExecutionClose.ts`), so no
+    /// production reader yet.
+    #[allow(dead_code)]
+    pub(crate) running_close_outcome: Option<(RunningExecutionCloseRequest, bool)>,
+    /// T071: whether the prompt's copy control has copied the SQL (the
+    /// dialog's copied mark; the next ask resets it).
+    pub(crate) running_close_sql_copied: bool,
     /// The system appearance preference, updated by the root view so helpers
     /// like `dark_theme()` can fall back consistently when no theme is saved.
     pub(crate) system_dark: Cell<bool>,
@@ -502,6 +521,10 @@ impl Default for AppState {
             workflow_form_databases: std::collections::BTreeMap::new(),
             workflow_form_databases_loading: std::collections::BTreeSet::new(),
             splitter_preview: None,
+            running_close_request: None,
+            running_close_epoch: 0,
+            running_close_outcome: None,
+            running_close_sql_copied: false,
             system_dark: Cell::new(true),
         }
     }
