@@ -44,6 +44,7 @@
 - 调用方（coder 与 tester）统一：`bash <Q>/submit.sh <requester> <workdir> '<原命令>'`；原子入队、阻塞等结果、原样输出、以 job 退出码退出。`running/` 中遗留 job 在 worker 重启时自动回收。
 - 专属 build subagent 会话 `ses_e127a113dffekO0rk82JLQan69` 独占 worker，禁止第二实例；活性看 `heartbeat` 与 `worker.pid`。
 - **纪律**：coder/tester 禁止直接跑 cargo/gate/test；在途的旧编译允许自然结束，不得新开。所有后续 tester 简报必须包含 submit.sh 调用方式。
+- **worktree 绑定加固**：`submit.sh` 把 `rune-<track>*` requester 强制绑定到 `datazen-<track>` worktree，传错 workdir 直接 exit 2；worker 执行前记录真实 `pwd` 到结果的 `workdir_actual`，调用方校验不一致则 exit 3。因此编译必然发生在请求方的 worktree、覆盖其未提交改动，不会编到别的轨或主检出。新增纪律：job 在途时不得改源码（提交 job 后等 submit.sh 返回）。已通知全部 4 coder + T027 tester，并要求 build agent 热重启 worker 加载新脚本。
 
 ### Tester 会话
 
