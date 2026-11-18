@@ -273,3 +273,7 @@ mod ai_write_proposal_host_audit;
 mod admin_create_dialog;
 // T013 independent audit: fresh vectors against the React source and zh-CN packs.
 mod admin_create_dialog_audit;
+// T014: ExportSuccessPanel (centred green check over the caller's message).
+mod export_success_panel;
+// T014: FilterBar (label, one pill per condition, clear-all; loading disables).
+mod filter_bar;
