@@ -35,7 +35,11 @@
 //! defaults* (the requested 缺字段容错 — matches React's own `?? 0`
 //! tolerances in the eviction comparator); the `messages` list and its
 //! entries degrade per-field (a non-array `messages` becomes empty, a
-//! message violating the declared shape is dropped); and a scalar field
+//! message violating the declared shape is dropped — and since the T042
+//! unification the declared shape is the full `types/ai.ts` twin, so a
+//! malformed pass-through value like a `toolCalls` entry without
+//! `arguments` now drops its message too, where the opaque mirror would
+//! have carried it); and a scalar field
 //! whose declared shape is violated (a non-string `id`) fails the whole
 //! load through the same clear-and-fresh branch React uses for unparseable
 //! data. React would instead keep the entry and crash at first use,

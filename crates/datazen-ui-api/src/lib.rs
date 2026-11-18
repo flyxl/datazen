@@ -4,6 +4,7 @@
 //! interface can run before the desktop and HTTP adapters exist.
 
 mod ai_sessions;
+mod ai_types;
 mod connection_views;
 mod context_items;
 mod context_menu_position;
@@ -17,9 +18,7 @@ use std::collections::HashMap;
 use datazen_driver_api::{ConnectionConfig, SslMode};
 
 pub use ai_sessions::{
-    ActiveConnectionEntry, ActiveConnections, AiChatMessage, AiChatSession, AiLoadedSkill,
-    AiMessageRole, AiMessageStatus, AiSessionBackend, AiSessionDetail, AiSessionMessage,
-    AiSessionMessageInput, AiSessionStore, AiSessionSummary, AiSessionUpsertInput, ExportFormat,
+    ActiveConnectionEntry, ActiveConnections, AiSessionBackend, AiSessionStore, ExportFormat,
     MigrationOutcome, NewId, SessionClock, SessionDeleteResult, SessionExport, SessionKey,
     SessionListParams, SessionLocalStorage, SessionMap, SessionPersistResult,
     SessionRestoreResult, SessionScope, StoredSession, chat_session_from_detail,
@@ -28,6 +27,23 @@ pub use ai_sessions::{
     message_status, new_chat_session, normalize_loaded_skills, split_legacy_key, title_for,
     truncate_bytes, MAX_MESSAGES_PER_SESSION, MAX_MESSAGE_BYTES, MAX_SESSIONS,
     MIGRATION_MARKER_KEY, STORAGE_KEY,
+};
+pub use ai_types::{
+    AiAgentMode, AiChatAttribution, AiChatContextSnapshot, AiChatInjectionEvent,
+    AiChatInjectionSnapshot, AiChatMessage, AiChatResultPreview, AiChatSession, AiDataEgressLevel,
+    AiLoadedSkill, AiMemoryCandidatesEvent, AiMemoryCloudPolicy, AiMemoryCorrectionInput,
+    AiMemoryCreateInput, AiMemoryEntry, AiMemoryExtractionInput, AiMemoryKind, AiMemoryListParams,
+    AiMemoryPage, AiMemoryReference, AiMemoryScopeKind, AiMemorySensitivity, AiMemorySettings,
+    AiMemorySqlSample, AiMemoryStaleInput, AiMemoryStats, AiMemoryStatus, AiMemoryUpdateInput,
+    AiMessageRole, AiMessageStatus, AiModelProfile, AiPreviewCell, AiProviderConfig,
+    AiProviderType, AiQuestion, AiQuestionOption, AiSafetyGateConfig, AiSessionDetail,
+    AiSessionMessage, AiSessionMessageInput, AiSessionSummary, AiSessionUpsertInput,
+    AiSettingsConfig, AiSkillContent, AiSkillSource, AiSkillSummary, AiSkillsSettings, AiToolCall,
+    AiToolPermissionPolicy, AiToolResult, AiWriteApplyReceipt, AiWriteAuditDecision,
+    AiWriteAuditDecisionKind, AiWriteAuditRecord, AiWriteImpact, AiWriteProposal,
+    AiWriteStatement, Bottleneck, BottleneckSeverity, DiagnosisResult, ExplainAnalysis,
+    ExplainSuggestion, ModelInfo, PromptTemplate, ProviderListItem, StreamChunkPayload,
+    StreamChunkUsage, StreamErrorPayload, DEFAULT_AI_MEMORY_SETTINGS, DEFAULT_AI_SKILLS_SETTINGS,
 };
 pub use connection_views::{
     ConnectionOpenTarget, ConnectionViewActions, ConnectionViewProps, NewQueryContext,

@@ -47,9 +47,11 @@
 //!
 //! ## Layout
 //!
-//! - [`model`] — mirror types (T042/T230/T128 own the full twins) and the
-//!   pure derivations: session key, legacy key split, byte truncation,
-//!   epoch→ISO conversion, loaded-skills normalization.
+//! - [`model`] — the sessions.ts-specific types (scope, results, export
+//!   format) and pure derivations: session key, legacy key split, byte
+//!   truncation, epoch→ISO conversion, loaded-skills normalization. The
+//!   message/session vocabulary itself is the T042 twin, re-exported from
+//!   [`crate::ai_types`] (one source since the unification).
 //! - [`mapping`] — the pure mappers between the live session and its
 //!   stored/backend shapes (status derivation, metadata projection, title,
 //!   upsert payload, local detail, markdown/filename export).
@@ -97,11 +99,9 @@ pub use mapping::{
     message_status, new_chat_session, title_for,
 };
 pub use model::{
-    AiChatMessage, AiChatSession, AiLoadedSkill, AiMessageRole, AiMessageStatus, AiSessionDetail,
-    AiSessionMessage, AiSessionMessageInput, AiSessionSummary, AiSessionUpsertInput, ExportFormat,
-    MigrationOutcome, SessionDeleteResult, SessionExport, SessionKey, SessionPersistResult,
-    SessionRestoreResult, SessionScope, compute_session_key, iso_from_epoch_ms,
-    normalize_loaded_skills, split_legacy_key, truncate_bytes,
+    ExportFormat, MigrationOutcome, SessionDeleteResult, SessionExport, SessionKey,
+    SessionPersistResult, SessionRestoreResult, SessionScope, compute_session_key,
+    iso_from_epoch_ms, normalize_loaded_skills, split_legacy_key, truncate_bytes,
 };
 pub use store::{
     ActiveConnectionEntry, ActiveConnections, AiSessionBackend, AiSessionStore, NewId,
