@@ -10,7 +10,7 @@
 - [x] T015 · windows/settings · 0.90d · windows/settings/ai/AiContextSettings.tsx
 - [x] T017 · windows/workspace · 0.30d · windows/workspace/WappIcon.tsx
 - [x] T018 · windows/dashboard · 0.90d · windows/dashboard/AddToDashboardDialog.tsx
-- [ ] T021 · windows/onboarding · 0.90d · windows/onboarding/BrandSidebar.tsx
+- [x] T021 · windows/onboarding · 0.90d · windows/onboarding/BrandSidebar.tsx
 - [ ] T025 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffDeployPanel.tsx
 - [ ] T029 · lib/connectionViews · 0.90d · lib/connectionViews/types.ts lib/contextItems.ts lib/contextMenuPosition.ts
 - [ ] T035 · lib/sqlDialects · 1.00d · lib/sqlDialects/dialectProfile.ts lib/sqlDialects/extra.ts
