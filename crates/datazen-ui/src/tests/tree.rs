@@ -723,3 +723,276 @@ fn a_five_hundred_row_tree_stays_inside_both_windows_except_the_extent() {
         assert_eq!(outside, 0, "500-row tree nodes leave a {w}x{h} window");
     }
 }
+
+
+// ---- T0-11 row math -----------------------------------------------------------------------
+
+use crate::ui::tree::{ancestor_indices, first_visible_index, reveal_offset, TreeRowData};
+
+#[test]
+fn first_visible_index_handles_boundaries() {
+    assert_eq!(first_visible_index(0.0, 10, 24.0), 0);
+    assert_eq!(first_visible_index(-10.0, 10, 24.0), 0, "negative scrollTop clamps to 0");
+    assert_eq!(first_visible_index(24.0, 10, 24.0), 1);
+    assert_eq!(first_visible_index(47.9, 10, 24.0), 1);
+    assert_eq!(first_visible_index(48.0, 10, 24.0), 2);
+    assert_eq!(first_visible_index(10_000.0, 10, 24.0), 9, "beyond end clamps to last row");
+    assert_eq!(first_visible_index(50.0, 0, 24.0), 0, "rowCount<=0 returns 0");
+    assert_eq!(first_visible_index(50.0, 10, 0.0), 0, "rowHeight<=0 returns 0");
+    assert_eq!(first_visible_index(50.0, 10, -1.0), 0, "negative rowHeight returns 0");
+}
+
+#[test]
+fn ancestor_indices_depth_stack_matches_react_semantics() {
+    // Flat pre-order visible rows for a 3-level tree with a collapsed branch.
+    // Collapsed branch's children are absent from visible rows.
+    // 0: root            depth 0 branch
+    // 1: child-open      depth 1 branch
+    // 2: grandchild      depth 2 leaf      (3rd level)
+    // 3: child-collapsed depth 1 branch    (collapsed: no depth-2 children in this list)
+    // 4: child-sibling   depth 1 leaf
+    // 5: root-collapsed  depth 0 branch    (collapsed: no children in this list)
+    // 6: root-sibling    depth 0 leaf
+    let rows = vec![
+        TreeRowData { depth: 0, is_branch: true },  // 0
+        TreeRowData { depth: 1, is_branch: true },  // 1
+        TreeRowData { depth: 2, is_branch: false }, // 2
+        TreeRowData { depth: 1, is_branch: true },  // 3 collapsed parent
+        TreeRowData { depth: 1, is_branch: false }, // 4
+        TreeRowData { depth: 0, is_branch: true },  // 5 collapsed parent
+        TreeRowData { depth: 0, is_branch: false }, // 6
+    ];
+    // 顶层行返回空
+    assert_eq!(ancestor_indices(&rows, 0), Vec::<usize>::new(), "top-level row -> no ancestors");
+    // 二层返回 1 个
+    assert_eq!(ancestor_indices(&rows, 1), vec![0], "depth-1 row -> 1 ancestor");
+    assert_eq!(ancestor_indices(&rows, 3), vec![0, 1], "depth-1 sibling: stack context after grandchild still includes open branch 1 (React scroll-position semantics)");
+    // 三层返回 2 个
+    assert_eq!(ancestor_indices(&rows, 2), vec![0, 1], "depth-2 row -> 2 ancestors");
+    // 逐档验证（3层带折叠）：collapsed branch 3 has no children in visible rows
+    assert_eq!(ancestor_indices(&rows, 4), vec![0, 3], "after collapsed depth-1 branch, context includes it but no child rows exist");
+    assert!(rows.iter().skip(4).take(1).all(|r| r.depth == 1), "row after collapsed branch is sibling, not a hidden child");
+    // 折叠父不出现子：row 5 is collapsed depth-0 branch with no children visible
+    assert_eq!(ancestor_indices(&rows, 5), vec![0], "depth-0 position after depth-1 rows remains in root 0 context per React depth-stack scan");
+    assert_eq!(ancestor_indices(&rows, 6), vec![5], "after collapsed depth-0 branch (no children visible), next top-level row sees it in stack context");
+    // No hidden children anywhere for collapsed branches 3 and 5 in this visible list
+    assert_eq!(rows[3].depth, 1);
+    assert_eq!(rows[4].depth, 1, "collapsed branch 3 has no depth-2 children in visible rows");
+    assert_eq!(rows[5].depth, 0);
+    assert_eq!(rows[6].depth, 0, "collapsed branch 5 has no depth-1 children in visible rows");
+    // Past end / empty (React: chain still open at end)
+    assert_eq!(ancestor_indices(&rows, 99), Vec::<usize>::new(), "past-end yields chain open at end (last row is leaf at depth 0)");
+    assert!(ancestor_indices(&[], 0).is_empty());
+    assert!(ancestor_indices(&[], 5).is_empty());
+}
+
+#[test]
+fn ancestor_indices_with_collapsed_parent_has_no_hidden_children_in_visible_rows() {
+    // Visible rows when a branch is collapsed: [root, collapsed child branch, sibling leaf]
+    // The collapsed child branch's subtree is not present in visible rows.
+    let visible = vec![
+        TreeRowData { depth: 0, is_branch: true },  // 0 root
+        TreeRowData { depth: 1, is_branch: true },  // 1 collapsed parent (visible, but children hidden)
+        TreeRowData { depth: 1, is_branch: false }, // 2 sibling leaf under root
+    ];
+    assert_eq!(ancestor_indices(&visible, 0), Vec::<usize>::new(), "top-level");
+    assert_eq!(ancestor_indices(&visible, 1), vec![0], "collapsed branch row is depth 1 -> 1 ancestor");
+    let at_sibling = ancestor_indices(&visible, 2);
+    assert_eq!(at_sibling, vec![0, 1], "React depth-stack: collapsed branch remains in scroll-position context, but no child rows follow it");
+    // Collapsed parent's children do not appear as rows in visible list.
+    assert!(visible.iter().all(|r| r.depth <= 1), "collapsed parent's children must not appear in visible rows");
+    assert_eq!(visible[2].depth, 1, "next row is sibling at same depth, not a hidden child");
+}
+
+#[test]
+fn reveal_offset_three_states() {
+    let row_h = 24.0;
+    let vh = 100.0;
+    // Already visible (row 2: 48..72 inside 0..100)
+    assert_eq!(reveal_offset(2, row_h, 0.0, vh), None, "fully visible returns None");
+    // Partially at bottom edge: row 4 top 96, bottom 120 > 100 => align bottom
+    assert_eq!(reveal_offset(4, row_h, 0.0, vh), Some(20.0), "below viewport aligns bottom");
+    // Above viewport: scroll_top 50, row 1 top 24 < 50 => align top
+    assert_eq!(reveal_offset(1, row_h, 50.0, vh), Some(24.0), "above viewport aligns top");
+    // Degenerate
+    assert_eq!(reveal_offset(0, 0.0, 0.0, vh), None);
+    assert_eq!(reveal_offset(0, row_h, 0.0, 0.0), None);
+    assert_eq!(reveal_offset(0, row_h, 0.0, -10.0), None);
+    // Large index clamps to >=0 target
+    assert_eq!(reveal_offset(0, row_h, 10.0, vh), Some(0.0));
+}
+
+#[derive(Default)]
+struct ScrollProbe {
+    model: TreeModel<Item>,
+    selects: Vec<String>,
+    opens: Vec<String>,
+    viewport: f32,
+    scroll_y: f32,
+}
+
+impl ScrollProbe {
+    fn range(n: usize) -> Self {
+        let mut model = TreeModel::new().key(KEY);
+        for i in 0..n {
+            let label = format!("node-{i}");
+            model.insert(None, label.clone(), Item { label });
+        }
+        Self { model, viewport: 0.0, scroll_y: 0.0, selects: Vec::new(), opens: Vec::new() }
+    }
+}
+
+fn scroll_view(state: &ScrollProbe, _cx: &mut Cx<ScrollProbe>) -> El {
+    let tree = DataTree::new(
+        KEY,
+        |s: &ScrollProbe| &s.model,
+        |s: &mut ScrollProbe| &mut s.model,
+        |n: &Item| n.label.as_str(),
+    )
+    .grow()
+    .viewport(|s: &ScrollProbe| s.viewport, |s: &mut ScrollProbe, h| s.viewport = h)
+    .scroll_y(|s: &ScrollProbe| s.scroll_y, |s: &mut ScrollProbe, y| s.scroll_y = y)
+    .on_select(|s: &mut ScrollProbe, id| s.selects.push(id.to_owned()))
+    .on_open(|s: &mut ScrollProbe, id| s.opens.push(id.to_owned()))
+    .build(state, true);
+    col().w_full().h_full().padding(24.0).child(
+        col().w_full().h(200.0).child(tree)
+    )
+}
+
+fn assert_in_bounds(rt: &Runtime<ScrollProbe>, width: f32, height: f32, label: &str) {
+    let root = element(rt, KEY);
+    let vp = element(rt, &format!("{KEY}-viewport"));
+    let selected = rt.state.model.cursor().map(str::to_owned).expect("cursor set");
+    let row_idx = rt.state.model.visible_row(&selected).expect("cursor visible");
+    let row = element(rt, &format!("{KEY}-row-{row_idx}"));
+    let [x, y, w, h] = row.rect;
+    assert!(x >= -0.5 && x + w <= width + 0.5, "{label}: row x bounds {x}+{w} in {width}");
+    assert!(y >= -0.5 && y + h <= height + 0.5, "{label}: row y bounds {y}+{h} in {height}");
+    // Selected row must be within tree/viewport container vertically
+    let c = vp.rect;
+    assert!(y + 0.5 >= c[1] && y + h <= c[1] + c[3] + 0.5,
+        "{label}: selected row {row_idx} rect {:?} not inside viewport {:?} (root {:?}) scroll_y={}",
+        row.rect, c, root.rect, rt.state.scroll_y);
+}
+
+#[test]
+fn keyboard_end_and_pagedown_keep_selected_row_in_viewport_two_sizes() {
+    for (w, h) in [(960.0_f32, 640.0_f32), (1440.0_f32, 816.0_f32)] {
+        let mut rt = Runtime::new(ScrollProbe::range(200), scroll_view, (w, h), env());
+        rt.frame(0.0);
+        settle(&mut rt);
+        click(&mut rt, &format!("{KEY}-row-0"));
+        settle(&mut rt);
+
+        // End
+        press(&mut rt, Key::End);
+        settle(&mut rt);
+        assert_eq!(rt.state.model.cursor(), Some("node-199"), "End selects last at {w}x{h}");
+        assert_in_bounds(&rt, w, h, &format!("after End at {w}x{h}"));
+
+        // Home then Down steps
+        press(&mut rt, Key::Home);
+        settle(&mut rt);
+        for _ in 0..30 {
+            press(&mut rt, Key::Down);
+        }
+        settle(&mut rt);
+        assert_in_bounds(&rt, w, h, &format!("after 30 Downs at {w}x{h}"));
+
+        // PageDown twice
+        press(&mut rt, Key::PageDown);
+        settle(&mut rt);
+        assert_in_bounds(&rt, w, h, &format!("after PageDown #1 at {w}x{h}"));
+        press(&mut rt, Key::PageDown);
+        settle(&mut rt);
+        assert_in_bounds(&rt, w, h, &format!("after PageDown #2 at {w}x{h}"));
+
+        // PageUp keeps in view
+        press(&mut rt, Key::PageUp);
+        settle(&mut rt);
+        assert_in_bounds(&rt, w, h, &format!("after PageUp at {w}x{h}"));
+    }
+}
+
+#[test]
+fn external_select_reveals_row_in_viewport() {
+    for (w, h) in [(960.0_f32, 640.0_f32), (1440.0_f32, 816.0_f32)] {
+        let mut rt = Runtime::new(ScrollProbe::range(200), scroll_view, (w, h), env());
+        rt.frame(0.0);
+        settle(&mut rt);
+        click(&mut rt, &format!("{KEY}-row-0"));
+        settle(&mut rt);
+
+        // Move away via keyboard so viewport is scrolled down.
+        press(&mut rt, Key::End);
+        settle(&mut rt);
+        assert_eq!(rt.state.model.cursor(), Some("node-199"));
+        assert_in_bounds(&rt, w, h, &format!("after End before external select at {w}x{h}"));
+
+        // External selection (no key/pointer event) to a row above viewport.
+        rt.state.model.select("node-1");
+        for _ in 0..12 { rt.frame(0.016); settle(&mut rt); }
+        assert_eq!(rt.state.model.cursor(), Some("node-1"));
+        assert_in_bounds(&rt, w, h, &format!("external select to top at {w}x{h}"));
+
+        // External selection to a row far below viewport.
+        rt.state.model.select("node-151");
+        for _ in 0..12 { rt.frame(0.016); settle(&mut rt); }
+        assert_eq!(rt.state.model.cursor(), Some("node-151"));
+        assert_in_bounds(&rt, w, h, &format!("external select far below at {w}x{h}"));
+    }
+}
+
+#[test]
+fn manual_scroll_away_does_not_pull_back_until_selection_changes() {
+    // Manual scroll away keeps scroll on pure frame advance (no selection change);
+    // a selection change (Up) reveals the new selected row.
+    let (w, h) = (960.0_f32, 640.0_f32);
+    let mut rt = Runtime::new(ScrollProbe::range(200), scroll_view, (w, h), env());
+    rt.frame(0.0);
+    settle(&mut rt);
+    click(&mut rt, &format!("{KEY}-row-0"));
+    settle(&mut rt);
+
+    // Navigate to a middle row via keyboard (event-context reveal path).
+    press(&mut rt, Key::Home);
+    settle(&mut rt);
+    for _ in 0..100 {
+        press(&mut rt, Key::Down);
+    }
+    settle(&mut rt);
+    assert_eq!(rt.state.model.cursor(), Some("node-100"));
+    assert_in_bounds(&rt, w, h, "keyboard selection to middle baseline");
+
+    // Manual scroll away (user scroll), keeping selection unchanged.
+    rt.update(|s, tx| {
+        s.scroll_y = 0.0;
+        tx.scroll_to_instant("tree-viewport", 0.0, 0.0);
+    });
+    for _ in 0..8 { rt.frame(0.016); settle(&mut rt); }
+    let scroll_after_manual = rt.state.scroll_y;
+    assert_eq!(rt.state.model.cursor(), Some("node-100"), "selection unchanged by manual scroll");
+
+    // Pure frame advance must not pull scroll back (no selection change).
+    for _ in 0..20 { rt.frame(0.016); settle(&mut rt); }
+    assert_eq!(
+        rt.state.scroll_y, scroll_after_manual,
+        "pure frame advance must not change scroll after manual scroll-away"
+    );
+
+    // Selection change (Up) must reveal the newly selected row.
+    press(&mut rt, Key::Up);
+    settle(&mut rt);
+    assert_eq!(rt.state.model.cursor(), Some("node-99"));
+    assert_in_bounds(&rt, w, h, "after Up selection changes and reveals");
+}
+
+
+
+
+
+
+
+
+

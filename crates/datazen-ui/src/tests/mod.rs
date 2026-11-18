@@ -22,6 +22,8 @@ mod tooltip_text;
 mod icon_registry;
 // T0-11 audit: independent wrap and placement probes.
 mod tooltip_text_audit;
+// T0-11 row math: external selection reveal and page arithmetic.
+mod tree_rowmath_audit;
 pub(crate) use support::*;
 
 pub(crate) fn runtime() -> Runtime<AppState> {
