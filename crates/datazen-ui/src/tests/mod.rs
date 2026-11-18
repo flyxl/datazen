@@ -145,3 +145,4 @@ mod temporal_input_audit;
 
 // T029: history components (entry card + filter bar).
 mod history_components;
+mod history_components_audit;
