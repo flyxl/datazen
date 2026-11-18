@@ -15,7 +15,8 @@
 //!
 //! ## Keys
 //!
-//! - `history-filter-bar`: root row
+//! - `history-filter-bar`: root column (bottom border + pb-3)
+//! - `history-filter-bar-row`: wrapping row holding search + selects + reset
 //! - `history-filter-bar-search`: search input container (focusable text field inside)
 //! - `history-filter-bar-search-icon`: search icon (inside input bounds)
 //! - `history-filter-bar-search-field`: underlying text field element
@@ -342,7 +343,7 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
             let edit = edit.clone();
             TextField::new("history-filter-bar-search-field", self.search_edit)
                 .height(32.0)
-                .pad_x(28.0)
+                .pad_x(32.0)
                 .placeholder(t("query.searchHistory"))
                 .on_edit(move |s: &mut S| edit(s))
                 .build(dark)
@@ -351,7 +352,7 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
                 .key("history-filter-bar-search-field")
                 .h(32.0)
                 .w_full()
-                .px(28.0)
+                .px(32.0)
                 .center_y()
                 .child(
                     text(t("query.searchHistory"))
@@ -363,7 +364,7 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
         let search = row()
             .key("history-filter-bar-search")
             .grow(1.0)
-            .min_w(140.0)
+            .min_w(180.0)
             .h(32.0)
             .items_center()
             .child(search_input.grow(1.0).min_w(0.0))
@@ -372,12 +373,15 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
                     .key("history-filter-bar-search-icon")
                     .color(k.c.text_faint)
                     .a11y_hidden()
-                    .absolute(8.0, 8.0),
+                    .absolute(10.0, 8.0),
             );
 
+        // React: `flex flex-wrap items-center gap-2`. Wrapping is what keeps the row
+        // inside a 960pt window once the controls use the React widths.
         let mut bar = row()
             .key("history-filter-bar-row")
             .w_full()
+            .flex_wrap()
             .items_center()
             .gap(8.0)
             .px(0.0)
@@ -415,7 +419,7 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
             let mut sel = Select::new("history-filter-bar-connection", &label_refs)
                 .values(&value_refs)
                 .current(Some(&current_label))
-                .width(120.0)
+                .width(128.0)
                 .open(self.open == HistoryFilterOpen::Connection);
             if let Some(tg) = &on_toggle_open {
                 let tg = tg.clone();
@@ -451,7 +455,7 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
             let mut sel = Select::new("history-filter-bar-database", &label_refs)
                 .values(&value_refs)
                 .current(Some(&current_label))
-                .width(104.0)
+                .width(112.0)
                 .open(self.open == HistoryFilterOpen::Database);
             if let Some(tg) = &on_toggle_open {
                 let tg = tg.clone();
@@ -493,7 +497,7 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
             let mut sel = Select::new("history-filter-bar-schema", &label_refs)
                 .values(&value_refs)
                 .current(Some(&current_label))
-                .width(104.0)
+                .width(112.0)
                 .open(self.open == HistoryFilterOpen::Schema);
             if let Some(tg) = &on_toggle_open {
                 let tg = tg.clone();
@@ -531,7 +535,7 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
             let mut sel = Select::new("history-filter-bar-status", &label_refs)
                 .values(&value_refs)
                 .current(Some(value.status.label()))
-                .width(104.0)
+                .width(112.0)
                 .open(self.open == HistoryFilterOpen::Status);
             if let Some(tg) = &on_toggle_open {
                 let tg = tg.clone();
@@ -566,7 +570,7 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
             let mut sel = Select::new("history-filter-bar-range", &label_refs)
                 .values(&value_refs)
                 .current(Some(value.range.label()))
-                .width(120.0)
+                .width(128.0)
                 .open(self.open == HistoryFilterOpen::Range);
             if let Some(tg) = &on_toggle_open {
                 let tg = tg.clone();
@@ -599,7 +603,7 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
             let mut sel = Select::new("history-filter-bar-sort", &label_refs)
                 .values(&value_refs)
                 .current(Some(value.sort.label()))
-                .width(120.0)
+                .width(128.0)
                 .open(self.open == HistoryFilterOpen::Sort);
             if let Some(tg) = &on_toggle_open {
                 let tg = tg.clone();

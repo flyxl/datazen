@@ -32,14 +32,13 @@
 //! - `history-entry-card-{id}-error-msg*`: CopyableError subtree
 
 use std::rc::Rc;
-use std::time::Duration;
 
 use rune::{col, row, text, El, Tx};
 use rune_kit::{Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, Kit};
 
 use crate::i18n::t;
-use crate::icons::{ICON_CHECK, ICON_COPY, ICON_EXTERNAL_LINK, ICON_STAR, ICON_TRASH};
-use crate::ui::copyable::CopyableError;
+use crate::icons::{ICON_EXTERNAL_LINK, ICON_STAR, ICON_TRASH};
+use crate::ui::copyable::{BUTTON_SM, CopyButton as Copyable, CopyableError};
 use crate::ui::toggle::Checkbox;
 
 /// Action emitted by a history entry card control.
@@ -275,46 +274,28 @@ impl<S: 'static> HistoryEntryCard<S> {
             .gap(6.0)
             .shrink();
 
-        // copy action (kit Button base). Copy/feedback semantics: tx.copy + 1500ms wake
-        // (aligned with Copyable base contract) + on_copy hook; label/icon driven by copied prop.
-        // No `crate::ui::copyable::Copyable` button component exists in this crate; reuse Button.
+        // copy action (shared copyable base). Copy/feedback semantics live in
+        // `CopyButton`: tx.copy + 1500ms feedback wake + caller hooks, with label/icon
+        // driven by the `copied` prop. Styling/tokens come from the kit Button.
         {
-            let copy_label = if copied {
-                t("common.copied")
-            } else {
-                t("query.historyCopy")
-            };
-            let copy_icon = if copied { &ICON_CHECK } else { &ICON_COPY };
             let sql = entry.sql.clone();
-            let eid = id.clone();
-            let mut btn = Button::new(copy_label)
-                .variant(ButtonVariant::Ghost)
-                .control_size(ControlSize::Small)
-                .icon(copy_icon);
-            if let Some(act) = &on_action {
-                let act = act.clone();
-                let eid2 = eid.clone();
-                let sql2 = sql.clone();
-                let on_copy_cb = on_copy;
-                btn = btn.on_press_tx(move |s: &mut S, tx: &mut Tx| {
-                    tx.copy(sql2.clone());
-                    tx.wake_after(Duration::from_millis(1500));
-                    act(s, HistoryEntryAction::Copy, eid2.clone());
-                    if let Some(ref cb) = on_copy_cb {
-                        cb(s, eid2.clone(), tx);
+            let eid_action = id.clone();
+            let eid_callback = id.clone();
+            let action_sink = on_action.clone();
+            let copy = Copyable::new(format!("{root_key}-action-copy"), &sql)
+                .copied(copied)
+                .label(t("query.historyCopy"))
+                .help(t("query.historyCopyTitle"))
+                .height(BUTTON_SM)
+                .on_copy_tx(move |s: &mut S, tx: &mut Tx| {
+                    if let Some(ref act) = action_sink {
+                        act(s, HistoryEntryAction::Copy, eid_action.clone());
+                    }
+                    if let Some(ref cb) = on_copy {
+                        cb(s, eid_callback.clone(), tx);
                     }
                 });
-            } else {
-                let on_copy_cb = on_copy;
-                btn = btn.on_press_tx(move |s: &mut S, tx: &mut Tx| {
-                    tx.copy(sql.clone());
-                    tx.wake_after(Duration::from_millis(1500));
-                    if let Some(ref cb) = on_copy_cb {
-                        cb(s, eid.clone(), tx);
-                    }
-                });
-            }
-            actions = actions.child(btn.build(&k).key(format!("{root_key}-action-copy")));
+            actions = actions.child(copy.build::<S>(dark));
         }
 
         // favorite action
@@ -322,7 +303,8 @@ impl<S: 'static> HistoryEntryCard<S> {
             let mut btn = Button::new(t("query.historyFavorite"))
                 .variant(ButtonVariant::Ghost)
                 .control_size(ControlSize::Small)
-                .icon(&ICON_STAR);
+                .icon(&ICON_STAR)
+                .help(t("query.historyFavoriteTitle"));
             if let Some(act) = &on_action {
                 let act = act.clone();
                 let eid = id.clone();
@@ -336,7 +318,8 @@ impl<S: 'static> HistoryEntryCard<S> {
             let mut btn = Button::new(t("query.historyOpen"))
                 .variant(ButtonVariant::Ghost)
                 .control_size(ControlSize::Small)
-                .icon(&ICON_EXTERNAL_LINK);
+                .icon(&ICON_EXTERNAL_LINK)
+                .help(t("query.historyOpenTitle"));
             if let Some(act) = &on_action {
                 let act = act.clone();
                 let eid = id.clone();
@@ -350,7 +333,8 @@ impl<S: 'static> HistoryEntryCard<S> {
             let mut btn = IconButton::new(&ICON_TRASH)
                 .variant(IconButtonVariant::Ghost)
                 .control_size(ControlSize::Small)
-                .label(t("query.historyDeleteTitle"));
+                .label(t("query.historyDeleteTitle"))
+                .help(t("query.historyDeleteTitle"));
             if let Some(act) = &on_action {
                 let act = act.clone();
                 let eid = id.clone();
