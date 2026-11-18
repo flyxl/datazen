@@ -193,6 +193,9 @@ mod explain_plan_audit;
 mod schema_diff_panel;
 mod schema_diff_audit;
 
+mod connection_advanced_settings;
+mod connection_advanced_audit;
+
 // T068: MigrationJobFailureNotice (fail-closed refusal notice).
 mod migration_failure_notice;
 
