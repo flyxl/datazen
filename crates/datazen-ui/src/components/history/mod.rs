@@ -12,5 +12,6 @@ pub(crate) use history_filter_bar::{
     HistorySort,
 };
 
+pub(crate) mod global_query_history_dialog;
 pub(crate) mod history_entry_card;
 pub(crate) mod history_filter_bar;
