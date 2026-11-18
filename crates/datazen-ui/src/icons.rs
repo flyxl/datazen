@@ -149,6 +149,41 @@ pub(crate) static ICON_BOOK_OPEN: rune::Icon = rune::Icon {
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 7v14\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z\"/>",
 };
+/// T009-S3: lucide `message-square`, the chat tab glyph in `AiChatPanel`
+/// (`AiChatPanel.tsx` uses `MessageSquare`). Paths verified against the
+/// repo's installed `lucide-react@0.487.0`
+/// (`node_modules/lucide-react/dist/esm/icons/message-square.js`).
+pub(crate) static ICON_MESSAGE_SQUARE: rune::Icon = rune::Icon {
+    name: "message-square",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z\"/>",
+};
+/// T009-S3: lucide `wand-sparkles` (imported as `Wand2` in `AiChatPanel.tsx`;
+/// in `lucide-react@0.487.0` `wand-2.js` is an alias re-exporting
+/// `wand-sparkles.js`). Paths verified against that package.
+pub(crate) static ICON_WAND_SPARKLES: rune::Icon = rune::Icon {
+    name: "wand-sparkles",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m14 7 3 3\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5 6v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M19 14v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M10 2v2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M7 8H3\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 16h-4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M11 3H9\"/>",
+};
+/// T009-S3: lucide `history`, the session-history toggle glyph in
+/// `AiChatPanel` (`AiChatPanel.tsx` uses `History`). Paths verified against
+/// the repo's installed `lucide-react@0.487.0`
+/// (`node_modules/lucide-react/dist/esm/icons/history.js`).
+pub(crate) static ICON_HISTORY: rune::Icon = rune::Icon {
+    name: "history",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 3v5h5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 7v5l4 2\"/>",
+};
+/// T009-S3: lucide `shield`, the profile-row safety glyph in `AiChatPanel`
+/// (`AiChatPanel.tsx` uses `Shield`). Paths verified against the repo's
+/// installed `lucide-react@0.487.0`
+/// (`node_modules/lucide-react/dist/esm/icons/shield.js`).
+pub(crate) static ICON_SHIELD: rune::Icon = rune::Icon {
+    name: "shield",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\"/>",
+};
 pub(crate) static ICON_CHEVRON_LEFT: rune::Icon = rune::Icon {
     name: "chevron-left",
     view: 24.0,

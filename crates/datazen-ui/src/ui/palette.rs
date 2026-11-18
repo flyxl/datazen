@@ -260,6 +260,21 @@ pub(crate) fn danger_text(dark: bool) -> Color {
     c.danger.fg
 }
 
+/// AI profile shield tint per safety preset (T009-S3, `AiChatPanel.tsx`:
+/// `text-emerald-400` / `text-amber-400` / `text-blue-400`). Exact Tailwind
+/// sRGB values, so the laid-out shield reports the same hue React paints.
+pub(crate) fn ai_shield_local_trust(_dark: bool) -> Color {
+    rune::color::hex("#34d399").unwrap_or(Color::WHITE)
+}
+
+pub(crate) fn ai_shield_enterprise_balanced(_dark: bool) -> Color {
+    rune::color::hex("#fbbf24").unwrap_or(Color::WHITE)
+}
+
+pub(crate) fn ai_shield_cloud_strict(_dark: bool) -> Color {
+    rune::color::hex("#60a5fa").unwrap_or(Color::WHITE)
+}
+
 /// ER diagram box background.
 pub(crate) fn er_box_fill(dark: bool) -> Color {
     if dark {

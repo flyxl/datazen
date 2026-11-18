@@ -4,6 +4,7 @@
 //! |---|---|
 //! | `AiChatPanel.tsx` (leaf slice, T009-S1) | `ai_chat_panel` |
 //! | `AiChatPanel.tsx` (`ChatBubble`, T009-S2) | `chat_bubble` |
+//! | `AiChatPanel.tsx` (header, T009-S3) | `ai_chat_header` |
 //!
 //! These components currently have no production consumer in the Rune app;
 //! they are intended to be wired by the `AiChatPanel` / `ChatBubble` track
@@ -19,6 +20,12 @@ pub(crate) use ai_chat_panel::{
 pub(crate) use chat_bubble::{
     AiChatMessage, AiChatRole, AiMemoryReference, ChatBubble, ChatBubbleState,
 };
+#[allow(unused_imports)] // consumers will be added by the AiChatPanel wiring
+pub(crate) use ai_chat_header::{
+    detect_safety_preset, AiAgentMode, AiChatHeader, AiChatHeaderState, AiChatTab, AiProfile,
+    AiPromptTemplate, AiSafetyGate, AiSafetyPreset,
+};
 
+pub(crate) mod ai_chat_header;
 pub(crate) mod ai_chat_panel;
 pub(crate) mod chat_bubble;

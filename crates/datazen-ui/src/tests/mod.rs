@@ -243,3 +243,5 @@ mod ai_chat_panel_audit;
 mod ai_chat_panel_bubble;
 // T009-S2 independent audit: fresh vectors, dual-channel geometry, settle_all reproduction.
 mod ai_chat_panel_bubble_audit;
+// T009-S3: AiChatPanel header (tabs, migration banners, agent-mode row + template select, profile row, share-editor row).
+mod ai_chat_panel_header;
