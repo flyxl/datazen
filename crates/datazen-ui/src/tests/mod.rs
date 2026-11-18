@@ -206,6 +206,11 @@ mod schema_diff_audit;
 
 mod connection_advanced_settings;
 mod connection_advanced_audit;
+// T016: the batch-export dialog port.
+mod batch_export_dialog;
+mod batch_export_audit;
+// T016 fix retest: independent D1/D2 verification.
+mod batch_export_retest;
 
 // T068: MigrationJobFailureNotice (fail-closed refusal notice).
 mod migration_failure_notice;
