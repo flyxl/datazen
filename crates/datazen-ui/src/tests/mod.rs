@@ -169,6 +169,8 @@ mod support_layer_audit;
 // T032: relationMetadata/metadataCache.ts port — standard wiring so the
 // `metadata_cache` test filter really runs these tests (tests::metadata_cache::*).
 mod metadata_cache;
+// Fresh-tester independent re-audit of the D1/D2 fix (test-only probes).
+mod metadata_cache_retest;
 
 // Independent re-audit of merged T0-07 menu base.
 mod menus_merge_reaudit;
