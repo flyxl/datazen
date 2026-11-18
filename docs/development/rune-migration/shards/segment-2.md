@@ -12,7 +12,7 @@
 - [x] T027 · lib · 0.30d · lib/formatters.ts
 - [x] T031 · lib/metadata · 0.30d · lib/metadata/batch.ts
 - [x] T033 · lib/relationPrediction · 0.80d · lib/relationPrediction/fromTableSchema.ts lib/relationPrediction/normalize.ts
-- [ ] T040 · stores/ai · 3.00d · stores/ai/sessions.ts · split
+- [x] T040 · stores/ai · 3.00d · stores/ai/sessions.ts · split
 - [ ] T042 · types · 0.80d · types/ai.ts
 - [ ] T046 · extensions · 0.30d · extensions/generated-pro.ts
 - [ ] T052 · index.ts · 0.90d · index.ts
