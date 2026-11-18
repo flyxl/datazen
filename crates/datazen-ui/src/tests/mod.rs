@@ -39,6 +39,8 @@ mod brand_sidebar_audit;
 mod schema_diff_deploy_panel_audit;
 // T038: the useConfirmDialog port (request ids, resolve identity, preview).
 mod confirm_dialog_hook_audit;
+// T035: the sqlDialects support layer (profiles, strategies, exact SQL).
+mod sql_dialects_audit;
 mod column_stats_dialog;
 // T002: the single DataTable cell — formatting, colour, plan and geometry.
 mod cell_renderer;

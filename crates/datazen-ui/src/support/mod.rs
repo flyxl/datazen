@@ -8,6 +8,7 @@
 #![allow(dead_code)] // consumers: T004 CellRenderer, T015 GridCell, T009 DetailPanel
 
 pub(crate) mod cell_editor_kind;
+pub(crate) mod sql_dialects; // lib/sqlDialects/ (T035: dialectProfile + extra)
 pub(crate) mod cell_types;
 pub(crate) mod data_type_colors;
 pub(crate) mod formatters;
