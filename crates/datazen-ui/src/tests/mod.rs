@@ -188,3 +188,9 @@ mod explain_plan_audit;
 // T027: SchemaDiffPanel port and its independent audit.
 mod schema_diff_panel;
 mod schema_diff_audit;
+
+// T068: MigrationJobFailureNotice (fail-closed refusal notice).
+mod migration_failure_notice;
+
+// T068 independent audit: i18n no-echo, key stability, two-theme geometry.
+mod migration_failure_audit;
