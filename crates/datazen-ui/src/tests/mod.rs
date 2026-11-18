@@ -142,3 +142,6 @@ mod temporal_input;
 
 // T0-11 audit: independent probes for the temporal editor contract.
 mod temporal_input_audit;
+
+// T021/T023: filter editor parts (between bounds, condition chip, connector).
+mod filter_parts;
