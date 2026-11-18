@@ -266,10 +266,10 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T250 · hooks · 0.30d · hooks/useConfirmDialog.tsx
 - [ ] T251 · bootstrap · 2.00d · bootstrap/startSharedApp.tsx · split
 - [ ] T252 · App.tsx · 0.30d · App.tsx
-- [ ] T253 · lib · 0.30d · lib/formatters.ts
+- [~] T253 · lib · 0.30d · lib/formatters.ts
 - [ ] T254 · lib · 0.80d · lib/cellTypes.ts
 - [ ] T255 · lib · 0.80d · lib/cellEditorKind.ts
-- [ ] T256 · lib · 0.60d · lib/dataTypeColors.ts components/DataTable/editors/toEditString.ts
+- [~] T256 · lib · 0.60d · lib/dataTypeColors.ts components/DataTable/editors/toEditString.ts
 - [ ] T257 · lib · 0.90d · lib/aiMemoryCorrection.ts
 - [ ] T258 · lib · 0.90d · lib/aiMemoryPatterns.ts
 - [ ] T259 · lib · 0.60d · lib/aiMemorySettings.ts lib/aiMessageBlocks.ts
