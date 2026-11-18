@@ -1,14 +1,13 @@
 //! T032: real assertions for the Rust port of
 //! `packages/frontend/src/lib/relationMetadata/metadataCache.ts`.
 //!
-//! Attached as a child of `crate::relation_metadata::metadata_cache` (see the
-//! `#[path]` there) so it can exercise private helpers, not registered in
-//! `tests/mod.rs` — that file is shared and this task owns one crate-root line.
+//! Registered in `tests/mod.rs` as an ordinary test module, so its test names
+//! are `tests::metadata_cache::*` and the `metadata_cache` filter really runs it.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use super::*;
+use crate::relation_metadata::*;
 
 fn ident(namespace: &[&str], name: &str) -> QualifiedRelationId {
     QualifiedRelationId::qualified(namespace, name)
@@ -759,7 +758,6 @@ fn the_default_cache_loads_with_no_host_config_published() {
 /// only so the gate stays green while the defect is reported to the coder; the
 /// raw failure was captured verbatim before ignoring.
 #[test]
-#[ignore = "DEFECT D2: subscriber reading the snapshot during notify panics on re-entrant RefCell borrow"]
 fn audit_subscriber_can_read_snapshot_during_notify() {
     let h = harness();
     let cache = h.cache.clone();

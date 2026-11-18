@@ -26,7 +26,12 @@
 //!   host via [`default_metadata_cache`]).
 //! * `subscribe`'s unsubscribe **function** becomes an id token plus
 //!   [`MetadataCache::unsubscribe`]; callbacks are a `Vec`, `epoch` a `u64`
-//!   generation counter. A callback must not mutate listeners during `notify`.
+//!   generation counter. Notifications are **deferred**: a mutation queues a
+//!   count, and the callbacks run only after the `RefMut` on `inner` is dropped
+//!   (`drain_notifications`). This keeps the React `useSyncExternalStore`
+//!   pattern working — a listener may call `get_snapshot()` without triggering
+//!   a re-entrant borrow. Unsubscribing during delivery affects later batches,
+//!   matching React's copy-then-call semantics.
 //! * React's `loadOne` rebind guard (`sessions.get(key) === session` /
 //!   `inflight.get(key) === request`) is checked by key/value equality; a rebind
 //!   during an await is not representable with synchronous loads.
@@ -147,7 +152,11 @@ fn build_snapshot(session: &SessionState) -> EditorMetadataSnapshot {
 struct CacheInner {
     sessions: BTreeMap<String, SessionState>,
     empty_snapshots: BTreeMap<String, EditorMetadataSnapshot>,
-    listeners: Vec<(usize, Box<dyn Fn()>)>,
+    /// `Rc` callbacks so the list can be cloned cheaply before delivery: the
+    /// `inner` borrow must be released before invoking a subscriber.
+    listeners: Vec<(usize, Rc<dyn Fn()>)>,
+    /// Deferred notification count (one per React `notify()` call).
+    pending_notifications: usize,
     next_listener_id: usize,
     load_table_schema: Box<dyn Fn(&str, &str, &str, Option<&str>) -> LoadResult>,
     config_resolver: Box<ConfigResolver>,
@@ -189,6 +198,27 @@ fn relation_matches_name(dialect_id: &str, identity: &QualifiedRelationId, table
         || relation_base_name(identity, dialect_id) == table_name
 }
 
+/// Deliver notifications queued during a mutation.
+///
+/// The listener list is cloned and the `inner` borrow is dropped **before** any
+/// callback runs, so a React-style `subscribe` + `getSnapshot` listener can read
+/// the store without a re-entrant `RefCell` borrow. Unsubscribing from a
+/// callback changes the shared list, but only affects later batches (React also
+/// notified a copy of its listener set).
+fn drain_notifications(inner: &Rc<RefCell<CacheInner>>) {
+    let (count, listeners) = {
+        let mut cell = inner.borrow_mut();
+        let count = std::mem::take(&mut cell.pending_notifications);
+        let listeners = cell.listeners.clone();
+        (count, listeners)
+    };
+    for _ in 0..count {
+        for (_, listener) in &listeners {
+            listener();
+        }
+    }
+}
+
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
 impl CacheInner {
     fn now_ms(&self) -> i64 {
@@ -199,10 +229,10 @@ impl CacheInner {
         resolve_editor_session_config_with(&*self.config_resolver, db_session_id)
     }
 
-    fn notify(&self) {
-        for (_, listener) in &self.listeners {
-            listener();
-        }
+    /// Queue one notification. Callbacks are delivered later, after the
+    /// caller's `RefMut` on `inner` has been dropped, by `drain_notifications`.
+    fn notify(&mut self) {
+        self.pending_notifications += 1;
     }
 
     fn refresh_session(&mut self, key: &str) {
@@ -639,6 +669,7 @@ impl MetadataCache {
             sessions: BTreeMap::new(),
             empty_snapshots: BTreeMap::new(),
             listeners: Vec::new(),
+            pending_notifications: 0,
             next_listener_id: 0,
             load_table_schema: load_table_schema.unwrap_or_else(|| Box::new(|_, _, _, _| Err(()))),
             config_resolver: config_resolver.unwrap_or_else(|| Box::new(|_| None)),
@@ -650,9 +681,11 @@ impl MetadataCache {
         if let Some(bus) = invalidation_bus {
             let handle = Rc::clone(&inner);
             bus.borrow_mut().subscribe(Box::new(move |db_session_id, table_name| {
-                handle
-                    .borrow_mut()
-                    .relation_matches_name_target(db_session_id, table_name);
+                {
+                    let mut cell = handle.borrow_mut();
+                    cell.relation_matches_name_target(db_session_id, table_name);
+                }
+                drain_notifications(&handle);
             }));
         }
         Self { inner }
@@ -668,6 +701,7 @@ impl MetadataCache {
         self.inner
             .borrow_mut()
             .ensure_relations_target(db_session_id, requests, ctx);
+        drain_notifications(&self.inner);
     }
 
     /// Force-flush every session's queued requests immediately.
@@ -676,6 +710,7 @@ impl MetadataCache {
         for key in keys {
             self.inner.borrow_mut().flush_session(&key);
         }
+        drain_notifications(&self.inner);
     }
 
     /// Drain batches whose debounce deadline has passed (the `setTimeout` tick).
@@ -697,6 +732,7 @@ impl MetadataCache {
         for key in due {
             self.inner.borrow_mut().flush_session(&key);
         }
+        drain_notifications(&self.inner);
     }
 
     /// A cloned snapshot; stable in value/epoch until the session epoch bumps.
@@ -718,7 +754,8 @@ impl MetadataCache {
         let mut inner = self.inner.borrow_mut();
         let id = inner.next_listener_id;
         inner.next_listener_id += 1;
-        inner.listeners.push((id, listener));
+        let callback: Rc<dyn Fn()> = Rc::from(listener);
+        inner.listeners.push((id, callback));
         id
     }
 
@@ -755,6 +792,8 @@ impl MetadataCache {
             session.inflight.remove(&relation_key);
         }
         inner.refresh_session(&key);
+        drop(inner);
+        drain_notifications(&self.inner);
     }
 
     pub fn invalidate_session(&self, db_session_id: &str) {
@@ -773,6 +812,8 @@ impl MetadataCache {
             inner.empty_snapshots.remove(key);
         }
         inner.notify();
+        drop(inner);
+        drain_notifications(&self.inner);
     }
 
     pub fn invalidate_all(&self) {
@@ -780,12 +821,16 @@ impl MetadataCache {
         inner.sessions.clear();
         inner.empty_snapshots.clear();
         inner.notify();
+        drop(inner);
+        drain_notifications(&self.inner);
     }
 
     pub fn switch_context(&self, db_session_id: &str, ctx: &EditorMetadataContext) {
         let mut inner = self.inner.borrow_mut();
         let key = inner.ensure_session(db_session_id, Some(&ctx.database));
         inner.reset_context(&key, ctx);
+        drop(inner);
+        drain_notifications(&self.inner);
     }
 }
 

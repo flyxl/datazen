@@ -28,10 +28,3 @@ pub(crate) use invalidation::*;
 pub(crate) use metadata_cache::*;
 pub(crate) use schema::*;
 pub(crate) use session_config::*;
-
-// The test file lives in `src/tests/` per migration convention but is attached
-// here so it can reach the public surface through these re-exports; it is not
-// registered in the shared `tests/mod.rs`.
-#[cfg(test)]
-#[path = "../tests/metadata_cache.rs"]
-mod cache_tests;

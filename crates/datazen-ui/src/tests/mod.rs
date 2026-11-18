@@ -166,6 +166,9 @@ mod global_query_history_audit;
 mod copy_button;
 // T253-T256: the .ts support layer semantics.
 mod support_layer_audit;
+// T032: relationMetadata/metadataCache.ts port — standard wiring so the
+// `metadata_cache` test filter really runs these tests (tests::metadata_cache::*).
+mod metadata_cache;
 
 // Independent re-audit of merged T0-07 menu base.
 mod menus_merge_reaudit;
