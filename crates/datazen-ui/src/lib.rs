@@ -16,6 +16,7 @@ mod icons;
 mod types;
 mod state_def;
 mod ai_chat_state;
+mod ai_write_proposal_state;
 mod session_state;
 mod settings_state;
 mod snippets_state;

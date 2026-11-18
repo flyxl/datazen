@@ -4,6 +4,7 @@
 
 use super::*;
 
+use crate::components::ai::AiWriteProposalHost;
 use crate::i18n::t;
 use crate::state_def::AppState;
 use crate::ui::dialog::Dialog;
@@ -29,6 +30,12 @@ pub(crate) fn modal_layer(state: &AppState, theme: tok::Theme, dark: bool) -> Ve
     if let Some(dialog) = dialog {
         dialog.build(kit(dark), &mut layer);
     }
+    // T012: the write-proposal host renders at the app root in React
+    // (`App.tsx:104`), above every page and beside the dialogs — its own
+    // layer entries land after them, as the receipt / audit toasts do.
+    AiWriteProposalHost::<AppState>::new(&state.ai_write_proposal)
+        .host_mut(|state: &mut AppState| &mut state.ai_write_proposal)
+        .build(dark, &mut layer);
     layer
 }
 

@@ -184,6 +184,24 @@ pub(crate) static ICON_SHIELD: rune::Icon = rune::Icon {
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\"/>",
 };
+/// T012: lucide `shield-alert`, the production-protected glyph in
+/// `AiWriteProposalHost` (`AiWriteProposalHost.tsx` uses `ShieldAlert`).
+/// Paths verified against the repo's installed `lucide-react@0.487.0`
+/// (`node_modules/lucide-react/dist/esm/icons/shield-alert.js`).
+pub(crate) static ICON_SHIELD_ALERT: rune::Icon = rune::Icon {
+    name: "shield-alert",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 8v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 16h.01\"/>",
+};
+/// T012: lucide `shield-check`, the unprotected glyph in
+/// `AiWriteProposalHost` (`AiWriteProposalHost.tsx` uses `ShieldCheck`).
+/// Paths verified against the repo's installed `lucide-react@0.487.0`
+/// (`node_modules/lucide-react/dist/esm/icons/shield-check.js`).
+pub(crate) static ICON_SHIELD_CHECK: rune::Icon = rune::Icon {
+    name: "shield-check",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m9 12 2 2 4-4\"/>",
+};
 pub(crate) static ICON_CHEVRON_LEFT: rune::Icon = rune::Icon {
     name: "chevron-left",
     view: 24.0,

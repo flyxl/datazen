@@ -1,7 +1,7 @@
 //! Application state definitions.
 
 use crate::data_grid::DataGrid;
-use crate::components::ai::{AiChatPanelState, AiPendingDraft};
+use crate::components::ai::{AiChatPanelState, AiPendingDraft, AiWriteProposalHostState};
 use crate::sql_editor::SqlEditor;
 use crate::types::{QuerySidebarPanel, ResultView, Section, TableView, Tool};
 use std::cell::Cell;
@@ -313,6 +313,14 @@ pub struct AppState {
     /// fires once on the mounted → unmounted transition instead of on
     /// every poll while the panel stays hidden.
     pub(crate) ai_chat_mounted: bool,
+    /// T012: the write-proposal host's owned state (React
+    /// `AiWriteProposalHost`'s `queue` / `remainingMs` / `responding` /
+    /// `error` / `receipt` / `auditError`, mounted at the app root in
+    /// `App.tsx:104`, next to the AI panel). The cross-window event edge
+    /// and the `ai_apply_write` / `ai_deny_write` drain have no Rune
+    /// source yet — see the component module's docs — so this state only
+    /// moves through its own methods and the poll tick below.
+    pub(crate) ai_write_proposal: AiWriteProposalHostState,
     /// The system appearance preference, updated by the root view so helpers
     /// like `dark_theme()` can fall back consistently when no theme is saved.
     pub(crate) system_dark: Cell<bool>,
@@ -459,6 +467,7 @@ impl Default for AppState {
             ai_draft_acks_applied: 0,
             ai_draft_last_issue: None,
             ai_chat_mounted: false,
+            ai_write_proposal: AiWriteProposalHostState::new(),
             system_dark: Cell::new(true),
         }
     }

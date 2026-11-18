@@ -259,6 +259,9 @@ pub(crate) fn app_poll(state: &mut AppState, _: f64, tx: &mut Tx) -> bool {
     // mount tracking has to see the workspace being left, so the
     // unmount cancel fires on the transition.
     dirty = state.sync_ai_chat_panel(tx) || dirty;
+    // T012: the write-proposal host's expiry tick runs on every section —
+    // the dialog is mounted at the app root, not inside a section.
+    dirty = state.sync_ai_write_proposals() || dirty;
     if state.active != Section::Workspace {
         return dirty;
     }

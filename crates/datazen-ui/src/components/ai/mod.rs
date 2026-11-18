@@ -47,6 +47,13 @@ pub(crate) use ai_chat_panel_state::AiChatPanelState;
 pub(crate) use ai_chat_panel_types::{
     AiMemoryCreateRequest, AiMemoryMode, AiMemoryScope, AiSentMessage,
 };
+#[allow(unused_imports)] // the modal_layer mount is the production consumer
+pub(crate) use ai_write_proposal_host::{
+    AiWriteApplyReceipt, AiWriteApplyRequest, AiWriteImpact, AiWriteProposal,
+    AiWriteProposalHostState, AiWriteStatement,
+};
+#[allow(unused_imports)] // the modal_layer mount is the production consumer
+pub(crate) use ai_write_proposal_host_view::AiWriteProposalHost;
 
 pub(crate) mod ai_chat_header;
 pub(crate) mod ai_chat_input_area;
@@ -58,4 +65,6 @@ pub(crate) mod ai_chat_panel_shell;
 pub(crate) mod ai_chat_panel_state;
 pub(crate) mod ai_chat_panel_state_seed;
 pub(crate) mod ai_chat_panel_types;
+pub(crate) mod ai_write_proposal_host;
+pub(crate) mod ai_write_proposal_host_view;
 pub(crate) mod chat_bubble;
