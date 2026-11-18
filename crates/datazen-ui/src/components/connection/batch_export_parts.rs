@@ -156,7 +156,6 @@ pub(crate) struct FormatSelector<'a, S: 'static> {
     pub(crate) format_close: Option<CloseFn<S>>,
 }
 
-#[allow(dead_code)] // internal sub-structure; built from `BatchExportDialog::form`
 impl<S: 'static> FormatSelector<'_, S> {
     pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let key = self.key;
@@ -182,7 +181,7 @@ impl<S: 'static> FormatSelector<'_, S> {
 
         let mut select = Select::new(format!("{key}-format-field"), &labels)
             .values(&values)
-            .current(Some(vm.data_format.value()))
+            .current(Some(vm.data_format.label()))
             .label(t("batchExport.format"))
             .open(vm.format_open)
             .disabled(vm.format_disabled());

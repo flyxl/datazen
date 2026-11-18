@@ -281,8 +281,15 @@ impl BatchExportVm {
     }
 
     /// React's `allSelected`: a non-empty table list with every table selected.
+    /// The VM holds `selected` as a `Vec`, so a length compare would report a
+    /// duplicate (e.g. `["users","users"]`) as "all selected" — check membership
+    /// per table instead.
     pub(crate) fn all_selected(&self) -> bool {
-        !self.tables.is_empty() && self.selected.len() == self.tables.len()
+        !self.tables.is_empty()
+            && self
+                .tables
+                .iter()
+                .all(|t| self.selected.iter().any(|s| s == t))
     }
 
     /// React's `formatDisabled`: structure-only exports have no data format.
