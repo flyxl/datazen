@@ -4,6 +4,7 @@
 //! implementations. Platform adapters will be added behind typed UI ports.
 
 pub mod data_grid;
+pub(crate) mod components;
 pub mod splitter;
 pub mod sql_editor;
 mod constants;
