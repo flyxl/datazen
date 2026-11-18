@@ -17,35 +17,35 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T001 · components/ui · 0.90d · components/ui/Dialog.tsx components/ui/ErrorBanner.tsx components/ui/Select.tsx
 - [ ] T002 · components/ui · 0.30d · components/ui/Spinner.tsx
 - [ ] T003 · components/ui · 0.90d · components/ui/WebContextMenu.tsx
-- [x] T004 · components/DataTable · 0.50d · components/DataTable/CellRenderer.tsx
+- [ ] T004 · components/DataTable · 0.50d · components/DataTable/CellRenderer.tsx
 - [ ] T005 · components/DataTable · 1.30d · components/DataTable/ColumnPresentationDialog.tsx · split
-- [ ] T006 · components/DataTable · 0.30d · components/DataTable/ColumnStatsDialog.tsx
-- [x] T007 · components/DataTable · 1.30d · components/DataTable/DataExportDialog.tsx · split
-- [x] T008 · components/DataTable · 4.50d · components/DataTable/DataTable.tsx · split
-- [ ] T009 · components/DataTable · 0.90d · components/DataTable/DataTableSelectionBar.tsx
-- [ ] T010 · components/DataTable · 0.30d · components/DataTable/DefaultOrderSelect.tsx
+- [x] T006 · components/DataTable · 0.30d · components/DataTable/ColumnStatsDialog.tsx
+- [ ] T007 · components/DataTable · 1.30d · components/DataTable/DataExportDialog.tsx · split
+- [ ] T008 · components/DataTable · 4.50d · components/DataTable/DataTable.tsx · split
+- [x] T009 · components/DataTable · 0.90d · components/DataTable/DataTableSelectionBar.tsx
+- [x] T010 · components/DataTable · 0.30d · components/DataTable/DefaultOrderSelect.tsx
 - [ ] T011 · components/DataTable · 0.80d · components/DataTable/DetailPanel.tsx
 - [ ] T012 · components/DataTable · 0.80d · components/DataTable/DetailPanelToggle.tsx components/DataTable/DraftRow.tsx
 - [ ] T013 · components/DataTable · 0.90d · components/DataTable/EditableCell.tsx components/DataTable/editors/BinaryCellEditor.tsx components/DataTable/editors/BooleanCellEditor.tsx
 - [ ] T014 · components/DataTable · 0.80d · components/DataTable/editors/CellEditorHost.tsx
 - [ ] T015 · components/DataTable · 0.90d · components/DataTable/editors/EnumCellEditor.tsx components/DataTable/editors/JsonCellEditor.tsx components/DataTable/editors/LongTextCellEditor.tsx
-- [x] T016 · components/DataTable · 0.90d · components/DataTable/editors/NumberCellEditor.tsx components/DataTable/editors/TemporalCellEditor.tsx components/DataTable/editors/TextCellEditor.tsx
-- [x] T017 · components/DataTable · 0.80d · components/DataTable/GridCell.tsx
-- [ ] T018 · components/DataTable · 0.30d · components/DataTable/GridKeyboardHints.tsx
+- [ ] T016 · components/DataTable · 0.90d · components/DataTable/editors/NumberCellEditor.tsx components/DataTable/editors/TemporalCellEditor.tsx components/DataTable/editors/TextCellEditor.tsx
+- [ ] T017 · components/DataTable · 0.80d · components/DataTable/GridCell.tsx
+- [x] T018 · components/DataTable · 0.30d · components/DataTable/GridKeyboardHints.tsx
 - [x] T019 · components/DataTable · 0.80d · components/DataTable/Pagination.tsx
 - [ ] T020 · components/DataTable · 0.90d · components/DataTable/QuickLookDialog.tsx
 - [x] T021 · components/DataTable · 0.80d · components/DataTable/TableHeader.tsx
 - [ ] T022 · components/DataTable · 3.20d · components/DataTable/VirtualBody.tsx · split
 - [x] T023 · components/filter · 0.60d · components/filter/FilterBetweenInput.tsx components/filter/FilterConditionChip.tsx
 - [ ] T024 · components/filter · 0.90d · components/filter/FilterConditionEditor.tsx
-- [ ] T025 · components/filter · 0.30d · components/filter/FilterConnectorToggle.tsx
+- [x] T025 · components/filter · 0.30d · components/filter/FilterConnectorToggle.tsx
 - [ ] T026 · components/filter · 0.90d · components/filter/FilterSqlPreviewDialog.tsx
-- [x] T027 · components/filter · 0.80d · components/filter/FilterTokenInput.tsx components/filter/FilterValueInput.tsx
+- [ ] T027 · components/filter · 0.80d · components/filter/FilterTokenInput.tsx components/filter/FilterValueInput.tsx
 - [ ] T028 · components/filter · 0.80d · components/filter/NamedViewMenu.tsx
 - [x] T029 · components/schema · 0.50d · components/schema/SchemaDiffPanel.tsx
-- [x] T030 · components/history · 1.30d · components/history/GlobalQueryHistoryDialog.tsx · split
-- [ ] T031 · components/history · 1.00d · components/history/HistoryEntryCard.tsx components/history/HistoryFilterBar.tsx
-- [ ] T032 · components/query · 0.30d · components/query/ExplainPlanTree.tsx
+- [ ] T030 · components/history · 1.30d · components/history/GlobalQueryHistoryDialog.tsx · split
+- [x] T031 · components/history · 1.00d · components/history/HistoryEntryCard.tsx components/history/HistoryFilterBar.tsx
+- [x] T032 · components/query · 0.30d · components/query/ExplainPlanTree.tsx
 - [ ] T033 · components/query · 0.90d · components/query/QueryArtifactExport.tsx
 - [ ] T034 · components/query · 1.00d · components/query/QueryContextSelectors.tsx components/query/QueryErrorPanel.tsx
 - [ ] T035 · components/query · 0.30d · components/query/QueryExecutionStatus.tsx
@@ -81,9 +81,9 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T065 · components/ai · 0.90d · components/ai/Nl2SqlPanel.tsx
 - [ ] T066 · components/ai · 0.90d · components/ai/NlFilterInput.tsx
 - [ ] T067 · components/ai · 1.30d · components/ai/WorkflowChatPanel.tsx · split
-- [x] T068 · components/ai · 1.30d · components/ai/WorkflowPanel.tsx · split
+- [ ] T068 · components/ai · 1.30d · components/ai/WorkflowPanel.tsx · split
 - [ ] T069 · components/migration · 0.80d · components/migration/MigrationEndpointsBar.tsx
-- [ ] T070 · components/migration · 0.50d · components/migration/MigrationJobFailureNotice.tsx
+- [x] T070 · components/migration · 0.50d · components/migration/MigrationJobFailureNotice.tsx
 - [ ] T071 · components/migration · 1.30d · components/migration/MigrationJobVerdictPanel.tsx · split
 - [ ] T072 · components/migration · 0.90d · components/migration/MigrationRunHistoryDialog.tsx
 - [ ] T073 · components/sql-editor · 2.70d · components/sql-editor/SqlEditor.tsx · split
@@ -266,14 +266,14 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T250 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffWindowJobSection.tsx
 - [ ] T251 · windows/schema-diff · 0.60d · windows/schema-diff/SchemaDiffWindowNavigation.tsx windows/schema-diff/SchemaDiffWizardProgress.tsx
 - [ ] T252 · windows/backup · 1.30d · windows/backup/BackupWindow.tsx · split
-- [x] T253 · windows/backup · 2.00d · windows/backup/ProgressLog.tsx · split
+- [ ] T253 · windows/backup · 2.00d · windows/backup/ProgressLog.tsx · split
 - [ ] T254 · hooks · 0.30d · hooks/useConfirmDialog.tsx
 - [ ] T255 · bootstrap · 2.00d · bootstrap/startSharedApp.tsx · split
-- [x] T256 · App.tsx · 0.30d · App.tsx
-- [ ] T257 · lib · 0.30d · lib/formatters.ts
-- [ ] T258 · lib · 0.80d · lib/cellTypes.ts
-- [ ] T259 · lib · 0.80d · lib/cellEditorKind.ts
-- [ ] T260 · lib · 0.60d · lib/dataTypeColors.ts components/DataTable/editors/toEditString.ts
+- [ ] T256 · App.tsx · 0.30d · App.tsx
+- [x] T257 · lib · 0.30d · lib/formatters.ts
+- [x] T258 · lib · 0.80d · lib/cellTypes.ts
+- [x] T259 · lib · 0.80d · lib/cellEditorKind.ts
+- [x] T260 · lib · 0.60d · lib/dataTypeColors.ts components/DataTable/editors/toEditString.ts
 - [ ] T261 · lib · 0.90d · lib/aiMemoryCorrection.ts
 - [ ] T262 · lib · 0.90d · lib/aiMemoryPatterns.ts
 - [ ] T263 · lib · 0.60d · lib/aiMemorySettings.ts lib/aiMessageBlocks.ts
