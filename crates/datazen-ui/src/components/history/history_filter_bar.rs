@@ -3,10 +3,22 @@
 //! Ported from `packages/frontend/src/components/history/HistoryFilterBar.tsx`.
 //! Purely presentational: owns no state, emits changes via callbacks.
 //!
+//! This component currently has no production consumer; it will be wired by the
+//! query-history dialog/view migration track. Reusable API items are kept with
+//! per-item `#[allow(dead_code)]` (not file-level) until wired.
+//!
+//! Search icon placement: React absolutely positions the icon inside the input.
+//! Rune `TextField` base is reused for the editable input; the search icon is
+//! positioned absolutely inside the search input container with left inset so its
+//! rect falls inside the input rect (icon.x >= input.x, icon.x + icon.w <= input.x + 40),
+//! with `TextField` `pad_x` reserving text space (Rune layout equivalent).
+//!
 //! ## Keys
 //!
 //! - `history-filter-bar`: root row
-//! - `history-filter-bar-search`: search text field
+//! - `history-filter-bar-search`: search input container (focusable text field inside)
+//! - `history-filter-bar-search-icon`: search icon (inside input bounds)
+//! - `history-filter-bar-search-field`: underlying text field element
 //! - `history-filter-bar-connection-trigger`: connection scope select trigger
 //! - `history-filter-bar-database-trigger`: database select trigger (conditional)
 //! - `history-filter-bar-schema-trigger`: schema select trigger (conditional)
@@ -18,6 +30,7 @@
 use std::rc::Rc;
 
 use rune::{col, icon, row, text, El, TextEdit};
+use rune_kit::{Button, ButtonVariant, ControlSize};
 
 use crate::i18n::t;
 use crate::icons::ICON_SEARCH;
@@ -27,6 +40,7 @@ use crate::ui::select::Select;
 
 /// Time range filter. Mirrors frontend `HistoryRange`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[allow(dead_code)] // reusable component; wired by later callers/tasks
 pub(crate) enum HistoryRange {
     #[default]
     All,
@@ -36,6 +50,7 @@ pub(crate) enum HistoryRange {
     D90,
 }
 
+#[allow(dead_code)] // reusable component; wired by later callers/tasks
 impl HistoryRange {
     pub(crate) fn as_value(self) -> &'static str {
         match self {
@@ -70,6 +85,7 @@ impl HistoryRange {
 
 /// Sort order. Mirrors frontend `HistorySort`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[allow(dead_code)] // reusable component; wired by later callers/tasks
 pub(crate) enum HistorySort {
     #[default]
     Recent,
@@ -77,6 +93,7 @@ pub(crate) enum HistorySort {
     Slowest,
 }
 
+#[allow(dead_code)] // reusable component; wired by later callers/tasks
 impl HistorySort {
     pub(crate) fn as_value(self) -> &'static str {
         match self {
@@ -105,6 +122,7 @@ impl HistorySort {
 
 /// Status filter.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[allow(dead_code)] // reusable component; wired by later callers/tasks
 pub(crate) enum HistoryStatus {
     #[default]
     All,
@@ -112,6 +130,7 @@ pub(crate) enum HistoryStatus {
     Failed,
 }
 
+#[allow(dead_code)] // reusable component; wired by later callers/tasks
 impl HistoryStatus {
     pub(crate) fn as_value(self) -> &'static str {
         match self {
@@ -140,6 +159,7 @@ impl HistoryStatus {
 
 /// Filter/query state. Mirrors frontend `HistoryQueryState`.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(dead_code)] // reusable component; wired by later callers/tasks
 pub(crate) struct HistoryQueryState {
     pub search: String,
     pub connection_id: String,
@@ -166,6 +186,7 @@ impl Default for HistoryQueryState {
 
 /// Connection option for scope select.
 #[derive(Clone, Debug)]
+#[allow(dead_code)] // reusable component; wired by later callers/tasks
 pub(crate) struct HistoryConnectionOption {
     pub id: String,
     pub name: String,
@@ -173,6 +194,7 @@ pub(crate) struct HistoryConnectionOption {
 
 /// Which select dropdown is currently open (owned by caller state).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[allow(dead_code)] // reusable component; wired by later callers/tasks
 pub(crate) enum HistoryFilterOpen {
     #[default]
     None,
@@ -312,23 +334,24 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
         let k = kit(dark);
         let value = self.value.clone();
 
-        // search: relative container with leading Search icon + TextField
-        let search_field = if let Some(edit) = &self.on_search_edit {
+        // search: TextField base reused as the editable input. React places icon with
+        // absolute positioning inside the input; Rune here uses an absolutely positioned
+        // icon inside the search container so icon.x >= input.x and icon.x + icon.w <= input.x + 40,
+        // with TextField pad_x leaving visual space (equivalent placement).
+        let search_input = if let Some(edit) = &self.on_search_edit {
             let edit = edit.clone();
-            TextField::new("history-filter-bar-search", self.search_edit)
+            TextField::new("history-filter-bar-search-field", self.search_edit)
                 .height(32.0)
                 .pad_x(28.0)
                 .placeholder(t("query.searchHistory"))
                 .on_edit(move |s: &mut S| edit(s))
                 .build(dark)
         } else {
-            // no edit binding provided; render a non-focusable placeholder field shell not possible via TextField (asserts on_edit)
-            // fallback: plain text placeholder container
             row()
-                .key("history-filter-bar-search")
+                .key("history-filter-bar-search-field")
                 .h(32.0)
                 .w_full()
-                .px(8.0)
+                .px(28.0)
                 .center_y()
                 .child(
                     text(t("query.searchHistory"))
@@ -336,15 +359,21 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
                         .color(k.c.text_faint),
                 )
         };
+
         let search = row()
-            .key("history-filter-bar-search-wrap")
+            .key("history-filter-bar-search")
             .grow(1.0)
-            .min_w(180.0)
+            .min_w(140.0)
             .h(32.0)
             .items_center()
-            .gap(0.0)
-            .child(icon(&ICON_SEARCH, 16.0).color(k.c.text_faint).a11y_hidden())
-            .child(search_field.grow(1.0).min_w(0.0));
+            .child(search_input.grow(1.0).min_w(0.0))
+            .child(
+                icon(&ICON_SEARCH, 16.0)
+                    .key("history-filter-bar-search-icon")
+                    .color(k.c.text_faint)
+                    .a11y_hidden()
+                    .absolute(8.0, 8.0),
+            );
 
         let mut bar = row()
             .key("history-filter-bar-row")
@@ -355,10 +384,6 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
             .py(0.0)
             .child(search);
 
-        // helper closures for toggle/close wiring (can't clone Boxes easily; consume by using refs via patterns is awkward)
-        // We need to build selects consuming callback ownership. Since each select needs toggle/close/choose,
-        // restructure: take callbacks out as shared via Rc not available; easier to build selects with available handlers by matching.
-        // Simpler: rebuild with owned Option fields consumed per-use is not possible. Use std::rc::Rc for callbacks.
         let on_toggle_open = self.on_toggle_open.map(std::rc::Rc::new);
         let on_close = self.on_close.map(std::rc::Rc::new);
         let on_set_connection = self.on_set_connection.map(std::rc::Rc::new);
@@ -390,7 +415,7 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
             let mut sel = Select::new("history-filter-bar-connection", &label_refs)
                 .values(&value_refs)
                 .current(Some(&current_label))
-                .width(128.0)
+                .width(120.0)
                 .open(self.open == HistoryFilterOpen::Connection);
             if let Some(tg) = &on_toggle_open {
                 let tg = tg.clone();
@@ -405,7 +430,7 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
                 sel = sel
                     .on_choose(move |s: &mut S, v: &str, _tx: &mut rune::Tx| set(s, v.to_string()));
             }
-            bar = bar.child(sel.build(k, layer));
+            bar = bar.child(sel.build(&k, layer));
         }
 
         // database select (conditional)
@@ -426,7 +451,7 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
             let mut sel = Select::new("history-filter-bar-database", &label_refs)
                 .values(&value_refs)
                 .current(Some(&current_label))
-                .width(112.0)
+                .width(104.0)
                 .open(self.open == HistoryFilterOpen::Database);
             if let Some(tg) = &on_toggle_open {
                 let tg = tg.clone();
@@ -447,7 +472,7 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
                     set(s, val)
                 });
             }
-            bar = bar.child(sel.build(k, layer));
+            bar = bar.child(sel.build(&k, layer));
         }
 
         // schema select (conditional)
@@ -468,7 +493,7 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
             let mut sel = Select::new("history-filter-bar-schema", &label_refs)
                 .values(&value_refs)
                 .current(Some(&current_label))
-                .width(112.0)
+                .width(104.0)
                 .open(self.open == HistoryFilterOpen::Schema);
             if let Some(tg) = &on_toggle_open {
                 let tg = tg.clone();
@@ -489,7 +514,7 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
                     set(s, val)
                 });
             }
-            bar = bar.child(sel.build(k, layer));
+            bar = bar.child(sel.build(&k, layer));
         }
 
         // status select
@@ -506,7 +531,7 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
             let mut sel = Select::new("history-filter-bar-status", &label_refs)
                 .values(&value_refs)
                 .current(Some(value.status.label()))
-                .width(112.0)
+                .width(104.0)
                 .open(self.open == HistoryFilterOpen::Status);
             if let Some(tg) = &on_toggle_open {
                 let tg = tg.clone();
@@ -522,7 +547,7 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
                     set(s, HistoryStatus::from_value(v))
                 });
             }
-            bar = bar.child(sel.build(k, layer));
+            bar = bar.child(sel.build(&k, layer));
         }
 
         // range select
@@ -541,7 +566,7 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
             let mut sel = Select::new("history-filter-bar-range", &label_refs)
                 .values(&value_refs)
                 .current(Some(value.range.label()))
-                .width(128.0)
+                .width(120.0)
                 .open(self.open == HistoryFilterOpen::Range);
             if let Some(tg) = &on_toggle_open {
                 let tg = tg.clone();
@@ -557,7 +582,7 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
                     set(s, HistoryRange::from_value(v))
                 });
             }
-            bar = bar.child(sel.build(k, layer));
+            bar = bar.child(sel.build(&k, layer));
         }
 
         // sort select
@@ -574,7 +599,7 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
             let mut sel = Select::new("history-filter-bar-sort", &label_refs)
                 .values(&value_refs)
                 .current(Some(value.sort.label()))
-                .width(128.0)
+                .width(120.0)
                 .open(self.open == HistoryFilterOpen::Sort);
             if let Some(tg) = &on_toggle_open {
                 let tg = tg.clone();
@@ -590,10 +615,10 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
                     set(s, HistorySort::from_value(v))
                 });
             }
-            bar = bar.child(sel.build(k, layer));
+            bar = bar.child(sel.build(&k, layer));
         }
 
-        // reset button (conditional)
+        // reset button (conditional) - kit Button base; key kept for compatibility/tests.
         let def = HistoryQueryState::default();
         let changed = value.search != def.search
             || value.connection_id != def.connection_id
@@ -602,24 +627,17 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
             || value.status != def.status
             || value.range != def.range;
         if changed {
-            let mut reset = row()
-                .key("history-filter-bar-reset-filters")
-                .focusable(true)
-                .h(32.0)
-                .px(8.0)
-                .center_y()
-                .radius(4.0)
-                .hover(k.c.hover)
-                .label(t("common.reset"))
-                .child(
-                    text(t("common.reset"))
-                        .font(k.ty.text_xsmall)
-                        .color(k.c.text_faint),
-                );
+            let mut reset = Button::new(t("common.reset"))
+                .variant(ButtonVariant::Ghost)
+                .control_size(ControlSize::Small);
             if let Some(on_reset) = self.on_reset {
                 reset = reset.on_press(move |s: &mut S| on_reset(s));
             }
-            bar = bar.child(reset);
+            bar = bar.child(
+                reset
+                    .build(&k)
+                    .key("history-filter-bar-reset-filters"),
+            );
         }
 
         // outer container with bottom border like React (border-b border-edge pb-3)

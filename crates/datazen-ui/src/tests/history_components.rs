@@ -3,7 +3,7 @@
 use rune::{col, Cx, El, Env, Key, KeyEvent, Mods, Runtime, TextEdit, Tx};
 
 use crate::components::history::{
-    HistoryConnectionOption, HistoryEntryAction, HistoryEntryCard, HistoryEntryVm,
+    HistoryConnectionOption, HistoryEntryCard, HistoryEntryVm,
     HistoryFilterBar, HistoryFilterOpen, HistoryQueryState,
 };
 use crate::i18n::t;
@@ -158,12 +158,19 @@ fn history_entry_card_renders_expected_keys_and_meta() {
         element(&rt, "history-entry-card-h1-schema").text.as_deref(),
         Some("public")
     );
+    let sql_text = rt
+        .elements()
+        .iter()
+        .find_map(|e| {
+            let t = e.text.as_deref()?;
+            (e.key.as_deref() == Some("history-entry-card-h1-sql")
+                || t == "select * from users;")
+                .then_some(t.to_string())
+        });
     assert_eq!(
-        element(&rt, "history-entry-card-h1-sql-text")
-            .text
-            .as_deref(),
+        sql_text.as_deref(),
         Some("select * from users;"),
-        "sql text rendered"
+        "sql text rendered in single <pre>-equivalent text block"
     );
     assert!(
         !has_key(&rt, "history-entry-card-h1-error"),

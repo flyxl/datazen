@@ -2,7 +2,12 @@
 //!
 //! Ported from `packages/frontend/src/components/history/HistoryEntryCard.tsx`.
 //! Structure follows React JSX 1:1: root card, header (meta left + actions right),
-//! SQL `<pre>` block, optional error block.
+//! SQL block equivalent to React `<pre>` (single mono, wrap-anywhere, selectable text,
+//! bounded by max height), optional error block.
+//!
+//! This component currently has no production consumer; it will be wired by the
+//! query-history dialog/view track. Reusable API items are kept with per-item
+//! `#[allow(dead_code)]` (not file-level) until wired.
 //!
 //! ## Keys
 //!
@@ -22,21 +27,24 @@
 //! - `history-entry-card-{id}-action-favorite`: favorite action
 //! - `history-entry-card-{id}-action-open`: open action (if can_open)
 //! - `history-entry-card-{id}-action-delete`: delete action
-//! - `history-entry-card-{id}-sql`: SQL block
+//! - `history-entry-card-{id}-sql`: SQL block (single `<pre>`-equivalent text element)
 //! - `history-entry-card-{id}-error`: error wrapper (if present)
 //! - `history-entry-card-{id}-error-msg*`: CopyableError subtree
 
 use std::rc::Rc;
 use std::time::Duration;
 
-use rune::{col, icon, row, text, Color, El, Tx};
+use rune::{col, row, text, El, Tx};
+use rune_kit::{Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, Kit};
 
 use crate::i18n::t;
-use crate::icons::ICON_COPY;
+use crate::icons::{ICON_CHECK, ICON_COPY, ICON_EXTERNAL_LINK, ICON_STAR, ICON_TRASH};
 use crate::ui::copyable::CopyableError;
+use crate::ui::toggle::Checkbox;
 
 /// Action emitted by a history entry card control.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)] // reusable component; wired by later callers/tasks
 pub(crate) enum HistoryEntryAction {
     Copy,
     Open,
@@ -44,6 +52,7 @@ pub(crate) enum HistoryEntryAction {
     Favorite,
 }
 
+#[allow(dead_code)] // reusable component; wired by later callers/tasks
 impl HistoryEntryAction {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
@@ -57,6 +66,7 @@ impl HistoryEntryAction {
 
 /// Minimal view model for one history entry row.
 #[derive(Clone, Debug)]
+#[allow(dead_code)] // reusable component; wired by later callers/tasks
 pub(crate) struct HistoryEntryVm {
     pub id: String,
     pub success: bool,
@@ -108,7 +118,7 @@ impl<S: 'static> HistoryEntryCard<S> {
         self
     }
 
-    /// Whether copy feedback (`query.historyCopied`) is active for this entry.
+    /// Whether copy feedback (`common.copied`) is active for this entry.
     pub(crate) fn copied(mut self, copied: bool) -> Self {
         self.copied = copied;
         self
@@ -169,40 +179,14 @@ impl<S: 'static> HistoryEntryCard<S> {
             .grow(1.0)
             .min_w(0.0);
 
-        // select checkbox
-        let mut cb_el = row()
-            .key(format!("{root_key}-select"))
-            .focusable(true)
-            .size(14.0, 14.0)
-            .shrink()
-            .center()
-            .radius(3.0)
-            .border(
-                1.0,
-                if selected {
-                    k.c.bg_accent
-                } else {
-                    k.c.border_base
-                },
-            )
-            .fill(if selected {
-                k.c.bg_accent
-            } else {
-                Color::TRANSPARENT
-            })
+        // select checkbox (kit base: Checkbox). Label kept for accessibility.
+        let mut cb = Checkbox::new(format!("{root_key}-select"), selected)
             .label(t("query.historySelectAll"));
-        if selected {
-            cb_el = cb_el.child(
-                icon(k.glyph.check, 10.0)
-                    .color(k.c.text_inverse)
-                    .a11y_hidden(),
-            );
-        }
         if let Some(toggle) = on_toggle_select {
             let tid = id.clone();
-            cb_el = cb_el.on_press(move |s: &mut S| toggle(s, tid.clone()));
+            cb = cb.on_toggle(move |s: &mut S| toggle(s, tid.clone()));
         }
-        meta = meta.child(cb_el);
+        meta = meta.child(cb.build(&k));
 
         // success/failure dot
         let dot_color = if entry.success {
@@ -228,7 +212,7 @@ impl<S: 'static> HistoryEntryCard<S> {
                 .truncate()
                 .max_w(180.0),
         );
-        meta = meta.child(sep(k, &root_key, "sep-conn"));
+        meta = meta.child(sep(&k, &root_key, "sep-conn"));
 
         // database or default
         let db_label = entry
@@ -246,7 +230,7 @@ impl<S: 'static> HistoryEntryCard<S> {
         );
 
         if let Some(schema) = entry.schema.clone().filter(|s| !s.is_empty()) {
-            meta = meta.child(sep(k, &root_key, "sep-schema"));
+            meta = meta.child(sep(&k, &root_key, "sep-schema"));
             meta = meta.child(
                 text(schema)
                     .key(format!("{root_key}-schema"))
@@ -257,7 +241,7 @@ impl<S: 'static> HistoryEntryCard<S> {
             );
         }
 
-        meta = meta.child(sep(k, &root_key, "sep-time"));
+        meta = meta.child(sep(&k, &root_key, "sep-time"));
         meta = meta.child(
             text(format!("{}ms", entry.execution_time_ms))
                 .key(format!("{root_key}-time"))
@@ -266,7 +250,7 @@ impl<S: 'static> HistoryEntryCard<S> {
         );
 
         if let Some(rows) = entry.rows_affected {
-            meta = meta.child(sep(k, &root_key, "sep-rows"));
+            meta = meta.child(sep(&k, &root_key, "sep-rows"));
             let rows_label = t("query.historyRows").replace("{count}", &rows.to_string());
             meta = meta.child(
                 text(rows_label)
@@ -276,7 +260,7 @@ impl<S: 'static> HistoryEntryCard<S> {
             );
         }
 
-        meta = meta.child(sep(k, &root_key, "sep-date"));
+        meta = meta.child(sep(&k, &root_key, "sep-date"));
         meta = meta.child(
             text(entry.executed_at.clone())
                 .key(format!("{root_key}-executed-at"))
@@ -291,102 +275,88 @@ impl<S: 'static> HistoryEntryCard<S> {
             .gap(6.0)
             .shrink();
 
-        // copy action
+        // copy action (kit Button base). Copy/feedback semantics: tx.copy + 1500ms wake
+        // (aligned with Copyable base contract) + on_copy hook; label/icon driven by copied prop.
+        // No `crate::ui::copyable::Copyable` button component exists in this crate; reuse Button.
         {
-            let label_text = if copied {
-                t("common.copied").to_string()
+            let copy_label = if copied {
+                t("common.copied")
             } else {
-                t("query.historyCopy").to_string()
+                t("query.historyCopy")
             };
-            let mut btn = action_base(
-                k,
-                format!("{root_key}-action-copy"),
-                label_text.clone(),
-                t("query.historyCopyTitle").to_string(),
-            );
-            // icon: Copy (ICON_COPY); copied state in React shows Check icon + success color.
-            // Check not in ICON_* registry (gap reported); keep copy icon and use success color/label for feedback.
-            btn = btn.child(
-                icon(&ICON_COPY, 12.0)
-                    .color(if copied {
-                        k.c.success.fg
-                    } else {
-                        k.c.text_faint
-                    })
-                    .a11y_hidden(),
-            );
-            btn = btn.child(text(label_text).font(k.ty.small).color(if copied {
-                k.c.success.fg
-            } else {
-                k.c.text_faint
-            }));
+            let copy_icon = if copied { &ICON_CHECK } else { &ICON_COPY };
             let sql = entry.sql.clone();
             let eid = id.clone();
-            btn = btn.on_press_tx(move |s: &mut S, tx: &mut Tx| {
-                tx.copy(sql.clone());
-                tx.wake_after(Duration::from_millis(1500));
-                if let Some(ref cb) = on_copy {
-                    cb(s, eid.clone(), tx);
-                }
-            });
-            actions = actions.child(btn);
+            let mut btn = Button::new(copy_label)
+                .variant(ButtonVariant::Ghost)
+                .control_size(ControlSize::Small)
+                .icon(copy_icon);
+            if let Some(act) = &on_action {
+                let act = act.clone();
+                let eid2 = eid.clone();
+                let sql2 = sql.clone();
+                let on_copy_cb = on_copy;
+                btn = btn.on_press_tx(move |s: &mut S, tx: &mut Tx| {
+                    tx.copy(sql2.clone());
+                    tx.wake_after(Duration::from_millis(1500));
+                    act(s, HistoryEntryAction::Copy, eid2.clone());
+                    if let Some(ref cb) = on_copy_cb {
+                        cb(s, eid2.clone(), tx);
+                    }
+                });
+            } else {
+                let on_copy_cb = on_copy;
+                btn = btn.on_press_tx(move |s: &mut S, tx: &mut Tx| {
+                    tx.copy(sql.clone());
+                    tx.wake_after(Duration::from_millis(1500));
+                    if let Some(ref cb) = on_copy_cb {
+                        cb(s, eid.clone(), tx);
+                    }
+                });
+            }
+            actions = actions.child(btn.build(&k).key(format!("{root_key}-action-copy")));
         }
 
-        // favorite action (no on_copy involvement; dispatches action)
+        // favorite action
         {
-            let label_text = t("query.historyFavorite").to_string();
-            let mut btn = action_base(
-                k,
-                format!("{root_key}-action-favorite"),
-                label_text.clone(),
-                t("query.historyFavoriteTitle").to_string(),
-            );
-            // icon Star missing from ICON_* registry (gap reported)
-            btn = btn.child(text(label_text).font(k.ty.small).color(k.c.text_faint));
+            let mut btn = Button::new(t("query.historyFavorite"))
+                .variant(ButtonVariant::Ghost)
+                .control_size(ControlSize::Small)
+                .icon(&ICON_STAR);
             if let Some(act) = &on_action {
                 let act = act.clone();
                 let eid = id.clone();
-                btn = btn
-                    .on_press(move |s: &mut S| act(s, HistoryEntryAction::Favorite, eid.clone()));
+                btn = btn.on_press(move |s: &mut S| act(s, HistoryEntryAction::Favorite, eid.clone()));
             }
-            actions = actions.child(btn);
+            actions = actions.child(btn.build(&k).key(format!("{root_key}-action-favorite")));
         }
 
         // open action (conditional)
         if can_open {
-            let label_text = t("query.historyOpen").to_string();
-            let mut btn = action_base(
-                k,
-                format!("{root_key}-action-open"),
-                label_text.clone(),
-                t("query.historyOpenTitle").to_string(),
-            );
-            // icon ExternalLink missing from ICON_* registry (gap reported)
-            btn = btn.child(text(label_text).font(k.ty.small).color(k.c.text_faint));
+            let mut btn = Button::new(t("query.historyOpen"))
+                .variant(ButtonVariant::Ghost)
+                .control_size(ControlSize::Small)
+                .icon(&ICON_EXTERNAL_LINK);
             if let Some(act) = &on_action {
                 let act = act.clone();
                 let eid = id.clone();
                 btn = btn.on_press(move |s: &mut S| act(s, HistoryEntryAction::Open, eid.clone()));
             }
-            actions = actions.child(btn);
+            actions = actions.child(btn.build(&k).key(format!("{root_key}-action-open")));
         }
 
-        // delete action (icon-only in React; Trash2 missing - gap reported)
+        // delete action (icon-only, kit IconButton base)
         {
-            let mut btn = action_base(
-                k,
-                format!("{root_key}-action-delete"),
-                String::new(),
-                t("query.historyDeleteTitle").to_string(),
-            );
-            // no visible label in React; keep accessible label/title only
+            let mut btn = IconButton::new(&ICON_TRASH)
+                .variant(IconButtonVariant::Ghost)
+                .control_size(ControlSize::Small)
+                .label(t("query.historyDeleteTitle"));
             if let Some(act) = &on_action {
                 let act = act.clone();
                 let eid = id.clone();
-                btn =
-                    btn.on_press(move |s: &mut S| act(s, HistoryEntryAction::Delete, eid.clone()));
+                btn = btn.on_press(move |s: &mut S| act(s, HistoryEntryAction::Delete, eid.clone()));
             }
-            actions = actions.child(btn);
+            actions = actions.child(btn.build(&k).key(format!("{root_key}-action-delete")));
         }
 
         let header = row()
@@ -398,8 +368,9 @@ impl<S: 'static> HistoryEntryCard<S> {
             .child(meta)
             .child(actions);
 
-        // SQL block: max-h-24, overflow-x-auto, rounded, bg-surface/70, p-2, mono, xs, pre-wrap break-all
-        let sql_block = col()
+        // SQL block: single text element equivalent to React `<pre>` (mono, wrap-anywhere,
+        // selectable), bounded by max height.
+        let sql_block = text(entry.sql.clone())
             .key(format!("{root_key}-sql"))
             .w_full()
             .max_h(96.0)
@@ -407,17 +378,10 @@ impl<S: 'static> HistoryEntryCard<S> {
             .radius(4.0)
             .fill(k.alpha(k.c.bg_base, 0.7))
             .padding(8.0)
-            .scroll(rune::ScrollSpec {
-                stick_bottom: false,
-            })
-            .child(
-                text(entry.sql.clone())
-                    .key(format!("{root_key}-sql-text"))
-                    .font(k.ty.mono)
-                    .color(k.c.text_muted)
-                    .wrap_anywhere()
-                    .selectable(true),
-            );
+            .font(k.ty.mono)
+            .color(k.c.text_muted)
+            .wrap_anywhere()
+            .selectable(true);
 
         let mut card = col()
             .key(root_key.clone())
@@ -441,7 +405,7 @@ impl<S: 'static> HistoryEntryCard<S> {
                 .child(
                     CopyableError::new(format!("{root_key}-error-msg"), err)
                         .copy_button(true)
-                        .build::<S>(k),
+                        .build::<S>(&k),
                 );
             card = card.child(err_wrap);
         }
@@ -450,23 +414,9 @@ impl<S: 'static> HistoryEntryCard<S> {
     }
 }
 
-fn sep(k: &rune_kit::Kit, root_key: &str, suffix: &str) -> El {
+fn sep(k: &Kit, root_key: &str, suffix: &str) -> El {
     text("·")
         .key(format!("{root_key}-{suffix}"))
         .font(k.ty.text_xsmall)
         .color(k.c.text_faint)
-}
-
-fn action_base(k: &rune_kit::Kit, key: String, label: String, title: String) -> El {
-    let accessible = if label.is_empty() { title } else { label };
-    row()
-        .key(key)
-        .focusable(true)
-        .items_center()
-        .gap(4.0)
-        .radius(4.0)
-        .px(8.0)
-        .py(2.0)
-        .hover(k.c.hover)
-        .label(accessible)
 }
