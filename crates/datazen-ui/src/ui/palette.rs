@@ -270,3 +270,19 @@ pub(crate) fn er_box_fill(dark: bool) -> Color {
         rune::oklch(0.96, 0.01, 250.0)
     }
 }
+
+/// The onboarding brand sidebar's fixed dark vertical gradient (React
+/// `linear-gradient(180deg,#0e131c,#0a0e15)` — an always-dark brand anchor
+/// regardless of the app theme), as `(top, bottom)`.
+pub(crate) fn brand_sidebar_gradient() -> (Color, Color) {
+    // kit 无对应 token: brand sidebar anchor #0e131c / #0a0e15
+    (rune::oklch(0.186, 0.020, 262.0), rune::oklch(0.163, 0.016, 262.0))
+}
+
+/// The brand sidebar's radial accent tint (React
+/// `rgba(79,195,247,0.13)` — #4fc3f7 at 13% — fading to transparent at 55%,
+/// centred on the sidebar's top-left corner).
+pub(crate) fn brand_sidebar_radial_tint() -> Color {
+    // kit 无对应 token: brand radial tint #4fc3f7 @ 13%
+    rune::oklcha(0.773, 0.127, 231.0, 0.13)
+}

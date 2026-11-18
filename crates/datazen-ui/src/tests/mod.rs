@@ -33,6 +33,8 @@ mod ai_context_settings_audit;
 mod wapp_icon_audit;
 // T018: the add-to-dashboard dialog port (load gate, picker, create branch).
 mod add_to_dashboard_dialog_audit;
+// T021: the onboarding brand sidebar port (fixed-dark gradient, features).
+mod brand_sidebar_audit;
 mod column_stats_dialog;
 // T002: the single DataTable cell — formatting, colour, plan and geometry.
 mod cell_renderer;

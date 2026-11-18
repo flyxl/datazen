@@ -7,6 +7,8 @@ mod dashboards_workflows;
 // The windows/dashboard subtree ports (T018: AddToDashboardDialog is its
 // first); the dashboards page itself stays in dashboards_workflows.rs.
 pub(crate) mod dashboard;
+// The windows/onboarding subtree ports (T021: BrandSidebar is its first).
+pub(crate) mod onboarding;
 mod modals;
 mod navigation;
 mod settings;
