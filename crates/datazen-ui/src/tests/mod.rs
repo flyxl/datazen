@@ -155,3 +155,6 @@ mod history_components_audit;
 mod copy_button;
 // T253-T256: the .ts support layer semantics.
 mod support_layer_audit;
+
+// Independent re-audit of merged T0-07 menu base.
+mod menus_merge_reaudit;
