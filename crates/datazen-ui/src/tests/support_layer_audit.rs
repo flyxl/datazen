@@ -140,9 +140,8 @@ fn blank_column_type_uses_the_text_family_not_the_null_family() {
 
 #[test]
 fn last_connected_renders_with_the_supplied_timezone() {
-    // 12:00Z is 20:00 in Asia/Shanghai (UTC+8) and 07:00 in UTC-5. The helper
-    // takes the offset explicitly, so this assertion is deterministic even on a
-    // UTC CI host; the production wrapper supplies chrono::Local's offset.
+    // The helper takes the offset explicitly, so these two assertions are
+    // deterministic even on a UTC CI host.
     assert_eq!(
         format_last_connected_with_offset(Some("2024-06-01T12:00:00.000Z"), 8 * 3_600),
         "2024-06-01 20:00:00"
@@ -151,10 +150,18 @@ fn last_connected_renders_with_the_supplied_timezone() {
         format_last_connected_with_offset(Some("2024-06-01T12:00:00.000Z"), -5 * 3_600),
         "2024-06-01 07:00:00"
     );
-    let local = chrono::Local::now().offset().local_minus_utc();
-    assert_eq!(
-        format_last_connected(Some("2024-06-01T12:00:00.000Z")),
-        format_last_connected_with_offset(Some("2024-06-01T12:00:00.000Z"), local),
-        "production must pass the local UTC offset"
-    );
+
+    // The production wrapper must resolve the zone at the timestamp's own
+    // instant, not at `Local::now()`. Deriving the expectation the same way
+    // makes this pass in Asia/Shanghai and in a DST zone.
+    let iso = "2024-06-01T12:00:00.000Z";
+    let millis = chrono::DateTime::parse_from_rfc3339(iso)
+        .expect("the audit instant parses")
+        .timestamp_millis();
+    let expected = chrono::DateTime::from_timestamp_millis(millis)
+        .expect("the audit instant is valid")
+        .with_timezone(&chrono::Local)
+        .format("%Y-%m-%d %H:%M:%S")
+        .to_string();
+    assert_eq!(format_last_connected(Some(iso)), expected);
 }
