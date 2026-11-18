@@ -73,6 +73,13 @@ const ORDER = [
   'bootstrap',
 ];
 
+/**
+ * Dependency order for the `.ts` foundation layer (types, pure helpers, state,
+ * IPC shells). These tasks are appended after the `.tsx` ones so that existing
+ * task ids keep pointing at the same file.
+ */
+const TS_ORDER = ['lib', 'types', 'stores', 'hooks', 'commands', 'platform', 'components', 'windows', 'extensions'];
+
 /** Porting effort in working days; size-aware so a 300-line file is not "small". */
 function daysFor(cls, loc) {
   if (cls === 'X') return 0;
@@ -137,9 +144,67 @@ const rows = files.map((path) => {
   };
 });
 
-const sorted = [...rows].sort(
-  (a, b) => (a.order === -1 ? 999 : a.order) - (b.order === -1 ? 999 : b.order) || a.react.localeCompare(b.react),
+/**
+ * The `.ts` foundation layer: everything a `.tsx` port imports but the ledger
+ * above never counted. Locale packs are excluded — they feed `build.rs`
+ * instead of being ported. These files never render, so the element/hook
+ * counters stay at zero and the class comes from the same rules.
+ */
+const tsFiles = walk(REACT).filter(
+  (p) =>
+    p.endsWith('.ts') &&
+    !p.endsWith('.test.ts') &&
+    !p.endsWith('.spec.ts') &&
+    !p.endsWith('.d.ts') &&
+    !p.split(sep).includes('locales') &&
+    !p.split(sep).includes('test') &&
+    !p.split(sep).includes('__mocks__'),
 );
+
+const tsRows = tsFiles.map((path) => {
+  const text = readFileSync(path, 'utf8');
+  const rel = relative(REACT, path).split(sep).join('/');
+  const area = areaOf(rel);
+  return {
+    react: `packages/frontend/src/${rel}`,
+    rune: `crates/datazen-ui/src/${rel.replace(/\.ts$/, '.rs').replace(/([a-z0-9])([A-Z])/g, (m, a, b) => `${a}_${b.toLowerCase()}`)}`,
+    area,
+    order: TS_ORDER.findIndex((prefix) => area === prefix || area.startsWith(`${prefix}/`)),
+    loc: text.split('\n').length,
+    cls: classify(text),
+    elements: 0,
+    hooks: (text.match(/\buse[A-Z]\w*\s*\(/g) ?? []).length,
+    keys: new Set(text.match(/\bt\(\s*'([^']+)'/g) ?? []).length,
+    days: daysFor(classify(text), text.split('\n').length),
+  };
+});
+
+const byOrder = (list) =>
+  [...list].sort(
+    (a, b) => (a.order === -1 ? 999 : a.order) - (b.order === -1 ? 999 : b.order) || a.react.localeCompare(b.react),
+  );
+
+const sorted = byOrder(rows);
+
+/**
+ * The `.ts` files every DataTable port needs first, so the foundation batch
+ * unblocks real pages before it fills in the long tail of helpers.
+ */
+const TS_FIRST = [
+  'lib/formatters.ts',
+  'lib/cellTypes.ts',
+  'lib/cellEditorKind.ts',
+  'lib/dataTypeColors.ts',
+  'components/DataTable/editors/toEditString.ts',
+];
+
+const tsSorted = [...tsRows].sort((a, b) => {
+  const rel = (r) => r.react.replace('packages/frontend/src/', '');
+  const fa = TS_FIRST.indexOf(rel(a));
+  const fb = TS_FIRST.indexOf(rel(b));
+  if (fa !== fb) return (fa < 0 ? 99 : fa) - (fb < 0 ? 99 : fb);
+  return (a.order === -1 ? 999 : a.order) - (b.order === -1 ? 999 : b.order) || a.react.localeCompare(b.react);
+});
 
 /** Greedy buckets of at most one working day; a single file is never split mid-port. */
 function bucket(list) {
@@ -167,7 +232,9 @@ function bucket(list) {
   return tasks;
 }
 
-const tasks = bucket(sorted);
+// `.tsx` tasks keep their historical ids (T001…); the `.ts` foundation is appended.
+const tasks = [...bucket(sorted), ...bucket(tsSorted)];
+const allRows = [...rows, ...tsRows];
 const args = process.argv.slice(2);
 const flag = (name, fallback = null) => {
   const i = args.indexOf(name);
@@ -175,10 +242,13 @@ const flag = (name, fallback = null) => {
 };
 
 const totals = {
-  files: rows.length,
-  loc: rows.reduce((n, r) => n + r.loc, 0),
-  days: Math.round(rows.reduce((n, r) => n + r.days, 0) * 10) / 10,
+  files: allRows.length,
+  loc: allRows.reduce((n, r) => n + r.loc, 0),
+  days: Math.round(allRows.reduce((n, r) => n + r.days, 0) * 10) / 10,
   tasks: tasks.length,
+  filesTs: tsRows.length,
+  locTs: tsRows.reduce((n, r) => n + r.loc, 0),
+  tasksTs: tasks.length - bucket(sorted).length,
 };
 
 /**
@@ -203,6 +273,11 @@ const TASKLIST_HEADER = [
   '`node scripts/rune-parity.mjs --progress` 现算。行尾的 area、工作量、涉及文件由脚本生成，',
   '不要手改；React 源码变动后跑 `node scripts/rune-parity.mjs --tasklist` 刷新，',
   '已存在的 T 编号保留原状态。',
+  '',
+  'T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖的 `.ts` 基础层',
+  '（`lib/`、`types/`、`stores/`、`hooks/`、`commands/`）。`.ts` 的第一批五项',
+  '（`lib/formatters`、`lib/cellTypes`、`lib/cellEditorKind`、`lib/dataTypeColors`、',
+  '`editors/toEditString`）排在 T253–T256，因为 DataTable 主体没有它们无法 1:1 迁。',
   '',
 ];
 
@@ -268,7 +343,7 @@ if (flag('--tasklist')) {
   console.log(`${done}/${tasks.length} tasks done (${count('~')} doing, ${count('!')} blocked, ${count(' ')} todo)`);
   console.log(`${daysDone.toFixed(1)} of ${totals.days} working days landed on this track`);
 } else if (flag('--json')) {
-  writeFileSync(flag('--json'), JSON.stringify({ generatedAt: new Date().toISOString(), totals, tasks, files: rows }, null, 2));
+  writeFileSync(flag('--json'), JSON.stringify({ generatedAt: new Date().toISOString(), totals, tasks, files: allRows }, null, 2));
   console.log(`wrote ${flag('--json')} (${totals.tasks} tasks)`);
 } else if (flag('--md')) {
   const lines = [
@@ -293,7 +368,7 @@ if (flag('--tasklist')) {
   }
 } else {
   const byClass = {};
-  for (const r of rows) {
+  for (const r of allRows) {
     byClass[r.cls] ??= { files: 0, loc: 0, days: 0 };
     byClass[r.cls].files += 1;
     byClass[r.cls].loc += r.loc;
@@ -304,7 +379,7 @@ if (flag('--tasklist')) {
     console.log(`${k.padEnd(5)} ${String(v.files).padStart(5)} ${String(v.loc).padStart(6)} ${v.days.toFixed(1).padStart(6)}`);
   }
   const byArea = {};
-  for (const r of rows) {
+  for (const r of allRows) {
     byArea[r.area] ??= { files: 0, loc: 0, days: 0 };
     byArea[r.area].files += 1;
     byArea[r.area].loc += r.loc;
