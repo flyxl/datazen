@@ -3,6 +3,7 @@
 //! Hosts implement [`WorkspaceApi`]. The memory workspace is only a stand-in so the
 //! interface can run before the desktop and HTTP adapters exist.
 
+mod ai_sessions;
 mod connection_views;
 mod context_items;
 mod context_menu_position;
@@ -15,6 +16,19 @@ use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
 use datazen_driver_api::{ConnectionConfig, SslMode};
 
+pub use ai_sessions::{
+    ActiveConnectionEntry, ActiveConnections, AiChatMessage, AiChatSession, AiLoadedSkill,
+    AiMessageRole, AiMessageStatus, AiSessionBackend, AiSessionDetail, AiSessionMessage,
+    AiSessionMessageInput, AiSessionStore, AiSessionSummary, AiSessionUpsertInput, ExportFormat,
+    MigrationOutcome, NewId, SessionClock, SessionDeleteResult, SessionExport, SessionKey,
+    SessionListParams, SessionLocalStorage, SessionMap, SessionPersistResult,
+    SessionRestoreResult, SessionScope, StoredSession, chat_session_from_detail,
+    chat_session_from_stored, chat_session_to_upsert_input, compute_session_key, export_filename,
+    iso_from_epoch_ms, local_detail, markdown_for, message_from_stored, message_metadata,
+    message_status, new_chat_session, normalize_loaded_skills, split_legacy_key, title_for,
+    truncate_bytes, MAX_MESSAGES_PER_SESSION, MAX_MESSAGE_BYTES, MAX_SESSIONS,
+    MIGRATION_MARKER_KEY, STORAGE_KEY,
+};
 pub use connection_views::{
     ConnectionOpenTarget, ConnectionViewActions, ConnectionViewProps, NewQueryContext,
     NodeContextMenuPayload, ObjectKind, TableContextInput, TableSqlActionKind,
