@@ -9,7 +9,7 @@
 - [x] T006 · components/query · 0.30d · components/query/ExplainPlanTree.tsx
 - [x] T009 · components/ai · 5.30d · components/ai/AiChatPanel.tsx · split
 - [x] T012 · components · 0.90d · components/AiWriteProposalHost.tsx
-- [ ] T013 · components/admin · 0.90d · components/admin/AdminCreateDialog.tsx
+- [x] T013 · components/admin · 0.90d · components/admin/AdminCreateDialog.tsx
 - [ ] T023 · windows/data-transfer · 1.30d · windows/data-transfer/ColumnMappingEditor.tsx · split
 - [ ] T024 · windows/data-sync · 0.90d · windows/data-sync/DataSyncCompareStep.tsx
 - [ ] T026 · windows/backup · 1.30d · windows/backup/BackupWindow.tsx · split
