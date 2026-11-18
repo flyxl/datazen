@@ -6,6 +6,7 @@
 mod connection_views;
 mod context_items;
 mod context_menu_position;
+mod metadata;
 mod tabs;
 
 use std::collections::HashMap;
@@ -21,6 +22,11 @@ pub use context_items::{ContextItem, ContextKind, SplitContextItems, split_conte
 pub use context_menu_position::{
     CONTEXT_MENU_PAD, Point, Rect, RootMenuPosition, Size, SubmenuPosition, SubmenuSide, Viewport,
     position_root_menu, position_root_menu_with_pad, position_submenu, position_submenu_with_pad,
+};
+pub use metadata::{
+    ExecutionTarget, MetadataIdentityInput, MetadataSessionIdentity, MetadataTarget,
+    NamespaceTarget, ObjectTarget, metadata_batch_bucket, metadata_cache_key,
+    metadata_config_bucket, metadata_session_key,
 };
 pub use tabs::{Tab, TabKind, Tabs};
 
