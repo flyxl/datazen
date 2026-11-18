@@ -835,4 +835,21 @@ mod tests {
         detail.title = "a".repeat(80);
         assert_eq!(export_filename(&detail, ExportFormat::Json), format!("{}.json", "a".repeat(60)));
     }
+
+    /// T042-tester D2 pin: the typed pass-through seam folds a
+    /// present-but-malformed field to `None` (absent stays `None`,
+    /// well-formed still reads) — the documented T042 unification deviation.
+    #[test]
+    fn a_malformed_typed_pass_through_folds_to_none() {
+        let mut extra = JsonMap::new();
+        extra.insert("reasoning".to_string(), serde_json::json!({ "not": "a string" }));
+        assert_eq!(typed_pass_through::<String>(Some(&extra), "reasoning"), None);
+        extra.insert("reasoning".to_string(), serde_json::json!("plain text"));
+        assert_eq!(
+            typed_pass_through::<String>(Some(&extra), "reasoning"),
+            Some("plain text".to_string())
+        );
+        assert_eq!(typed_pass_through::<String>(None, "reasoning"), None);
+        assert_eq!(typed_pass_through::<String>(Some(&JsonMap::new()), "reasoning"), None);
+    }
 }

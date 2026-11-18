@@ -98,8 +98,9 @@ pub use chat::{
 pub use memory::{
     AiMemoryCloudPolicy, AiMemoryCorrectionInput, AiMemoryCreateInput, AiMemoryEntry,
     AiMemoryExtractionInput, AiMemoryKind, AiMemoryListParams, AiMemoryPage, AiMemoryReference,
-    AiMemoryScopeKind, AiMemorySensitivity, AiMemorySettings, AiMemorySqlSample, AiMemoryStaleInput,
-    AiMemoryStats, AiMemoryStatus, AiMemoryUpdateInput, DEFAULT_AI_MEMORY_SETTINGS,
+    AiMemoryScopeKind, AiMemorySensitivity, AiMemorySettings, AiMemorySource, AiMemorySqlSample,
+    AiMemoryStaleInput, AiMemoryStats, AiMemoryStatus, AiMemoryUpdateInput,
+    DEFAULT_AI_MEMORY_SETTINGS,
 };
 pub use providers::{
     AiAgentMode, AiDataEgressLevel, AiModelProfile, AiProviderConfig, AiProviderType,
