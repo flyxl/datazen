@@ -30,6 +30,8 @@ mod column_stats_audit;
 mod column_stats_dialog;
 // T002: the single DataTable cell — formatting, colour, plan and geometry.
 mod cell_renderer;
+// Independent T002 audit: tree-observed colour, branch order, raw handoff, flags and geometry.
+mod cell_renderer_audit;
 pub(crate) use support::*;
 
 pub(crate) fn runtime() -> Runtime<AppState> {
