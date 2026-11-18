@@ -1,0 +1,168 @@
+# Segment 2/4 task status
+
+本文件只由该段所属机器写。状态以 React 文件集为身份；只改方括号一个字符。
+任务由 `node scripts/rune-parity.mjs --shard 2 --of 4` 给出。
+
+
+- [ ] T008 · components/chart · 2.00d · components/chart/ChartCanvas.tsx · split
+- [ ] T014 · components/export · 0.60d · components/export/ExportSuccessPanel.tsx components/FilterBar.tsx
+- [ ] T019 · windows/workflow · 0.80d · windows/workflow/WorkflowEditorActionBar.tsx windows/workflow/WorkflowExecutionResultPanel.tsx
+- [ ] T020 · windows/main · 0.90d · windows/main/MainPage.tsx
+- [ ] T022 · windows/wapps · 0.90d · windows/wapps/InstallWappDialog.tsx
+- [x] T027 · lib · 0.30d · lib/formatters.ts
+- [ ] T031 · lib/metadata · 0.30d · lib/metadata/batch.ts
+- [ ] T033 · lib/relationPrediction · 0.80d · lib/relationPrediction/fromTableSchema.ts lib/relationPrediction/normalize.ts
+- [ ] T040 · stores/ai · 3.00d · stores/ai/sessions.ts · split
+- [ ] T042 · types · 0.80d · types/ai.ts
+- [ ] T046 · extensions · 0.30d · extensions/generated-pro.ts
+- [ ] T052 · index.ts · 0.90d · index.ts
+- [ ] T060 · components/chart · 0.80d · components/chart/ChartEmptyState.tsx components/chart/ChartToolbar.tsx
+- [ ] T070 · windows/workflow · 1.30d · windows/workflow/WorkflowForm.tsx · split
+- [ ] T071 · windows/main · 0.90d · windows/main/RunningExecutionCloseHost.tsx
+- [ ] T073 · windows/wapps · 1.30d · windows/wapps/WappManagementPage.tsx · split
+- [x] T078 · lib · 0.80d · lib/cellTypes.ts
+- [ ] T080 · lib/metadata · 0.90d · lib/metadata/identity.ts
+- [ ] T082 · lib/relationPrediction · 2.00d · lib/relationPrediction/predictRelations.ts · split
+- [ ] T089 · stores/ai · 2.00d · stores/ai/streaming.ts · split
+- [ ] T091 · types · 0.30d · types/chart.ts
+- [ ] T095 · extensions · 0.80d · extensions/generated.ts
+- [ ] T104 · components/chart · 0.80d · components/chart/ChartView.tsx
+- [ ] T113 · windows/workflow · 0.50d · windows/workflow/WorkflowHistorySection.tsx
+- [x] T118 · lib · 0.80d · lib/cellEditorKind.ts
+- [ ] T120 · lib/metadata · 2.00d · lib/metadata/temporaryResults.ts · split
+- [ ] T121 · lib/relationPrediction · 0.90d · lib/relationPrediction/relatedTables.ts lib/relationPrediction/types.ts lib/relativeTime.ts
+- [ ] T128 · stores/ai · 0.80d · stores/ai/types.ts
+- [ ] T130 · types · 0.90d · types/connection.ts
+- [ ] T138 · components/chart · 2.00d · components/chart/LogScaleTooltip.tsx · split
+- [ ] T147 · windows/workflow · 1.30d · windows/workflow/WorkflowPage.tsx · split
+- [x] T152 · lib · 0.60d · lib/dataTypeColors.ts components/DataTable/editors/toEditString.ts
+- [ ] T161 · types · 0.90d · types/dashboard.ts
+- [ ] T168 · components/chart · 2.00d · components/chart/renderers/AreaChartRenderer.tsx · split
+- [ ] T176 · windows/workflow · 0.30d · windows/workflow/workflowStepResultUtils.tsx
+- [ ] T181 · lib · 0.90d · lib/aiMemoryCorrection.ts
+- [ ] T188 · types · 0.30d · types/filters.ts
+- [ ] T194 · components/chart · 2.00d · components/chart/renderers/BarChartRenderer.tsx · split
+- [ ] T202 · windows/workflow · 2.00d · windows/workflow/WorkflowYamlEditor.tsx · split
+- [ ] T207 · lib · 0.90d · lib/aiMemoryPatterns.ts
+- [ ] T213 · types · 1.30d · types/index.ts · split
+- [ ] T218 · components/chart · 2.00d · components/chart/renderers/LineChartRenderer.tsx · split
+- [ ] T225 · windows/workflow · 0.60d · windows/workflow/workflowDraftConvert.ts windows/workflow/workflowPanelGuards.ts
+- [ ] T230 · lib · 0.60d · lib/aiMemorySettings.ts lib/aiMessageBlocks.ts
+- [ ] T236 · types · 0.30d · types/keyset.ts
+- [ ] T240 · components/chart · 2.00d · components/chart/renderers/PieChartRenderer.tsx · split
+- [ ] T246 · windows/workflow · 2.00d · windows/workflow/yamlLint.ts · split
+- [ ] T251 · lib · 0.50d · lib/aiProviders.ts
+- [ ] T257 · types · 0.90d · types/settings.ts
+- [ ] T261 · components/chart · 2.00d · components/chart/renderers/ScatterChartRenderer.tsx · split
+- [ ] T267 · windows/workflow · 2.00d · windows/workflow/yamlMode.ts · split
+- [ ] T272 · lib · 0.80d · lib/aiQueryActions.ts
+- [ ] T278 · types · 0.90d · types/theme.ts
+- [ ] T291 · lib · 0.90d · lib/aiSafetyPresets.ts lib/aiSkills.ts lib/anyColumnFilter.ts
+- [ ] T297 · types · 0.50d · types/wapp.ts
+- [ ] T310 · lib · 0.80d · lib/backupProgress.ts lib/base64.ts
+- [ ] T326 · lib · 2.00d · lib/batchExportJob.ts · split
+- [ ] T340 · lib · 0.90d · lib/bootstrapIconResolver.ts lib/buildConnectionUrl.ts lib/buildEditorSchema.ts
+- [ ] T352 · lib · 0.60d · lib/cellEditorCandidates.ts lib/chart/colors.ts
+- [ ] T364 · lib · 0.80d · lib/commandSchema.ts lib/connectionClipboard.ts
+- [ ] T375 · lib · 0.30d · lib/connectionConfig.ts
+- [ ] T385 · lib · 0.90d · lib/connectionEditor.ts
+- [ ] T394 · lib · 0.80d · lib/connectionFormModel.ts lib/connectionGroups.ts
+- [ ] T403 · lib · 1.30d · lib/connectionLocator.ts · split
+- [ ] T412 · lib · 0.90d · lib/connectionShare.ts
+- [ ] T421 · lib · 0.90d · lib/connectionShareError.ts lib/connectionTabContextMenu.ts lib/connectionViews/index.ts
+- [ ] T429 · lib · 0.30d · lib/createDismissPrefs.ts
+- [ ] T437 · lib · 0.90d · lib/crossWindowBus.ts
+- [ ] T444 · lib · 0.80d · lib/dangerousSql.ts
+- [ ] T450 · lib · 0.50d · lib/databaseTypes.ts
+- [ ] T456 · lib · 2.00d · lib/dataFetcher.ts · split
+- [ ] T462 · lib · 3.30d · lib/dataTableContextMenu.ts · split
+- [ ] T467 · lib · 0.90d · lib/dedicatedDbSession.ts
+- [ ] T472 · lib · 0.90d · lib/defaultSort.ts lib/docsUrls.ts lib/documentScrollLock.ts
+- [ ] T477 · lib · 0.90d · lib/driverCapabilities.ts
+- [ ] T482 · lib · 0.60d · lib/driverCommandIds.ts lib/endpointIdentity.ts
+- [ ] T487 · lib · 0.80d · lib/ensureNamespace.ts lib/erNodeContextMenu.ts
+- [ ] T491 · lib · 0.60d · lib/errors.ts lib/exportCapability.ts
+- [ ] T494 · lib · 2.00d · lib/exportData.ts · split
+- [ ] T497 · lib · 2.00d · lib/exportDialogShared.ts · split
+- [ ] T500 · lib · 2.00d · lib/exportFormat.ts · split
+- [ ] T503 · lib · 0.60d · lib/exportTableStructure.ts lib/extractQuestions.ts
+- [ ] T505 · lib · 0.50d · lib/extractSql.ts
+- [ ] T507 · lib · 0.90d · lib/fetchRelationDdl.ts
+- [ ] T509 · lib · 0.30d · lib/filterDbTypes.ts
+- [ ] T511 · lib · 0.80d · lib/filterExpression.ts
+- [ ] T513 · lib · 0.80d · lib/filterOperators.ts
+- [ ] T515 · lib · 0.50d · lib/fkNavigation.ts
+- [ ] T517 · lib · 1.30d · lib/fkNavigationActions.ts · split
+- [ ] T519 · lib · 1.30d · lib/fkReferencedBy.ts · split
+- [ ] T521 · lib · 0.80d · lib/fkSelector.ts lib/globalTextSelection.ts
+- [ ] T523 · lib · 0.80d · lib/gridClipboard.ts
+- [ ] T525 · lib · 0.80d · lib/gridErrors.ts lib/gridEventGuards.ts
+- [ ] T527 · lib · 1.30d · lib/gridKeyboard.ts · split
+- [ ] T529 · lib · 0.80d · lib/gridPastePlan.ts
+- [ ] T531 · lib · 0.90d · lib/historyGroups.ts lib/hostErrorMessage.ts lib/hostLucideMap.ts
+- [ ] T533 · lib · 2.00d · lib/htmlSanitizer.ts · split
+- [ ] T535 · lib · 0.90d · lib/iconIds.ts lib/iconResolver.ts lib/importConnectionFile.ts
+- [ ] T537 · lib · 2.00d · lib/importData.ts · split
+- [ ] T539 · lib · 1.30d · lib/importExecution.ts · split
+- [ ] T541 · lib · 1.00d · lib/importMapping.ts lib/keymap.ts
+- [ ] T543 · lib · 0.80d · lib/keysetPaging.ts
+- [ ] T545 · lib · 0.80d · lib/kvAiContext.ts lib/kvSlotState.ts
+- [ ] T547 · lib · 0.60d · lib/kvWorkspaceCapabilities.ts lib/kvWorkspaceSlots.ts
+- [ ] T549 · lib · 0.90d · lib/languagePackRuntime.ts
+- [ ] T551 · lib · 0.90d · lib/loadBatchExportTable.ts
+- [ ] T553 · lib · 0.90d · lib/localeSync.ts
+- [ ] T555 · lib · 0.80d · lib/mainWindowContextMenu.ts
+- [ ] T557 · lib · 0.90d · lib/mcpAgentConfig.ts
+- [ ] T559 · lib · 0.90d · lib/migrationJobHydration.ts
+- [ ] T561 · lib · 1.30d · lib/migrationJobVerdict.ts · split
+- [ ] T563 · lib · 0.60d · lib/migrationVerification.ts lib/migrationWindowPrefill.ts
+- [ ] T565 · lib · 1.30d · lib/namedViews.ts · split
+- [ ] T567 · lib · 0.90d · lib/nativeContextMenu.ts lib/objectBrowserContextMenu.ts lib/objectFilter.ts
+- [ ] T569 · lib · 0.30d · lib/panelContextPath.ts
+- [ ] T571 · lib · 0.90d · lib/pathPicker.ts
+- [ ] T573 · lib · 0.60d · lib/processListResult.ts lib/productFeatures.ts
+- [ ] T575 · lib · 0.80d · lib/queryContextPath.ts
+- [ ] T577 · lib · 0.90d · lib/queryExecutionViewModel.ts
+- [ ] T579 · lib · 0.90d · lib/querySidebarContextMenu.ts lib/queryStream.ts lib/relationMetadata/identity.ts
+- [ ] T581 · lib · 0.30d · lib/resolveUiLanguage.ts
+- [ ] T583 · lib · 0.90d · lib/resultEditability.ts
+- [ ] T585 · lib · 0.80d · lib/resultFindReplace.ts lib/rowCountStrategy.ts
+- [ ] T587 · lib · 0.60d · lib/rowToRecord.ts lib/runPredefinedEdit.ts
+- [ ] T589 · lib · 0.80d · lib/schemaCache.ts lib/schemaChangingSql.ts
+- [ ] T591 · lib · 0.90d · lib/schemaDiffConfirm.ts
+- [ ] T593 · lib · 0.30d · lib/schemaDiffLimitationsPrefs.ts
+- [ ] T595 · lib · 0.80d · lib/schemaObjectSearch.ts
+- [ ] T597 · lib · 0.30d · lib/schemaResourceCache.ts
+- [ ] T599 · lib · 0.80d · lib/schemaTreeContextMenu.ts
+- [ ] T601 · lib · 0.80d · lib/serverStatusTrends.ts
+- [ ] T603 · lib · 0.80d · lib/setValueActions.ts lib/splash.ts
+- [ ] T605 · lib · 0.80d · lib/sqlBindParams.ts
+- [ ] T607 · lib · 2.00d · lib/sqlCompletionContext.ts · split
+- [ ] T609 · lib · 2.00d · lib/sqlCompletions.ts · split
+- [ ] T611 · lib · 0.50d · lib/sqlEditorDefaults.ts
+- [ ] T613 · lib · 0.90d · lib/sqlFileExecution.ts
+- [ ] T615 · lib · 0.80d · lib/sqlFormat.ts lib/sqlFunctionRegistry.ts
+- [ ] T617 · lib · 0.80d · lib/sqlGenerator.ts lib/sqlNamespace.ts
+- [ ] T619 · lib · 0.80d · lib/sqlPathPrefix.ts lib/sqlSchemaDropTargets.ts
+- [ ] T621 · lib · 0.90d · lib/sqlStatementRange.ts lib/sqlTransactionGuard.ts lib/startupTimer.ts
+- [ ] T623 · lib · 0.90d · lib/surfaceBgCache.ts
+- [ ] T625 · lib · 0.90d · lib/syncPairing.ts
+- [ ] T627 · lib · 0.30d · lib/syncTaxonomy.ts
+- [ ] T629 · lib · 1.30d · lib/tableChanges.ts · split
+- [ ] T631 · lib · 0.80d · lib/tableSchemaForSql.ts lib/tableSqlActions.ts
+- [ ] T632 · lib · 2.00d · lib/themeEditorColors.ts · split
+- [ ] T633 · lib · 1.30d · lib/themePackApply.ts · split
+- [ ] T634 · lib · 0.30d · lib/themeTokens.ts
+- [ ] T635 · lib · 0.90d · lib/totalRowsDisplay.ts
+- [ ] T636 · lib · 0.90d · lib/transferLimitationsPrefs.ts lib/transferPairing.ts lib/tunnelDeletion.ts
+- [ ] T637 · lib · 0.80d · lib/tunnelDraft.ts
+- [ ] T638 · lib · 0.90d · lib/updater.ts
+- [ ] T639 · lib · 0.90d · lib/updateReminderSchedule.ts
+- [ ] T640 · lib · 1.30d · lib/valueSearch.ts · split
+- [ ] T641 · lib · 0.50d · lib/wappAssetOrigin.ts
+- [ ] T642 · lib · 1.30d · lib/wappBridge.ts · split
+- [ ] T643 · lib · 0.90d · lib/wappI18n.ts
+- [ ] T644 · lib · 0.30d · lib/windowKind.ts
+- [ ] T645 · lib · 0.90d · lib/windowManager.ts
+- [ ] T646 · lib · 0.60d · lib/workflowDraftYaml.ts lib/workflowListContextMenu.ts
+- [ ] T647 · lib · 0.80d · lib/workflowYaml.ts

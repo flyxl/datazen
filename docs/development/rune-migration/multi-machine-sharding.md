@@ -21,14 +21,16 @@
 
 ## 3. 四段划分（647 tasks / 641.9 人日）
 
-| 段 | 分支 | task 数 | 人日 | 覆盖 area |
+| 段 | 分支 | task 数 | 人日 | 覆盖 area（以 `--shard N` 实测为准） |
 | --: | --- | --: | --: | --- |
-| 1 | `feat/rune-native-ui-migration/segment-1` | 153 | 160.6 | `windows/connection`(101), `components/connection`(15), `components/filter`(7), `components/migration`(4), `lib/session`, `ai`, `lib/structureEditor`, `lib/relationMetadata`, `platform/web`, `lib/connectionViews`, `components/export` |
-| 2 | `feat/rune-native-ui-migration/segment-2` | 162 | 160.5 | `lib`(117), `components/chart`(9), `windows/workflow`(9), `types`(10), `stores/ai`, `lib/relationPrediction`, `lib/metadata`, `windows/wapps`, `windows/main`, `platform/shared`, `lib/dashboard`, `components/schema`(1) |
-| 3 | `feat/rune-native-ui-migration/segment-3` | 166 | 160.5 | `windows/data-sync`(37), `stores`(32), `components/DataTable`(23), `components/ai`(13), `stores/tableData`(16), `components`(11), `windows/data-transfer`(11), `platform`, `lib/chart`, `windows/backup`, `components/query`(4), `components/ui`(3), `components/admin`, `shell.ts`, `App.tsx` |
-| 4 | `feat/rune-native-ui-migration/segment-4` | 166 | 160.3 | `components/sql-editor`(16), `windows/settings`(32), `hooks`(26), `commands`(23), `windows/schema-diff`(21), `windows/onboarding`(12), `lib/valuePresentation`(11), `windows/dashboard`(7), `windows/workspace`(7), `lib/sqlDialects`, `components/history`(3), `bootstrap`, `extensions`, `index.ts`, `app.ts` |
+| 1 | `feat/rune-native-ui-migration/segment-1` | 153 | 160.5 | `windows/connection`(101), `components/connection`(15), `components/filter`(7), `components/migration`(4), `components/schema`, `lib/session`, `lib/structureEditor`, `lib/relationMetadata`, `platform/web`, `ai`, `shell.ts` |
+| 2 | `feat/rune-native-ui-migration/segment-2` | 162 | 160.6 | `lib`(117), `components/chart`(9), `windows/workflow`(9), `types`(10), `stores/ai`, `lib/relationPrediction`, `lib/metadata`, `components/export`, `windows/wapps`, `windows/main`, `extensions`, `index.ts` |
+| 3 | `feat/rune-native-ui-migration/segment-3` | 166 | 160.5 | `windows/data-sync`(37), `stores`(32), `components/DataTable`(23), `components/ai`(13), `stores/tableData`(16), `components`(11), `windows/data-transfer`(11), `platform`, `lib/chart`, `windows/backup`, `components/query`(4), `components/ui`(3), `components/admin`, `App.tsx` |
+| 4 | `feat/rune-native-ui-migration/segment-4` | 166 | 160.3 | `components/sql-editor`(16), `windows/settings`(32), `hooks`(26), `commands`(23), `windows/schema-diff`(21), `windows/onboarding`(12), `lib/valuePresentation`(11), `windows/dashboard`(7), `windows/workspace`(7), `lib/sqlDialects`, `components/history`(3), `lib/connectionViews`, `bootstrap`, `platform/shared`, `app.ts` |
 
-18 个已完成任务按 area 归属：段1（`components/filter`, `components/migration`）、段2（`lib`, `components/schema`）、段3（`components/ui`, `components/DataTable`, `components/query`）、段4（`components/history`）。这些基座/已完成件随主分支分发给各机器，不必重做。
+> 分段以 `node scripts/rune-parity.mjs --shard N --of 4` 的实测输出为准（上表按 2026-11-18 快照）；源码变动后 area 归属可能微调，重跑 `--shard-create` 即可刷新分片状态文件。
+
+18 个已完成任务按 area 归属：段1（`components/filter`, `components/migration`, `components/schema`）、段2（`lib`）、段3（`components/ui`, `components/DataTable`, `components/query`）、段4（`components/history`）。这些基座/已完成件随主分支分发给各机器，不必重做。
 
 ## 4. 状态同步：各段独立文件（零冲突）
 
@@ -60,11 +62,20 @@ feat/rune-native-ui-migration            （本机主分支，含全部基座 + 
 - **合流即 push**（用户要求）：每个 task 合流后立即 push 自己分支；本机汇总后 push 主分支。
 - **不变量**：React 页面与组件保留，Rune 是并行的另一套界面；严格 TypeScript 仅针对原前端，Rune 侧 Rust 禁裸 unwrap/expect。
 
-## 7. 仍需本机先做的实现工作
+## 7. 脚本能力（已实现）
 
-本文先定义分段方案；以下脚本能力待实现后再分发给各机器：
+| 命令 | 用途 | 谁跑 |
+| --- | --- | --- |
+| `node scripts/rune-parity.mjs --shard N --of 4` | 输出第 N 段清单/统计/area | 任意机器 |
+| `node scripts/rune-parity.mjs --shard N --next-todo` | 只列该段待办（读 `shards/segment-N.md`） | 该段机器 |
+| `node scripts/rune-parity.mjs --shard-create` | 从当前主 tasklist 生成 4 个分片状态文件（保留已完成状态） | 协调者，开局一次 |
+| `node scripts/rune-parity.mjs --shard-status T###=done --shard N` | 机器标记**本段**任务状态；跨段 T 会被拒绝 | 该段机器 |
+| `node scripts/rune-parity.mjs --aggregate` | 读 4 段状态按 React 文件集汇总回主 tasklist | 协调者，定期 |
 
-1. `node scripts/rune-parity.mjs --shard N --of 4`：输出第 N 段的 task 清单与统计。
-2. `node scripts/rune-parity.mjs --shard-status T###=done --file shards/segment-N.md`：机器写本段状态文件。
-3. `node scripts/rune-parity.mjs --aggregate`：本机把 4 段状态汇总回主 tasklist。
-4. 从主分支创建 4 个 segment 分支并 push，作为各机器起点。
+`--shard-status` / `--aggregate` 均支持 `--file` 覆盖路径；状态在分片文件与主 tasklist 间靠 React 文件集对齐，源码变动重排 T 编号也不会串位。
+
+## 8. 开局操作（协调者）
+
+1. `--shard-create` 生成 4 个分片状态文件并提交。
+2. 从最新 `feat/rune-native-ui-migration` 建 4 个分支 `feat/rune-native-ui-migration/segment-{1..4}`，全部 push。
+3. 各机器 checkout 自己的 segment 分支，按 `--shard N --next-todo` 开干。

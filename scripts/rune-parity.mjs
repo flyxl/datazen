@@ -16,8 +16,14 @@
 //   node scripts/rune-parity.mjs --tasklist      refresh, keeping known statuses
 //   node scripts/rune-parity.mjs --status T007=done
 //   node scripts/rune-parity.mjs --progress      count, nothing written back
+//   node scripts/rune-parity.mjs --next-wave     first N todos, distinct areas
+//   node scripts/rune-parity.mjs --shard 1 --of 4          list segment 1
+//   node scripts/rune-parity.mjs --shard 1 --next-todo     segment 1's todos
+//   node scripts/rune-parity.mjs --shard-create           coordinator: make 4 shard state files
+//   node scripts/rune-parity.mjs --shard-status T007=done --shard 1   machine: mark own shard
+//   node scripts/rune-parity.mjs --aggregate             coordinator: merge shards into tasklist
 
-import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -270,6 +276,43 @@ function waveOrder(list) {
 }
 const tasks = waveOrder(baseTasks);
 const allRows = [...rows, ...tsRows];
+
+/**
+ * Multi-machine sharding: assign each whole area to one of N shards, balanced by
+ * working days (largest area first, placed on the least-loaded shard). Keeps an
+ * area's tasks on one machine so same-area upstream dependencies are never split.
+ * Returns an array of arrays of {task, tNumber}. Deterministic for a fixed input.
+ */
+function shardAssignment(n = 4) {
+  const lanes = new Map();
+  for (const [i, t] of tasks.entries()) {
+    if (!lanes.has(t.area)) lanes.set(t.area, []);
+    lanes.get(t.area).push({ task: t, tNumber: i + 1 });
+  }
+  const shards = Array.from({ length: n }, () => ({ days: 0, items: [] }));
+  const areas = [...lanes.keys()].sort(
+    (a, b) =>
+      lanes.get(b).reduce((s, x) => s + x.task.days, 0) -
+        lanes.get(a).reduce((s, x) => s + x.task.days, 0) || a.localeCompare(b),
+  );
+  for (const area of areas) {
+    const items = lanes.get(area);
+    const load = items.reduce((s, x) => s + x.task.days, 0);
+    const target = shards.reduce((best, s, i) => (s.days < shards[best].days ? i : best), 0);
+    shards[target].days += load;
+    shards[target].items.push(...items);
+  }
+  for (const s of shards) s.items.sort((a, b) => a.tNumber - b.tNumber);
+  return shards;
+}
+
+const SHARD_STATE_DIR = join(ROOT, 'docs/development/rune-migration/shards');
+const shardStatePath = (n) => join(SHARD_STATE_DIR, `segment-${n}.md`);
+const shardLine = (entry, mark) => {
+  const t = entry.task;
+  const files = t.rows.map((r) => r.react.replace('packages/frontend/src/', '')).join(' ');
+  return `- [${mark}] T${String(entry.tNumber).padStart(3, '0')} · ${t.area} · ${t.days.toFixed(2)}d · ${files}${t.split ? ' · split' : ''}`;
+};
 const args = process.argv.slice(2);
 const flag = (name, fallback = null) => {
   const i = args.indexOf(name);
@@ -415,6 +458,118 @@ if (flag('--tasklist')) {
   for (const [i, t] of next.entries()) {
     console.log(`W${i + 1}  T${String(tasks.indexOf(t) + 1).padStart(3, '0')}  ${t.area}  ${t.days.toFixed(2)}d  ${t.rows.map((r) => r.react.replace('packages/frontend/src/', '')).join(' ')}`);
   }
+} else if (flag('--shard') && !flag('--shard-status') && !flag('--shard-create') && !flag('--aggregate')) {
+  // List one shard's tasks (default 4 shards). `--next-todo` shows only its todos.
+  // Guard: `--shard-status T###=x --shard N` also carries --shard, so exclude the
+  // action flags here and let those branches handle it below.
+  const n = Number(flag('--shard'));
+  const total = Number(flag('--of') ?? 4);
+  if (!Number.isInteger(n) || n < 1 || n > total) {
+    console.error(`bad --shard "${n}": want 1..${total}`);
+    process.exit(2);
+  }
+  const shards = shardAssignment(total);
+  const s = shards[n - 1];
+  const path = flag('--file') ? flag('--file') : shardStatePath(n);
+  const marks = readTasklist(path); // empty if the shard file does not exist yet
+  const nextOnly = flag('--next-todo') !== null;
+  console.log(`SEGMENT ${n}/${total}: ${s.items.length} tasks, ${s.days.toFixed(1)}d`);
+  console.log(`state file: ${path}`);
+  const areas = [...new Set(s.items.map((x) => x.task.area))];
+  console.log(`areas (${areas.length}): ${areas.join(', ')}`);
+  console.log('');
+  for (const e of s.items) {
+    const mark = nextOnly ? (marks.get(taskKey(e.task)) ?? ' ') : ' ';
+    if (nextOnly && mark !== ' ') continue;
+    console.log(shardLine(e, mark));
+  }
+} else if (flag('--shard-create')) {
+  // Coordinator: materialise 4 shard state files from the CURRENT main tasklist
+  // status. Run once; seconds-arg `--of` sets shard count (default 4).
+  const total = Number(flag('--of') ?? 4);
+  const shards = shardAssignment(total);
+  const mainMarks = readTasklist(TASKLIST);
+  mkdirSync(SHARD_STATE_DIR, { recursive: true });
+  for (const [i, s] of shards.entries()) {
+    const path = shardStatePath(i + 1);
+    const header = [
+      `# Segment ${i + 1}/${total} task status`,
+      '',
+      '本文件只由该段所属机器写。状态以 React 文件集为身份；只改方括号一个字符。',
+      `任务由 \`node scripts/rune-parity.mjs --shard ${i + 1} --of ${total}\` 给出。`,
+      '',
+      '',
+    ];
+    const lines = [...header, ...s.items.map((e) => shardLine(e, mainMarks.get(taskKey(e.task)) ?? ' '))];
+    writeFileSync(path, `${lines.join('\n')}\n`);
+    const done = s.items.filter((e) => mainMarks.get(taskKey(e.task)) === 'x').length;
+    console.log(`wrote ${path} (${s.items.length} tasks, ${done} already done)`);
+  }
+} else if (flag('--shard-status')) {
+  // Machine: mark a task in ITS OWN shard file. Validates the T belongs to shard N.
+  const spec = String(flag('--shard-status'));
+  const [rawId, rawState] = spec.split('=');
+  const id = rawId?.toUpperCase();
+  const mark = MARK_OF_STATE[rawState];
+  const n = Number(flag('--shard'));
+  const total = Number(flag('--of') ?? 4);
+  if (!/^T\d{3}$/.test(id ?? '') || mark === undefined) {
+    console.error(`bad --shard-status "${spec}": want T###=todo|doing|done|blocked`);
+    process.exit(2);
+  }
+  if (!Number.isInteger(n) || n < 1 || n > total) {
+    console.error(`bad --shard "${n}": want 1..${total}`);
+    process.exit(2);
+  }
+  const shard = shardAssignment(total)[n - 1];
+  const entry = shard.items.find((e) => `T${String(e.tNumber).padStart(3, '0')}` === id);
+  if (!entry) {
+    console.error(`${id} is not in segment ${n} (it belongs to another machine)`);
+    process.exit(2);
+  }
+  const path = flag('--file') ? flag('--file') : shardStatePath(n);
+  const lines = readFileSync(path, 'utf8').split('\n');
+  const at = lines.findIndex((line) => TASK_LINE.exec(line)?.[2] === id);
+  if (at < 0) {
+    console.error(`${id} is not present in ${path}`);
+    process.exit(2);
+  }
+  const before = STATE_OF_MARK[TASK_LINE.exec(lines[at])[1]];
+  lines[at] = `${lines[at].slice(0, 3)}${mark}${lines[at].slice(4)}`;
+  writeFileSync(path, lines.join('\n'));
+  console.log(`${id} [segment ${n}]: ${before} -> ${rawState}`);
+} else if (flag('--aggregate')) {
+  // Coordinator: merge all 4 shard states back into the main tasklist by key.
+  // Only the coordinator writes the main tasklist; machines never touch it.
+  const total = Number(flag('--of') ?? 4);
+  const merged = new Map();
+  let missing = 0;
+  for (let n = 1; n <= total; n += 1) {
+    const path = flag('--file') ? flag('--file') : shardStatePath(n);
+    const marks = readTasklist(path);
+    if (marks.size === 0) {
+      console.warn(`segment ${n}: no state file at ${path} (skipped)`);
+      missing += 1;
+      continue;
+    }
+    for (const [key, mark] of marks) merged.set(key, mark);
+    console.log(`segment ${n}: ${marks.size} statuses (${[...marks.values()].filter((m) => m === 'x').length} done)`);
+  }
+  const lines = readFileSync(TASKLIST, 'utf8').split('\n');
+  let changed = 0;
+  for (let i = 0; i < lines.length; i += 1) {
+    const m = TASK_LINE.exec(lines[i]);
+    if (!m) continue;
+    const files = lines[i].split(' · ')[3]?.replace(/\s*· split$/, '') ?? '';
+    const key = files.split(/\s+/).sort().join(' ');
+    const mark = merged.get(key);
+    if (mark && mark !== m[1]) {
+      lines[i] = `${lines[i].slice(0, 3)}${mark}${lines[i].slice(4)}`;
+      changed += 1;
+    }
+  }
+  writeFileSync(TASKLIST, lines.join('\n'));
+  console.log(`aggregate: ${changed} task status(es) updated in main tasklist${missing ? ` (${missing} shard(s) absent)` : ''}`);
 } else if (flag('--json')) {
   writeFileSync(flag('--json'), JSON.stringify({ generatedAt: new Date().toISOString(), totals, tasks, files: allRows }, null, 2));
   console.log(`wrote ${flag('--json')} (${totals.tasks} tasks)`);

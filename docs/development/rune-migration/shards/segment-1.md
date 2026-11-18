@@ -1,0 +1,159 @@
+# Segment 1/4 task status
+
+本文件只由该段所属机器写。状态以 React 文件集为身份；只改方括号一个字符。
+任务由 `node scripts/rune-parity.mjs --shard 1 --of 4` 给出。
+
+
+- [x] T003 · components/filter · 0.60d · components/filter/FilterBetweenInput.tsx components/filter/FilterConditionChip.tsx
+- [x] T004 · components/schema · 0.50d · components/schema/SchemaDiffPanel.tsx
+- [ ] T007 · components/connection · 0.80d · components/connection/ConnectionAdvancedSettings.tsx
+- [ ] T010 · components/migration · 0.80d · components/migration/MigrationEndpointsBar.tsx
+- [ ] T016 · windows/connection · 2.00d · windows/connection/BatchExportDialog.tsx · split
+- [ ] T032 · lib/relationMetadata · 0.80d · lib/relationMetadata/metadataCache.ts
+- [ ] T034 · lib/session · 0.90d · lib/session/counters.ts
+- [ ] T036 · lib/structureEditor · 0.90d · lib/structureEditor/buildStructureChangeRequest.ts lib/structureEditor/canOpenStructureEditor.ts lib/structureEditor/controlHints.ts
+- [ ] T045 · platform/web · 0.30d · platform/web/index.ts
+- [ ] T049 · ai · 0.80d · ai/grantState.ts
+- [ ] T053 · shell.ts · 0.90d · shell.ts
+- [ ] T056 · components/filter · 0.90d · components/filter/FilterConditionEditor.tsx
+- [ ] T059 · components/connection · 0.90d · components/connection/ConnectionAiNotes.tsx
+- [x] T062 · components/migration · 0.50d · components/migration/MigrationJobFailureNotice.tsx
+- [ ] T067 · windows/connection · 1.30d · windows/connection/ConnectionNavigatorTree.tsx · split
+- [ ] T081 · lib/relationMetadata · 0.90d · lib/relationMetadata/sessionConfig.ts lib/relationMetadata/types.ts lib/relationPrediction/fromRelationMetadata.ts
+- [ ] T083 · lib/session · 2.00d · lib/session/EditorSessionController.ts · split
+- [ ] T085 · lib/structureEditor · 0.90d · lib/structureEditor/ddlApplyWarnings.ts lib/structureEditor/draftDefaults.ts lib/structureEditor/draftIds.ts
+- [ ] T094 · platform/web · 0.90d · platform/web/stub.ts
+- [ ] T097 · ai · 2.00d · ai/sessionCancel.ts · split
+- [x] T100 · components/filter · 0.30d · components/filter/FilterConnectorToggle.tsx
+- [ ] T103 · components/connection · 1.00d · components/connection/ConnectionFormBody.tsx components/connection/ConnectionImportFields.tsx
+- [ ] T106 · components/migration · 1.30d · components/migration/MigrationJobVerdictPanel.tsx · split
+- [ ] T110 · windows/connection · 1.30d · windows/connection/ConnectionPage.tsx · split
+- [ ] T122 · lib/session · 0.90d · lib/session/ExecutionProjection.ts
+- [ ] T124 · lib/structureEditor · 0.90d · lib/structureEditor/isControlEnabled.ts lib/structureEditor/resolveCreateTableSchema.ts lib/structureEditor/schemaToDraft.ts
+- [ ] T133 · ai · 2.00d · ai/streamRegistry.ts · split
+- [ ] T135 · components/filter · 0.90d · components/filter/FilterSqlPreviewDialog.tsx
+- [ ] T137 · components/connection · 0.90d · components/connection/ConnectionShareDialog.tsx
+- [ ] T140 · components/migration · 0.90d · components/migration/MigrationRunHistoryDialog.tsx
+- [ ] T144 · windows/connection · 1.30d · windows/connection/ConnectionWorkspaceHome.tsx · split
+- [ ] T154 · lib/session · 0.30d · lib/session/pageUnload.ts
+- [ ] T156 · lib/structureEditor · 0.30d · lib/structureEditor/types.ts
+- [ ] T164 · ai · 2.00d · ai/targetClaim.ts · split
+- [ ] T166 · components/filter · 0.80d · components/filter/FilterTokenInput.tsx components/filter/FilterValueInput.tsx
+- [ ] T167 · components/connection · 0.90d · components/connection/ConnectionShareDialogHost.tsx
+- [ ] T173 · windows/connection · 0.80d · windows/connection/ContentStatusBar.tsx windows/connection/ContentToolbar.tsx
+- [ ] T183 · lib/session · 0.90d · lib/session/QueryPanelSession.ts
+- [ ] T192 · components/filter · 0.80d · components/filter/NamedViewMenu.tsx
+- [ ] T193 · components/connection · 0.90d · components/connection/FileConnectionFields.tsx
+- [ ] T199 · windows/connection · 1.30d · windows/connection/ContentView.tsx · split
+- [ ] T208 · lib/session · 0.90d · lib/session/queryPanelSessionRoot.ts
+- [ ] T216 · components/filter · 0.90d · components/filter/filterLabels.ts components/filter/filterValues.ts components/filter/types.ts
+- [ ] T217 · components/connection · 0.60d · components/connection/HttpProxyTunnelFields.tsx components/connection/IndexConnectionFields.tsx
+- [ ] T223 · windows/connection · 0.90d · windows/connection/ContentViewDialogs.tsx
+- [ ] T231 · lib/session · 0.30d · lib/session/runEditorExplain.ts
+- [ ] T239 · components/connection · 0.90d · components/connection/NewConnectionDialog.tsx
+- [ ] T245 · windows/connection · 1.30d · windows/connection/ContentViewDrawers.tsx · split
+- [ ] T252 · lib/session · 0.90d · lib/session/runEditorQuery.ts
+- [ ] T260 · components/connection · 0.90d · components/connection/ObjectFilterDialog.tsx components/connection/SaveTunnelDialog.tsx components/connection/shared.tsx
+- [ ] T266 · windows/connection · 0.60d · windows/connection/CreateDatabaseDialog.tsx windows/connection/CreateSchemaDialog.tsx
+- [ ] T273 · lib/session · 0.90d · lib/session/sessionPrompts.ts
+- [ ] T281 · components/connection · 0.80d · components/connection/SshTunnelFields.tsx components/connection/StandardConnectionFields.tsx
+- [ ] T286 · windows/connection · 0.90d · windows/connection/CreateUserDialog.tsx
+- [ ] T292 · lib/session · 0.90d · lib/session/tableSession.ts
+- [ ] T300 · components/connection · 0.80d · components/connection/WebSocketTunnelFields.tsx components/chart/AxisConfigurator.tsx
+- [ ] T305 · windows/connection · 0.90d · windows/connection/DatabaseObjectView.tsx
+- [ ] T311 · lib/session · 0.90d · lib/session/targetCommand.ts
+- [ ] T318 · components/connection · 0.60d · components/connection/tunnelFieldContracts.ts components/connection/useConnectionClipboardFill.ts
+- [ ] T322 · windows/connection · 0.50d · windows/connection/DDLView.tsx
+- [ ] T327 · lib/session · 0.60d · lib/session/targetCommandPhase.ts lib/settingsExport.ts
+- [ ] T333 · components/connection · 1.30d · components/connection/useConnectionForm.ts · split
+- [ ] T337 · windows/connection · 3.60d · windows/connection/DocumentConnectionView.tsx · split
+- [ ] T346 · components/connection · 0.90d · components/connection/useConnectionImport.ts
+- [ ] T349 · windows/connection · 0.30d · windows/connection/er/ErRelationLegend.tsx
+- [ ] T358 · components/connection · 1.30d · components/connection/useTunnelFormState.ts · split
+- [ ] T361 · windows/connection · 2.00d · windows/connection/er/TableNode.tsx · split
+- [ ] T372 · windows/connection · 2.20d · windows/connection/ErDiagramView.tsx · split
+- [ ] T382 · windows/connection · 0.50d · windows/connection/ExecuteSqlFileDialog.tsx
+- [ ] T391 · windows/connection · 1.30d · windows/connection/ExportDialog.tsx · split
+- [ ] T400 · windows/connection · 0.90d · windows/connection/ForeignKeysView.tsx
+- [ ] T409 · windows/connection · 0.90d · windows/connection/home/ConnectionCardList.tsx
+- [ ] T418 · windows/connection · 0.60d · windows/connection/home/HomeHero.tsx windows/connection/home/McpPromoBar.tsx
+- [ ] T427 · windows/connection · 0.50d · windows/connection/home/RecentQueriesList.tsx
+- [ ] T435 · windows/connection · 0.90d · windows/connection/home/ShortcutFooter.tsx
+- [ ] T442 · windows/connection · 3.70d · windows/connection/ImportDialog.tsx · split
+- [ ] T448 · windows/connection · 1.30d · windows/connection/IndexesView.tsx · split
+- [ ] T454 · windows/connection · 1.30d · windows/connection/navigator/DatabaseValueSearchDialog.tsx · split
+- [ ] T460 · windows/connection · 1.00d · windows/connection/navigator/GlobalObjectSearch.tsx windows/connection/navigator/NavigatorDialogs.tsx
+- [ ] T465 · windows/connection · 0.50d · windows/connection/navigator/NavigatorToolbar.tsx
+- [ ] T470 · windows/connection · 1.30d · windows/connection/navigator/NavigatorTreeRow.tsx · split
+- [ ] T475 · windows/connection · 0.90d · windows/connection/navigator/treeStatusDot.tsx
+- [ ] T480 · windows/connection · 0.90d · windows/connection/ObjectBrowser.tsx
+- [ ] T485 · windows/connection · 1.30d · windows/connection/PanelContentRenderer.tsx · split
+- [ ] T489 · windows/connection · 0.90d · windows/connection/PanelTabBar.tsx
+- [ ] T492 · windows/connection · 0.30d · windows/connection/PendingPlanDialog.tsx
+- [ ] T495 · windows/connection · 1.30d · windows/connection/PrivilegeView.tsx · split
+- [ ] T498 · windows/connection · 0.90d · windows/connection/ProcessListView.tsx
+- [ ] T501 · windows/connection · 0.30d · windows/connection/query/ExecutionStrategyAskModal.tsx
+- [ ] T504 · windows/connection · 0.90d · windows/connection/query/QueryBuilderHostAdapter.tsx
+- [ ] T506 · windows/connection · 1.30d · windows/connection/query/QueryEditorSection.tsx · split
+- [ ] T508 · windows/connection · 1.30d · windows/connection/query/QuerySidebarSection.tsx · split
+- [ ] T510 · windows/connection · 1.30d · windows/connection/query/QueryTransactionModals.tsx · split
+- [ ] T512 · windows/connection · 0.90d · windows/connection/query/toolbar/ExecutionStrategySelect.tsx
+- [ ] T514 · windows/connection · 0.90d · windows/connection/query/toolbar/RefreshCompletionButton.tsx
+- [ ] T516 · windows/connection · 0.90d · windows/connection/query/toolbar/SnippetMenuButton.tsx
+- [ ] T518 · windows/connection · 1.30d · windows/connection/query/useQueryExecutionGate.tsx · split
+- [ ] T520 · windows/connection · 1.30d · windows/connection/QueryPanel.tsx · split
+- [ ] T522 · windows/connection · 0.80d · windows/connection/result-workspace/ExecutionSummaryCard.tsx windows/connection/result-workspace/ResultFindBar.tsx
+- [ ] T524 · windows/connection · 1.30d · windows/connection/result-workspace/ResultTableView.tsx · split
+- [ ] T526 · windows/connection · 0.50d · windows/connection/result-workspace/ResultWorkspace.tsx
+- [ ] T528 · windows/connection · 3.50d · windows/connection/ServerStatusView.tsx · split
+- [ ] T530 · windows/connection · 0.80d · windows/connection/SetValueDateDialog.tsx windows/connection/structure/StructureColumnTable.tsx
+- [ ] T532 · windows/connection · 0.80d · windows/connection/structure/StructureIndexTable.tsx windows/connection/structure/StructurePlanPreview.tsx
+- [ ] T534 · windows/connection · 0.90d · windows/connection/StructureView.tsx
+- [ ] T536 · windows/connection · 0.30d · windows/connection/TableClipboardStatus.tsx
+- [ ] T538 · windows/connection · 0.80d · windows/connection/TableColumnFilter.tsx
+- [ ] T540 · windows/connection · 0.50d · windows/connection/TableFilterToolbar.tsx
+- [ ] T542 · windows/connection · 0.90d · windows/connection/TableFkBreadcrumb.tsx
+- [ ] T544 · windows/connection · 0.90d · windows/connection/TableFkErrorBanner.tsx windows/connection/TableLoadErrorState.tsx windows/connection/TableNoPrimaryKeyTip.tsx
+- [ ] T546 · windows/connection · 0.90d · windows/connection/TablePendingChangesBar.tsx
+- [ ] T548 · windows/connection · 0.60d · windows/connection/TableReadOnlyTip.tsx windows/connection/TableStatusBanners.tsx
+- [ ] T550 · windows/connection · 1.30d · windows/connection/TableStructureEditor.tsx · split
+- [ ] T552 · windows/connection · 0.50d · windows/connection/TableToolbar.tsx
+- [ ] T554 · windows/connection · 5.80d · windows/connection/TableView.tsx · split
+- [ ] T556 · windows/connection · 0.90d · windows/connection/WorkspaceModeSidebar.tsx
+- [ ] T558 · windows/connection · 0.90d · windows/connection/connectionPageUtils.ts
+- [ ] T560 · windows/connection · 0.90d · windows/connection/contentViewHelpers.ts
+- [ ] T562 · windows/connection · 2.00d · windows/connection/er/buildErGraph.ts · split
+- [ ] T564 · windows/connection · 2.00d · windows/connection/er/interactionState.ts · split
+- [ ] T566 · windows/connection · 2.00d · windows/connection/er/layoutErGraph.ts · split
+- [ ] T568 · windows/connection · 0.60d · windows/connection/er/nodeMetrics.ts windows/connection/er/relationStyle.ts
+- [ ] T570 · windows/connection · 1.30d · windows/connection/navigator/buildFlatRows.ts · split
+- [ ] T572 · windows/connection · 0.80d · windows/connection/navigator/treeRowAria.ts windows/connection/navigator/types.ts
+- [ ] T574 · windows/connection · 0.90d · windows/connection/navigator/useConnectionDrag.ts
+- [ ] T576 · windows/connection · 0.90d · windows/connection/navigator/useKvDbCounts.ts
+- [ ] T578 · windows/connection · 1.30d · windows/connection/navigator/useNavigatorContextMenus.ts · split
+- [ ] T580 · windows/connection · 2.00d · windows/connection/navigator/useNavigatorDbState.ts · split
+- [ ] T582 · windows/connection · 0.80d · windows/connection/navigator/utils.ts
+- [ ] T584 · windows/connection · 0.90d · windows/connection/openHistoryQuery.ts
+- [ ] T586 · windows/connection · 0.30d · windows/connection/query/aiDraftBridge.ts
+- [ ] T588 · windows/connection · 0.90d · windows/connection/query/contracts.ts
+- [ ] T590 · windows/connection · 1.30d · windows/connection/query/queryDropHandler.ts · split
+- [ ] T592 · windows/connection · 1.00d · windows/connection/query/queryErrorChatPrompt.ts windows/connection/query/queryExecutionRisk.ts
+- [ ] T594 · windows/connection · 0.80d · windows/connection/query/queryResultPaneHeight.ts windows/connection/query/resolveExecutionTarget.ts
+- [ ] T596 · windows/connection · 0.90d · windows/connection/query/useQueryBuilderContribution.ts
+- [ ] T598 · windows/connection · 0.90d · windows/connection/query/validateBindParams.ts windows/connection/queryToolbarWidth.ts windows/connection/result-workspace/index.ts
+- [ ] T600 · windows/connection · 0.80d · windows/connection/result-workspace/isMutationExecution.ts windows/connection/result-workspace/resultWorkspaceHelpers.ts
+- [ ] T602 · windows/connection · 0.60d · windows/connection/schema-tree/schemaTreeCategories.ts windows/connection/schema-tree/schemaTreeDrag.ts
+- [ ] T604 · windows/connection · 0.90d · windows/connection/schema-tree/useExpandedDbCacheRefresh.ts
+- [ ] T606 · windows/connection · 1.30d · windows/connection/tableEditing.ts · split
+- [ ] T608 · windows/connection · 1.30d · windows/connection/useConnectionContextMenu.ts · split
+- [ ] T610 · windows/connection · 0.90d · windows/connection/useConnectionTabs.ts
+- [ ] T612 · windows/connection · 0.90d · windows/connection/useConnectionWorkspaceMeta.ts
+- [ ] T614 · windows/connection · 0.90d · windows/connection/useDirtyIndex.ts
+- [ ] T616 · windows/connection · 0.90d · windows/connection/useKvSlotActions.ts
+- [ ] T618 · windows/connection · 0.90d · windows/connection/useKvWorkspaceSlots.ts
+- [ ] T620 · windows/connection · 0.90d · windows/connection/useNamedViewMenu.ts
+- [ ] T622 · windows/connection · 1.30d · windows/connection/usePanelHandlers.ts · split
+- [ ] T624 · windows/connection · 0.90d · windows/connection/useTableActions.ts
+- [ ] T626 · windows/connection · 0.90d · windows/connection/useTableDraftRows.ts
+- [ ] T628 · windows/connection · 1.30d · windows/connection/useTableForeignKeyNavigation.ts · split
+- [ ] T630 · windows/connection · 0.90d · windows/connection/useTableViewClipboard.ts
