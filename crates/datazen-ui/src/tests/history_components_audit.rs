@@ -407,10 +407,12 @@ fn audit_history_action_controls_are_real_buttons() {
 }
 
 #[test]
-#[ignore = "defect: copy action hand-wires tx.copy + wake_after instead of Copyable::on_copy_tx"]
 fn audit_copy_action_reuses_the_copyable_primitive() {
     let src = include_str!("../components/history/history_entry_card.rs");
-    assert!(src.contains("Copyable::new"), "copy action does not use Copyable");
+    assert!(
+        src.contains("CopyButton as Copyable") && src.contains("Copyable::new"),
+        "copy action must mount the shared CopyButton base (alias kept for the literal)"
+    );
     assert!(src.contains("on_copy_tx"), "copy action does not use on_copy_tx");
 }
 
@@ -430,4 +432,66 @@ fn audit_filter_bar_open_overlays_stay_inside_both_windows() {
             }
         }
     }
+}
+
+
+
+#[test]
+fn audit_card_copy_press_copies_and_schedules_the_feedback_wake() {
+    let clipboard = rune::clipboard::memory();
+    let mut rt = Runtime::new(CardState::default(), card_view, (960.0, 640.0), env(true));
+    rt.use_clipboard(&clipboard);
+    rt.frame(0.0);
+    let before = rt.clock.max(0.0);
+    let (x, y) = rt.find("history-entry-card-audit-h1-action-copy").expect("copy action laid out");
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(
+        clipboard.text().as_deref().map(String::as_str),
+        Some("SELECT * FROM audit_table WHERE id = 1;"),
+        "the card copy action must copy the exact SQL through CopyButton"
+    );
+    assert_eq!(rt.state.copy_calls, 1, "on_copy hook reached");
+    let deadline = rt.wake_deadline().expect("CopyButton must schedule the 1.5s feedback wake");
+    let delta = deadline - before;
+    assert!(
+        delta > 1.4 && delta < 1.7,
+        "feedback wake must be ~1500ms after the press: before={before} deadline={deadline}"
+    );
+}
+
+#[test]
+fn audit_filter_bar_wraps_at_960_and_not_at_1440() {
+    let mut rt = Runtime::new(FilterState::default(), filter_view, (960.0, 640.0), env(true));
+    rt.frame(0.0);
+    let row = element(&rt, "history-filter-bar-row");
+    let search = element(&rt, "history-filter-bar-search");
+    let sort = element(&rt, "history-filter-bar-sort-trigger");
+    let bar = element(&rt, "history-filter-bar");
+    assert!(row.rect[3] > 40.0, "960 must wrap onto a second line: row={:?}", row.rect);
+    assert!(
+        sort.rect[1] >= search.rect[1] + search.rect[3],
+        "sort must be on the wrapped second line: sort={:?} search={:?}",
+        sort.rect,
+        search.rect
+    );
+    assert!(
+        bar.rect[1] + bar.rect[3] <= 640.0,
+        "wrapped bar must stay inside the window: bar={:?}",
+        bar.rect
+    );
+
+    let mut rt = Runtime::new(FilterState::default(), filter_view, (1440.0, 816.0), env(true));
+    rt.frame(0.0);
+    let row = element(&rt, "history-filter-bar-row");
+    let search = element(&rt, "history-filter-bar-search");
+    let sort = element(&rt, "history-filter-bar-sort-trigger");
+    assert!(row.rect[3] <= 34.0, "1440 must stay one line: row={:?}", row.rect);
+    assert!(
+        (sort.rect[1] - search.rect[1]).abs() <= 2.0,
+        "1440 sort sits on the same line: sort={:?} search={:?}",
+        sort.rect,
+        search.rect
+    );
 }
