@@ -4,7 +4,7 @@
 任务由 `node scripts/rune-parity.mjs --shard 4 --of 4` 给出。
 
 
-- [ ] T005 · components/history · 1.30d · components/history/GlobalQueryHistoryDialog.tsx · split
+- [x] T005 · components/history · 1.30d · components/history/GlobalQueryHistoryDialog.tsx · split
 - [ ] T011 · components/sql-editor · 2.70d · components/sql-editor/SqlEditor.tsx · split
 - [ ] T015 · windows/settings · 0.90d · windows/settings/ai/AiContextSettings.tsx
 - [ ] T017 · windows/workspace · 0.30d · windows/workspace/WappIcon.tsx

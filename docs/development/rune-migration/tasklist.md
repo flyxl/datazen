@@ -18,10 +18,10 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 `editors/toEditString`）排在 T253–T256，因为 DataTable 主体没有它们无法 1:1 迁。
 
 - [x] T001 · components/ui · 0.90d · components/ui/Dialog.tsx components/ui/ErrorBanner.tsx components/ui/Select.tsx
-- [ ] T002 · components/DataTable · 0.50d · components/DataTable/CellRenderer.tsx
+- [x] T002 · components/DataTable · 0.50d · components/DataTable/CellRenderer.tsx
 - [x] T003 · components/filter · 0.60d · components/filter/FilterBetweenInput.tsx components/filter/FilterConditionChip.tsx
 - [x] T004 · components/schema · 0.50d · components/schema/SchemaDiffPanel.tsx
-- [ ] T005 · components/history · 1.30d · components/history/GlobalQueryHistoryDialog.tsx · split
+- [x] T005 · components/history · 1.30d · components/history/GlobalQueryHistoryDialog.tsx · split
 - [x] T006 · components/query · 0.30d · components/query/ExplainPlanTree.tsx
 - [x] T007 · components/connection · 0.80d · components/connection/ConnectionAdvancedSettings.tsx
 - [x] T008 · components/chart · 2.00d · components/chart/ChartCanvas.tsx · split
