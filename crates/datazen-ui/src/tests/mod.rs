@@ -158,3 +158,6 @@ mod support_layer_audit;
 
 // Independent re-audit of merged T0-07 menu base.
 mod menus_merge_reaudit;
+
+// T0-10 merged-mainline overlay re-audit.
+mod overlay_merge_reaudit;
