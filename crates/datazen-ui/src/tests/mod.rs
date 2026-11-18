@@ -23,6 +23,7 @@ mod icon_registry;
 // T0-11 audit: independent wrap and placement probes.
 mod tooltip_text_audit;
 // T004: the column-statistics dialog's four branches, dismissal and bounds.
+mod column_stats_audit;
 mod column_stats_dialog;
 pub(crate) use support::*;
 
