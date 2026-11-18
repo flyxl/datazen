@@ -21,7 +21,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T005 · components/DataTable · 1.30d · components/DataTable/DataExportDialog.tsx · split
 - [ ] T006 · components/DataTable · 4.00d · components/DataTable/DataTable.tsx · split
 - [ ] T007 · components/DataTable · 0.90d · components/DataTable/DataTableSelectionBar.tsx
-- [~] T008 · components/DataTable · 0.30d · components/DataTable/DefaultOrderSelect.tsx
+- [x] T008 · components/DataTable · 0.30d · components/DataTable/DefaultOrderSelect.tsx
 - [ ] T009 · components/DataTable · 0.80d · components/DataTable/DetailPanel.tsx
 - [ ] T010 · components/DataTable · 0.80d · components/DataTable/DetailPanelToggle.tsx components/DataTable/DraftRow.tsx
 - [ ] T011 · components/DataTable · 0.90d · components/DataTable/EditableCell.tsx components/DataTable/editors/BinaryCellEditor.tsx components/DataTable/editors/BooleanCellEditor.tsx
@@ -29,7 +29,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T013 · components/DataTable · 0.90d · components/DataTable/editors/EnumCellEditor.tsx components/DataTable/editors/JsonCellEditor.tsx components/DataTable/editors/LongTextCellEditor.tsx
 - [ ] T014 · components/DataTable · 0.90d · components/DataTable/editors/NumberCellEditor.tsx components/DataTable/editors/TemporalCellEditor.tsx components/DataTable/editors/TextCellEditor.tsx
 - [ ] T015 · components/DataTable · 0.80d · components/DataTable/GridCell.tsx
-- [~] T016 · components/DataTable · 0.30d · components/DataTable/GridKeyboardHints.tsx
+- [x] T016 · components/DataTable · 0.30d · components/DataTable/GridKeyboardHints.tsx
 - [x] T017 · components/DataTable · 0.80d · components/DataTable/Pagination.tsx
 - [ ] T018 · components/DataTable · 0.90d · components/DataTable/QuickLookDialog.tsx
 - [x] T019 · components/DataTable · 0.80d · components/DataTable/TableHeader.tsx
