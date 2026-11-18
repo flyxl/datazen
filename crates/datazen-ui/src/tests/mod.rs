@@ -275,5 +275,9 @@ mod admin_create_dialog;
 mod admin_create_dialog_audit;
 // T014: ExportSuccessPanel (centred green check over the caller's message).
 mod export_success_panel;
+// T014 independent audit: fresh vectors for the export success panel.
+mod export_success_panel_audit;
 // T014: FilterBar (label, one pill per condition, clear-all; loading disables).
 mod filter_bar;
+// T014 independent audit: fresh vectors for the filter bar.
+mod filter_bar_audit;
