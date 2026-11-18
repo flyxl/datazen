@@ -5,4 +5,5 @@
 //! to be wired by the Schema Diff / Data Sync migration tracks. Reusable API
 //! items are kept with per-item `#[allow(dead_code)]` until wired.
 
+pub(crate) mod migration_endpoints_bar;
 pub(crate) mod migration_job_failure_notice;
