@@ -17,8 +17,12 @@
 | rune-w2conn | `.worktrees/datazen-rune-w2conn` | `feature/rune-w2conn` | T007 | `components/connection/ConnectionAdvancedSettings.tsx` |
 | rune-w2chart | `.worktrees/datazen-rune-w2chart` | `feature/rune-w2chart` | T008 | `components/chart/ChartCanvas.tsx`（H 类，仅分发+容器+配置，renderer 范围外） |
 
-### Tester 会话（Wave 2）
-（待 coder 返回后填入）
+### Coder / Tester 会话（Wave 2）
+- Coder `ses_e1233dceafferyhFCC3JMvX2Ue` — T002 cell（rune-w2cell）
+- Coder `ses_e1233dceaffd6BgPK0VTS3bcrP` — T005 history（rune-w2hist）
+- Coder `ses_e1233dce9ffdhHr4kIaZ8wnXye` — T007 connection（rune-w2conn）
+- Coder `ses_e1233dce8ffeJAD6nvb1KNtkns` — T008 chart（rune-w2chart）
+- Tester：（待 coder 返回后填入）
 
 ## Wave 1（2026-11-18）：逐文件台账第二批，4 轨并发
 
