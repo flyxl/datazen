@@ -22,7 +22,9 @@
 - Coder `ses_e1233dceaffd6BgPK0VTS3bcrP` — T005 history（rune-w2hist）
 - Coder `ses_e1233dce9ffdhHr4kIaZ8wnXye` — T007 connection（rune-w2conn）
 - Coder `ses_e1233dce8ffeJAD6nvb1KNtkns` — T008 chart（rune-w2chart）
-- Tester：（待 coder 返回后填入）
+- Coder `ses_e1233dce8ffeJAD6nvb1KNtkns` — T008 chart → `52647824d` READY_FOR_TEST（gate PASS，792 tests）
+- Tester `ses_e122387b1ffeb3LBsuW7E4MbkU` — T008 chart，审计中
+- 其余 3 coder（T002/T005/T007）仍在运行
 
 ## Wave 1（2026-11-18）：逐文件台账第二批，4 轨并发
 
