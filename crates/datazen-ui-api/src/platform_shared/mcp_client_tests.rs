@@ -772,3 +772,38 @@ fn json_rpc_error_message_formats_with_and_without_a_code() {
     };
     assert_eq!(without_code.message(), "plain");
 }
+
+/// T092-tester LOW-1 pin: a `tools/list` entry that violates the
+/// declared tool shape fails the whole list with `invalid tool entry`
+/// (the documented strict-list deviation; the desktop rmcp twin is
+/// equally strict) instead of registering a garbage tool.
+#[test]
+fn a_malformed_tool_entry_fails_the_whole_list() {
+    let tools_list: Responder = Box::new(|body| {
+        let id = body.get("id").cloned().unwrap_or(json!(0));
+        super::test_support::rpc_result(
+            &id,
+            json!({ "tools": [{ "nope": 1 }] }),
+            Vec::new(),
+        )
+    });
+    let server = FakeMcpServer::with_overrides(vec![("tools/list", tools_list)]);
+    let mut manager = WebMcpClientManager::new(Box::new(server.clone()));
+    let config = WebMcpServerConfig {
+        server_id: "strict".to_string(),
+        url: MCP_URL.to_string(),
+        headers: None,
+    };
+    // Connect runs initialize + the tools/list cache, so the malformed entry
+    // surfaces here and the whole list fails (the documented strict-list
+    // deviation; the desktop rmcp twin is equally strict) instead of
+    // registering a garbage tool.
+    match manager.connect(&config) {
+        Err(error) => assert!(
+            error.message().starts_with("Failed to list tools: invalid tool entry:"),
+            "the malformed entry fails the whole list, got {}",
+            error.message()
+        ),
+        Ok(_) => panic!("a garbage entry must not register a connected client"),
+    }
+}
