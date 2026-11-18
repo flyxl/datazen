@@ -35,6 +35,8 @@ mod wapp_icon_audit;
 mod add_to_dashboard_dialog_audit;
 // T021: the onboarding brand sidebar port (fixed-dark gradient, features).
 mod brand_sidebar_audit;
+// T025: the schema-diff deploy panel port (dialect gates, confirm journey).
+mod schema_diff_deploy_panel_audit;
 mod column_stats_dialog;
 // T002: the single DataTable cell — formatting, colour, plan and geometry.
 mod cell_renderer;

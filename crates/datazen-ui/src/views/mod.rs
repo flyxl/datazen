@@ -9,6 +9,8 @@ mod dashboards_workflows;
 pub(crate) mod dashboard;
 // The windows/onboarding subtree ports (T021: BrandSidebar is its first).
 pub(crate) mod onboarding;
+// The windows/schema-diff subtree ports (T025: the deploy panel is its first).
+pub(crate) mod schema_diff;
 mod modals;
 mod navigation;
 mod settings;
