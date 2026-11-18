@@ -37,6 +37,12 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+### 纪律：合流即 push（用户要求）
+
+- 每个 task 合流到 `feat/rune-native-ui-migration` 并完成台账翻状态后，**立即 `git push origin feat/rune-native-ui-migration`**，不等整波结束。
+- 首个 push 已落地 `7288aa6ce..92349b69f`（Wave 1 全部合流 + main 合并 + 台账重编排）。上游分支已建立跟踪。
+- push 是用户明确授权的外部操作；仍禁止其它外部副作用（建 PR / 发版 / 部署）。
+
 ### 冲突面控制
 
 - 四轨各自新建 `components/{schema,query,migration}/` 目录；仅 T007 在既有 `components/data_table/` 加一个 `pub mod` 行，与其他轨不重叠。
