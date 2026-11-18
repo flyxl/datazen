@@ -185,8 +185,14 @@ impl<'a> ColumnStatsDialog<'a> {
     #[allow(dead_code)] // component lands before its query-results caller
     pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) {
         let k = kit(dark);
-        let mut dialog =
-            Dialog::new(self.key, self.title()).open(self.state.status != ColumnStatsStatus::Idle);
+        // React's dialog is as tall as its content: the loading block, one
+        // error line, or the statistics list. `.fit()` sized the panel before
+        // this port, so even a two-row loading state reserved a blank 368pt
+        // panel. The body cap keeps a tall list scrolling inside the window.
+        let mut dialog = Dialog::new(self.key, self.title())
+            .open(self.state.status != ColumnStatsStatus::Idle)
+            .fit()
+            .body_max_height(448.0);
         let children = self.body(&k, dark);
         if let Some(close) = self.close {
             dialog = close(dialog);
@@ -213,7 +219,7 @@ impl<'a> ColumnStatsDialog<'a> {
         row()
             .key(format!("{key}-status"))
             .w_full()
-            .py(8.0)
+            .py(24.0)
             .items_center()
             .child(
                 Spinner::new(format!("{key}-spinner"))
@@ -240,18 +246,10 @@ impl<'a> ColumnStatsDialog<'a> {
     fn stats_block(&self, k: &Kit) -> El {
         let key = self.key;
         let Some(stats) = self.state.stats.as_ref() else {
-            return col()
-                .key(format!("{key}-stats"))
-                .w_full()
-                .min_w(288.0)
-                .child(
-                    text("No statistics reported.")
-                        .key(format!("{key}-empty"))
-                        .role("status")
-                        .font(k.ty.text_small)
-                        .color(k.c.text_muted)
-                        .py(6.0),
-                );
+            // React renders no row at all for a missing aggregate object, and
+            // zh-CN has no `columnStats.empty` string: the empty container is
+            // the whole state, with no invented English line inside it.
+            return col().key(format!("{key}-empty")).w_full().min_w(288.0);
         };
 
         let rows = stats_rows(stats);
@@ -282,6 +280,9 @@ impl<'a> ColumnStatsDialog<'a> {
             .role("row")
             .w_full()
             .gap(24.0)
+            // React uses `items-baseline`; rune's row alignment only offers
+            // start/end/center/stretch, and the label and mono value share a
+            // line height, so centering keeps the two columns level.
             .items_center()
             .py(6.0)
             .child(
@@ -301,6 +302,7 @@ impl<'a> ColumnStatsDialog<'a> {
                     .align(Align::End)
                     .grow(1.0)
                     .min_w(0.0)
+                    .max_w(384.0)
                     .truncate()
                     .help_when_truncated(value.to_owned()),
             );

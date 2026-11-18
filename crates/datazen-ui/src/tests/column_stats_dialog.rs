@@ -4,7 +4,7 @@
 //! Keys come from the widget's own contract: `<key>` panel, `<key>-title`,
 //! `<key>-close`, `<key>-body`, `<key>-status`/`-spinner` while loading,
 //! `<key>-error` on failure, `<key>-empty` for a ready state without
-//! aggregates, and `<key>-row-<i>` / `<key>-cell-<i>-label|-value` for the
+//! aggregates (an empty container: React renders no row there), and `<key>-row-<i>` / `<key>-cell-<i>-label|-value` for the
 //! statistics themselves.
 
 use super::*;
@@ -313,22 +313,69 @@ fn the_idle_state_mounts_no_panel() {
 }
 
 #[test]
-fn a_ready_state_without_aggregates_shows_one_empty_line() {
+fn a_ready_state_without_aggregates_mounts_only_the_empty_container() {
     let mut scene = ready(full_stats());
     scene.state.stats = None;
     let runtime = scene_runtime(scene, (1440.0, 816.0));
-    assert_eq!(
-        element(&runtime, &format!("{KEY}-empty")).role,
-        "status",
-        "the empty line is announced"
-    );
+    // React renders no row at all for a missing aggregate object, and there is
+    // no `columnStats.empty` string: the container exists, with no invented
+    // line inside it.
     assert_eq!(
         text_of(&runtime, &format!("{KEY}-empty")),
-        "No statistics reported."
+        "",
+        "no copy is invented for the empty state"
     );
     assert!(
         present_keys(&runtime, &format!("{KEY}-row-")).is_empty(),
         "there is nothing to list"
+    );
+    assert!(
+        maybe(&runtime, &format!("{KEY}-stats")).is_none(),
+        "the statistics list is not mounted without aggregates"
+    );
+}
+
+#[test]
+fn the_loading_panel_hugs_the_spinner() {
+    let mut scene = ready(full_stats());
+    scene.state.status = ColumnStatsStatus::Loading;
+    scene.state.stats = None;
+    let runtime = scene_runtime(scene, (960.0, 640.0));
+    let panel = element(&runtime, KEY).rect;
+    let header = element(&runtime, &format!("{KEY}-header")).rect;
+    let body = element(&runtime, &format!("{KEY}-body")).rect;
+    assert!(
+        panel[3] < 200.0,
+        "React auto-heights the loading panel; got {panel:?}"
+    );
+    assert!(
+        (panel[3] - (header[3] + body[3])).abs() <= 2.0,
+        "panel = header + body: panel {panel:?}, header {header:?}, body {body:?}"
+    );
+    assert!(
+        element(&runtime, &format!("{KEY}-status")).rect[3] >= 56.0,
+        "React's py-6 block plus the spinner is at least 56pt high"
+    );
+}
+
+#[test]
+fn the_ready_panel_hugs_its_rows() {
+    let runtime = scene_runtime(ready(full_stats()), (1440.0, 816.0));
+    let panel = element(&runtime, KEY).rect;
+    let header = element(&runtime, &format!("{KEY}-header")).rect;
+    let body = element(&runtime, &format!("{KEY}-body")).rect;
+    let stats = element(&runtime, &format!("{KEY}-stats")).rect;
+    assert!(
+        (panel[3] - (header[3] + body[3])).abs() <= 2.0,
+        "panel = header + body: panel {panel:?}, header {header:?}, body {body:?}"
+    );
+    assert!(
+        (body[3] - (stats[3] + 32.0)).abs() <= 2.0,
+        "body = stats + the two 16pt paddings: body {body:?}, stats {stats:?}"
+    );
+    assert!(
+        panel[3] < 368.0,
+        "a six-row list does not need the old fixed 368pt panel: {panel:?}"
     );
 }
 
