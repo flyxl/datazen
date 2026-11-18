@@ -271,3 +271,5 @@ mod ai_write_proposal_host;
 mod ai_write_proposal_host_audit;
 // T013: AdminCreateDialog (state machine + dialog / name field / schema fields / error render).
 mod admin_create_dialog;
+// T013 independent audit: fresh vectors against the React source and zh-CN packs.
+mod admin_create_dialog_audit;
