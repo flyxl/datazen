@@ -59,9 +59,12 @@ case "$ACTION" in
         note "seg$n has $ahead unique commit(s) — NOT fast-forwarding (would clobber its work)"
         continue
       fi
-      # local: force the local segment branch to parent and push
+      # local: force the local segment branch to parent and push.
+      # `git branch -f` inherits the source's upstream (the parent), so reset
+      # the segment's own upstream afterwards to avoid pushing to the wrong ref.
       git branch -f "$br" "origin/$PARENT"
       git push --force-with-lease origin "$br" || die "push seg$n failed"
+      git branch --set-upstream-to="origin/$br" "$br" 2>/dev/null || true
       note "seg$n fast-forwarded to $(git rev-parse --short origin/$PARENT)"
     done
     ;;
