@@ -6,6 +6,11 @@ license = "GPL-3.0-or-later"
 description = "UI ports and the desktop adapter for the DataZen Rune interface"
 
 [dependencies]
+# The metadata identity keys are `JSON.stringify`-canonical strings;
+# `serde_json::Value`'s compact `Display` is the byte-exact serializer for
+# them (see src/metadata/identity.rs). Same workspace pin the rest of the
+# graph already uses, and wasm-safe, unlike the kernel below.
+serde_json = { workspace = true }
 
 # H3/H6: the desktop adapter — the native host's use cases. Everything here is
 # native-only: the wasm host compiles the same ports over the memory workspace
