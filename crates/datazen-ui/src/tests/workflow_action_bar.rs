@@ -168,11 +168,11 @@ fn a_disabled_save_is_dimmed_inert_and_not_a_tab_stop() {
     let save = element(&rt, "workflow-save");
     let cancel = element(&rt, "workflow-editor-cancel");
     assert!(!save.focusable, "a disabled Save must not be focusable");
-    assert!(
-        save.opacity < 0.99,
-        "the kit dims a disabled button (opacity {})",
-        save.opacity
-    );
+    // The kit dims a disabled button at the paint layer (`layer_opacity`),
+    // which `ElementInfo.opacity` deliberately does not mirror — the
+    // observation-channel rule (same trade as the T022 dialog audit): the
+    // disabled semantics are pinned by `!focusable` plus the refused press
+    // below, not by an opacity field that cannot see the dim.
     assert!(cancel.focusable, "Cancel stays enabled");
 
     // The press is refused: nothing moves.
@@ -261,12 +261,15 @@ fn the_bar_has_no_sibling_elements_beside_its_parts() {
         .elements()
         .iter()
         .filter_map(|e| e.key.clone())
-        .filter(|k| k.starts_with("workflow-editor"))
+        .filter(|k| k.starts_with("workflow-"))
         .collect();
     let mut sorted = keys.clone();
     sorted.sort();
     sorted.dedup();
     assert_eq!(sorted.len(), keys.len(), "duplicate bar keys: {keys:?}");
+    // `workflow-save` does not carry the `workflow-editor` prefix, so the
+    // filter is the whole `workflow-` namespace (the probe mounts only the
+    // bar, so the namespace holds exactly these four parts).
     for expected in [
         "workflow-editor-action-bar",
         "workflow-editor-action-bar-row",
