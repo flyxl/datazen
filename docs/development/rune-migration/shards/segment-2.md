@@ -172,3 +172,4 @@
 - [x] T050 · App.tsx · 0.30d · App.tsx
 - [x] T059 · components/chart · 0.80d · components/chart/ChartEmptyState.tsx components/chart/ChartToolbar.tsx
 - [x] T069 · windows/workflow · 1.30d · windows/workflow/WorkflowForm.tsx · split
+- [x] T070 · windows/main · 0.90d · windows/main/RunningExecutionCloseHost.tsx
