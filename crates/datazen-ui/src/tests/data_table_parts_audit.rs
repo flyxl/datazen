@@ -140,7 +140,6 @@ fn texts(rt: &Runtime<Probe>) -> Vec<String> {
 /// `dropIndex` is the target column. Rune's `on_drag` fires on the pressed
 /// element only, so this probes which index `on_reorder_over` receives.
 #[test]
-#[ignore = "DEFECT 02227415e: on_drag fires only on the pressed cell, so on_reorder_over always receives the source column; the drop target is unreachable"]
 fn a_reorder_reports_the_column_under_the_pointer() {
     let mut rt = runtime(probe(), (1440.0, 816.0));
     let (x0, y0) = centre(&rt, "data-table-header-col-0");
@@ -187,7 +186,6 @@ fn the_resize_grip_reports_pointer_travel() {
 /// React draws the sort arrow inside a 16pt box (`h-4 w-4`), with the 14pt
 /// glyph centred in it; the audit lead asked for the 16pt slot.
 #[test]
-#[ignore = "DEFECT 02227415e: the sort arrow is a bare 14pt glyph, React reserves a 16pt slot (SORT_GLYPH = 14.0)"]
 fn the_sort_arrow_keeps_its_sixteen_point_slot() {
     let mut state = probe();
     state.sorts = vec![SortCondition::new("name", false)];
@@ -214,7 +212,6 @@ fn the_sort_arrow_keeps_its_sixteen_point_slot() {
 /// assistive tech get the rank; Rune hides it from the a11y tree and drops
 /// the tooltip.
 #[test]
-#[ignore = "DEFECT 02227415e: the sort badge is a11y_hidden and has no rank tooltip"]
 fn the_sort_position_badge_announces_its_rank() {
     let mut state = probe();
     state.sorts = vec![
@@ -300,7 +297,7 @@ fn a_descending_sort_without_a_remove_action_falls_back_to_ascending() {
     let mut state = probe();
     state.sorts = vec![SortCondition::new("name", true)];
     let mut rt = runtime(state, (1440.0, 816.0));
-    let (x, y) = centre(&rt, "data-table-header-col-0");
+    let (x, y) = centre(&rt, "data-table-header-label-0");
     rt.pointer_down(x, y);
     rt.pointer_up(x, y);
     rt.frame(1.0 / 60.0);
@@ -333,7 +330,6 @@ fn an_unknown_total_never_clamps_the_page() {
 /// React keeps the sort-menu chevron inside the cell, after the badge and the
 /// direction arrow; a chevron placed in the header row would shift every column.
 #[test]
-#[ignore = "DEFECT 02227415e: the sort-menu trigger is appended to the header row before its cell, so the chevron sits at the seam and shifts the columns"]
 fn the_sort_menu_chevron_sits_inside_its_cell() {
     let rt = runtime(probe(), (1440.0, 816.0));
     let cell = element(&rt, "data-table-header-col-0").rect;
@@ -348,7 +344,6 @@ fn the_sort_menu_chevron_sits_inside_its_cell() {
 /// left-{frozenLefts[i]}`; the gutter and the first frozen column must abut,
 /// not overlap, and both must stay visible at the left edge.
 #[test]
-#[ignore = "DEFECT 02227415e: same header-row trigger as D6 offsets column 0 from the gutter"]
 fn the_frozen_gutter_and_columns_stay_in_order() {
     let state = Probe {
         columns: (0..5)
@@ -387,5 +382,47 @@ fn the_frozen_gutter_and_columns_stay_in_order() {
     assert!(
         (first[0] + first[2] - second[0]).abs() < 0.5,
         "columns abut: {first:?} {second:?}"
+    );
+}
+
+/// The hit test must work from any pressed column, not only the first one, and
+/// at the minimum window as well as the default one.
+#[test]
+fn a_reorder_from_the_middle_column_can_target_column_zero() {
+    let mut rt = runtime(probe(), (960.0, 640.0));
+    let (x1, y1) = centre(&rt, "data-table-header-label-1");
+    let (x0, y0) = centre(&rt, "data-table-header-col-0");
+    rt.pointer_down(x1, y1);
+    rt.pointer_move(x0, y0);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(
+        rt.state.reorder_start,
+        vec![1],
+        "the drag starts on the pressed column"
+    );
+    assert_eq!(
+        rt.state.reorder_over.last().copied(),
+        Some(0),
+        "the pointer is over column 0: {:?}",
+        rt.state.reorder_over
+    );
+}
+
+/// React never draws the reorder marker on the column being dragged.
+#[test]
+fn the_drop_marker_skips_the_dragged_column() {
+    let mut state = probe();
+    state.reorder_drag = Some(2);
+    state.reorder_spot = Some(2);
+    let rt = runtime(state, (1440.0, 816.0));
+    assert!(
+        element(&rt, "data-table-header-col-2").rect[2] > 0.0,
+        "the dragged column is still laid out"
+    );
+    assert!(
+        rt.elements()
+            .iter()
+            .all(|element| element.key.as_deref() != Some("data-table-header-drop-marker-2")),
+        "no marker is drawn on the dragged column itself"
     );
 }
