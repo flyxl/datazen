@@ -17,7 +17,6 @@
 - [ ] T046 · extensions · 0.30d · extensions/generated-pro.ts
 - [ ] T052 · index.ts · 0.90d · index.ts
 - [ ] T060 · components/chart · 0.80d · components/chart/ChartEmptyState.tsx components/chart/ChartToolbar.tsx
-- [ ] T070 · windows/workflow · 1.30d · windows/workflow/WorkflowForm.tsx · split
 - [ ] T071 · windows/main · 0.90d · windows/main/RunningExecutionCloseHost.tsx
 - [ ] T073 · windows/wapps · 1.30d · windows/wapps/WappManagementPage.tsx · split
 - [x] T078 · lib · 0.80d · lib/cellTypes.ts
