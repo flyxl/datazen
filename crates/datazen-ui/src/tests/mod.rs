@@ -255,3 +255,5 @@ mod ai_chat_panel_message_list_audit;
 mod ai_chat_panel_input_area;
 // T009-S5: `AiChatInputAreaState` pure logic (send gate, submit, conflict, snapshot removal, show gates).
 mod ai_chat_panel_input_area_state;
+// T009-S5 independent audit: fresh vectors against the React source and zh-CN packs.
+mod ai_chat_panel_input_area_audit;
