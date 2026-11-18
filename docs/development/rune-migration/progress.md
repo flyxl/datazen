@@ -1,7 +1,39 @@
 ## Current Task
-- **任务**: A1 收口与全局视觉/交互对齐验证（plan-native-5）— A2–A6 已合流主轨，待统一门禁、契约内收尾与逐页视觉一致性校验
-- **负责人**: Coder Agent
-- **状态**: L1–L7 已完成；A1 进行中（首页与导航器 Recent/All/过滤已落地；单行输入框统一由 `ui/field.rs::TextField` 组件（rune-kit 形状的 builder）构建并垂直居中，覆盖首页搜索、设置、仪表盘、网格与 SQL 编辑器查找栏；pinned/用户分组受契约限制）。A2 连接表单对话框化、A3 查询面板对齐、A4 表浏览对齐、A5 结果工作区对齐、A6 设置导航分组已合流主轨。第五阶段计划见 [plan-native-5.md](plan-native-5.md)。逐页 bounds 扫描（headless `--snap/--tree`，1440×816 与 960×640、dark/light）已在本次收口；A1 仍余契约受限的 pinned/用户分组。
+- **任务**: React → Rune 逐文件迁移（`plan-native-6-react-parity.md` 的路线，Phase 0 基座已完成）
+- **负责人**: Coder Agent（协调者派活给 coder/tester 实例，产品代码不由协调者写）
+- **状态**: **Phase 0 十三项基座全部 ☑**（见 [tasks-react-parity.md](tasks-react-parity.md) §3）；逐文件台账已开工，`[tasklist.md](tasklist.md)` 当前 **10/629 done、0 doing、619 todo**（5.8 / 626.7 人日）。第一批 10 个 task 已合流：T004（前半）、T008、T016、T017、T019、T021、T023、T029、T253–T256。旧第五阶段 A 系列（A1–A6）已合流，A1 仅余契约受限的 pinned/用户分组。
+
+## 接手入口（新会话从这里读起）
+
+读的顺序与依据：
+
+| 顺序 | 文件 | 读它是为了知道 |
+| --- | --- | --- |
+| 1 | [tasks-react-parity.md](tasks-react-parity.md) | **规则与地形**：三条硬约束（task ≤1 天 / 逐文件 / 不许长期红）、台账口径与分类、Phase 0 十三项基座清单与各自证据、§3.5 的 `.ts` 基础层顺序 |
+| 2 | [tasklist.md](tasklist.md) | **唯一工作队列**：629 行、一行一个 task；状态只改该行方括号一个字符（` `/`~`/`x`/`!`），不要动行尾（脚本生成） |
+| 3 | 本文件（下面各节） | **历史与裁决**：为什么某处不包 kit、哪些缺陷被打回/接受、踩过的坑（`opacity(0.0)` 的 sr-only、`git` 钩子重排、opencode 会话绑定 cwd 等） |
+| 4 | [plan-native-6-react-parity.md](plan-native-6-react-parity.md) | **可行性依据**：规模盘点、T0/T1/T2 分档、三方依赖替换表、B1–B7 分批验收 |
+| 5 | [testing/](testing/) | **逐 area 验收证据**（A1–A6 时期的页面级报告，含截图与几何数字） |
+
+执行时只需要记住的操作面（全部已脚本化）：
+
+```bash
+# 队列与状态（不要手改 tasklist 行尾）
+node scripts/rune-parity.mjs --progress                 # 现算进度
+node scripts/rune-parity.mjs --status T007=done         # 只翻一行
+node scripts/rune-parity.mjs --tasklist                 # React 源码变动后刷新行尾（保留状态）
+
+# 每个 task 收尾必须过门禁（check datazen-ui → check 三 crate → test ui+ui-api）
+CARGO_TARGET_DIR=$PWD/target bash scripts/rune-migrate-gate.sh   # 末行 gate: PASS|FAIL
+
+# 并行开发：一条轨道一个 worktree
+scripts/new-feature-worktree.sh rune-<track> feat/rune-native-ui-migration
+git -C .worktrees/datazen-rune-<track> submodule update --init --recursive vendor/rune
+```
+
+几何/视觉取证：`cargo build -p datazen-rune-host --offline` 后 `./target/debug/datazen-native --snap out.png --tree out.json --size 960x640 --theme dark|light --at 1.0`（PNG 是 2 倍缩放）；`--tree` 的 `elements` 是扁平数组，字段 `path/key/role/rect/focusable`。
+
+纪律（违反过，代价很大）：所有提交 `git commit --no-verify`、只 `git add` 自己的文件、绝不 `git add -A`、不跑 `cargo fmt --all`（钩子里的 stable rustfmt 会重排 46 个文件 + vendor 1198 个文件）、不 push（除非用户要求）；tester 不得弱化既有断言，关键断言必须反向验证并贴失败原文；**测试绿 ≠ 画对了**，几何断言要有不依赖被测代码自我报告的观测通道。
 
 ## Completed Work (recent)
 - [x] 新建/导入连接窗口布局重构（本次提交）：`views/modals.rs`、`views/connections.rs` 重构为 React 对齐布局。新建连接：左侧数据库类型选择栏 + 右侧标题/可滚动表单/底部操作区，表单按两列网格排列基础与连接字段并保留高级/隧道区块结构；导入连接：对齐分享对话框导入模式的提示、文件选择、密码与预览/结果区域及底部操作。保持既有键与行为兼容（`connection-dialog*`、`connection-form*`、`connection-save`、`import-dialog*`、`import-choose-file`、`import-password-input`、`import-confirm` 等），能力受当前 `AppState`/`datazen-ui-api` 约束。（见 [testing/A1-connections-home.md](testing/A1-connections-home.md)、[testing/A2-connection-form-dialog.md](testing/A2-connection-form-dialog.md)）
@@ -133,7 +165,7 @@ React 页面和组件保留。不删除、不改成空壳、不把现有入口�
 - **待选路线**：① 在可写环境（或 CI）预取上述 crate 后真依赖 `rune-kit`；② 在本仓库同源复制要用到的 kit 模块（`kit.rs` 346 行、`actions.rs` 529、`text_input.rs` 682、`badge.rs` 82、`card.rs` 93、`field.rs` 84、`list.rs` 232，合计约 2.0K 行），API 与 kit 保持一致，依赖可解析后再换回 `rune_kit::*` import。
 - **React → Rune 逐文件迁移的可行性**：见 `plan-native-6-react-parity.md`（新页面按镜像目录落地，旧页面按目录批次重写）。
 
-## 增量：Phase 0 基座四轨并行（2026-11-17，进行中）
+## 增量：Phase 0 基座四轨并行（2026-11-17，已收口）
 
 - **组织方式**：Phase 0 的 13 个 task 不再串行手搓，按「一条轨道一个 worktree、一个 coder + 一个独立 tester」并行推进（`scripts/new-feature-worktree.sh rune-{dialog,choice,menu,overlay} feat/rune-native-ui-migration`），coder 与 tester 不共享上下文，tester 只允许改测试、必须逐条复现 coder 自报数字并用变异反证。opencode 轨（`opencode run --auto --model opencode/iceman-free`）的 coder 完工后同样交 opencode 的 tester 复核。
 - **T0-00 → `4054d0ada`**：对话框页脚改用 kit `Button`，`ui/kit.rs` 用 `OnceLock` 缓存 `Kit::neutral(dark)`（避免每帧解 ~70 个 token）。`Kit::neutral` 由 `rune::tok::theme(dark)` + `tok::accent(0, dark)` 推导，与既有主题同源，所以视觉基线未变。

@@ -3,6 +3,11 @@
 本文件是执行台账，不是设计文档：任务由 `scripts/rune-parity.mjs` 从
 `packages/frontend/src` 现况生成，改代码后重新生成即可，不要手改表。
 
+> **接手顺序**：本文件（§1 规则 → §2 口径 → §3 基座 → §3.5 `.ts` 层）→
+> [`tasklist.md`](tasklist.md)（唯一工作队列，629 行，状态只改方括号一个字符）→
+> [`progress.md`](progress.md)（历史与裁决、`## 接手入口` 一节有完整读法与操作面）。
+> 进度用 `node scripts/rune-parity.mjs --progress` 现算。
+
 ## 1. 三条硬约束怎么落地
 
 用户要求：① 每个 task ≤ 1 天；② 逐文件迁移；③ 迁移期允许短暂编译失败，但不能长期编译不过。
