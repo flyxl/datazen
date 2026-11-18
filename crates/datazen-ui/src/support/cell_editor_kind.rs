@@ -4,7 +4,7 @@
 //! This is a projection of [`CellType`]: the grid's editor control must agree
 //! with the colour it paints, so the decision is made once here rather than
 //! inline in the grid.
-#![allow(dead_code)] // consumers: CellRenderer/GridCell/DetailPanel (T004/T015/T009)
+#![allow(dead_code)] // consumers: T015 GridCell (which editor to open)
 
 use crate::support::cell_types::CellType;
 

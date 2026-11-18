@@ -3,14 +3,12 @@
 //! The React version reads CSS custom properties (`--dt-*`). This port maps
 //! the same seven families onto the kit's semantic tokens instead, so a cell
 //! keeps the same "look" without introducing a second colour source.
-#![allow(dead_code)] // consumers: CellRenderer/GridCell/DetailPanel (T004/T015/T009)
+#![allow(dead_code)] // consumers: T004 CellRenderer
 
 use rune::Color;
 use serde_json::Value;
 
-use crate::support::cell_types::{
-    cell_type_to_data_type_family, normalize_type_name, CellType, CellTypeHints,
-};
+use crate::support::cell_types::{cell_type_to_data_type_family, CellType, CellTypeHints};
 use crate::ui::kit::kit;
 
 /// The render family of a value. `Null` belongs to the value, not the type.
@@ -66,16 +64,15 @@ pub(crate) fn cell_value_color(cell_type: CellType, value: &Value, dark: bool) -
     family_color(cell_type_to_data_type_family(cell_type), dark)
 }
 
-/// The colour of a column type. An absent or blank type is the null family,
-/// matching the React `classifyDataType(undefined)` answer.
+/// The colour of a column type. An absent or blank type resolves to
+/// `CellType::Unknown`, and React normalizes `unknown` to the text family in
+/// `resolveCellType`/`cellTypeToDataTypeFamily`; the null family belongs to a
+/// NULL *value*, never to a missing type.
 pub(crate) fn data_type_color(
     data_type: Option<&str>,
     hints: Option<&CellTypeHints>,
     dark: bool,
 ) -> Color {
-    if normalize_type_name(data_type).is_empty() {
-        return family_color(DataTypeFamily::Null, dark);
-    }
     let cell_type = crate::support::cell_types::resolve_cell_type(data_type, hints);
     family_color(cell_type_to_data_type_family(cell_type), dark)
 }
@@ -109,6 +106,18 @@ mod tests {
     }
 
     #[test]
+    fn blank_column_types_paint_as_text_not_null() {
+        let text = family_color(DataTypeFamily::Text, true);
+        assert_eq!(data_type_color(None, None, true), text);
+        assert_eq!(data_type_color(Some(""), None, true), text);
+        assert_eq!(data_type_color(Some("   "), None, true), text);
+        assert_ne!(
+            data_type_color(None, None, true),
+            family_color(DataTypeFamily::Null, true)
+        );
+    }
+
+    #[test]
     fn null_values_paint_as_the_null_family() {
         let null_color = family_color(DataTypeFamily::Null, true);
         assert_eq!(
@@ -138,14 +147,14 @@ mod tests {
     }
 
     #[test]
-    fn blank_types_paint_as_the_null_family() {
+    fn blank_types_paint_as_text_after_the_audit_fix() {
         assert_eq!(
             data_type_color(None, None, true),
-            family_color(DataTypeFamily::Null, true)
+            family_color(DataTypeFamily::Text, true)
         );
         assert_eq!(
             data_type_color(Some("  "), None, true),
-            family_color(DataTypeFamily::Null, true)
+            family_color(DataTypeFamily::Text, true)
         );
         assert_eq!(
             data_type_color(Some("timestamptz"), None, true),

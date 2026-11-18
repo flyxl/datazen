@@ -8,7 +8,7 @@
 //! Order is load-bearing: `json` precedes the binary rules (a composite name
 //! like `binary json` is JSON) and the explicit text block precedes the
 //! numeric rules (`point` contains `int` but is a geometry type).
-#![allow(dead_code)] // consumers: CellRenderer/GridCell/DetailPanel (T004/T015/T009)
+#![allow(dead_code)] // consumers: T015 GridCell (type resolution, zoned/read-only/integer hints)
 
 use crate::support::data_type_colors::DataTypeFamily;
 
@@ -539,8 +539,14 @@ pub(crate) fn cell_type_to_data_type_family(cell_type: CellType) -> DataTypeFami
     }
 }
 
-/// Whether the column's values carry a zone. Zoned values are edited as plain
-/// text: a date picker cannot carry an offset.
+/// Whether the column's values carry a zone, using only the built-in names.
+/// Zoned values are edited as plain text: a date picker cannot carry an
+/// offset.
+///
+/// Callers that have the driver's [`CellTypeHints`] must use
+/// [`is_zoned_cell_type_with_hints`]: this entry point cannot see
+/// `hints.zoned_types`. It remains for the audit's name-only checks and for
+/// sites that genuinely have no hints.
 pub(crate) fn is_zoned_cell_type(data_type: &str) -> bool {
     let type_name = normalize_type_name(Some(data_type));
     if type_name.is_empty() {
@@ -551,7 +557,8 @@ pub(crate) fn is_zoned_cell_type(data_type: &str) -> bool {
         .any(|name| type_name.contains(name))
 }
 
-/// Hint-aware variant of [`is_zoned_cell_type`].
+/// Canonical zoned check: built-in names plus the driver's `zoned_types`.
+/// Prefer this over [`is_zoned_cell_type`] whenever hints are available.
 pub(crate) fn is_zoned_cell_type_with_hints(
     data_type: &str,
     hints: Option<&CellTypeHints>,

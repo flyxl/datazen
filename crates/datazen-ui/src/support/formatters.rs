@@ -4,7 +4,7 @@
 //! designator is **wall clock**, not an instant. Round-tripping it through
 //! `to_iso_string` would shift it by the local UTC offset and append a bogus
 //! `Z`, so such strings are returned verbatim.
-#![allow(dead_code)] // consumers: CellRenderer/GridCell/DetailPanel (T004/T015/T009)
+#![allow(dead_code)] // consumers: T004 CellRenderer
 
 use serde_json::Value;
 
@@ -43,6 +43,41 @@ fn has_zone_designator(value: &str) -> bool {
     false
 }
 
+/// JS `String(number)`: an integral float prints without `.0`, and a float
+/// outside the exactly-representable integer range keeps serde's own text.
+pub(crate) fn number_text(number: &serde_json::Number) -> String {
+    if let Some(integer) = number.as_i64() {
+        return integer.to_string();
+    }
+    if let Some(integer) = number.as_u64() {
+        return integer.to_string();
+    }
+    if let Some(float) = number.as_f64() {
+        if float.fract() == 0.0 && float.abs() < 1e15 {
+            return (float as i64).to_string();
+        }
+    }
+    number.to_string()
+}
+
+/// `String(value)` for the array elements JSON can carry. React renders an
+/// array through `Array.prototype.toString`, i.e. each element with
+/// `String(element)` and `,` between them.
+fn js_array_element_text(value: &Value) -> String {
+    match value {
+        Value::Null => "null".to_owned(),
+        Value::Bool(flag) => flag.to_string(),
+        Value::Number(number) => number_text(number),
+        Value::String(text) => text.clone(),
+        Value::Array(items) => items
+            .iter()
+            .map(js_array_element_text)
+            .collect::<Vec<_>>()
+            .join(","),
+        Value::Object(_) => "[object Object]".to_owned(),
+    }
+}
+
 /// `formatTimestamp` from React: nullish → `NULL`; numbers are epoch
 /// milliseconds; zone-less strings are returned verbatim; zoned strings are
 /// normalised to `YYYY-MM-DDTHH:MM:SS.sssZ`; everything else falls back to
@@ -71,7 +106,12 @@ pub(crate) fn format_timestamp(value: &Value) -> String {
                 None => text.clone(),
             }
         }
-        other => other.to_string(),
+        Value::Array(items) => items
+            .iter()
+            .map(js_array_element_text)
+            .collect::<Vec<_>>()
+            .join(","),
+        Value::Object(_) => "[object Object]".to_owned(),
     }
 }
 
@@ -82,23 +122,31 @@ pub(crate) fn format_cell(value: &Value) -> String {
         Value::Null => "NULL".to_owned(),
         Value::Bool(flag) => flag.to_string(),
         Value::String(text) => text.clone(),
-        Value::Number(number) => number.to_string(),
+        Value::Number(number) => number_text(number),
         other => serde_json::to_string(other).unwrap_or_else(|_| other.to_string()),
     }
 }
 
-/// `formatLastConnected` from React. The React side renders the browser's
-/// locale string; this port has no locale machinery, so a valid instant is
-/// rendered as `YYYY-MM-DD HH:MM:SS` in UTC and an unparseable input is
-/// returned unchanged. The missing case is the one locale-backed string, so
-/// it goes through `t()` like the React version.
+/// `formatLastConnected` from React. The React side renders
+/// `toLocaleString()`; this port keeps a stable `YYYY-MM-DD HH:MM:SS` shape
+/// but renders it in the supplied UTC offset (the production wrapper passes
+/// the local offset), and returns an unparseable input unchanged. Locale
+/// ordering is left to the i18n track.
 pub(crate) fn format_last_connected(iso: Option<&str>) -> String {
+    let offset_seconds = chrono::Local::now().offset().local_minus_utc();
+    format_last_connected_with_offset(iso, offset_seconds)
+}
+
+/// Testable core of [`format_last_connected`]: `offset_seconds` is the
+/// caller's offset east of UTC (`+08:00` is `28_800`).
+pub(crate) fn format_last_connected_with_offset(iso: Option<&str>, offset_seconds: i32) -> String {
     let Some(text) = iso.filter(|text| !text.is_empty()) else {
         return t("conn.neverConnected").to_owned();
     };
     match parse_zoned_instant(text) {
         Some(millis) => {
-            let (year, month, day, hour, minute, second) = civil_from_epoch(millis);
+            let (year, month, day, hour, minute, second) =
+                civil_from_epoch(millis + i64::from(offset_seconds) * 1_000);
             format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02}")
         }
         None => text.to_owned(),
@@ -294,6 +342,25 @@ mod tests {
     }
 
     #[test]
+    fn integral_floats_print_like_js_numbers() {
+        assert_eq!(format_cell(&json!(3.0)), "3");
+        assert_eq!(format_cell(&json!(3.5)), "3.5");
+        assert_eq!(format_cell(&json!(-0.0)), "0");
+        assert_eq!(format_cell(&json!(1e21)), "1e+21");
+        assert_eq!(
+            number_text(&serde_json::Number::from_f64(3.0).unwrap()),
+            "3"
+        );
+    }
+
+    #[test]
+    fn non_scalar_timestamps_fall_back_to_js_string_shapes() {
+        assert_eq!(format_timestamp(&json!({"a": 1})), "[object Object]");
+        assert_eq!(format_timestamp(&json!([1, 2])), "1,2");
+        assert_eq!(format_timestamp(&json!(["a", true, null])), "a,true,null");
+    }
+
+    #[test]
     fn format_timestamp_returns_null_for_nullish() {
         assert_eq!(format_timestamp(&Value::Null), "NULL");
     }
@@ -354,6 +421,22 @@ mod tests {
     }
 
     #[test]
+    fn last_connected_renders_in_the_supplied_timezone() {
+        assert_eq!(
+            format_last_connected_with_offset(Some("2024-06-01T12:00:00Z"), 8 * 3_600),
+            "2024-06-01 20:00:00"
+        );
+        assert_eq!(
+            format_last_connected_with_offset(Some("2024-06-01T12:00:00Z"), -5 * 3_600),
+            "2024-06-01 07:00:00"
+        );
+        assert_eq!(
+            format_last_connected_with_offset(None, 8 * 3_600),
+            crate::i18n::t("conn.neverConnected")
+        );
+    }
+
+    #[test]
     fn format_last_connected_uses_the_translated_fallback() {
         assert_eq!(
             format_last_connected(None),
@@ -362,10 +445,6 @@ mod tests {
         assert_eq!(
             format_last_connected(Some("")),
             crate::i18n::t("conn.neverConnected")
-        );
-        assert_eq!(
-            format_last_connected(Some("2024-06-01T12:00:00.000Z")),
-            "2024-06-01 12:00:00"
         );
         assert_eq!(format_last_connected(Some("not-a-date")), "not-a-date");
     }

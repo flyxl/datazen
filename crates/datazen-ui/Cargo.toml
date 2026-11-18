@@ -17,6 +17,7 @@ datazen-ui-api = { workspace = true }
 rune = { workspace = true }
 rune-kit = { workspace = true }
 serde_json = { workspace = true }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { workspace = true }
