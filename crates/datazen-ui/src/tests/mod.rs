@@ -153,3 +153,6 @@ mod history_components_audit;
 
 // T029 fix round: CopyButton base feedback + filter bar metrics.
 mod copy_button;
+
+// Independent re-audit of merged T0-07 menu base.
+mod menus_merge_reaudit;
