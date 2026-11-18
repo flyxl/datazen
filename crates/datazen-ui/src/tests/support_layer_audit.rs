@@ -11,7 +11,9 @@ use crate::support::cell_types::{
     CellType, CellTypeHints,
 };
 use crate::support::data_type_colors::{data_type_color, family_color, DataTypeFamily};
-use crate::support::formatters::{format_cell, format_last_connected, format_timestamp};
+use crate::support::formatters::{
+    format_cell, format_last_connected, format_last_connected_with_offset, format_timestamp,
+};
 use crate::support::to_edit_string::{count_code_points, to_edit_string, value_byte_size};
 
 #[test]
@@ -103,32 +105,33 @@ fn timestamp_zone_less_text_is_never_reinterpreted() {
     assert_eq!(format_timestamp(&json!(1_700_000_000_000i64)), "2023-11-14T22:13:20.000Z");
 }
 
-// Known JS/Rust divergences: ignored so the suite stays green until the port
-// decides whether to emulate JS stringification or document the difference.
-
 #[test]
-#[ignore = "known divergence: serde_json prints an integral f64 as 3.0, JS String(3.0) is 3"]
 fn js_number_text_has_no_trailing_dot_zero() {
     assert_eq!(format_cell(&json!(3.0)), "3");
     assert_eq!(to_edit_string(&json!(3.0)), "3");
-    assert_eq!(format_cell(&json!(1.5)), "1.5");
+    assert_eq!(format_cell(&json!(3.5)), "3.5");
+    assert_eq!(format_cell(&json!(-0.0)), "0");
+    assert_eq!(format_cell(&json!(1e21)), "1e+21");
+    assert_eq!(value_byte_size(&json!(3.0)), 1);
 }
 
 #[test]
-#[ignore = "known divergence: serde_json sorts object keys, JSON.stringify preserves insertion order"]
-fn json_object_key_order_matches_insertion_order() {
-    assert_eq!(format_cell(&json!({"b": 1, "a": 2})), r#"{"b":1,"a":2}"#);
-    assert_eq!(to_edit_string(&json!({"z": 1, "a": 2})), r#"{"z":1,"a":2}"#);
+fn json_object_keys_are_dictionary_ordered_until_preserve_order_is_decided() {
+    // JS JSON.stringify preserves insertion order; serde_json's default map
+    // sorts. The text is semantically equivalent, and enabling preserve_order
+    // would change every workspace consumer, so the order is pinned here.
+    assert_eq!(format_cell(&json!({"b": 1, "a": 2})), r#"{"a":2,"b":1}"#);
+    assert_eq!(to_edit_string(&json!({"z": 1, "a": 2})), r#"{"a":2,"z":1}"#);
 }
 
 #[test]
-#[ignore = "known divergence: React String({a:1}) is [object Object], the port emits JSON"]
 fn non_scalar_timestamp_falls_back_to_js_string() {
     assert_eq!(format_timestamp(&json!({"a": 1})), "[object Object]");
+    assert_eq!(format_timestamp(&json!([1, 2])), "1,2");
+    assert_eq!(format_timestamp(&json!(["a", true, null])), "a,true,null");
 }
 
 #[test]
-#[ignore = "known parity bug: React dataTypeTextClass(undefined) resolves unknown -> text, the port paints it as null"]
 fn blank_column_type_uses_the_text_family_not_the_null_family() {
     let text = family_color(DataTypeFamily::Text, true);
     assert_eq!(data_type_color(None, None, true), text);
@@ -136,12 +139,22 @@ fn blank_column_type_uses_the_text_family_not_the_null_family() {
 }
 
 #[test]
-#[ignore = "known divergence: React formatLastConnected uses toLocaleString() in the user's local zone"]
-fn last_connected_is_rendered_in_the_user_timezone() {
-    // 12:00Z is not 12:00 in Asia/Shanghai (UTC+8); the port's fixed UTC output
-    // is exactly the value React would only produce for a UTC user.
-    assert_ne!(
+fn last_connected_renders_with_the_supplied_timezone() {
+    // 12:00Z is 20:00 in Asia/Shanghai (UTC+8) and 07:00 in UTC-5. The helper
+    // takes the offset explicitly, so this assertion is deterministic even on a
+    // UTC CI host; the production wrapper supplies chrono::Local's offset.
+    assert_eq!(
+        format_last_connected_with_offset(Some("2024-06-01T12:00:00.000Z"), 8 * 3_600),
+        "2024-06-01 20:00:00"
+    );
+    assert_eq!(
+        format_last_connected_with_offset(Some("2024-06-01T12:00:00.000Z"), -5 * 3_600),
+        "2024-06-01 07:00:00"
+    );
+    let local = chrono::Local::now().offset().local_minus_utc();
+    assert_eq!(
         format_last_connected(Some("2024-06-01T12:00:00.000Z")),
-        "2024-06-01 12:00:00"
+        format_last_connected_with_offset(Some("2024-06-01T12:00:00.000Z"), local),
+        "production must pass the local UTC offset"
     );
 }
