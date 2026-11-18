@@ -4,6 +4,7 @@
 use crate::state_def::*;
 use crate::views::next_connection;
 use crate::views::WorkflowExecutionResult;
+use crate::views::WorkflowFormSlots;
 use crate::views::workflow_yaml;
 use crate::constants::*;
 use crate::data_grid::DataGrid;
@@ -247,6 +248,36 @@ impl AppState {
         } else {
             self.workflow_step_chart.remove(step_id);
         }
+    }
+
+    /// T070: the visual workflow form's slots over the real state — the
+    /// wiring [`WorkflowForm`] consumes. The page mount is T147's
+    /// WorkflowPage port; the form's tests drive the same slots.
+    #[allow(dead_code)]
+    pub(crate) fn workflow_form_slots(&self) -> WorkflowFormSlots<AppState> {
+        WorkflowFormSlots {
+            draft: |s: &AppState| &s.workflow_draft,
+            draft_mut: |s: &mut AppState| &mut s.workflow_draft,
+            open: |s: &AppState| s.workflow_form_open,
+            set_open: |s: &mut AppState, which| s.workflow_form_open = which,
+            input_edits: |s: &mut AppState| &mut s.workflow_form_input_edits,
+            input_edits_read: |s: &AppState| &s.workflow_form_input_edits,
+            commands: |s: &AppState| &s.workflow_form_commands,
+            commands_loading: |s: &AppState| &s.workflow_form_commands_loading,
+            databases: |s: &AppState| &s.workflow_form_databases,
+            databases_loading: |s: &AppState| &s.workflow_form_databases_loading,
+            on_save: |s: &mut AppState| s.save_workflow_form(),
+            on_cancel: |s: &mut AppState| s.close_workflow_editor(),
+        }
+    }
+
+    /// T070: the form's ephemeral interaction state (React resets it by
+    /// unmounting the form — the AI panel's `showForm` toggle); the draft
+    /// itself stays. The first caller is T147's page mount.
+    #[allow(dead_code)]
+    pub(crate) fn reset_workflow_form_caches(&mut self) {
+        self.workflow_form_open = None;
+        self.workflow_form_input_edits.clear();
     }
 
     /// W7: run the edited workflow; the results list below is read-only.
