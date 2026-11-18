@@ -471,11 +471,10 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
                 if before != r[3] {
                     write_vp(s, r[3]);
                 }
-                // Retry pending reveals when layout runs (e.g. viewport measurement changes).
+                // Retry pending reveals; also observe external cursor changes (e.g. direct
+                // model.select without runtime event/rebuild notification).
                 reveal_retry(s, tx);
-                // Do not call live_only: external cursor changes may need observation on
-                // subsequent layout passes within the same frame cycle.
-                let _ = before;
+                // Intentionally no live_only: keep hook active for external mutation detection.
             });
         }
         viewport = viewport.child(if count == 0 {
