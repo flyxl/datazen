@@ -50,6 +50,39 @@
 
 Phase 0 合计约 12 个工作日。它做完之前不碰 §4 的台账任务，否则每个页面都会再手搓一遍组件。
 
+## 3.5 台账盲区：`.ts` 基础层
+
+§2 的口径只统计非测试 `.tsx`（310 文件 / 70,059 行），**不含 `.ts`**；而 `.tsx` 大量依赖 `.ts`，
+所以台账跑到 DataTable / 连接页主体时会被基础层卡住。实测（2026-11-18）：
+
+| 区域 | 文件 | 行数 | 说明 |
+| --- | --- | --- | --- |
+| `lib/` | 168 | 27,019 | 纯函数与工具，DataTable 的直接阻塞点 |
+| `windows/connection/` | 45 | 10,064 | 连接页的 hook / 选择器 / 派生状态 |
+| `stores/`（含 `stores/tableData`、`stores/ai`） | 58 | 12,652 | 状态机，Rune 侧并入 `AppState` 的 slice |
+| `hooks/` | 26 | 3,542 | 视图胶水，多数在 immediate mode 下消失或并入 slice |
+| `commands/` | 23 | 3,311 | IPC 外壳，Rune 侧走 `datazen::application` |
+| `components/sql-editor/` | 19 | 3,338 | 补全/高亮配置，属 CodeMirror 引擎批次 |
+| `types/` | 10 | 2,041 | 契约镜像，`backend-client` 已有 Rust 版本 |
+| 其它 | 41 | 8,354 | `platform/`、`windows/{data-sync,schema-diff}` 等 |
+| 合计（不含 locale 包） | **495** | **80,321** | 另有 10 个 locale 包约 36k 行，只喂 `build.rs`，不迁 |
+
+建议顺序（每一批都要能在门禁绿的前提下独立收尾）：
+
+1. **`lib/` 里的纯函数子集**（约 1.6k 行）：`formatters.ts`、`cellTypes.ts`、`cellEditorKind.ts`、
+   `dataTypeColors.ts`、`editors/toEditString.ts`。这五个是 `CellRenderer` / `GridCell` / `DetailPanel`
+   的前置条件，没有它们只能先做 `ColumnStatsDialog` 这类不依赖类型表的叶子组件。
+2. **`stores/` 按 slice 归位**：`tableDataStore`(935) → `schemaStore`(727) → `panelStore`(766) →
+   `aiStore`(1,209)。Rune 侧已有的 8 个 slice（`settings_state`/`workspace_state`/…）是落点，
+   不需要一一对应新 slice。
+3. **`commands/` 与 `types/`**：多数在 Rune 侧已有对应 `application` 用例与 `shared` DTO，
+   属于「接线核对」而非迁移，只在发现的缺口处补。
+4. **`hooks/`**：随所属视图一起做，不单独成批（`useMemo`/`useCallback` 直接消失）。
+5. **`components/sql-editor/`**：并入 CodeMirror 引擎批次（与 §2 的 24 个 `H` 类文件同批）。
+
+在台账上追加时沿用同一格式：`- [ ] T253 · lib · 0.30d · lib/formatters.ts`，编号续在 252 之后，
+状态仍只改方括号一个字符。
+
 ## 4. 逐文件任务台账
 
 台账已移出本文，单独维护在 [`tasklist.md`](tasklist.md)：**一个 task 一行，状态就是该行方括号里的一个字符**，
