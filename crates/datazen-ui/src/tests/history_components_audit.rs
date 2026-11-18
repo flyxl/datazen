@@ -9,7 +9,8 @@ use crate::components::history::{
     HistoryConnectionOption, HistoryEntryCard, HistoryEntryVm, HistoryFilterBar, HistoryFilterOpen,
     HistoryQueryState,
 };
-use crate::i18n::t;
+use crate::i18n::{self, t};
+use crate::icons::{ICON_CHECK, ICON_COPY, ICON_EXTERNAL_LINK, ICON_STAR, ICON_TRASH};
 
 fn env(dark: bool) -> Env {
     Env {
@@ -312,4 +313,121 @@ fn audit_i18n_keys_resolve_to_expected_zh_cn_values() {
     assert_eq!(t("query.historySortOldest"), "最早优先");
     assert_eq!(t("query.historySortSlowest"), "最慢优先");
     assert_eq!(t("common.reset"), "重置");
+}
+
+
+
+fn audit_entry(sql: &str) -> HistoryEntryVm {
+    HistoryEntryVm {
+        id: "h1".to_string(),
+        success: true,
+        database: Some("appdb".to_string()),
+        schema: Some("public".to_string()),
+        execution_time_ms: 42,
+        rows_affected: Some(7),
+        executed_at: "2026-11-17 10:00:00".to_string(),
+        sql: sql.to_string(),
+        error_message: None,
+    }
+}
+
+fn card_long_sql_audit_view(_state: &CardState, _cx: &mut Cx<CardState>) -> El {
+    let entry = audit_entry(&("select ".to_string() + &"very_long_identifier_".repeat(40) + " from t;"));
+    col().w_full().h_full().padding(16.0).child(
+        HistoryEntryCard::<CardState>::new(entry, "AuditConn")
+            .copied(false)
+            .can_open(true)
+            .build(true),
+    )
+}
+
+#[test]
+fn audit_every_component_translation_key_exists() {
+    for key in [
+        "common.copied", "common.reset", "query.historyAllDatabases", "query.historyAllSchemas",
+        "query.historyCopy", "query.historyDefaultDb", "query.historyDeleteTitle",
+        "query.historyFavorite", "query.historyOpen", "query.historyRange30d",
+        "query.historyRange7d", "query.historyRange90d", "query.historyRangeAll",
+        "query.historyRangeToday", "query.historyRows", "query.historyScopeAll",
+        "query.historySelectAll", "query.historySortOldest", "query.historySortRecent",
+        "query.historySortSlowest", "query.historyStatusAll", "query.historyStatusFailed",
+        "query.historyStatusSuccess", "query.searchHistory",
+    ] {
+        assert!(i18n::has(key), "translation key missing: {key}");
+        assert_ne!(t(key), key, "translation key did not resolve: {key}");
+    }
+}
+
+#[test]
+fn audit_new_action_icons_are_twenty_four_view() {
+    for icon in [&ICON_CHECK, &ICON_COPY, &ICON_EXTERNAL_LINK, &ICON_STAR, &ICON_TRASH] {
+        assert_eq!(icon.view, 24.0, "{} must be a 24-view icon", icon.name);
+        assert!(!icon.body.is_empty(), "{} must have a body", icon.name);
+    }
+}
+
+#[test]
+fn audit_filter_search_icon_sits_inside_the_text_field() {
+    let mut rt = Runtime::new(FilterState::default(), filter_view, (960.0, 640.0), env(true));
+    rt.frame(0.0);
+    let search = element(&rt, "history-filter-bar-search");
+    let field = element(&rt, "history-filter-bar-search-field");
+    let icon = element(&rt, "history-filter-bar-search-icon");
+    assert!(
+        icon.rect[0] >= field.rect[0] - 0.5
+            && icon.rect[1] >= field.rect[1] - 0.5
+            && icon.rect[0] + icon.rect[2] <= field.rect[0] + field.rect[2] + 0.5
+            && icon.rect[1] + icon.rect[3] <= field.rect[1] + field.rect[3] + 0.5,
+        "search icon {:?} not inside field {:?} (container {:?})", icon.rect, field.rect, search.rect
+    );
+}
+
+#[test]
+fn audit_long_sql_is_one_wrapped_text_block() {
+    let mut rt = Runtime::new(CardState::default(), card_long_sql_audit_view, (960.0, 640.0), env(true));
+    rt.frame(0.0);
+    let sql = element(&rt, "history-entry-card-h1-sql");
+    assert!(sql.text.as_deref().unwrap_or("").len() > 400, "full SQL is in the text");
+    assert!(sql.rect[3] > 24.0, "long SQL must wrap, got {:?}", sql.rect);
+    assert!(sql.rect[2] <= 928.5, "SQL stays inside card width");
+    let matching = rt.elements().iter().filter(|e| e.text.as_deref() == sql.text.as_deref()).count();
+    assert_eq!(matching, 1, "SQL is a single text block, not nested cells");
+}
+
+#[test]
+fn audit_history_action_controls_are_real_buttons() {
+    let mut rt = Runtime::new(CardState::default(), card_view, (960.0, 640.0), env(true));
+    rt.frame(0.0);
+    for key in [
+        "history-entry-card-audit-h1-action-copy", "history-entry-card-audit-h1-action-favorite",
+        "history-entry-card-audit-h1-action-open", "history-entry-card-audit-h1-action-delete",
+    ] {
+        assert_eq!(element(&rt, key).role, "button", "{key} role");
+    }
+}
+
+#[test]
+#[ignore = "defect: copy action hand-wires tx.copy + wake_after instead of Copyable::on_copy_tx"]
+fn audit_copy_action_reuses_the_copyable_primitive() {
+    let src = include_str!("../components/history/history_entry_card.rs");
+    assert!(src.contains("Copyable::new"), "copy action does not use Copyable");
+    assert!(src.contains("on_copy_tx"), "copy action does not use on_copy_tx");
+}
+
+#[test]
+fn audit_filter_bar_open_overlays_stay_inside_both_windows() {
+    for open in [
+        HistoryFilterOpen::None, HistoryFilterOpen::Connection, HistoryFilterOpen::Database,
+        HistoryFilterOpen::Schema, HistoryFilterOpen::Status, HistoryFilterOpen::Range,
+        HistoryFilterOpen::Sort,
+    ] {
+        for dark in [true, false] {
+            for (w, h) in [(960.0, 640.0), (1440.0, 816.0)] {
+                let state = FilterState { open, ..FilterState::default() };
+                let mut rt = Runtime::new(state, filter_view, (w, h), env(dark));
+                rt.frame(0.0);
+                assert_in_window(&rt, w, h, &format!("filter open={open:?} dark={dark} {w}x{h}"));
+            }
+        }
+    }
 }
