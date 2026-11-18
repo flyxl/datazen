@@ -385,3 +385,44 @@ fn the_copy_control_copies_the_sql_and_marks_itself() {
         "the next ask starts with the copy label"
     );
 }
+
+#[test]
+fn a_long_sql_truncates_the_preview_and_shows_the_omission_hint() {
+    // T070-tester S1 pin: >12 lines swaps in the first-12-lines preview and
+    // mounts the `仅显示前 12 行` hint; the full SQL stays out of the tree.
+    let long_sql = (1..=20u32)
+        .map(|line| format!("SELECT {line}, 'x' AS pad_{line}"))
+        .collect::<Vec<_>>()
+        .join(";\n");
+    let mut rt = main_runtime(AppState::default(), (1440.0, 900.0), true);
+    ask(
+        &mut rt,
+        RunningExecutionCloseRequest { sql: long_sql, ..request() },
+    );
+    let hint = element(&rt, "running-close-dialog-code-truncated");
+    assert_eq!(hint.text.as_deref(), Some("仅显示前 12 行"));
+    let code_text = element(&rt, "running-close-dialog-code-text")
+        .text
+        .as_deref()
+        .unwrap_or_default()
+        .to_string();
+    assert!(code_text.contains("SELECT 12"), "the first 12 lines are shown");
+    assert!(
+        !code_text.contains("SELECT 13"),
+        "line 13 onward is cut off"
+    );
+}
+
+#[test]
+fn the_failure_branch_of_the_main_page_does_not_mount_the_host() {
+    // T070-tester S2 pin: React renders the host only in the healthy
+    // branch (MainPage.tsx:140); the load-failed window leaves it out.
+    let mut state = AppState::default();
+    state.connections_load_error = Some("load failed".to_string());
+    let mut rt = main_runtime(state, (960.0, 640.0), true);
+    ask(&mut rt, request());
+    assert!(
+        !has_key(&rt, "running-close-dialog-title"),
+        "the host layer stays off the failure screen"
+    );
+}
