@@ -495,3 +495,33 @@ fn audit_filter_bar_wraps_at_960_and_not_at_1440() {
         search.rect
     );
 }
+
+#[test]
+fn audit_filter_bar_uses_the_react_metric_widths() {
+    for (w, h) in [(960.0, 640.0), (1440.0, 816.0)] {
+        for dark in [true, false] {
+            let mut rt = Runtime::new(FilterState::default(), filter_view, (w, h), env(dark));
+            rt.frame(0.0);
+            let search = element(&rt, "history-filter-bar-search");
+            let field = element(&rt, "history-filter-bar-search-field");
+            let icon = element(&rt, "history-filter-bar-search-icon");
+            assert!(search.rect[2] >= 180.0, "{w}x{h} dark={dark}: search min width {search:?}");
+            assert!((icon.rect[0] - field.rect[0] - 10.0).abs() <= 0.5,
+                "{w}x{h} dark={dark}: icon inset {:?} field {:?}", icon.rect, field.rect);
+            assert!((icon.rect[1] - field.rect[1] - 8.0).abs() <= 0.5,
+                "{w}x{h} dark={dark}: icon top {:?} field {:?}", icon.rect, field.rect);
+            for (key, width) in [
+                ("history-filter-bar-connection-trigger", 128.0),
+                ("history-filter-bar-database-trigger", 112.0),
+                ("history-filter-bar-schema-trigger", 112.0),
+                ("history-filter-bar-status-trigger", 112.0),
+                ("history-filter-bar-range-trigger", 128.0),
+                ("history-filter-bar-sort-trigger", 128.0),
+            ] {
+                let r = element(&rt, key).rect;
+                assert!((r[2] - width).abs() <= 0.5,
+                    "{w}x{h} dark={dark}: {key} width {} != React {width}", r[2]);
+            }
+        }
+    }
+}
