@@ -39,15 +39,28 @@ impl AppState {
     /// list replaces the memory port's demo list; an unwired one answers with
     /// the fixed error, which the connections page displays while the port's
     /// list stays.
+    ///
+    /// T020: the fetch's own failure is kept separately in
+    /// [`Self::connections_load_error`] (the React store's `error`, the main
+    /// window's load gate), and a failed fetch keeps the previous list —
+    /// the zustand store writes only the error on failure
+    /// (`connectionStore.ts:121-127`), so its `connections` survive. The
+    /// unwired marker is not a load failure: the memory port answers by
+    /// design (see `app.rs`'s H3 note) and the page keeps its banner.
     pub(crate) fn sync_desktop_connections(&mut self) {
         match self.desktop.list_connections() {
             Ok(connections) => {
                 self.desktop_connections = Some(connections);
                 self.desktop_error = None;
+                self.connections_load_error = None;
             }
             Err(message) => {
-                self.desktop_connections = None;
-                self.desktop_error = Some(message);
+                self.desktop_error = Some(message.clone());
+                self.connections_load_error = if message == DESKTOP_NOT_IMPLEMENTED {
+                    None
+                } else {
+                    Some(message)
+                };
             }
         }
     }

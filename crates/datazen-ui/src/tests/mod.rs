@@ -239,3 +239,7 @@ mod chart_canvas_audit;
 mod workflow_action_bar;
 // T019: the workflow execution result panel port.
 mod workflow_execution_panel;
+
+// T020: the main window's composition root port (branches, error screen,
+// retry, and the seams that must stay honest).
+mod main_page;
