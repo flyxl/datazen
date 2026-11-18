@@ -267,3 +267,5 @@ mod ai_chat_panel_section;
 mod ai_chat_panel_section_audit;
 // T012: AiWriteProposalHost (state machine + dialog / receipt / audit-error render).
 mod ai_write_proposal_host;
+// T012 independent audit: fresh vectors against the React source and zh-CN packs.
+mod ai_write_proposal_host_audit;
