@@ -179,3 +179,4 @@ mod filter_parts_audit;
 // T021/T023 fixes: chip width, truncation, accent X, tooltips and pressed state.
 mod filter_fixes;
 mod schema_diff_panel;
+mod schema_diff_audit;
