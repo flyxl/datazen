@@ -238,6 +238,8 @@ mod column_mapping_row_audit;
 mod column_mapping_editor;
 // T023-S2 independent audit: fresh vectors against React + transferMappingView.ts.
 mod column_mapping_editor_audit;
+// T023-S3: RecordsetEditor (enable switch, single-bound + limit, tuple editor).
+mod recordset_editor;
 
 // T008: ChartCanvas dispatcher, measured viewport and honest placeholders.
 mod chart_canvas;

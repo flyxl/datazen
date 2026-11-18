@@ -6,8 +6,10 @@
 //! the auto-match / clear-unmapped buttons, the unmapped-target warning,
 //! the table header, and the row-list assembly over the S1
 //! [`ColumnMappingRow`]. The recordset editor (React 195–440, T023-S3)
-//! and the source-filter editor (T204) are not in this slice; the shell
-//! renders their mount points (see below) and nothing else for them.
+//! is mounted by the shell in the `data-transfer-recordset` slot (see
+//! [`ColumnMappingEditor::recordset_section`]); the source-filter editor
+//! (T204) is not in this slice — the shell renders its mount point (see
+//! below) and nothing else for it.
 //!
 //! ## Key convention
 //!
@@ -29,7 +31,7 @@
 //! | table header | `data-transfer-column-header` (internal) |
 //! | rows scroll container | `data-transfer-column-rows` (internal) |
 //! | one row | `data-transfer-column-row-{source}` |
-//! | recordset mount (T023-S3 fills it) | `data-transfer-recordset` |
+//! | recordset editor (T023-S3) | `data-transfer-recordset` |
 //! | source-filter mount (T204 fills it) | `data-transfer-source-filter` |
 //!
 //! React repeats the row testid `data-transfer-column-row` on every row;
@@ -130,6 +132,9 @@ use super::column_mapping_row::{
     target_options, ColumnMappingPatch, ColumnMappingRow, ColumnMappingRowVm,
     TransferColumnMapping,
 };
+use super::recordset_editor::{
+    RecordsetEditor, RecordsetEditorVm, RecordsetHost, TransferRecordset,
+};
 use super::transfer_mapping_view::{
     auto_match_column_mappings, clear_unmapped_column_mappings,
     normalize_column_mappings, show_create_new_toggle, show_target_type,
@@ -180,6 +185,10 @@ pub(crate) struct ColumnMappingEditorState {
     pub disabled: bool,
     pub target_table_edit: TextEdit,
     pub rows: Vec<ColumnMappingRowHost>,
+    /// The recordset editor's host state (T023-S3): its edit buffers
+    /// and the order select's open flag, re-seeded from the model
+    /// whenever a recordset patch lands (see [`Self::resync_recordset`]).
+    pub recordset_host: RecordsetHost,
 }
 
 impl ColumnMappingEditorState {
@@ -191,8 +200,10 @@ impl ColumnMappingEditorState {
             disabled,
             target_table_edit,
             rows: Vec::new(),
+            recordset_host: RecordsetHost::default(),
         };
         state.resync_rows();
+        state.resync_recordset();
         state
     }
 
@@ -213,7 +224,22 @@ impl ColumnMappingEditorState {
             self.target_table_edit
                 .replace_text(self.table.target_table.clone());
         }
+        if patch.recordset.is_some() {
+            self.resync_recordset();
+        }
         self.resync_rows();
+    }
+
+    /// Re-seed the recordset editor's buffers from the model, keyed by
+    /// the table's primary keys (`table.sourcePrimaryKeys ?? []`).
+    pub(crate) fn resync_recordset(&mut self) {
+        let primary_keys = self
+            .table
+            .source_primary_keys
+            .clone()
+            .unwrap_or_default();
+        self.recordset_host
+            .resync(&self.table.recordset, &primary_keys);
     }
 
     /// Rebuild the per-row hosts from the current normalized mappings,
@@ -387,10 +413,12 @@ impl<'a, S: 'static> ColumnMappingEditor<'a, S> {
         root = root.child(table_el);
 
         // Mount points the slices below own: T023-S3 fills
-        // `data-transfer-recordset`, T204 fills
-        // `data-transfer-source-filter`. Empty keyed shells, as
-        // `AiChatPanel` does for T195/T334.
-        root = root.child(col().key("data-transfer-recordset").w_full().min_w(0.0));
+        // `data-transfer-recordset` (see `recordset_section`), T204
+        // fills `data-transfer-source-filter`. The filter shell is an
+        // empty keyed shell, as `AiChatPanel` does for T195/T334.
+        let (recordset_el, recordset_layer) = self.recordset_section(dark, &change, &editor);
+        layer.extend(recordset_layer);
+        root = root.child(recordset_el);
         root = root.child(
             col()
                 .key("data-transfer-source-filter")
@@ -761,6 +789,82 @@ impl<'a, S: 'static> ColumnMappingEditor<'a, S> {
             list = list.child(row_el);
         }
         list
+    }
+
+    /// React 195–440: the recordset editor, mounted through
+    /// `build_inner` like the rows (see the module docs). The view
+    /// model reads React's own fallbacks: `table.sourceColumns ?? []`
+    /// for the order options, `table.sourcePrimaryKeys ?? []` for the
+    /// keys — not the mapping sources the shell falls back to
+    /// elsewhere. The recordset commits arrive as a table patch
+    /// carrying `{ recordset }`, `None` when the enable toggle
+    /// switches the recordset off.
+    fn recordset_section(
+        &self,
+        dark: bool,
+        change: &TableChange<S>,
+        editor: &Option<EditorFn<S>>,
+    ) -> (El, Vec<El>) {
+        let state = self.state;
+        let table = &state.table;
+        let vm = RecordsetEditorVm {
+            columns: table.source_columns.clone().unwrap_or_default(),
+            source_column_types: table.source_column_types.clone(),
+            primary_keys: table.source_primary_keys.clone().unwrap_or_default(),
+            recordset: table.recordset.clone(),
+            order_select_open: state.recordset_host.order_open,
+            disabled: state.disabled,
+        };
+        let mut builder = RecordsetEditor::<S>::new(vm)
+            .start_edit(&state.recordset_host.start_edit)
+            .end_edit(&state.recordset_host.end_edit)
+            .tuple_start_edits(&state.recordset_host.tuple_start_edits)
+            .tuple_end_edits(&state.recordset_host.tuple_end_edits)
+            .limit_edit(&state.recordset_host.limit_edit);
+        if let Some(acc) = editor.clone() {
+            let disabled = state.disabled;
+            let change = Rc::clone(change);
+            builder = builder.on_change(move |s: &mut S, next: Option<TransferRecordset>| {
+                if disabled {
+                    return;
+                }
+                change(
+                    s,
+                    ColumnMappingTablePatch {
+                        recordset: Some(next),
+                        ..ColumnMappingTablePatch::default()
+                    },
+                );
+            });
+            let edit_acc = Rc::clone(&acc);
+            builder = builder
+                .on_start_edit(move |s: &mut S| &mut edit_acc(s).recordset_host.start_edit);
+            let edit_acc = Rc::clone(&acc);
+            builder =
+                builder.on_end_edit(move |s: &mut S| &mut edit_acc(s).recordset_host.end_edit);
+            let edit_acc = Rc::clone(&acc);
+            builder = builder.on_limit_edit(move |s: &mut S| {
+                &mut edit_acc(s).recordset_host.limit_edit
+            });
+            let tuple_acc = Rc::clone(&acc);
+            builder = builder.on_tuple_start_edit(move |s: &mut S, index: usize| {
+                &mut tuple_acc(s).recordset_host.tuple_start_edits[index]
+            });
+            let tuple_acc = Rc::clone(&acc);
+            builder = builder.on_tuple_end_edit(move |s: &mut S, index: usize| {
+                &mut tuple_acc(s).recordset_host.tuple_end_edits[index]
+            });
+            let toggle_acc = Rc::clone(&acc);
+            builder = builder.on_toggle_order(move |s: &mut S| {
+                let host = &mut toggle_acc(s).recordset_host;
+                host.order_open = !host.order_open;
+            });
+            let close_acc = Rc::clone(&acc);
+            builder = builder.on_close_order(move |s: &mut S| {
+                close_acc(s).recordset_host.order_open = false;
+            });
+        }
+        builder.build_inner(dark)
     }
 }
 

@@ -69,6 +69,8 @@ fn table() -> TransferTableVm {
             ("name".to_owned(), "TEXT".to_owned()),
             ("email".to_owned(), "TEXT".to_owned()),
         ],
+        source_primary_keys: None,
+        recordset: None,
     }
 }
 

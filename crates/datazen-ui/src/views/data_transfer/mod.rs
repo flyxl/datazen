@@ -4,11 +4,12 @@
 //! |---|---|---|
 //! | `ColumnMappingEditor.tsx` — `ColumnMappingRow` | `column_mapping_row` | T023-S1 |
 //! | `ColumnMappingEditor.tsx` — `ColumnMappingEditor` shell | `column_mapping_editor` | T023-S2 |
-//! | `ColumnMappingEditor.tsx` — `RecordsetEditor` | _not yet ported_ | T023-S3 |
+//! | `ColumnMappingEditor.tsx` — `RecordsetEditor` | `recordset_editor` | T023-S3 |
 //! | `transferMappingView.ts` (T307 VM placeholder) | `transfer_mapping_view` | T023-S2 |
 
 pub(crate) mod column_mapping_editor;
 pub(crate) mod column_mapping_row;
+pub(crate) mod recordset_editor;
 pub(crate) mod transfer_mapping_view;
 
 #[allow(unused_imports)] // the editor shell (T023-S2) is the production consumer
@@ -26,4 +27,12 @@ pub(crate) use transfer_mapping_view::{
 pub(crate) use column_mapping_row::{
     is_unmapped, target_options, ColumnMappingPatch, ColumnMappingRow, ColumnMappingRowVm,
     TargetOption, TransferColumnMapping,
+};
+#[allow(unused_imports)] // the editor shell (T023-S2) is the production consumer
+pub(crate) use recordset_editor::{
+    apply_bound_update, apply_tuple_bound_update, default_order, effective_order,
+    enable_recordset, format_limit, order_options, parse_limit, BoundName,
+    RecordsetBoundPatch, RecordsetEditor, RecordsetEditorVm, RecordsetHost, RecordsetPatch,
+    RecordsetTupleBoundPatch, TransferRecordset, TransferRecordsetBound,
+    TransferRecordsetTupleBound, TransferRecordsetTupleRange,
 };

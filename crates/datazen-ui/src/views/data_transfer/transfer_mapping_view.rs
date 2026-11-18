@@ -25,6 +25,7 @@
 #![allow(dead_code)]
 
 use super::column_mapping_row::TransferColumnMapping;
+use super::recordset_editor::TransferRecordset;
 
 /// React `TransferMappingStatus` (`commands/transfer.ts:8-14`).
 ///
@@ -51,7 +52,7 @@ pub(crate) enum TransferMappingStatus {
 /// target columns behave as `[]` in the auto-match / warning paths.
 /// `source_column_types` is the `Record<string, string>` as an ordered
 /// association list (a handful of columns; linear lookup is enough).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct TransferTableVm {
     pub source_table: String,
     pub target_table: String,
@@ -62,6 +63,11 @@ pub(crate) struct TransferTableVm {
     pub source_columns: Option<Vec<String>>,
     pub target_columns: Option<Vec<String>>,
     pub source_column_types: Vec<(String, String)>,
+    /// React `table.sourcePrimaryKeys ?? []` — the recordset editor's
+    /// key list (T023-S3 reads it; the shell itself never does).
+    pub source_primary_keys: Option<Vec<String>>,
+    /// React `table.recordset` — the recordset editor's model (T023-S3).
+    pub recordset: Option<TransferRecordset>,
 }
 
 impl TransferTableVm {
@@ -86,13 +92,19 @@ impl TransferTableVm {
     }
 }
 
-/// React `Partial<TransferTableResult>` as the shell reports it: only the
-/// three fields the shell (React 35–193) ever commits.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// React `Partial<TransferTableResult>` as the shell reports it: the
+/// three fields the shell (React 35–193) ever commits, plus the
+/// recordset the recordset editor (React 195–440, T023-S3) commits.
+///
+/// `recordset` is `Option<Option<TransferRecordset>>` because React
+/// distinguishes "leave it" (`None`) from "clear it" (`Some(None)`,
+/// the enable toggle switching the recordset off).
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct ColumnMappingTablePatch {
     pub target_table: Option<String>,
     pub create_new: Option<bool>,
     pub column_mappings: Option<Vec<TransferColumnMapping>>,
+    pub recordset: Option<Option<TransferRecordset>>,
 }
 
 impl ColumnMappingTablePatch {
@@ -107,6 +119,9 @@ impl ColumnMappingTablePatch {
         }
         if let Some(column_mappings) = &self.column_mappings {
             table.column_mappings = column_mappings.clone();
+        }
+        if let Some(recordset) = &self.recordset {
+            table.recordset = recordset.clone();
         }
     }
 }
