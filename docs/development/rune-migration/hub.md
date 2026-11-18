@@ -9,9 +9,9 @@
 | 轨道 | worktree | 分支 | task | React 源 | 状态 |
 | --- | --- | --- | --- | --- | --- |
 | rune-schema | `.worktrees/datazen-rune-schema` | `feature/rune-schema` | T027 | `components/schema/SchemaDiffPanel.tsx` | coder `9d72551fa` READY_FOR_TEST → 独立 tester `ses_e12702aabffe6IBfXaVv8t0pGa` 审计中 |
-| rune-query | `.worktrees/datazen-rune-query` | `feature/rune-query` | T030 | `components/query/ExplainPlanTree.tsx` | CODING（coder `ses_e12ab0de4ffeuHnGvy1eq4nlCV`） |
+| rune-query | `.worktrees/datazen-rune-query` | `feature/rune-query` | T030 | `components/query/ExplainPlanTree.tsx` | coder `63f103886` READY_FOR_TEST → 独立 tester `ses_e1262f261ffexYarPyVb5OfxW2` 审计中 |
 | rune-migration | `.worktrees/datazen-rune-migration` | `feature/rune-migration` | T068 | `components/migration/MigrationJobFailureNotice.tsx` | coder `f310cb424` READY_FOR_TEST → 独立 tester `ses_e12643fd9ffeIuL2anSLQmyKkY` 审计中 |
-| rune-datatable | `.worktrees/datazen-rune-datatable` | `feature/rune-datatable` | T007 | `components/DataTable/DataTableSelectionBar.tsx` | CODING（coder `ses_e12ab0de1ffehj0xPNzl1MGppf`） |
+| rune-datatable | `.worktrees/datazen-rune-datatable` | `feature/rune-datatable` | T007 | `components/DataTable/DataTableSelectionBar.tsx` | coder `ad388d37d` READY_FOR_TEST → 独立 tester `ses_e12614c3affeCmhrcAFsbkFH47` 审计中 |
 
 ### 冲突面控制
 
@@ -50,3 +50,5 @@
 
 - `ses_e12702aabffe6IBfXaVv8t0pGa` — T027 schema，审计中（只测不修 + 变异反证，所有编译走串行队列）。
 - `ses_e12643fd9ffeIuL2anSLQmyKkY` — T068 migration，审计中（同上）。
+- `ses_e1262f261ffexYarPyVb5OfxW2` — T030 query，审计中（同上）。
+- `ses_e12614c3affeCmhrcAFsbkFH47` — T007 datatable，审计中（同上）。
