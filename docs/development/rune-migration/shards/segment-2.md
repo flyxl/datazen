@@ -169,3 +169,4 @@
 - [ ] T647 · lib · 0.80d · lib/workflowYaml.ts
 - [x] T079 · lib/metadata · 0.90d · lib/metadata/identity.ts
 - [x] T092 · platform/shared · 0.80d · platform/shared/mcpClient.ts
+- [x] T044 · platform/shared · 0.30d · platform/shared/index.ts
