@@ -28,6 +28,8 @@ mod tree_rowmath_audit;
 // T004: the column-statistics dialog's four branches, dismissal and bounds.
 mod column_stats_audit;
 mod column_stats_dialog;
+// T002: the single DataTable cell — formatting, colour, plan and geometry.
+mod cell_renderer;
 pub(crate) use support::*;
 
 pub(crate) fn runtime() -> Runtime<AppState> {
