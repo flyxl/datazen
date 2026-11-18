@@ -263,3 +263,5 @@ mod ai_chat_panel_shell;
 mod ai_chat_panel_shell_audit;
 // T009-S7: AiChatPanel Section wiring (mount, toolbar toggle, host sync, geometry).
 mod ai_chat_panel_section;
+// T009-S7 independent audit: fresh vectors against the React source and zh-CN packs.
+mod ai_chat_panel_section_audit;
