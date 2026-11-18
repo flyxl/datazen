@@ -249,3 +249,5 @@ mod ai_chat_panel_header;
 mod ai_chat_panel_header_audit;
 // T009-S4: AiChatPanel message list (memory toasts, messages, streaming placeholder, jump-to-bottom).
 mod ai_chat_panel_message_list;
+// T009-S4 independent audit: fresh vectors against the React source and zh-CN packs.
+mod ai_chat_panel_message_list_audit;
