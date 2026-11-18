@@ -166,6 +166,8 @@ mod global_query_history_audit;
 mod copy_button;
 // T253-T256: the .ts support layer semantics.
 mod support_layer_audit;
+// T034: React lib/session/counters.ts parity (counter + handle value logic).
+mod counters;
 
 // Independent re-audit of merged T0-07 menu base.
 mod menus_merge_reaudit;
