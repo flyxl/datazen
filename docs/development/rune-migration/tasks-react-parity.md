@@ -80,8 +80,12 @@ Phase 0 合计约 12 个工作日。它做完之前不碰 §4 的台账任务，
 4. **`hooks/`**：随所属视图一起做，不单独成批（`useMemo`/`useCallback` 直接消失）。
 5. **`components/sql-editor/`**：并入 CodeMirror 引擎批次（与 §2 的 24 个 `H` 类文件同批）。
 
-在台账上追加时沿用同一格式：`- [ ] T253 · lib · 0.30d · lib/formatters.ts`，编号续在 252 之后，
-状态仍只改方括号一个字符。
+编号方式：`scripts/rune-parity.mjs` 现在扫两遍，先 `.tsx`（沿用 T001–T252 的历史编号，不重排），
+再 `.ts`（T253 起，按 `lib → types → stores → hooks → commands → platform` 排）。
+`.ts` 的第一批五项 `lib/formatters.ts`、`lib/cellTypes.ts`、`lib/cellEditorKind.ts`、
+`lib/dataTypeColors.ts`、`components/DataTable/editors/toEditString.ts` 被钉在最前（T253–T256，约 2.5 天），
+因为 `CellRenderer`/`GridCell`/`DetailPanel`/`VirtualBody` 没有它们无法开工。
+状态仍只改方括号一个字符；行尾由 `--tasklist` 刷新，已有 T 编号的状态保留。
 
 ## 4. 逐文件任务台账
 
@@ -92,7 +96,8 @@ Phase 0 合计约 12 个工作日。它做完之前不碰 §4 的台账任务，
 - 改状态：直接改该行 `- [ ]` → `- [x]`，或 `node scripts/rune-parity.mjs --status T001=done`。
 - 看进度：`node scripts/rune-parity.mjs --progress`（现算，不写回文件）。
 
-口径、分类与工作量估算见 §2；252 个 task、259.4 工作日单轨是 2026-11-17 的快照。
+口径、分类与工作量估算见 §2。台账分两层：T001–T252 是 `.tsx`，T253 起是 §3.5 的 `.ts` 基础层。
+2026-11-18 快照是 **629 个 task / 626.7 工作日单轨**（`.tsx` 252 个 / 259.4 天，`.ts` 377 个 / 367.3 天）。
 
 ## 5. 执行规约
 
