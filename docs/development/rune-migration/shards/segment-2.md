@@ -11,7 +11,7 @@
 - [x] T022 · windows/wapps · 0.90d · windows/wapps/InstallWappDialog.tsx
 - [x] T027 · lib · 0.30d · lib/formatters.ts
 - [x] T031 · lib/metadata · 0.30d · lib/metadata/batch.ts
-- [ ] T033 · lib/relationPrediction · 0.80d · lib/relationPrediction/fromTableSchema.ts lib/relationPrediction/normalize.ts
+- [x] T033 · lib/relationPrediction · 0.80d · lib/relationPrediction/fromTableSchema.ts lib/relationPrediction/normalize.ts
 - [ ] T040 · stores/ai · 3.00d · stores/ai/sessions.ts · split
 - [ ] T042 · types · 0.80d · types/ai.ts
 - [ ] T046 · extensions · 0.30d · extensions/generated-pro.ts
