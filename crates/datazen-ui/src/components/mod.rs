@@ -10,3 +10,4 @@ pub(crate) mod data_table;
 pub(crate) mod filter;
 pub(crate) mod history;
 pub(crate) mod query;
+pub(crate) mod schema;

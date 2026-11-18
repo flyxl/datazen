@@ -184,3 +184,7 @@ mod explain_plan_tree;
 // T030 independent audit: i18n title, registry chevrons, S-owned state, detail
 // key collisions, clipped+scrollable overflow, light-theme window fit.
 mod explain_plan_audit;
+
+// T027: SchemaDiffPanel port and its independent audit.
+mod schema_diff_panel;
+mod schema_diff_audit;
