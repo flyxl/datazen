@@ -204,6 +204,7 @@ mod connection_advanced_settings;
 mod connection_advanced_audit;
 // T016: the batch-export dialog port.
 mod batch_export_dialog;
+mod batch_export_audit;
 
 // T068: MigrationJobFailureNotice (fail-closed refusal notice).
 mod migration_failure_notice;
