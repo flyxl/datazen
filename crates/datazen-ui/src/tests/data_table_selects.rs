@@ -55,6 +55,16 @@ fn element_text<S>(rt: &Runtime<S>, key: &str) -> String {
     element(rt, key).text.unwrap_or_default()
 }
 
+fn find_json<'a>(node: &'a serde_json::Value, key: &str) -> Option<&'a serde_json::Value> {
+    if node.get("key").and_then(serde_json::Value::as_str) == Some(key) {
+        return Some(node);
+    }
+    node.get("children")?
+        .as_array()?
+        .iter()
+        .find_map(|child| find_json(child, key))
+}
+
 // ---- DefaultOrderSelect -------------------------------------------------------------------
 
 #[derive(Default)]
@@ -358,7 +368,11 @@ fn grid_keyboard_hints_keep_the_react_text_and_add_no_tab_stop() {
         "sr-only is a one-point box: {:?}",
         strip.rect
     );
-    assert!(strip.opacity <= 0.01, "sr-only paints nothing: {}", strip.opacity);
+    assert!(
+        strip.opacity > 0.01,
+        "the strip is hidden by paint, not by dropping the subtree from AT: opacity {}",
+        strip.opacity
+    );
     assert_eq!(
         all.iter().filter(|e| e.parent == Some(root)).count(),
         2,
@@ -391,6 +405,88 @@ fn grid_keyboard_hints_keep_the_react_text_and_add_no_tab_stop() {
     );
     press(&mut rt, Key::Tab);
     assert_eq!(focused(&rt), None, "Tab does not land on the hints");
+
+    // `sr-only` keeps the text in the accessibility tree; hiding by opacity (or
+    // `a11y_hidden`) would drop the whole subtree (`a11y/tree.rs:332`).
+    let json = rt.accessibility_json();
+    let hint = find_json(&json, "probe-hints-hint").expect("the hint stays in the a11y tree");
+    assert_eq!(
+        hint.get("name").and_then(serde_json::Value::as_str),
+        Some(t("tableView.shortcut.hint"))
+    );
+    for index in 0..7 {
+        assert!(
+            find_json(&json, &format!("probe-hints-item-{index}")).is_some(),
+            "hint item {index} stays readable by AT"
+        );
+    }
+    // The glyphs are transparent, and no node in the subtree hides by opacity.
+    for key in std::iter::once("probe-hints-hint".to_string())
+        .chain((0..7).map(|index| format!("probe-hints-item-{index}")))
+    {
+        let color = element(&rt, &key)
+            .text_color
+            .unwrap_or_else(|| panic!("{key} is a text node"));
+        assert_eq!(color.a, 0.0, "{key} is painted with transparent glyphs");
+    }
+    assert!(
+        all.iter().all(|element| element.opacity > 0.01),
+        "no hint node hides itself with opacity; that drops it from AT"
+    );
+}
+
+/// The `sr-only` contract in one place: a 1pt box, transparent glyphs,
+/// `list`/`listitem` kept, and the text still readable by assistive tech.
+/// Rune marks a node `gone` — dropping it and its whole subtree from AT — when
+/// it is `a11y_hidden` or its effective opacity is `<= 0.01`
+/// (`vendor/rune/crates/rune/src/a11y/tree.rs:332`). So this port hides by
+/// transparent color only; never `opacity(0.0)`, never `a11y_hidden`.
+#[test]
+fn sr_only_keeps_the_hint_readable_for_assistive_tech() {
+    let mut rt = Runtime::new(HintsProbe, hints_view, (960.0, 640.0), env(true));
+    rt.frame(0.0);
+
+    let root = element(&rt, "probe-hints");
+    assert!(
+        root.rect[3] <= 2.0,
+        "sr-only is a one-point box: {:?}",
+        root.rect
+    );
+    assert!(
+        root.opacity > 0.01,
+        "opacity must stay above rune's gone threshold: {}",
+        root.opacity
+    );
+    assert_eq!(element(&rt, "probe-hints-list").role, "list");
+    for index in 0..7 {
+        assert_eq!(
+            element(&rt, &format!("probe-hints-item-{index}")).role,
+            "listitem"
+        );
+    }
+
+    // Paint hidden, layout kept: transparent glyphs, not transparent opacity.
+    for key in std::iter::once("probe-hints-hint".to_string())
+        .chain((0..7).map(|index| format!("probe-hints-item-{index}")))
+    {
+        let color = element(&rt, &key)
+            .text_color
+            .unwrap_or_else(|| panic!("{key} is a text node"));
+        assert_eq!(color.a, 0.0, "{key} is painted with transparent glyphs");
+    }
+
+    let json = rt.accessibility_json();
+    let hint = find_json(&json, "probe-hints-hint").expect("the hint is readable by AT");
+    assert_eq!(
+        hint.get("name").and_then(serde_json::Value::as_str),
+        Some(t("tableView.shortcut.hint"))
+    );
+    for index in 0..7 {
+        assert!(
+            find_json(&json, &format!("probe-hints-item-{index}")).is_some(),
+            "hint item {index} is readable by AT"
+        );
+    }
 }
 
 /// At 240 points every hint node stays inside its column; the one-point
@@ -412,7 +508,19 @@ fn grid_keyboard_hints_stay_inside_a_narrow_column() {
     rt.frame(0.0);
 
     let root = element(&rt, "narrow-hints");
-    assert!(root.rect[3] <= 2.0, "still a one-point box: {:?}", root.rect);
+    assert!(
+        root.rect[3] <= 2.0,
+        "still a one-point box: {:?}",
+        root.rect
+    );
+    let long = element(&rt, "narrow-hints-item-3");
+    let short = element(&rt, "narrow-hints-item-6");
+    assert!(
+        long.rect[3] > short.rect[3] + 0.5,
+        "the long Home/End hint wraps: long {:?} vs short {:?}",
+        long.rect,
+        short.rect
+    );
     for element in rt.elements() {
         let Some(key) = element.key.as_deref() else {
             continue;

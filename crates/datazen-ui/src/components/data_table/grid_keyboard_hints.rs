@@ -8,14 +8,18 @@
 //!
 //! ## Rendering the `sr-only` half
 //!
-//! `sr-only` is a 1 point box, clipped to nothing, that remains in the
-//! accessibility tree. Rune has no visually-hidden primitive and no child
-//! clipping on a plain box (`El::a11y_hidden` removes the subtree from AT,
-//! which is the opposite of `sr-only`). The port therefore keeps the box at
-//! **1 point tall** and gives it `opacity(0.0)`: it occupies one point of
-//! layout, paints nothing, and its text and list roles stay in the
-//! accessibility tree for `aria-describedby`-style reading. The measured rect
-//! is `[x, y, width, 1.0]`; nothing here is focusable, so it adds no Tab stop.
+//! `sr-only` is a 1 point box that paints nothing but stays in the
+//! accessibility tree. Rune hides content two ways, and both drop the whole
+//! subtree from AT: `El::a11y_hidden` (the opposite of `sr-only`) and any
+//! effective opacity at or below `0.01` — `vendor/rune/crates/rune/src/a11y/tree.rs:332`
+//! marks a node `gone` when `n.a11y.hidden || n.vis.opacity <= 0.01`, and a
+//! `gone` ancestor takes its children with it. The port therefore keeps the
+//! box at **1 point tall** and paints the text with a fully transparent color
+//! (`color.alpha(0.0)`): the glyphs are invisible, the box occupies one point
+//! of layout, and the text and list roles stay in the accessibility tree for
+//! `aria-describedby`-style reading. Opacity stays at `1.0`, so nothing is
+//! dropped. The measured rect is `[x, y, width, 1.0]`; nothing here is
+//! focusable, so it adds no Tab stop.
 //!
 //! ## Key convention
 //!
@@ -66,21 +70,21 @@ impl GridKeyboardHints {
                     .key(format!("{id}-item-{index}"))
                     .role("listitem")
                     .font(k.ty.small)
-                    .color(k.c.text_muted)
+                    .color(k.c.text_muted.alpha(0.0))
                     .wrap(),
             );
         }
-        // `sr-only`: one point of layout, no paint, still in the a11y tree.
+        // `sr-only`: one point of layout, transparent glyphs (not transparent
+        // opacity — that would drop the subtree from the a11y tree).
         col()
             .key(id.clone())
             .w_full()
             .h(1.0)
-            .opacity(0.0)
             .child(
                 text(t("tableView.shortcut.hint"))
                     .key(format!("{id}-hint"))
                     .font(k.ty.small)
-                    .color(k.c.text_faint)
+                    .color(k.c.text_faint.alpha(0.0))
                     .wrap(),
             )
             .child(list)
