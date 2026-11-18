@@ -232,6 +232,8 @@ mod migration_endpoints_retest;
 
 // T023-S1: ColumnMappingRow leaf (row model, target options, skip/select/text commits, disabled).
 mod column_mapping_row;
+// T023-S1 independent audit: fresh vectors (target_options boundaries, patch/skip interaction, disabled, key scope, placeholder label).
+mod column_mapping_row_audit;
 
 // T008: ChartCanvas dispatcher, measured viewport and honest placeholders.
 mod chart_canvas;
