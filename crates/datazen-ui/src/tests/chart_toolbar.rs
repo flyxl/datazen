@@ -767,3 +767,21 @@ fn product_sources_stay_on_the_registry_i18n_and_kit_tokens() {
         assert!(toolbar.contains(name), "the toolbar uses {name} from the registry");
     }
 }
+
+#[test]
+fn the_export_menu_pins_the_react_geometry() {
+    // T059-tester D1 pin: w-32 = 128pt wide, mt-1 = 4pt below the trigger.
+    let mut rt = toolbar_runtime(toolbar_state(two_axis_config(), true), (960.0, 640.0));
+    click(&mut rt, EXPORT_BUTTON_KEY);
+    assert!(has_key(&rt, "chart-export-menu"), "the panel mounted for the pin");
+    let trigger = element(&rt, EXPORT_BUTTON_KEY);
+    let menu = element(&rt, "chart-export-menu");
+    // rect = [x, y, w, h].
+    assert_eq!(menu.rect[2], 128.0, "React's w-32 dropdown is 128pt wide");
+    assert!(
+        (menu.rect[1] - (trigger.rect[1] + trigger.rect[3]) - 4.0).abs() < 0.5,
+        "mt-1 drops the panel 4pt below the trigger: menu y {} vs trigger bottom {}",
+        menu.rect[1],
+        trigger.rect[1] + trigger.rect[3]
+    );
+}
