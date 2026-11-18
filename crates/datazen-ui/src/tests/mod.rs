@@ -170,6 +170,8 @@ mod overlay_merge_reaudit;
 mod data_table_selects;
 // T007: the DataTable selection bar port.
 mod data_table_selection_bar;
+// T007 independent tester audit (coverage-driven, key/focus/geometry probes).
+mod data_table_selection_audit;
 mod data_table_ports_audit;
 
 // T021/T023: filter editor parts (between bounds, condition chip, connector).
