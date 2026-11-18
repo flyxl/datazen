@@ -161,3 +161,7 @@ mod menus_merge_reaudit;
 
 // T0-10 merged-mainline overlay re-audit.
 mod overlay_merge_reaudit;
+
+// React parity: DefaultOrderSelect and GridKeyboardHints ports.
+mod data_table_selects;
+mod data_table_ports_audit;
