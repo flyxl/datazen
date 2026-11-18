@@ -145,3 +145,6 @@ mod temporal_input_audit;
 
 // T021/T023: filter editor parts (between bounds, condition chip, connector).
 mod filter_parts;
+
+// T021/T023 audit: independent probes for the filter parts against React.
+mod filter_parts_audit;
