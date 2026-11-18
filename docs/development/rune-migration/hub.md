@@ -39,6 +39,13 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+### 机器分工（2026-11-18，用户裁决）
+
+- **本机锁定 segment-1**（`feat/rune-native-ui-migration-segment-1`）作为其开发段；其他 3 段（segment-2/3/4）交给别的机器，按 [segment-runbook.md](segment-runbook.md) 执行。
+- 本机双重角色：① 在 segment-1 上编码；② 继续做协调者——汇总 4 段 shard 状态、合流代码到主分支 `feat/rune-native-ui-migration`、push。
+- Wave 2 在途的 T002（segment-3）/ T005（segment-4）照常收尾并移交：tester 跑完 → 审计提交合到主分支 → 翻台账 → push → refresh 4 个 segment 分支到主分支最新。代码成果随主分支带走，其他机器 checkout 时已包含。
+- 后续本机新开的 coder worktree 从 segment-1 分支建，task 从 `node scripts/rune-parity.mjs --shard 1 --next-todo` 取。
+
 ### 纪律：合流即 push（用户要求）
 
 - 每个 task 合流到 `feat/rune-native-ui-migration` 并完成台账翻状态后，**立即 `git push origin feat/rune-native-ui-migration`**，不等整波结束。
