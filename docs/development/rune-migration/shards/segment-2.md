@@ -8,7 +8,7 @@
 - [ ] T014 · components/export · 0.60d · components/export/ExportSuccessPanel.tsx components/FilterBar.tsx
 - [x] T019 · windows/workflow · 0.80d · windows/workflow/WorkflowEditorActionBar.tsx windows/workflow/WorkflowExecutionResultPanel.tsx
 - [x] T020 · windows/main · 0.90d · windows/main/MainPage.tsx
-- [ ] T022 · windows/wapps · 0.90d · windows/wapps/InstallWappDialog.tsx
+- [x] T022 · windows/wapps · 0.90d · windows/wapps/InstallWappDialog.tsx
 - [x] T027 · lib · 0.30d · lib/formatters.ts
 - [ ] T031 · lib/metadata · 0.30d · lib/metadata/batch.ts
 - [ ] T033 · lib/relationPrediction · 0.80d · lib/relationPrediction/fromTableSchema.ts lib/relationPrediction/normalize.ts
