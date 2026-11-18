@@ -67,7 +67,7 @@ use std::borrow::Cow;
 use std::f32::consts::FRAC_PI_2;
 use std::rc::Rc;
 
-use rune::{col, el, icon, row, text, El, GrowthSpec, Icon, Key, KeyEvent, ScrollSpec, Tx};
+use rune::{col, el, icon, row, text, El, GrowthSpec, Icon, Key, KeyEvent, LoopSpec, ScrollSpec, Tx};
 use rune_kit::{TreeKey, TreeModel, TreeRow, TreeStyle};
 
 use super::kit::kit;
@@ -82,12 +82,11 @@ type ViewportWriter<S> = Rc<dyn Fn(&mut S, f32)>;
 const EMPTY_HEIGHT: f32 = 40.0;
 
 thread_local! {
+    /// Cursor observed at the most recent render/build of each tree key.
     static TREE_LAST_SEEN_CURSOR: std::cell::RefCell<std::collections::HashMap<String, Option<String>>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
+    /// Cursor whose reveal has been satisfied (in view by tracked scroll state), per key.
     static TREE_LAST_REVEALED_CURSOR: std::cell::RefCell<std::collections::HashMap<String, Option<String>>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
-    /// Per-key tick for pending reveals: changing marker identity forces layout callbacks to run.
-    static TREE_REVEAL_TICK: std::cell::RefCell<std::collections::HashMap<String, u64>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
@@ -102,17 +101,6 @@ fn last_revealed_cursor(key: &str) -> Option<String> {
 }
 fn set_last_revealed_cursor(key: &str, cursor: Option<String>) {
     TREE_LAST_REVEALED_CURSOR.with(|m| { m.borrow_mut().insert(key.to_owned(), cursor); });
-}
-fn next_reveal_tick(key: &str) -> u64 {
-    TREE_REVEAL_TICK.with(|m| {
-        let mut map = m.borrow_mut();
-        let v = map.entry(key.to_owned()).or_insert(0);
-        *v = v.wrapping_add(1);
-        *v
-    })
-}
-fn reset_reveal_tick(key: &str) {
-    TREE_REVEAL_TICK.with(|m| { m.borrow_mut().remove(key); });
 }
 
 #[allow(dead_code)]
@@ -349,9 +337,8 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
         let style = style.unwrap_or_else(|| TreeStyle::from_kit(k));
         let count = get(s).visible_len();
         let cursor = get(s).cursor().map(str::to_owned);
-        // Per-render cursor snapshot: detect selection changes (incl. external model.select).
-        let prev_seen_cursor = last_seen_cursor(&key);
-        let cursor_changed_this_render = prev_seen_cursor != cursor;
+        // Per-render cursor snapshot: the last cursor seen at build time. The frame-time
+        // observer (heartbeat below) compares against this to detect external selections.
         set_last_seen_cursor(&key, cursor.clone());
         let cursor_key = cursor
             .as_deref()
@@ -496,33 +483,42 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
             rows
         });
 
-        // Cursor-keyed marker outside scroll viewport: a new element on selection change
-        // forces a layout pass so external model.select can be revealed via tx. While reveal
-        // is pending (not yet satisfied/in-view), tick the key so layout callback can re-run.
-        let pending_reveal = scroll_wired
-            && cursor.is_some()
-            && cursor.as_deref() != last_revealed_cursor(&key).as_deref();
-        let cursor_marker_key = match &cursor {
-            Some(id) if pending_reveal => {
-                format!("{key}-cursor-sync-{id}-{}", next_reveal_tick(&key))
-            }
-            Some(id) => format!("{key}-cursor-sync-{id}"),
-            None => {
-                reset_reveal_tick(&key);
-                format!("{key}-cursor-sync-none")
-            }
+        // Per-frame cursor observation for external selections. A direct `model.select()`
+        // mutates app state without dirtying the runtime, so neither `build` nor a layout
+        // hook is guaranteed to run on the following frames. A tiny, always-moving (looping)
+        // element reports its drawn rect every frame; its handler compares the live cursor
+        // against the snapshot taken during the last render (`build`) and reveals when it
+        // changed. It is a11y-hidden and only present when scroll state is wired.
+        let heartbeat = if scroll_wired {
+            let track_key = key.clone();
+            let reveal_beat = reveal_cursor.clone();
+            Some(
+                el()
+                    .key(format!("{key}-cursor-heartbeat"))
+                    .absolute(0.0, 0.0)
+                    .size(4.0, 4.0)
+                    .a11y_hidden()
+                    .looping(LoopSpec::slide(0.5, [-4.0, 0.0], [4.0, 0.0]))
+                    .on_drawn_layout_tx(move |s: &mut S, _r: [f32; 4], tx: &mut Tx| {
+                        let cursor = get(s).cursor().map(str::to_owned);
+                        let seen = last_seen_cursor(&track_key);
+                        let revealed = last_revealed_cursor(&track_key);
+                        if cursor != seen {
+                            // Cursor changed since the last render/observation: reveal once.
+                            let _ = reveal_beat(s, tx);
+                            set_last_seen_cursor(&track_key, cursor);
+                        } else if cursor.is_some() && revealed.as_deref() != cursor.as_deref() {
+                            // Reveal requested but not yet satisfied by tracked scroll state.
+                            let _ = reveal_beat(s, tx);
+                        } else {
+                            // Nothing to do; keep this report live-only (no rebuild churn).
+                            tx.live_only();
+                        }
+                    }),
+            )
+        } else {
+            None
         };
-        if !pending_reveal {
-            reset_reveal_tick(&key);
-        }
-        let needs = pending_reveal;
-        let mut marker = el().key(cursor_marker_key).w(0.0).h(0.0).a11y_hidden();
-        if needs {
-            let reveal_sync = reveal_cursor.clone();
-            marker = marker.on_layout_tx(move |s: &mut S, _r: [f32; 4], tx: &mut Tx| {
-                reveal_sync(s, tx);
-            });
-        }
 
         let key_handler = key.clone();
         let select = on_select.clone();
@@ -627,7 +623,7 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
             }
         })
         .child(viewport)
-        .child(marker)
+        .children(heartbeat)
     }
 }
 
