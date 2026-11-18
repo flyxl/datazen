@@ -234,6 +234,9 @@ mod migration_endpoints_retest;
 mod chart_canvas;
 // T008 independent audit: marker honesty, factory seam, geometry, source guards.
 mod chart_canvas_audit;
+// T059: the chart toolbar + empty-state ports (type switch, display toggles,
+// split/expand buttons and the export dropdown seam).
+mod chart_toolbar;
 
 // T019: the workflow editor action bar port.
 mod workflow_action_bar;

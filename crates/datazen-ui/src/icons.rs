@@ -206,6 +206,45 @@ pub(crate) static ICON_ALERT_TRIANGLE: rune::Icon = rune::Icon {
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 9v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 17h.01\"/>",
 };
 
+// T059 (chart toolbar/empty state): lucide-react 0.487.0 aliases the chart
+// icons to the renamed `chart-*` artwork, so these bodies are that release's
+// (fetched from lucide-react@0.487.0's icon nodes), not the older
+// `bar-chart-3` artwork already registered above.
+pub(crate) static ICON_CHART_COLUMN: rune::Icon = rune::Icon {
+    // lucide-react 0.487 `BarChart3` resolves to `chart-column`.
+    name: "chart-column",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 3v16a2 2 0 0 0 2 2h16\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M18 17V9\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M13 17V5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M8 17v-3\"/>",
+};
+pub(crate) static ICON_CHART_LINE: rune::Icon = rune::Icon {
+    // lucide-react 0.487 `LineChart` resolves to `chart-line`.
+    name: "chart-line",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 3v16a2 2 0 0 0 2 2h16\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m19 9-5 5-4-4-3 3\"/>",
+};
+pub(crate) static ICON_CHART_PIE: rune::Icon = rune::Icon {
+    // lucide-react 0.487 `PieChart` resolves to `chart-pie`.
+    name: "chart-pie",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 12c.552 0 1.005-.449.95-.998a10 10 0 0 0-8.953-8.951c-.55-.055-.998.398-.998.95v8a1 1 0 0 0 1 1z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21.21 15.89A10 10 0 1 1 8 2.83\"/>",
+};
+pub(crate) static ICON_CHART_SCATTER: rune::Icon = rune::Icon {
+    // lucide-react 0.487 `ScatterChart` resolves to `chart-scatter`.
+    name: "chart-scatter",
+    view: 24.0,
+    body: "<circle cx=\"7.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"/><circle cx=\"18.5\" cy=\"5.5\" r=\".5\" fill=\"currentColor\"/><circle cx=\"11.5\" cy=\"11.5\" r=\".5\" fill=\"currentColor\"/><circle cx=\"7.5\" cy=\"16.5\" r=\".5\" fill=\"currentColor\"/><circle cx=\"17.5\" cy=\"14.5\" r=\".5\" fill=\"currentColor\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 3v16a2 2 0 0 0 2 2h16\"/>",
+};
+pub(crate) static ICON_TRENDING_UP: rune::Icon = rune::Icon {
+    name: "trending-up",
+    view: 24.0,
+    body: "<polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"22 7 13.5 15.5 8.5 10.5 2 17\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"16 7 22 7 22 13\"/>",
+};
+pub(crate) static ICON_MAXIMIZE_2: rune::Icon = rune::Icon {
+    name: "maximize-2",
+    view: 24.0,
+    body: "<polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"15 3 21 3 21 9\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"9 21 3 21 3 15\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"21\" x2=\"14\" y1=\"3\" y2=\"10\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"3\" x2=\"10\" y1=\"21\" y2=\"14\"/>",
+};
+
 pub(crate) fn section_icon(section: Section) -> &'static rune::Icon {
     match section {
         Section::Connections => &ICON_CONNECTIONS,
