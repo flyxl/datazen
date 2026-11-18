@@ -1,138 +1,22 @@
 //! Root view and application bootstrap.
 
-use crate::constants::*;
+use crate::constants::{APP_FONTS, APP_FONT_FAMILIES};
 use crate::state_def::AppState;
 use crate::types::Section;
-use crate::views::{
-    content_status_bar, content_toolbar, modal_layer, navigator_panel, page_body, query_selected,
-    rail_view, tab_strip,
-};
-use crate::{splitter, sql_editor};
+use crate::sql_editor;
+use crate::views::{self, query_selected};
 
 use datazen_ui_api::UnimplementedAdapter;
 #[cfg(not(target_arch = "wasm32"))]
 use datazen_ui_api::UseCaseAdapter;
-use datazen_ui_api::{DesktopAdapter, Setting};
-use rune::tok::{self, type_};
-use rune::{col, row, text, App, AppSpec, Cx, El, Ime, Key, KeyEvent, Titlebar, Tx};
+use datazen_ui_api::DesktopAdapter;
+use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, Titlebar, Tx};
 
+/// The app's single view entry: the main window's composition root
+/// (T020, React `MainPage.tsx`) — the chrome slot, the connection page, the
+/// dialog hosts and the store's first load, branch by branch.
 pub(crate) fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
-    let system_dark = cx.system_dark();
-    state.system_dark.set(system_dark);
-    let dark = match state.desktop.read_ui_settings() {
-        Ok(settings) => settings.into_iter().find_map(|setting| match setting {
-            Setting::Theme { dark } => Some(dark),
-            _ => None,
-        }),
-        Err(_) => None,
-    }
-    .unwrap_or(system_dark);
-    let theme = tok::theme(dark);
-
-    let rail = rail_view(state, dark);
-    let navigator = navigator_panel(state, theme, dark);
-    let nav_splitter = splitter::splitter_handle(
-        state,
-        NAVIGATOR_WIDTH_KEY,
-        splitter::SplitAxis::Vertical,
-        NAVIGATOR_WIDTH_MIN,
-        NAVIGATOR_WIDTH_MAX,
-        NAVIGATOR_WIDTH_DEFAULT,
-    );
-
-    // L3: self-drawn titlebar (40pt). The whole band moves the window; the
-    // leading inset keeps clear of the platform's window controls (macOS
-    // traffic lights). The theme toggle is a hit target inside the drag band
-    // and keeps its press.
-    let titlebar = row()
-        .key("datazen-titlebar")
-        .window_drag()
-        .w_full()
-        .h(TITLEBAR_HEIGHT)
-        .center_y()
-        .pl(cx.titlebar_inset() + 12.0)
-        .pr(12.0)
-        .gap(12.0)
-        .fill(theme.bg)
-        .child(
-            // The label takes the leftover room, not the whole band: a
-            // `w_full` label measures the padding box and pushes the trailing
-            // controls past the window's right edge.
-            text(state.active.label())
-                .key("datazen-titlebar-label")
-                .font(type_::TITLE)
-                .color(theme.text)
-                .grow(1.0)
-                .min_w(0.0),
-        )
-        .child(
-            row()
-                .key("datazen-theme-toggle")
-                .h(28.0)
-                .px(10.0)
-                .center_y()
-                .radius(6.0)
-                .fill(theme.control_off)
-                .on_press(|state: &mut AppState| state.toggle_theme())
-                .child(
-                    text(if dark { "DARK" } else { "LIGHT" })
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                ),
-        );
-
-    let page = col()
-        .key("datazen-page")
-        .grow(1.0)
-        .min_w(0.0)
-        .h_full()
-        .px(24.0)
-        .py(24.0)
-        .gap(16.0)
-        .fill(theme.bg)
-        .child(content_toolbar(state, theme))
-        .child(if state.active == Section::Workspace {
-            tab_strip(state, theme)
-        } else {
-            row().key("tab-strip-absent").h(0.0)
-        })
-        .child(page_body(state, theme, dark))
-        .child(content_status_bar(state, theme));
-
-    let body = row()
-        .key("datazen-body")
-        .w_full()
-        .grow(1.0)
-        .min_h(0.0)
-        .min_w(0.0)
-        .child(rail)
-        .child(navigator)
-        .child(nav_splitter)
-        .child(page);
-
-    col()
-        .key("datazen-root")
-        .w_full()
-        .h_full()
-        .fill(theme.bg)
-        .on_paste(|state: &mut AppState, text, _| {
-            // T1: OS paste lands here when no platform text field is focused
-            // (the grid's inline editor and every plain input keep their own
-            // paste path). The editable table grid takes TSV at the focus
-            // cell; the focused editor takes the text.
-            if state.active == Section::Workspace
-                && !query_selected(state)
-                && state.grid.has_page()
-                && state.grid.is_editable()
-            {
-                state.grid.paste_tsv(text);
-            } else if query_selected(state) && state.sql.focused() {
-                state.sql.insert(text);
-            }
-        })
-        .child(titlebar)
-        .child(body)
-        .children(modal_layer(state, theme, dark))
+    views::main_page(state, cx)
 }
 
 /// The app's window chrome (L3): self-drawn 40pt titlebar and a minimum size

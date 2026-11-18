@@ -40,10 +40,19 @@ pub struct AppState {
     /// use case; the remaining methods answer the fixed error until H4/H5.
     pub(crate) desktop: Box<dyn DesktopAdapter>,
     /// The adapter's connection list once it answers (H3); None while the
-    /// page falls back to the memory port's list.
+    /// page falls back to the memory port's list — never answered, or
+    /// unwired. A failed re-fetch keeps the previous list (the zustand
+    /// store's `connections` survives a failed fetch).
     pub(crate) desktop_connections: Option<Vec<ConnectionProfile>>,
     /// The adapter's last error, displayed on the connections page.
     pub(crate) desktop_error: Option<String>,
+    /// T020: the connection store's list-fetch error — React
+    /// `useConnectionStore`'s `error`, read by the main window's load-failure
+    /// gate (`MainPage.tsx:112`). Only the list fetch (the adapter sync)
+    /// writes it; the shared adapter-notice slot [`Self::desktop_error`]
+    /// keeps collecting every failure the page shows as a banner, including
+    /// open-job sentences, which never gate the window.
+    pub(crate) connections_load_error: Option<String>,
     pub(crate) tabs: Tabs,
     /// The page the workspace last opened for the selected table tab.
     pub(crate) table_page: u32,
@@ -290,6 +299,7 @@ impl Default for AppState {
             desktop: Box::new(UnimplementedAdapter),
             desktop_connections: None,
             desktop_error: None,
+            connections_load_error: None,
             tabs: Tabs::new(),
             table_page: 0,
             sort: None,
