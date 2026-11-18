@@ -29,6 +29,8 @@ mod tree_rowmath_audit;
 mod column_stats_audit;
 // T015: the AI context settings section — budgets, editor rejections, flows.
 mod ai_context_settings_audit;
+// T017: the WappIcon port (manifest icon or puzzle, the onError cycle).
+mod wapp_icon_audit;
 mod column_stats_dialog;
 // T002: the single DataTable cell — formatting, colour, plan and geometry.
 mod cell_renderer;

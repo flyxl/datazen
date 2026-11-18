@@ -20,6 +20,12 @@ use rune::{col, row, text, Color, Cx, El};
 use crate::ui::palette;
 use rune::{FileDialogOptions, TextEdit, Tx};
 
+// The windows/workspace subtree ports. One mod line per ported React file;
+// the workspace/ directory mirrors the React layout (WappIcon.tsx is its
+// first port — the manifest-icon-or-puzzle glyph the wapp page shell,
+// default cards, navigator and tab bar reuse).
+pub(crate) mod wapp_icon;
+
 pub(crate) fn page_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     match state.active {
         Section::Connections => connection_list(state, theme, dark),
