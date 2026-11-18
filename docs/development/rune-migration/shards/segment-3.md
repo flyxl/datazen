@@ -7,7 +7,7 @@
 - [x] T001 · components/ui · 0.90d · components/ui/Dialog.tsx components/ui/ErrorBanner.tsx components/ui/Select.tsx
 - [x] T002 · components/DataTable · 0.50d · components/DataTable/CellRenderer.tsx
 - [x] T006 · components/query · 0.30d · components/query/ExplainPlanTree.tsx
-- [ ] T009 · components/ai · 5.30d · components/ai/AiChatPanel.tsx · split
+- [~] T009 · components/ai · 5.30d · components/ai/AiChatPanel.tsx · split
 - [ ] T012 · components · 0.90d · components/AiWriteProposalHost.tsx
 - [ ] T013 · components/admin · 0.90d · components/admin/AdminCreateDialog.tsx
 - [ ] T023 · windows/data-transfer · 1.30d · windows/data-transfer/ColumnMappingEditor.tsx · split
