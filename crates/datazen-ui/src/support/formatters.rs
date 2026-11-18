@@ -53,8 +53,13 @@ pub(crate) fn number_text(number: &serde_json::Number) -> String {
         return integer.to_string();
     }
     if let Some(float) = number.as_f64() {
-        if float.fract() == 0.0 && float.abs() < 1e15 {
-            return (float as i64).to_string();
+        // JS prints integral floats below 1e21 as ordinary decimal text; at or
+        // above 1e21 it switches to exponential notation.
+        if float == 0.0 {
+            return "0".to_owned();
+        }
+        if float.is_finite() && float.fract() == 0.0 && float.abs() < 1e21 {
+            return format!("{float:.0}");
         }
     }
     number.to_string()
@@ -133,8 +138,22 @@ pub(crate) fn format_cell(value: &Value) -> String {
 /// the local offset), and returns an unparseable input unchanged. Locale
 /// ordering is left to the i18n track.
 pub(crate) fn format_last_connected(iso: Option<&str>) -> String {
-    let offset_seconds = chrono::Local::now().offset().local_minus_utc();
-    format_last_connected_with_offset(iso, offset_seconds)
+    let Some(text) = iso.filter(|text| !text.is_empty()) else {
+        return t("conn.neverConnected").to_owned();
+    };
+    match parse_zoned_instant(text) {
+        // The zone must be resolved at the timestamp's own instant: using
+        // `Local::now()` would apply today's offset to a value from another
+        // DST half-year.
+        Some(millis) => match chrono::DateTime::from_timestamp_millis(millis) {
+            Some(instant) => instant
+                .with_timezone(&chrono::Local)
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string(),
+            None => text.to_owned(),
+        },
+        None => text.to_owned(),
+    }
 }
 
 /// Testable core of [`format_last_connected`]: `offset_seconds` is the
@@ -346,6 +365,7 @@ mod tests {
         assert_eq!(format_cell(&json!(3.0)), "3");
         assert_eq!(format_cell(&json!(3.5)), "3.5");
         assert_eq!(format_cell(&json!(-0.0)), "0");
+        assert_eq!(format_cell(&json!(1e20)), "100000000000000000000");
         assert_eq!(format_cell(&json!(1e21)), "1e+21");
         assert_eq!(
             number_text(&serde_json::Number::from_f64(3.0).unwrap()),
@@ -433,6 +453,55 @@ mod tests {
         assert_eq!(
             format_last_connected_with_offset(None, 8 * 3_600),
             crate::i18n::t("conn.neverConnected")
+        );
+    }
+
+    #[test]
+    fn last_connected_uses_the_zone_at_that_instant() {
+        let iso = "2024-07-01T12:00:00Z";
+        let millis = parse_zoned_instant(iso).expect("the test instant parses");
+        let expected = chrono::DateTime::from_timestamp_millis(millis)
+            .expect("millis is a valid instant")
+            .with_timezone(&chrono::Local)
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string();
+        assert_eq!(format_last_connected(Some(iso)), expected);
+    }
+
+    #[test]
+    fn last_connected_resolves_berlin_dst_at_the_instant() {
+        let exe = std::env::current_exe().expect("the test binary has a path");
+        let output = std::process::Command::new(exe)
+            .args([
+                "--exact",
+                "support::formatters::tests::tz_child_probe",
+                "--nocapture",
+            ])
+            .env("TZ", "Europe/Berlin")
+            .env("DZ_TZ_CHILD", "1")
+            .output()
+            .expect("the child test process starts");
+        assert!(
+            output.status.success(),
+            "the Berlin probe failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    fn tz_child_probe() {
+        if std::env::var_os("DZ_TZ_CHILD").is_none() {
+            return;
+        }
+        // Winter is CET (+1), summer is CEST (+2): the offset must follow the
+        // instant, not the clock when the test happens to run.
+        assert_eq!(
+            format_last_connected(Some("2024-07-01T12:00:00Z")),
+            "2024-07-01 14:00:00"
+        );
+        assert_eq!(
+            format_last_connected(Some("2024-01-15T12:00:00Z")),
+            "2024-01-15 13:00:00"
         );
     }
 
