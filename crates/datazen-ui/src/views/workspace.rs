@@ -20,10 +20,15 @@ use rune::{col, row, text, Color, Cx, El};
 use crate::ui::palette;
 use rune::{FileDialogOptions, TextEdit, Tx};
 
-pub(crate) fn page_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+pub(crate) fn page_body(
+    state: &AppState,
+    theme: tok::Theme,
+    dark: bool,
+    layer: &mut Vec<El>,
+) -> El {
     match state.active {
         Section::Connections => connection_list(state, theme, dark),
-        Section::Workspace => workspace_body(state, theme, dark),
+        Section::Workspace => workspace_body(state, theme, dark, layer),
         Section::Settings => settings_page(state, theme, dark),
         Section::Tools => tools_page(state, theme, dark),
         Section::Dashboards => dashboards_page(state, theme, dark),
@@ -37,17 +42,41 @@ pub(crate) fn page_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
 /// The workspace is driven by the tabs: a query tab shows the SQL editor above the
 /// results, a loaded table page shows the grid, and anything else is an empty state.
 /// The old standalone editor and demo-grid sections are no longer product pages.
-pub(crate) fn workspace_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
-    if query_selected(state) {
-        return query_workspace(state, theme, dark);
+pub(crate) fn workspace_body(
+    state: &AppState,
+    theme: tok::Theme,
+    dark: bool,
+    layer: &mut Vec<El>,
+) -> El {
+    let content = if query_selected(state) {
+        query_workspace(state, theme, dark)
+    } else if let Some((database, schema)) = &state.er_schema {
+        er_view(state, database, schema, theme, dark)
+    } else if state.grid.has_page() {
+        table_workspace(state, theme, dark)
+    } else {
+        workspace_empty(theme)
+    };
+    if !state.ai_chat_open {
+        return content;
     }
-    if let Some((database, schema)) = &state.er_schema {
-        return er_view(state, database, schema, theme, dark);
-    }
-    if state.grid.has_page() {
-        return table_workspace(state, theme, dark);
-    }
-    workspace_empty(theme)
+    // T009-S7: the AI assistant aside (React `ContentViewDrawers`'s
+    // right-hand `<aside>`) rides beside the workspace content; the
+    // content takes the leftover width and the panel's header selects
+    // push their listboxes into the root-level `layer`.
+    row()
+        .key("workspace-with-ai-chat")
+        .w_full()
+        .h_full()
+        .child(
+            col()
+                .key("workspace-content")
+                .grow(1.0)
+                .min_w(0.0)
+                .min_h(0.0)
+                .child(content),
+        )
+        .child(ai_chat_aside(state, theme, dark, layer))
 }
 
 /// The ER page: one box per table of the open schema. Wide tables (more than 12

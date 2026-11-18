@@ -6,9 +6,10 @@
 //! stays under the 800-line cap. They are pure data: no store exists
 //! yet (T088), so the panel records these instead of calling through.
 
-// The panel view (S7) is the production consumer; until it lands the
-// component tests are the only callers, so the dead-code lint is
-// silenced here rather than in a crate-wide allow.
+// The panel view (S7) is the production consumer. The dead-code lint
+// stays silenced here rather than in a crate-wide allow: the
+// T088/T169-owned surface (store seeders, on_run_code / on_new_query
+// pass-throughs) still has no production caller.
 #![allow(dead_code)]
 
 use super::ai_chat_header::AiAgentMode;

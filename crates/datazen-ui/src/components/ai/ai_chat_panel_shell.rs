@@ -64,9 +64,10 @@
 //! * The jump-to-bottom pill is stacked under the viewport by S4, not
 //!   absolutely positioned over it; the shell inherits that.
 
-// The panel view (S7) is the production consumer; until it lands the
-// component tests are the only callers, so the dead-code lint is
-// silenced here rather than in a crate-wide allow.
+// The panel view (S7) is the production consumer. The dead-code lint
+// stays silenced here rather than in a crate-wide allow: the
+// T088/T169-owned surface (store seeders, on_run_code / on_new_query
+// pass-throughs) still has no production caller.
 #![allow(dead_code)]
 
 use std::rc::Rc;

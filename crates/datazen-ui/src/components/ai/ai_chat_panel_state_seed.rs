@@ -11,9 +11,10 @@
 //! `append_user_message` stays in the main file: it is private and the
 //! send path calls it from there.
 
-// The panel view (S7) is the production consumer; until it lands the
-// component tests are the only callers, so the dead-code lint is
-// silenced here rather than in a crate-wide allow.
+// The panel view (S7) is the production consumer. The dead-code lint
+// stays silenced here rather than in a crate-wide allow: the
+// T088/T169-owned surface (store seeders, on_run_code / on_new_query
+// pass-throughs) still has no production caller.
 #![allow(dead_code)]
 
 use super::ai_chat_header::{AiProfile, AiPromptTemplate};

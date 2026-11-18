@@ -19,6 +19,16 @@ pub(crate) const QUERY_SIDEBAR_WIDTH_DEFAULT: u32 = 240;
 pub(crate) const QUERY_SIDEBAR_WIDTH_MIN: u32 = 160;
 pub(crate) const QUERY_SIDEBAR_WIDTH_MAX: u32 = 420;
 
+/// The AI assistant aside (T009-S7): React's `useResizable` in
+/// `ContentViewDrawers.tsx` (`initialSize: 320, minSize: 240, maxSize:
+/// 600`, stored as `connection.aiSidebar`). Rune persists it through
+/// `Setting::Layout` like every other split; the key differs because
+/// the layout settings store is Rune's own, not React's storage key.
+pub(crate) const AI_SIDEBAR_WIDTH_KEY: &str = "ai-sidebar-width";
+pub(crate) const AI_SIDEBAR_WIDTH_DEFAULT: u32 = 320;
+pub(crate) const AI_SIDEBAR_WIDTH_MIN: u32 = 240;
+pub(crate) const AI_SIDEBAR_WIDTH_MAX: u32 = 600;
+
 /// The app's font pool (H8): rune's own Inter faces keep the UI's Latin look
 /// and the web's sans fallback, IBM Plex Mono keeps the editor's mono slot,
 /// and Noto Sans SC covers Chinese in the interface and the grid — the sans

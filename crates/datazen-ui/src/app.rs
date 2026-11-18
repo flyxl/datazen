@@ -81,6 +81,12 @@ pub(crate) fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
                 ),
         );
 
+    // The window-level overlay layer: dialogs land here, and so do the
+    // AI panel header's select listboxes (T009-S7) — `page_body` takes
+    // the same vec, and the layer is appended after the body so its
+    // elements paint and hit above the page, as before.
+    let mut layer = modal_layer(state, theme, dark);
+
     let page = col()
         .key("datazen-page")
         .grow(1.0)
@@ -96,7 +102,7 @@ pub(crate) fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
         } else {
             row().key("tab-strip-absent").h(0.0)
         })
-        .child(page_body(state, theme, dark))
+        .child(page_body(state, theme, dark, &mut layer))
         .child(content_status_bar(state, theme));
 
     let body = row()
@@ -132,7 +138,7 @@ pub(crate) fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
         })
         .child(titlebar)
         .child(body)
-        .children(modal_layer(state, theme, dark))
+        .children(layer)
 }
 
 /// The app's window chrome (L3): self-drawn 40pt titlebar and a minimum size
@@ -240,7 +246,7 @@ pub(crate) fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool 
     false
 }
 
-pub(crate) fn app_poll(state: &mut AppState, _: f64, _: &mut Tx) -> bool {
+pub(crate) fn app_poll(state: &mut AppState, _: f64, tx: &mut Tx) -> bool {
     // N1: the host's finished jobs land first, whatever section is showing;
     // a delivery redraws (it wrote state or cleared its marker), and stale
     // generations were dropped inside `deliver_host_job`.
@@ -249,6 +255,10 @@ pub(crate) fn app_poll(state: &mut AppState, _: f64, _: &mut Tx) -> bool {
         state.deliver_host_job(delivery);
         dirty = true;
     }
+    // T009-S7: the AI panel's host sync runs on every section — its
+    // mount tracking has to see the workspace being left, so the
+    // unmount cancel fires on the transition.
+    dirty = state.sync_ai_chat_panel(tx) || dirty;
     if state.active != Section::Workspace {
         return dirty;
     }

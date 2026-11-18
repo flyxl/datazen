@@ -9,10 +9,11 @@
 //! | `AiChatPanel.tsx` (input area, T009-S5) | `ai_chat_input_area` (+ `ai_chat_input_area_state`) |
 //! | `AiChatPanel.tsx` (panel shell + session wiring, T009-S6) | `ai_chat_panel_state` + `ai_chat_panel_shell` (+ `ai_chat_panel_types`, `ai_chat_panel_state_seed`) |
 //!
-//! These components currently have no production consumer in the Rune app;
-//! they are intended to be wired by the `AiChatPanel` / `ChatBubble` track
-//! (T009 slices after S1). Public(crate) re-exports are kept for that
-//! upcoming integration.
+//! These components are wired by the `AiChatPanel` / `ChatBubble` track
+//! (T009 slices after S1). The production consumer is the `Section`
+//! wiring (T009-S7): `views::ai_chat_aside` mounts the S6 shell in the
+//! workspace, and `AppState::sync_ai_chat_panel` (see
+//! `ai_chat_state.rs`) drives its host sync.
 
 #[allow(unused_imports)] // consumers will be added by the AiChatPanel wiring
 pub(crate) use ai_chat_panel::{

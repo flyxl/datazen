@@ -15,6 +15,7 @@ pub(crate) mod i18n;
 mod icons;
 mod types;
 mod state_def;
+mod ai_chat_state;
 mod session_state;
 mod settings_state;
 mod snippets_state;
