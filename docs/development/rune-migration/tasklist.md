@@ -50,7 +50,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T031 · lib/metadata · 0.30d · lib/metadata/batch.ts
 - [ ] T032 · lib/relationMetadata · 0.80d · lib/relationMetadata/metadataCache.ts
 - [ ] T033 · lib/relationPrediction · 0.80d · lib/relationPrediction/fromTableSchema.ts lib/relationPrediction/normalize.ts
-- [ ] T034 · lib/session · 0.90d · lib/session/counters.ts
+- [x] T034 · lib/session · 0.90d · lib/session/counters.ts
 - [ ] T035 · lib/sqlDialects · 1.00d · lib/sqlDialects/dialectProfile.ts lib/sqlDialects/extra.ts
 - [ ] T036 · lib/structureEditor · 0.90d · lib/structureEditor/buildStructureChangeRequest.ts lib/structureEditor/canOpenStructureEditor.ts lib/structureEditor/controlHints.ts
 - [ ] T037 · lib/valuePresentation · 0.50d · lib/valuePresentation/columnOverrides.ts
