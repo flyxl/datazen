@@ -39,6 +39,19 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+### 本机 segment-1 Wave A（2026-11-18，4 轨）
+
+从 `feat/rune-native-ui-migration-segment-1` 的 `--shard 1 --next-todo` 取前 4 个不同 area task，worktree 已 bootstrap、队列绑定已配：
+- `ses_e11c3b7feffeuA2HmE50n4AU4n` — T010 MigrationEndpointsBar（rune-s1mig，components/migration）
+- `ses_e11c3b7feffdCMJ2DR6aSZ4dz8` — T016 BatchExportDialog（rune-s1batch，windows/connection，2.0d split）
+- `ses_e11c3b7fdffdKhnkMYAYdTkUo7` — T032 metadataCache（rune-s1meta，lib/relationMetadata，.ts 基础层）
+- `ses_e11c3b7fbffeqS073noxizG8uX` — T034 counters（rune-s1counter，lib/session，.ts 基础层）✅ 合到 segment-1 `e1575c72e`
+- Tester：`ses_e11a57ce7…` T034 TEST_PASSED `a05f1b30c` ✅ / `ses_e11a0a440…` T016 审计中 / `ses_e1192ccc…` T032 审计中 / `ses_e118eaf15…` T010 审计中
+- Wave A coder 提交：T010 `343053bfd` / T016 `b0720b90d`（738+247 拆分）/ T032 `7e5fd1e0f`（6 子模块）/ T034 `74d4c8799`
+- 队列路径事故：coder 的 `${TMPDIR}/rune-buildq` 与最初 worker 的 `${TMPDIR}/opencode/rune-buildq` 不一致导致 4 个 gate job 空等；已把 worker 迁到 coder 目录（`/private/var/.../T/rune-buildq`，pid 38092）并复制 bindings，job 正常消费。
+
+合流目标：先合到 segment-1 分支（本机开发段），再由协调者用 `merge-to-parent` 合到父分支。注意：与 Wave 1/2 不同，本机现在的 task 合流到 segment-1 而非直接父分支。
+
 ### 机器分工（2026-11-18，用户裁决）
 
 - **本机锁定 segment-1**（`feat/rune-native-ui-migration-segment-1`）作为其开发段；其他 3 段（segment-2/3/4）交给别的机器，按 [segment-runbook.md](segment-runbook.md) 执行。

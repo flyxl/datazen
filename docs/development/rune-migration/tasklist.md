@@ -26,13 +26,13 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [x] T007 · components/connection · 0.80d · components/connection/ConnectionAdvancedSettings.tsx
 - [x] T008 · components/chart · 2.00d · components/chart/ChartCanvas.tsx · split
 - [ ] T009 · components/ai · 5.30d · components/ai/AiChatPanel.tsx · split
-- [ ] T010 · components/migration · 0.80d · components/migration/MigrationEndpointsBar.tsx
+- [x] T010 · components/migration · 0.80d · components/migration/MigrationEndpointsBar.tsx
 - [ ] T011 · components/sql-editor · 2.70d · components/sql-editor/SqlEditor.tsx · split
 - [ ] T012 · components · 0.90d · components/AiWriteProposalHost.tsx
 - [ ] T013 · components/admin · 0.90d · components/admin/AdminCreateDialog.tsx
 - [ ] T014 · components/export · 0.60d · components/export/ExportSuccessPanel.tsx components/FilterBar.tsx
 - [ ] T015 · windows/settings · 0.90d · windows/settings/ai/AiContextSettings.tsx
-- [ ] T016 · windows/connection · 2.00d · windows/connection/BatchExportDialog.tsx · split
+- [x] T016 · windows/connection · 2.00d · windows/connection/BatchExportDialog.tsx · split
 - [ ] T017 · windows/workspace · 0.30d · windows/workspace/WappIcon.tsx
 - [ ] T018 · windows/dashboard · 0.90d · windows/dashboard/AddToDashboardDialog.tsx
 - [ ] T019 · windows/workflow · 0.80d · windows/workflow/WorkflowEditorActionBar.tsx windows/workflow/WorkflowExecutionResultPanel.tsx
@@ -48,9 +48,9 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T029 · lib/connectionViews · 0.90d · lib/connectionViews/types.ts lib/contextItems.ts lib/contextMenuPosition.ts
 - [ ] T030 · lib/dashboard · 0.90d · lib/dashboard/runToChart.ts lib/dashboard/runToResult.ts lib/databaseObjectIdentity.ts
 - [ ] T031 · lib/metadata · 0.30d · lib/metadata/batch.ts
-- [ ] T032 · lib/relationMetadata · 0.80d · lib/relationMetadata/metadataCache.ts
+- [x] T032 · lib/relationMetadata · 0.80d · lib/relationMetadata/metadataCache.ts
 - [ ] T033 · lib/relationPrediction · 0.80d · lib/relationPrediction/fromTableSchema.ts lib/relationPrediction/normalize.ts
-- [ ] T034 · lib/session · 0.90d · lib/session/counters.ts
+- [x] T034 · lib/session · 0.90d · lib/session/counters.ts
 - [ ] T035 · lib/sqlDialects · 1.00d · lib/sqlDialects/dialectProfile.ts lib/sqlDialects/extra.ts
 - [ ] T036 · lib/structureEditor · 0.90d · lib/structureEditor/buildStructureChangeRequest.ts lib/structureEditor/canOpenStructureEditor.ts lib/structureEditor/controlHints.ts
 - [ ] T037 · lib/valuePresentation · 0.50d · lib/valuePresentation/columnOverrides.ts

@@ -166,6 +166,15 @@ mod global_query_history_audit;
 mod copy_button;
 // T253-T256: the .ts support layer semantics.
 mod support_layer_audit;
+// T034: React lib/session/counters.ts parity (counter + handle value logic).
+mod counters;
+// T034 independent audit: 2^53 gate, branch order, regex-vs-BigInt faithfulness.
+mod counters_audit;
+// T032: relationMetadata/metadataCache.ts port — standard wiring so the
+// `metadata_cache` test filter really runs these tests (tests::metadata_cache::*).
+mod metadata_cache;
+// Fresh-tester independent re-audit of the D1/D2 fix (test-only probes).
+mod metadata_cache_retest;
 
 // Independent re-audit of merged T0-07 menu base.
 mod menus_merge_reaudit;
@@ -202,12 +211,24 @@ mod schema_diff_audit;
 
 mod connection_advanced_settings;
 mod connection_advanced_audit;
+// T016: the batch-export dialog port.
+mod batch_export_dialog;
+mod batch_export_audit;
+// T016 fix retest: independent D1/D2 verification.
+mod batch_export_retest;
 
 // T068: MigrationJobFailureNotice (fail-closed refusal notice).
 mod migration_failure_notice;
 
 // T068 independent audit: i18n no-echo, key stability, two-theme geometry.
 mod migration_failure_audit;
+
+// T010: the controlled source/target endpoint bar port.
+mod migration_endpoints_bar;
+// T010 independent audit: label-vs-id display, close-on-choice, geometry.
+mod migration_endpoints_audit;
+// T010 independent retest of the D1/D2 fix: label resolution, selection, fallback, value on_choose.
+mod migration_endpoints_retest;
 
 // T008: ChartCanvas dispatcher, measured viewport and honest placeholders.
 mod chart_canvas;
