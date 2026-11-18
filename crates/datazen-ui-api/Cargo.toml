@@ -11,6 +11,11 @@ description = "UI ports and the desktop adapter for the DataZen Rune interface"
 # them (see src/metadata/identity.rs). Same workspace pin the rest of the
 # graph already uses, and wasm-safe, unlike the kernel below.
 serde_json = { workspace = true }
+# ai_sessions (T040) mirrors React's stored/IPC DTOs (localStorage blob and
+# the `aiCommands.sessions*` payloads) as camelCase serde shapes, with the
+# order-preserving SessionMap hand-implementing the JS object-key contract
+# on top of serde_json's stream. Workspace pin (`derive` feature), wasm-safe.
+serde = { workspace = true }
 
 # H3/H6: the desktop adapter — the native host's use cases. Everything here is
 # native-only: the wasm host compiles the same ports over the memory workspace
