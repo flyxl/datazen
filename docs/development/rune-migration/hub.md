@@ -2,6 +2,24 @@
 
 > 协调者维护；每轨 coder/tester 不写本文件。全部轨道验收合流后删除本文件并提交清理。
 
+## 台账 wave 编排（2026-11-18，脚本 `6961302d3`）
+
+- tasklist 改为 **wave 排序**：T 编号即执行顺序，相邻任务不同 area（不同 `mod.rs`）；状态以 React 文件集为身份，main 合并重排编号也不错位（实测 18 done 无缝保留）。
+- 取下一波：`node scripts/rune-parity.mjs --next-wave`（默认 4，贪心取不同 area，尾部自动缩波）。编号小的先完成。
+- `--progress` / `--tasklist` 已改内容键控。Wave 1 的 18 个 done 已按此重排。
+
+## Wave 2（2026-11-18）：按 --next-wave 前 4 个，4 轨并发
+
+| 轨道 | worktree | 分支 | task（新编号） | React 源 |
+| --- | --- | --- | --- | --- |
+| rune-w2cell | `.worktrees/datazen-rune-w2cell` | `feature/rune-w2cell` | T002 | `components/DataTable/CellRenderer.tsx` |
+| rune-w2hist | `.worktrees/datazen-rune-w2hist` | `feature/rune-w2hist` | T005 | `components/history/GlobalQueryHistoryDialog.tsx` |
+| rune-w2conn | `.worktrees/datazen-rune-w2conn` | `feature/rune-w2conn` | T007 | `components/connection/ConnectionAdvancedSettings.tsx` |
+| rune-w2chart | `.worktrees/datazen-rune-w2chart` | `feature/rune-w2chart` | T008 | `components/chart/ChartCanvas.tsx`（H 类，仅分发+容器+配置，renderer 范围外） |
+
+### Tester 会话（Wave 2）
+（待 coder 返回后填入）
+
 ## Wave 1（2026-11-18）：逐文件台账第二批，4 轨并发
 
 基准分支：`feat/rune-native-ui-migration`（启动时 HEAD `7288aa6ce`，10/629 done）。
