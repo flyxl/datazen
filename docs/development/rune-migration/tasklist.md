@@ -7,7 +7,10 @@
 状态不落到任何汇总数字里（那会逼着改状态时连带改别的行）：进度用
 `node scripts/rune-parity.mjs --progress` 现算。行尾的 area、工作量、涉及文件由脚本生成，
 不要手改；React 源码变动后跑 `node scripts/rune-parity.mjs --tasklist` 刷新，
-已存在的 T 编号保留原状态。
+已完成任务按 React 文件集识别，源码变动重排 T 编号也不会错位。
+
+台账按 **wave** 编排：T 编号顺序即执行顺序，连续任务落在不同 area（不同 `mod.rs`）。
+取下一波：`node scripts/rune-parity.mjs --next-wave`（默认 4，贪心取不同 area，尾部可能不足 4）。
 
 T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖的 `.ts` 基础层
 （`lib/`、`types/`、`stores/`、`hooks/`、`commands/`）。`.ts` 的第一批五项
@@ -15,649 +18,649 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 `editors/toEditString`）排在 T253–T256，因为 DataTable 主体没有它们无法 1:1 迁。
 
 - [x] T001 · components/ui · 0.90d · components/ui/Dialog.tsx components/ui/ErrorBanner.tsx components/ui/Select.tsx
-- [x] T002 · components/ui · 0.30d · components/ui/Spinner.tsx
-- [ ] T003 · components/ui · 0.90d · components/ui/WebContextMenu.tsx
-- [ ] T004 · components/DataTable · 0.50d · components/DataTable/CellRenderer.tsx
-- [ ] T005 · components/DataTable · 1.30d · components/DataTable/ColumnPresentationDialog.tsx · split
-- [x] T006 · components/DataTable · 0.30d · components/DataTable/ColumnStatsDialog.tsx
-- [ ] T007 · components/DataTable · 1.30d · components/DataTable/DataExportDialog.tsx · split
-- [ ] T008 · components/DataTable · 4.50d · components/DataTable/DataTable.tsx · split
-- [x] T009 · components/DataTable · 0.90d · components/DataTable/DataTableSelectionBar.tsx
-- [x] T010 · components/DataTable · 0.30d · components/DataTable/DefaultOrderSelect.tsx
-- [ ] T011 · components/DataTable · 0.80d · components/DataTable/DetailPanel.tsx
-- [ ] T012 · components/DataTable · 0.80d · components/DataTable/DetailPanelToggle.tsx components/DataTable/DraftRow.tsx
-- [ ] T013 · components/DataTable · 0.90d · components/DataTable/EditableCell.tsx components/DataTable/editors/BinaryCellEditor.tsx components/DataTable/editors/BooleanCellEditor.tsx
-- [ ] T014 · components/DataTable · 0.80d · components/DataTable/editors/CellEditorHost.tsx
-- [ ] T015 · components/DataTable · 0.90d · components/DataTable/editors/EnumCellEditor.tsx components/DataTable/editors/JsonCellEditor.tsx components/DataTable/editors/LongTextCellEditor.tsx
-- [ ] T016 · components/DataTable · 0.90d · components/DataTable/editors/NumberCellEditor.tsx components/DataTable/editors/TemporalCellEditor.tsx components/DataTable/editors/TextCellEditor.tsx
-- [ ] T017 · components/DataTable · 0.80d · components/DataTable/GridCell.tsx
-- [x] T018 · components/DataTable · 0.30d · components/DataTable/GridKeyboardHints.tsx
-- [x] T019 · components/DataTable · 0.80d · components/DataTable/Pagination.tsx
-- [ ] T020 · components/DataTable · 0.90d · components/DataTable/QuickLookDialog.tsx
-- [x] T021 · components/DataTable · 0.80d · components/DataTable/TableHeader.tsx
-- [ ] T022 · components/DataTable · 3.20d · components/DataTable/VirtualBody.tsx · split
-- [x] T023 · components/filter · 0.60d · components/filter/FilterBetweenInput.tsx components/filter/FilterConditionChip.tsx
-- [ ] T024 · components/filter · 0.90d · components/filter/FilterConditionEditor.tsx
-- [x] T025 · components/filter · 0.30d · components/filter/FilterConnectorToggle.tsx
-- [ ] T026 · components/filter · 0.90d · components/filter/FilterSqlPreviewDialog.tsx
-- [ ] T027 · components/filter · 0.80d · components/filter/FilterTokenInput.tsx components/filter/FilterValueInput.tsx
-- [ ] T028 · components/filter · 0.80d · components/filter/NamedViewMenu.tsx
-- [x] T029 · components/schema · 0.50d · components/schema/SchemaDiffPanel.tsx
-- [ ] T030 · components/history · 1.30d · components/history/GlobalQueryHistoryDialog.tsx · split
-- [x] T031 · components/history · 1.00d · components/history/HistoryEntryCard.tsx components/history/HistoryFilterBar.tsx
-- [x] T032 · components/query · 0.30d · components/query/ExplainPlanTree.tsx
-- [ ] T033 · components/query · 0.90d · components/query/QueryArtifactExport.tsx
-- [ ] T034 · components/query · 1.00d · components/query/QueryContextSelectors.tsx components/query/QueryErrorPanel.tsx
-- [ ] T035 · components/query · 0.30d · components/query/QueryExecutionStatus.tsx
-- [ ] T036 · components/connection · 0.80d · components/connection/ConnectionAdvancedSettings.tsx
-- [ ] T037 · components/connection · 0.90d · components/connection/ConnectionAiNotes.tsx
-- [ ] T038 · components/connection · 1.00d · components/connection/ConnectionFormBody.tsx components/connection/ConnectionImportFields.tsx
-- [ ] T039 · components/connection · 0.90d · components/connection/ConnectionShareDialog.tsx
-- [ ] T040 · components/connection · 0.90d · components/connection/ConnectionShareDialogHost.tsx
-- [ ] T041 · components/connection · 0.90d · components/connection/FileConnectionFields.tsx
-- [ ] T042 · components/connection · 0.60d · components/connection/HttpProxyTunnelFields.tsx components/connection/IndexConnectionFields.tsx
-- [ ] T043 · components/connection · 0.90d · components/connection/NewConnectionDialog.tsx
-- [ ] T044 · components/connection · 0.90d · components/connection/ObjectFilterDialog.tsx components/connection/SaveTunnelDialog.tsx components/connection/shared.tsx
-- [ ] T045 · components/connection · 0.80d · components/connection/SshTunnelFields.tsx components/connection/StandardConnectionFields.tsx
-- [ ] T046 · components/connection · 0.80d · components/connection/WebSocketTunnelFields.tsx components/chart/AxisConfigurator.tsx
-- [ ] T047 · components/chart · 2.00d · components/chart/ChartCanvas.tsx · split
-- [ ] T048 · components/chart · 0.80d · components/chart/ChartEmptyState.tsx components/chart/ChartToolbar.tsx
-- [ ] T049 · components/chart · 0.80d · components/chart/ChartView.tsx
-- [ ] T050 · components/chart · 2.00d · components/chart/LogScaleTooltip.tsx · split
-- [ ] T051 · components/chart · 2.00d · components/chart/renderers/AreaChartRenderer.tsx · split
-- [ ] T052 · components/chart · 2.00d · components/chart/renderers/BarChartRenderer.tsx · split
-- [ ] T053 · components/chart · 2.00d · components/chart/renderers/LineChartRenderer.tsx · split
-- [ ] T054 · components/chart · 2.00d · components/chart/renderers/PieChartRenderer.tsx · split
-- [ ] T055 · components/chart · 2.00d · components/chart/renderers/ScatterChartRenderer.tsx · split
-- [ ] T056 · components/ai · 5.30d · components/ai/AiChatPanel.tsx · split
-- [ ] T057 · components/ai · 0.80d · components/ai/AiCodeBlock.tsx
-- [ ] T058 · components/ai · 0.90d · components/ai/AiEgressNotice.tsx
-- [ ] T059 · components/ai · 0.80d · components/ai/AiInput.tsx
-- [ ] T060 · components/ai · 2.00d · components/ai/AiMessageContent.tsx · split
-- [ ] T061 · components/ai · 0.90d · components/ai/AiSessionHistory.tsx
-- [ ] T062 · components/ai · 1.30d · components/ai/ContextPicker.tsx · split
-- [ ] T063 · components/ai · 0.90d · components/ai/DiagnosisPanel.tsx
-- [ ] T064 · components/ai · 0.90d · components/ai/ExplainPanel.tsx
-- [ ] T065 · components/ai · 0.90d · components/ai/Nl2SqlPanel.tsx
-- [ ] T066 · components/ai · 0.90d · components/ai/NlFilterInput.tsx
-- [ ] T067 · components/ai · 1.30d · components/ai/WorkflowChatPanel.tsx · split
-- [ ] T068 · components/ai · 1.30d · components/ai/WorkflowPanel.tsx · split
-- [ ] T069 · components/migration · 0.80d · components/migration/MigrationEndpointsBar.tsx
-- [x] T070 · components/migration · 0.50d · components/migration/MigrationJobFailureNotice.tsx
-- [ ] T071 · components/migration · 1.30d · components/migration/MigrationJobVerdictPanel.tsx · split
-- [ ] T072 · components/migration · 0.90d · components/migration/MigrationRunHistoryDialog.tsx
-- [ ] T073 · components/sql-editor · 2.70d · components/sql-editor/SqlEditor.tsx · split
-- [ ] T074 · components/admin · 0.90d · components/admin/AdminCreateDialog.tsx
-- [ ] T075 · components/admin · 0.60d · components/admin/AdminSchemaFields.tsx components/admin/PrivilegeSelector.tsx
-- [ ] T076 · components · 0.90d · components/AiWriteProposalHost.tsx
-- [ ] T077 · components · 0.90d · components/DbTypeBadge.tsx components/ErrorBoundary.tsx components/export/ExportColumnPicker.tsx
-- [ ] T078 · components/export · 0.60d · components/export/ExportSuccessPanel.tsx components/FilterBar.tsx
-- [ ] T079 · components · 2.60d · components/FilterEditor.tsx · split
-- [ ] T080 · components · 0.30d · components/LocaleDomainLoading.tsx
-- [ ] T081 · components · 0.90d · components/McpApprovalHost.tsx
-- [ ] T082 · components · 1.30d · components/MenuBar.tsx · split
-- [ ] T083 · components · 2.00d · components/SqlCodeBlock.tsx · split
-- [ ] T084 · components · 0.80d · components/SqlEditor.tsx components/SqlSyntaxPreview.tsx
-- [ ] T085 · components · 0.80d · components/StatusBar.tsx components/ThemedIcon.tsx
-- [ ] T086 · components · 0.90d · components/ThemeToggle.tsx
-- [ ] T087 · components · 0.30d · components/WindowChromeFallback.tsx
-- [ ] T088 · windows/settings · 0.90d · windows/settings/ai/AiContextSettings.tsx
-- [ ] T089 · windows/settings · 0.30d · windows/settings/ai/ModelProfileDialog.tsx
-- [ ] T090 · windows/settings · 0.80d · windows/settings/ai/ModelProfileForm.tsx
-- [ ] T091 · windows/settings · 0.50d · windows/settings/ai/ModelProfileListItem.tsx
-- [ ] T092 · windows/settings · 0.90d · windows/settings/AiSettingsSection.tsx
-- [ ] T093 · windows/settings · 0.90d · windows/settings/AiToolBridgeSection.tsx
-- [ ] T094 · windows/settings · 0.90d · windows/settings/AppearanceSection.tsx
-- [ ] T095 · windows/settings · 0.90d · windows/settings/DataCleanupSection.tsx
-- [ ] T096 · windows/settings · 0.90d · windows/settings/DriverSettingsSection.tsx
-- [ ] T097 · windows/settings · 0.90d · windows/settings/InstallLanguagePackDialog.tsx
-- [ ] T098 · windows/settings · 0.30d · windows/settings/JsonSchemaSettingsForm.tsx
-- [ ] T099 · windows/settings · 0.90d · windows/settings/LanguagePacksCard.tsx
-- [ ] T100 · windows/settings · 1.30d · windows/settings/McpClientSection.tsx · split
-- [ ] T101 · windows/settings · 1.30d · windows/settings/McpSettingsSection.tsx · split
-- [ ] T102 · windows/settings · 1.30d · windows/settings/MemorySection.tsx · split
-- [ ] T103 · windows/settings · 0.90d · windows/settings/PromptSettingsSection.tsx
-- [ ] T104 · windows/settings · 0.30d · windows/settings/SettingHint.tsx
-- [ ] T105 · windows/settings · 1.30d · windows/settings/SettingsContent.tsx · split
-- [ ] T106 · windows/settings · 0.30d · windows/settings/settingsUi.tsx
-- [ ] T107 · windows/settings · 0.90d · windows/settings/SkillsSection.tsx
-- [ ] T108 · windows/settings · 0.50d · windows/settings/SnippetEditDialog.tsx
-- [ ] T109 · windows/settings · 0.90d · windows/settings/SqlSnippetsCard.tsx
-- [ ] T110 · windows/settings · 0.90d · windows/settings/TableDataSettingsSection.tsx
-- [ ] T111 · windows/settings · 0.90d · windows/settings/TunnelDeleteDialog.tsx
-- [ ] T112 · windows/settings · 0.90d · windows/settings/TunnelEditDialog.tsx
-- [ ] T113 · windows/settings · 0.90d · windows/settings/TunnelSettingsSection.tsx
-- [ ] T114 · windows/settings · 0.90d · windows/settings/TunnelTestDialog.tsx
-- [ ] T115 · windows/settings · 0.90d · windows/settings/UpdateSection.tsx
-- [ ] T116 · windows/settings · 0.80d · windows/settings/ValuePresentationRuleEditor.tsx
-- [ ] T117 · windows/settings · 1.30d · windows/settings/ValuePresentationSettingsSection.tsx · split
-- [ ] T118 · windows/connection · 2.00d · windows/connection/BatchExportDialog.tsx · split
-- [ ] T119 · windows/connection · 1.30d · windows/connection/ConnectionNavigatorTree.tsx · split
-- [ ] T120 · windows/connection · 1.30d · windows/connection/ConnectionPage.tsx · split
-- [ ] T121 · windows/connection · 1.30d · windows/connection/ConnectionWorkspaceHome.tsx · split
-- [ ] T122 · windows/connection · 0.80d · windows/connection/ContentStatusBar.tsx windows/connection/ContentToolbar.tsx
-- [ ] T123 · windows/connection · 1.30d · windows/connection/ContentView.tsx · split
-- [ ] T124 · windows/connection · 0.90d · windows/connection/ContentViewDialogs.tsx
-- [ ] T125 · windows/connection · 1.30d · windows/connection/ContentViewDrawers.tsx · split
-- [ ] T126 · windows/connection · 0.60d · windows/connection/CreateDatabaseDialog.tsx windows/connection/CreateSchemaDialog.tsx
-- [ ] T127 · windows/connection · 0.90d · windows/connection/CreateUserDialog.tsx
-- [ ] T128 · windows/connection · 0.90d · windows/connection/DatabaseObjectView.tsx
-- [ ] T129 · windows/connection · 0.50d · windows/connection/DDLView.tsx
-- [ ] T130 · windows/connection · 3.60d · windows/connection/DocumentConnectionView.tsx · split
-- [ ] T131 · windows/connection · 0.30d · windows/connection/er/ErRelationLegend.tsx
-- [ ] T132 · windows/connection · 2.00d · windows/connection/er/TableNode.tsx · split
-- [ ] T133 · windows/connection · 2.20d · windows/connection/ErDiagramView.tsx · split
-- [ ] T134 · windows/connection · 0.50d · windows/connection/ExecuteSqlFileDialog.tsx
-- [ ] T135 · windows/connection · 1.30d · windows/connection/ExportDialog.tsx · split
-- [ ] T136 · windows/connection · 0.90d · windows/connection/ForeignKeysView.tsx
-- [ ] T137 · windows/connection · 0.90d · windows/connection/home/ConnectionCardList.tsx
-- [ ] T138 · windows/connection · 0.60d · windows/connection/home/HomeHero.tsx windows/connection/home/McpPromoBar.tsx
-- [ ] T139 · windows/connection · 0.50d · windows/connection/home/RecentQueriesList.tsx
-- [ ] T140 · windows/connection · 0.90d · windows/connection/home/ShortcutFooter.tsx
-- [ ] T141 · windows/connection · 3.70d · windows/connection/ImportDialog.tsx · split
-- [ ] T142 · windows/connection · 1.30d · windows/connection/IndexesView.tsx · split
-- [ ] T143 · windows/connection · 1.30d · windows/connection/navigator/DatabaseValueSearchDialog.tsx · split
-- [ ] T144 · windows/connection · 1.00d · windows/connection/navigator/GlobalObjectSearch.tsx windows/connection/navigator/NavigatorDialogs.tsx
-- [ ] T145 · windows/connection · 0.50d · windows/connection/navigator/NavigatorToolbar.tsx
-- [ ] T146 · windows/connection · 1.30d · windows/connection/navigator/NavigatorTreeRow.tsx · split
-- [ ] T147 · windows/connection · 0.90d · windows/connection/navigator/treeStatusDot.tsx
-- [ ] T148 · windows/connection · 0.90d · windows/connection/ObjectBrowser.tsx
-- [ ] T149 · windows/connection · 1.30d · windows/connection/PanelContentRenderer.tsx · split
-- [ ] T150 · windows/connection · 0.90d · windows/connection/PanelTabBar.tsx
-- [ ] T151 · windows/connection · 0.30d · windows/connection/PendingPlanDialog.tsx
-- [ ] T152 · windows/connection · 1.30d · windows/connection/PrivilegeView.tsx · split
-- [ ] T153 · windows/connection · 0.90d · windows/connection/ProcessListView.tsx
-- [ ] T154 · windows/connection · 0.30d · windows/connection/query/ExecutionStrategyAskModal.tsx
-- [ ] T155 · windows/connection · 0.90d · windows/connection/query/QueryBuilderHostAdapter.tsx
-- [ ] T156 · windows/connection · 1.30d · windows/connection/query/QueryEditorSection.tsx · split
-- [ ] T157 · windows/connection · 1.30d · windows/connection/query/QuerySidebarSection.tsx · split
-- [ ] T158 · windows/connection · 1.30d · windows/connection/query/QueryTransactionModals.tsx · split
-- [ ] T159 · windows/connection · 0.90d · windows/connection/query/toolbar/ExecutionStrategySelect.tsx
-- [ ] T160 · windows/connection · 0.90d · windows/connection/query/toolbar/RefreshCompletionButton.tsx
-- [ ] T161 · windows/connection · 0.90d · windows/connection/query/toolbar/SnippetMenuButton.tsx
-- [ ] T162 · windows/connection · 1.30d · windows/connection/query/useQueryExecutionGate.tsx · split
-- [ ] T163 · windows/connection · 1.30d · windows/connection/QueryPanel.tsx · split
-- [ ] T164 · windows/connection · 0.80d · windows/connection/result-workspace/ExecutionSummaryCard.tsx windows/connection/result-workspace/ResultFindBar.tsx
-- [ ] T165 · windows/connection · 1.30d · windows/connection/result-workspace/ResultTableView.tsx · split
-- [ ] T166 · windows/connection · 0.50d · windows/connection/result-workspace/ResultWorkspace.tsx
-- [ ] T167 · windows/connection · 3.50d · windows/connection/ServerStatusView.tsx · split
-- [ ] T168 · windows/connection · 0.80d · windows/connection/SetValueDateDialog.tsx windows/connection/structure/StructureColumnTable.tsx
-- [ ] T169 · windows/connection · 0.80d · windows/connection/structure/StructureIndexTable.tsx windows/connection/structure/StructurePlanPreview.tsx
-- [ ] T170 · windows/connection · 0.90d · windows/connection/StructureView.tsx
-- [ ] T171 · windows/connection · 0.30d · windows/connection/TableClipboardStatus.tsx
-- [ ] T172 · windows/connection · 0.80d · windows/connection/TableColumnFilter.tsx
-- [ ] T173 · windows/connection · 0.50d · windows/connection/TableFilterToolbar.tsx
-- [ ] T174 · windows/connection · 0.90d · windows/connection/TableFkBreadcrumb.tsx
-- [ ] T175 · windows/connection · 0.90d · windows/connection/TableFkErrorBanner.tsx windows/connection/TableLoadErrorState.tsx windows/connection/TableNoPrimaryKeyTip.tsx
-- [ ] T176 · windows/connection · 0.90d · windows/connection/TablePendingChangesBar.tsx
-- [ ] T177 · windows/connection · 0.60d · windows/connection/TableReadOnlyTip.tsx windows/connection/TableStatusBanners.tsx
-- [ ] T178 · windows/connection · 1.30d · windows/connection/TableStructureEditor.tsx · split
-- [ ] T179 · windows/connection · 0.50d · windows/connection/TableToolbar.tsx
-- [ ] T180 · windows/connection · 5.80d · windows/connection/TableView.tsx · split
-- [ ] T181 · windows/connection · 0.90d · windows/connection/WorkspaceModeSidebar.tsx
-- [ ] T182 · windows/workspace · 0.30d · windows/workspace/WappIcon.tsx
-- [ ] T183 · windows/workspace · 0.90d · windows/workspace/WappPageShell.tsx
-- [ ] T184 · windows/workspace · 0.30d · windows/workspace/WorkspaceDefaultCards.tsx
-- [ ] T185 · windows/workspace · 0.90d · windows/workspace/WorkspaceNavigator.tsx
-- [ ] T186 · windows/workspace · 0.90d · windows/workspace/WorkspaceTabBar.tsx
-- [ ] T187 · windows/workspace · 0.90d · windows/workspace/WorkspaceView.tsx
-- [ ] T188 · windows/dashboard · 0.90d · windows/dashboard/AddToDashboardDialog.tsx
-- [ ] T189 · windows/dashboard · 0.80d · windows/dashboard/ChartWidgetTile.tsx
-- [ ] T190 · windows/dashboard · 1.30d · windows/dashboard/DashboardPanel.tsx · split
-- [ ] T191 · windows/dashboard · 0.90d · windows/dashboard/MonitorScheduleAuthorization.tsx
-- [ ] T192 · windows/dashboard · 0.90d · windows/dashboard/RunHistoryDrawer.tsx
-- [ ] T193 · windows/dashboard · 1.30d · windows/dashboard/WidgetEditorDrawer.tsx · split
-- [ ] T194 · windows/workflow · 0.80d · windows/workflow/WorkflowEditorActionBar.tsx windows/workflow/WorkflowExecutionResultPanel.tsx
-- [ ] T195 · windows/workflow · 1.30d · windows/workflow/WorkflowForm.tsx · split
-- [ ] T196 · windows/workflow · 0.50d · windows/workflow/WorkflowHistorySection.tsx
-- [ ] T197 · windows/workflow · 1.30d · windows/workflow/WorkflowPage.tsx · split
-- [ ] T198 · windows/workflow · 0.30d · windows/workflow/workflowStepResultUtils.tsx
-- [ ] T199 · windows/workflow · 2.00d · windows/workflow/WorkflowYamlEditor.tsx · split
-- [ ] T200 · windows/main · 0.90d · windows/main/MainPage.tsx
-- [ ] T201 · windows/main · 0.90d · windows/main/RunningExecutionCloseHost.tsx
-- [ ] T202 · windows/onboarding · 0.90d · windows/onboarding/BrandSidebar.tsx
-- [ ] T203 · windows/onboarding · 0.90d · windows/onboarding/OnboardingWindow.tsx
-- [ ] T204 · windows/onboarding · 0.90d · windows/onboarding/OnboardingWizard.tsx
-- [ ] T205 · windows/onboarding · 0.90d · windows/onboarding/steps/AiProviderStep.tsx
-- [ ] T206 · windows/onboarding · 1.00d · windows/onboarding/steps/DoneStep.tsx windows/onboarding/steps/ImportStep.tsx
-- [ ] T207 · windows/onboarding · 0.90d · windows/onboarding/steps/ManualConnectionStep.tsx
-- [ ] T208 · windows/onboarding · 0.90d · windows/onboarding/steps/SampleStep.tsx
-- [ ] T209 · windows/onboarding · 1.00d · windows/onboarding/steps/WelcomeStep.tsx windows/onboarding/WizardFooter.tsx
-- [ ] T210 · windows/wapps · 0.90d · windows/wapps/InstallWappDialog.tsx
-- [ ] T211 · windows/wapps · 1.30d · windows/wapps/WappManagementPage.tsx · split
-- [ ] T212 · windows/data-transfer · 1.30d · windows/data-transfer/ColumnMappingEditor.tsx · split
-- [ ] T213 · windows/data-transfer · 0.90d · windows/data-transfer/DataTransferAttachedJobs.tsx
-- [ ] T214 · windows/data-transfer · 0.90d · windows/data-transfer/DataTransferTerminalResults.tsx
-- [ ] T215 · windows/data-transfer · 1.30d · windows/data-transfer/DataTransferWindow.tsx · split
-- [ ] T216 · windows/data-transfer · 0.90d · windows/data-transfer/MappingGateNotice.tsx
-- [ ] T217 · windows/data-transfer · 0.90d · windows/data-transfer/SourceFilterEditor.tsx
-- [ ] T218 · windows/data-transfer · 0.90d · windows/data-transfer/TransferExecuteConfirmDialog.tsx
-- [ ] T219 · windows/data-transfer · 0.30d · windows/data-transfer/TransferJobResultPanel.tsx
-- [ ] T220 · windows/data-transfer · 0.90d · windows/data-transfer/TransferMappingStep.tsx
-- [ ] T221 · windows/data-transfer · 0.60d · windows/data-transfer/TransferPairingNote.tsx windows/data-sync/CompareSummary.tsx
-- [ ] T222 · windows/data-sync · 0.90d · windows/data-sync/DataSyncCompareStep.tsx
-- [ ] T223 · windows/data-sync · 0.30d · windows/data-sync/DataSyncDialogs.tsx
-- [ ] T224 · windows/data-sync · 0.90d · windows/data-sync/DataSyncEndpointStep.tsx
-- [ ] T225 · windows/data-sync · 0.90d · windows/data-sync/DataSyncJobStatusPanel.tsx
-- [ ] T226 · windows/data-sync · 0.90d · windows/data-sync/DataSyncObjectsStep.tsx
-- [ ] T227 · windows/data-sync · 0.90d · windows/data-sync/DataSyncOptionsStep.tsx
+- [ ] T002 · components/DataTable · 0.50d · components/DataTable/CellRenderer.tsx
+- [x] T003 · components/filter · 0.60d · components/filter/FilterBetweenInput.tsx components/filter/FilterConditionChip.tsx
+- [x] T004 · components/schema · 0.50d · components/schema/SchemaDiffPanel.tsx
+- [ ] T005 · components/history · 1.30d · components/history/GlobalQueryHistoryDialog.tsx · split
+- [x] T006 · components/query · 0.30d · components/query/ExplainPlanTree.tsx
+- [ ] T007 · components/connection · 0.80d · components/connection/ConnectionAdvancedSettings.tsx
+- [ ] T008 · components/chart · 2.00d · components/chart/ChartCanvas.tsx · split
+- [ ] T009 · components/ai · 5.30d · components/ai/AiChatPanel.tsx · split
+- [ ] T010 · components/migration · 0.80d · components/migration/MigrationEndpointsBar.tsx
+- [ ] T011 · components/sql-editor · 2.70d · components/sql-editor/SqlEditor.tsx · split
+- [ ] T012 · components · 0.90d · components/AiWriteProposalHost.tsx
+- [ ] T013 · components/admin · 0.90d · components/admin/AdminCreateDialog.tsx
+- [ ] T014 · components/export · 0.60d · components/export/ExportSuccessPanel.tsx components/FilterBar.tsx
+- [ ] T015 · windows/settings · 0.90d · windows/settings/ai/AiContextSettings.tsx
+- [ ] T016 · windows/connection · 2.00d · windows/connection/BatchExportDialog.tsx · split
+- [ ] T017 · windows/workspace · 0.30d · windows/workspace/WappIcon.tsx
+- [ ] T018 · windows/dashboard · 0.90d · windows/dashboard/AddToDashboardDialog.tsx
+- [ ] T019 · windows/workflow · 0.80d · windows/workflow/WorkflowEditorActionBar.tsx windows/workflow/WorkflowExecutionResultPanel.tsx
+- [ ] T020 · windows/main · 0.90d · windows/main/MainPage.tsx
+- [ ] T021 · windows/onboarding · 0.90d · windows/onboarding/BrandSidebar.tsx
+- [ ] T022 · windows/wapps · 0.90d · windows/wapps/InstallWappDialog.tsx
+- [ ] T023 · windows/data-transfer · 1.30d · windows/data-transfer/ColumnMappingEditor.tsx · split
+- [ ] T024 · windows/data-sync · 0.90d · windows/data-sync/DataSyncCompareStep.tsx
+- [ ] T025 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffDeployPanel.tsx
+- [ ] T026 · windows/backup · 1.30d · windows/backup/BackupWindow.tsx · split
+- [x] T027 · lib · 0.30d · lib/formatters.ts
+- [ ] T028 · lib/chart · 0.90d · lib/chart/export.ts
+- [ ] T029 · lib/connectionViews · 0.90d · lib/connectionViews/types.ts lib/contextItems.ts lib/contextMenuPosition.ts
+- [ ] T030 · lib/dashboard · 0.90d · lib/dashboard/runToChart.ts lib/dashboard/runToResult.ts lib/databaseObjectIdentity.ts
+- [ ] T031 · lib/metadata · 0.30d · lib/metadata/batch.ts
+- [ ] T032 · lib/relationMetadata · 0.80d · lib/relationMetadata/metadataCache.ts
+- [ ] T033 · lib/relationPrediction · 0.80d · lib/relationPrediction/fromTableSchema.ts lib/relationPrediction/normalize.ts
+- [ ] T034 · lib/session · 0.90d · lib/session/counters.ts
+- [ ] T035 · lib/sqlDialects · 1.00d · lib/sqlDialects/dialectProfile.ts lib/sqlDialects/extra.ts
+- [ ] T036 · lib/structureEditor · 0.90d · lib/structureEditor/buildStructureChangeRequest.ts lib/structureEditor/canOpenStructureEditor.ts lib/structureEditor/controlHints.ts
+- [ ] T037 · lib/valuePresentation · 0.50d · lib/valuePresentation/columnOverrides.ts
+- [ ] T038 · hooks · 0.30d · hooks/useConfirmDialog.tsx
+- [ ] T039 · stores · 0.90d · stores/activeConnectionStore.ts
+- [ ] T040 · stores/ai · 3.00d · stores/ai/sessions.ts · split
+- [ ] T041 · stores/tableData · 0.30d · stores/tableData/connectionState.ts
+- [ ] T042 · types · 0.80d · types/ai.ts
+- [ ] T043 · platform · 2.00d · platform/blobTablesExporter.ts · split
+- [ ] T044 · platform/shared · 0.30d · platform/shared/index.ts
+- [ ] T045 · platform/web · 0.30d · platform/web/index.ts
+- [ ] T046 · extensions · 0.30d · extensions/generated-pro.ts
+- [ ] T047 · bootstrap · 2.00d · bootstrap/startSharedApp.tsx · split
+- [ ] T048 · commands · 0.30d · commands/adb.ts
+- [ ] T049 · ai · 0.80d · ai/grantState.ts
+- [ ] T050 · app.ts · 0.30d · app.ts
+- [ ] T051 · App.tsx · 0.30d · App.tsx
+- [ ] T052 · index.ts · 0.90d · index.ts
+- [ ] T053 · shell.ts · 0.90d · shell.ts
+- [x] T054 · components/ui · 0.30d · components/ui/Spinner.tsx
+- [ ] T055 · components/DataTable · 1.30d · components/DataTable/ColumnPresentationDialog.tsx · split
+- [ ] T056 · components/filter · 0.90d · components/filter/FilterConditionEditor.tsx
+- [x] T057 · components/history · 1.00d · components/history/HistoryEntryCard.tsx components/history/HistoryFilterBar.tsx
+- [ ] T058 · components/query · 0.90d · components/query/QueryArtifactExport.tsx
+- [ ] T059 · components/connection · 0.90d · components/connection/ConnectionAiNotes.tsx
+- [ ] T060 · components/chart · 0.80d · components/chart/ChartEmptyState.tsx components/chart/ChartToolbar.tsx
+- [ ] T061 · components/ai · 0.80d · components/ai/AiCodeBlock.tsx
+- [x] T062 · components/migration · 0.50d · components/migration/MigrationJobFailureNotice.tsx
+- [ ] T063 · components/sql-editor · 4.20d · components/sql-editor/completion/schemaCompletion.ts · split
+- [ ] T064 · components · 0.90d · components/DbTypeBadge.tsx components/ErrorBoundary.tsx components/export/ExportColumnPicker.tsx
+- [ ] T065 · components/admin · 0.60d · components/admin/AdminSchemaFields.tsx components/admin/PrivilegeSelector.tsx
+- [ ] T066 · windows/settings · 0.30d · windows/settings/ai/ModelProfileDialog.tsx
+- [ ] T067 · windows/connection · 1.30d · windows/connection/ConnectionNavigatorTree.tsx · split
+- [ ] T068 · windows/workspace · 0.90d · windows/workspace/WappPageShell.tsx
+- [ ] T069 · windows/dashboard · 0.80d · windows/dashboard/ChartWidgetTile.tsx
+- [ ] T070 · windows/workflow · 1.30d · windows/workflow/WorkflowForm.tsx · split
+- [ ] T071 · windows/main · 0.90d · windows/main/RunningExecutionCloseHost.tsx
+- [ ] T072 · windows/onboarding · 0.90d · windows/onboarding/OnboardingWindow.tsx
+- [ ] T073 · windows/wapps · 1.30d · windows/wapps/WappManagementPage.tsx · split
+- [ ] T074 · windows/data-transfer · 0.90d · windows/data-transfer/DataTransferAttachedJobs.tsx
+- [ ] T075 · windows/data-sync · 0.30d · windows/data-sync/DataSyncDialogs.tsx
+- [ ] T076 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffExecutionPanels.tsx
+- [ ] T077 · windows/backup · 2.00d · windows/backup/ProgressLog.tsx · split
+- [x] T078 · lib · 0.80d · lib/cellTypes.ts
+- [ ] T079 · lib/chart · 0.60d · lib/chart/fieldInference.ts lib/chart/format.ts
+- [ ] T080 · lib/metadata · 0.90d · lib/metadata/identity.ts
+- [ ] T081 · lib/relationMetadata · 0.90d · lib/relationMetadata/sessionConfig.ts lib/relationMetadata/types.ts lib/relationPrediction/fromRelationMetadata.ts
+- [ ] T082 · lib/relationPrediction · 2.00d · lib/relationPrediction/predictRelations.ts · split
+- [ ] T083 · lib/session · 2.00d · lib/session/EditorSessionController.ts · split
+- [ ] T084 · lib/sqlDialects · 0.80d · lib/sqlDialects/identifierQuoting.ts lib/sqlDialects/index.ts
+- [ ] T085 · lib/structureEditor · 0.90d · lib/structureEditor/ddlApplyWarnings.ts lib/structureEditor/draftDefaults.ts lib/structureEditor/draftIds.ts
+- [ ] T086 · lib/valuePresentation · 0.80d · lib/valuePresentation/columnPresentation.ts
+- [ ] T087 · hooks · 0.90d · hooks/useAiEditorGrant.ts
+- [ ] T088 · stores · 1.30d · stores/aiStore.ts · split
+- [ ] T089 · stores/ai · 2.00d · stores/ai/streaming.ts · split
+- [ ] T090 · stores/tableData · 0.90d · stores/tableData/countStrategy.ts
+- [ ] T091 · types · 0.30d · types/chart.ts
+- [ ] T092 · platform · 0.30d · platform/capabilities.ts
+- [ ] T093 · platform/shared · 0.80d · platform/shared/mcpClient.ts
+- [ ] T094 · platform/web · 0.90d · platform/web/stub.ts
+- [ ] T095 · extensions · 0.80d · extensions/generated.ts
+- [ ] T096 · commands · 1.30d · commands/ai.ts · split
+- [ ] T097 · ai · 2.00d · ai/sessionCancel.ts · split
+- [ ] T098 · components/ui · 0.90d · components/ui/WebContextMenu.tsx
+- [x] T099 · components/DataTable · 0.30d · components/DataTable/ColumnStatsDialog.tsx
+- [x] T100 · components/filter · 0.30d · components/filter/FilterConnectorToggle.tsx
+- [ ] T101 · components/history · 0.50d · components/history/historyQuery.ts
+- [ ] T102 · components/query · 1.00d · components/query/QueryContextSelectors.tsx components/query/QueryErrorPanel.tsx
+- [ ] T103 · components/connection · 1.00d · components/connection/ConnectionFormBody.tsx components/connection/ConnectionImportFields.tsx
+- [ ] T104 · components/chart · 0.80d · components/chart/ChartView.tsx
+- [ ] T105 · components/ai · 0.90d · components/ai/AiEgressNotice.tsx
+- [ ] T106 · components/migration · 1.30d · components/migration/MigrationJobVerdictPanel.tsx · split
+- [ ] T107 · components/sql-editor · 2.00d · components/sql-editor/contracts.ts · split
+- [ ] T108 · components · 2.60d · components/FilterEditor.tsx · split
+- [ ] T109 · windows/settings · 0.80d · windows/settings/ai/ModelProfileForm.tsx
+- [ ] T110 · windows/connection · 1.30d · windows/connection/ConnectionPage.tsx · split
+- [ ] T111 · windows/workspace · 0.30d · windows/workspace/WorkspaceDefaultCards.tsx
+- [ ] T112 · windows/dashboard · 1.30d · windows/dashboard/DashboardPanel.tsx · split
+- [ ] T113 · windows/workflow · 0.50d · windows/workflow/WorkflowHistorySection.tsx
+- [ ] T114 · windows/onboarding · 0.90d · windows/onboarding/OnboardingWizard.tsx
+- [ ] T115 · windows/data-transfer · 0.90d · windows/data-transfer/DataTransferTerminalResults.tsx
+- [ ] T116 · windows/data-sync · 0.90d · windows/data-sync/DataSyncEndpointStep.tsx
+- [ ] T117 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffJobStatusPanel.tsx
+- [x] T118 · lib · 0.80d · lib/cellEditorKind.ts
+- [ ] T119 · lib/chart · 0.90d · lib/chart/postQueryView.ts
+- [ ] T120 · lib/metadata · 2.00d · lib/metadata/temporaryResults.ts · split
+- [ ] T121 · lib/relationPrediction · 0.90d · lib/relationPrediction/relatedTables.ts lib/relationPrediction/types.ts lib/relativeTime.ts
+- [ ] T122 · lib/session · 0.90d · lib/session/ExecutionProjection.ts
+- [ ] T123 · lib/sqlDialects · 0.90d · lib/sqlDialects/mysql.ts lib/sqlDialects/postgresql.ts lib/sqlDialects/rowLimit.ts
+- [ ] T124 · lib/structureEditor · 0.90d · lib/structureEditor/isControlEnabled.ts lib/structureEditor/resolveCreateTableSchema.ts lib/structureEditor/schemaToDraft.ts
+- [ ] T125 · lib/valuePresentation · 1.00d · lib/valuePresentation/columnPresentationSession.ts lib/valuePresentation/index.ts
+- [ ] T126 · hooks · 0.90d · hooks/useAiKeyboard.ts hooks/useAutoScroll.ts hooks/useClipboardCopyFeedback.ts
+- [ ] T127 · stores · 0.90d · stores/connectionStore.ts
+- [ ] T128 · stores/ai · 0.80d · stores/ai/types.ts
+- [ ] T129 · stores/tableData · 2.00d · stores/tableData/dirtyIndex.ts · split
+- [ ] T130 · types · 0.90d · types/connection.ts
+- [ ] T131 · platform · 1.30d · platform/contracts.ts · split
+- [ ] T132 · commands · 0.90d · commands/artifact.ts
+- [ ] T133 · ai · 2.00d · ai/streamRegistry.ts · split
+- [ ] T134 · components/DataTable · 1.30d · components/DataTable/DataExportDialog.tsx · split
+- [ ] T135 · components/filter · 0.90d · components/filter/FilterSqlPreviewDialog.tsx
+- [ ] T136 · components/query · 0.30d · components/query/QueryExecutionStatus.tsx
+- [ ] T137 · components/connection · 0.90d · components/connection/ConnectionShareDialog.tsx
+- [ ] T138 · components/chart · 2.00d · components/chart/LogScaleTooltip.tsx · split
+- [ ] T139 · components/ai · 0.80d · components/ai/AiInput.tsx
+- [ ] T140 · components/migration · 0.90d · components/migration/MigrationRunHistoryDialog.tsx
+- [ ] T141 · components/sql-editor · 3.40d · components/sql-editor/editorExtensions.ts · split
+- [ ] T142 · components · 0.30d · components/LocaleDomainLoading.tsx
+- [ ] T143 · windows/settings · 0.50d · windows/settings/ai/ModelProfileListItem.tsx
+- [ ] T144 · windows/connection · 1.30d · windows/connection/ConnectionWorkspaceHome.tsx · split
+- [ ] T145 · windows/workspace · 0.90d · windows/workspace/WorkspaceNavigator.tsx
+- [ ] T146 · windows/dashboard · 0.90d · windows/dashboard/MonitorScheduleAuthorization.tsx
+- [ ] T147 · windows/workflow · 1.30d · windows/workflow/WorkflowPage.tsx · split
+- [ ] T148 · windows/onboarding · 0.90d · windows/onboarding/steps/AiProviderStep.tsx
+- [ ] T149 · windows/data-transfer · 1.30d · windows/data-transfer/DataTransferWindow.tsx · split
+- [ ] T150 · windows/data-sync · 0.90d · windows/data-sync/DataSyncJobStatusPanel.tsx
+- [ ] T151 · windows/schema-diff · 0.30d · windows/schema-diff/SchemaDiffObjectsStep.tsx
+- [x] T152 · lib · 0.60d · lib/dataTypeColors.ts components/DataTable/editors/toEditString.ts
+- [ ] T153 · lib/chart · 0.60d · lib/chart/recommend.ts lib/chart/seriesOverlap.ts
+- [ ] T154 · lib/session · 0.30d · lib/session/pageUnload.ts
+- [ ] T155 · lib/sqlDialects · 0.90d · lib/sqlDialects/sqlite.ts lib/sqlDialects/sqlParameterPolicy.ts lib/sqlEditorContextMenu.ts
+- [ ] T156 · lib/structureEditor · 0.30d · lib/structureEditor/types.ts
+- [ ] T157 · lib/valuePresentation · 0.80d · lib/valuePresentation/presentationPlan.ts
+- [ ] T158 · hooks · 0.90d · hooks/useColumnPresentationSession.ts
+- [ ] T159 · stores · 0.90d · stores/contextMenuStore.ts
+- [ ] T160 · stores/tableData · 0.80d · stores/tableData/draftInserts.ts stores/tableData/enumCandidates.ts
+- [ ] T161 · types · 0.90d · types/dashboard.ts
+- [ ] T162 · platform · 0.30d · platform/env.ts
+- [ ] T163 · commands · 0.90d · commands/backup.ts
+- [ ] T164 · ai · 2.00d · ai/targetClaim.ts · split
+- [ ] T165 · components/DataTable · 4.50d · components/DataTable/DataTable.tsx · split
+- [ ] T166 · components/filter · 0.80d · components/filter/FilterTokenInput.tsx components/filter/FilterValueInput.tsx
+- [ ] T167 · components/connection · 0.90d · components/connection/ConnectionShareDialogHost.tsx
+- [ ] T168 · components/chart · 2.00d · components/chart/renderers/AreaChartRenderer.tsx · split
+- [ ] T169 · components/ai · 2.00d · components/ai/AiMessageContent.tsx · split
+- [ ] T170 · components/sql-editor · 0.60d · components/sql-editor/extensions/executionState.ts components/sql-editor/extensions/types.ts
+- [ ] T171 · components · 0.90d · components/McpApprovalHost.tsx
+- [ ] T172 · windows/settings · 0.90d · windows/settings/AiSettingsSection.tsx
+- [ ] T173 · windows/connection · 0.80d · windows/connection/ContentStatusBar.tsx windows/connection/ContentToolbar.tsx
+- [ ] T174 · windows/workspace · 0.90d · windows/workspace/WorkspaceTabBar.tsx
+- [ ] T175 · windows/dashboard · 0.90d · windows/dashboard/RunHistoryDrawer.tsx
+- [ ] T176 · windows/workflow · 0.30d · windows/workflow/workflowStepResultUtils.tsx
+- [ ] T177 · windows/onboarding · 1.00d · windows/onboarding/steps/DoneStep.tsx windows/onboarding/steps/ImportStep.tsx
+- [ ] T178 · windows/data-transfer · 0.90d · windows/data-transfer/MappingGateNotice.tsx
+- [ ] T179 · windows/data-sync · 0.90d · windows/data-sync/DataSyncObjectsStep.tsx
+- [ ] T180 · windows/schema-diff · 1.30d · windows/schema-diff/SchemaDiffPlanPanel.tsx · split
+- [ ] T181 · lib · 0.90d · lib/aiMemoryCorrection.ts
+- [ ] T182 · lib/chart · 1.00d · lib/chart/transform.ts lib/columnStats.ts
+- [ ] T183 · lib/session · 0.90d · lib/session/QueryPanelSession.ts
+- [ ] T184 · lib/valuePresentation · 0.80d · lib/valuePresentation/registerBundledContributions.ts lib/valuePresentation/settings.ts
+- [ ] T185 · hooks · 0.50d · hooks/useColumnResize.ts
+- [ ] T186 · stores · 0.90d · stores/dashboardStore.ts
+- [ ] T187 · stores/tableData · 0.30d · stores/tableData/filterUtils.ts
+- [ ] T188 · types · 0.30d · types/filters.ts
+- [ ] T189 · platform · 2.00d · platform/exportPlan.ts · split
+- [ ] T190 · commands · 0.90d · commands/connection.ts
+- [x] T191 · components/DataTable · 0.90d · components/DataTable/DataTableSelectionBar.tsx
+- [ ] T192 · components/filter · 0.80d · components/filter/NamedViewMenu.tsx
+- [ ] T193 · components/connection · 0.90d · components/connection/FileConnectionFields.tsx
+- [ ] T194 · components/chart · 2.00d · components/chart/renderers/BarChartRenderer.tsx · split
+- [ ] T195 · components/ai · 0.90d · components/ai/AiSessionHistory.tsx
+- [ ] T196 · components/sql-editor · 2.00d · components/sql-editor/fold/foldCompartment.ts · split
+- [ ] T197 · components · 1.30d · components/MenuBar.tsx · split
+- [ ] T198 · windows/settings · 0.90d · windows/settings/AiToolBridgeSection.tsx
+- [ ] T199 · windows/connection · 1.30d · windows/connection/ContentView.tsx · split
+- [ ] T200 · windows/workspace · 0.90d · windows/workspace/WorkspaceView.tsx
+- [ ] T201 · windows/dashboard · 1.30d · windows/dashboard/WidgetEditorDrawer.tsx · split
+- [ ] T202 · windows/workflow · 2.00d · windows/workflow/WorkflowYamlEditor.tsx · split
+- [ ] T203 · windows/onboarding · 0.90d · windows/onboarding/steps/ManualConnectionStep.tsx
+- [ ] T204 · windows/data-transfer · 0.90d · windows/data-transfer/SourceFilterEditor.tsx
+- [ ] T205 · windows/data-sync · 0.90d · windows/data-sync/DataSyncOptionsStep.tsx
+- [ ] T206 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffRightPanel.tsx
+- [ ] T207 · lib · 0.90d · lib/aiMemoryPatterns.ts
+- [ ] T208 · lib/session · 0.90d · lib/session/queryPanelSessionRoot.ts
+- [ ] T209 · lib/valuePresentation · 0.80d · lib/valuePresentation/temporalMath.ts
+- [ ] T210 · hooks · 0.90d · hooks/useColumnStats.ts
+- [ ] T211 · stores · 0.90d · stores/editorSelectionStore.ts
+- [ ] T212 · stores/tableData · 0.80d · stores/tableData/gridSelection.ts
+- [ ] T213 · types · 1.30d · types/index.ts · split
+- [ ] T214 · commands · 0.90d · commands/context.ts
+- [x] T215 · components/DataTable · 0.30d · components/DataTable/DefaultOrderSelect.tsx
+- [ ] T216 · components/filter · 0.90d · components/filter/filterLabels.ts components/filter/filterValues.ts components/filter/types.ts
+- [ ] T217 · components/connection · 0.60d · components/connection/HttpProxyTunnelFields.tsx components/connection/IndexConnectionFields.tsx
+- [ ] T218 · components/chart · 2.00d · components/chart/renderers/LineChartRenderer.tsx · split
+- [ ] T219 · components/ai · 1.30d · components/ai/ContextPicker.tsx · split
+- [ ] T220 · components/sql-editor · 2.00d · components/sql-editor/format/formatEditorDocument.ts · split
+- [ ] T221 · components · 2.00d · components/SqlCodeBlock.tsx · split
+- [ ] T222 · windows/settings · 0.90d · windows/settings/AppearanceSection.tsx
+- [ ] T223 · windows/connection · 0.90d · windows/connection/ContentViewDialogs.tsx
+- [ ] T224 · windows/workspace · 0.90d · windows/workspace/workspacePages.ts
+- [ ] T225 · windows/workflow · 0.60d · windows/workflow/workflowDraftConvert.ts windows/workflow/workflowPanelGuards.ts
+- [ ] T226 · windows/onboarding · 0.90d · windows/onboarding/steps/SampleStep.tsx
+- [ ] T227 · windows/data-transfer · 0.90d · windows/data-transfer/TransferExecuteConfirmDialog.tsx
 - [ ] T228 · windows/data-sync · 0.90d · windows/data-sync/DataSyncPreviewStep.tsx
-- [ ] T229 · windows/data-sync · 0.90d · windows/data-sync/DataSyncResultStep.tsx
-- [ ] T230 · windows/data-sync · 1.30d · windows/data-sync/DataSyncWindow.tsx · split
-- [ ] T231 · windows/data-sync · 0.60d · windows/data-sync/DataSyncWizardNav.tsx windows/data-sync/DataSyncWizardStepper.tsx
-- [ ] T232 · windows/data-sync · 1.30d · windows/data-sync/DiffDetail.tsx · split
-- [ ] T233 · windows/data-sync · 0.60d · windows/data-sync/EndpointsBar.tsx windows/data-sync/ExecuteBar.tsx
-- [ ] T234 · windows/data-sync · 0.50d · windows/data-sync/MappingPanel.tsx
-- [ ] T235 · windows/data-sync · 0.90d · windows/data-sync/OptionsBar.tsx
-- [ ] T236 · windows/data-sync · 0.90d · windows/data-sync/RecordsetEditor.tsx
-- [ ] T237 · windows/data-sync · 0.90d · windows/data-sync/SqlPreview.tsx
-- [ ] T238 · windows/data-sync · 0.50d · windows/data-sync/TableListPanel.tsx
-- [ ] T239 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffDeployPanel.tsx
-- [ ] T240 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffExecutionPanels.tsx
-- [ ] T241 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffJobStatusPanel.tsx
-- [ ] T242 · windows/schema-diff · 0.30d · windows/schema-diff/SchemaDiffObjectsStep.tsx
-- [ ] T243 · windows/schema-diff · 1.30d · windows/schema-diff/SchemaDiffPlanPanel.tsx · split
-- [ ] T244 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffRightPanel.tsx
-- [ ] T245 · windows/schema-diff · 0.30d · windows/schema-diff/SchemaDiffSavedSetupDialogs.tsx
-- [ ] T246 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffSelectionSteps.tsx
-- [ ] T247 · windows/schema-diff · 0.30d · windows/schema-diff/SchemaDiffTableListPanel.tsx
-- [ ] T248 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffUnifiedObjectsPicker.tsx
-- [ ] T249 · windows/schema-diff · 1.30d · windows/schema-diff/SchemaDiffWindow.tsx · split
-- [ ] T250 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffWindowJobSection.tsx
-- [ ] T251 · windows/schema-diff · 0.60d · windows/schema-diff/SchemaDiffWindowNavigation.tsx windows/schema-diff/SchemaDiffWizardProgress.tsx
-- [ ] T252 · windows/backup · 1.30d · windows/backup/BackupWindow.tsx · split
-- [ ] T253 · windows/backup · 2.00d · windows/backup/ProgressLog.tsx · split
-- [ ] T254 · hooks · 0.30d · hooks/useConfirmDialog.tsx
-- [ ] T255 · bootstrap · 2.00d · bootstrap/startSharedApp.tsx · split
-- [ ] T256 · App.tsx · 0.30d · App.tsx
-- [x] T257 · lib · 0.30d · lib/formatters.ts
-- [x] T258 · lib · 0.80d · lib/cellTypes.ts
-- [x] T259 · lib · 0.80d · lib/cellEditorKind.ts
-- [x] T260 · lib · 0.60d · lib/dataTypeColors.ts components/DataTable/editors/toEditString.ts
-- [ ] T261 · lib · 0.90d · lib/aiMemoryCorrection.ts
-- [ ] T262 · lib · 0.90d · lib/aiMemoryPatterns.ts
-- [ ] T263 · lib · 0.60d · lib/aiMemorySettings.ts lib/aiMessageBlocks.ts
-- [ ] T264 · lib · 0.50d · lib/aiProviders.ts
-- [ ] T265 · lib · 0.80d · lib/aiQueryActions.ts
-- [ ] T266 · lib · 0.90d · lib/aiSafetyPresets.ts lib/aiSkills.ts lib/anyColumnFilter.ts
-- [ ] T267 · lib · 0.80d · lib/backupProgress.ts lib/base64.ts
-- [ ] T268 · lib · 2.00d · lib/batchExportJob.ts · split
-- [ ] T269 · lib · 0.90d · lib/bootstrapIconResolver.ts lib/buildConnectionUrl.ts lib/buildEditorSchema.ts
-- [ ] T270 · lib · 0.60d · lib/cellEditorCandidates.ts lib/chart/colors.ts
-- [ ] T271 · lib/chart · 0.90d · lib/chart/export.ts
-- [ ] T272 · lib/chart · 0.60d · lib/chart/fieldInference.ts lib/chart/format.ts
-- [ ] T273 · lib/chart · 0.90d · lib/chart/postQueryView.ts
-- [ ] T274 · lib/chart · 0.60d · lib/chart/recommend.ts lib/chart/seriesOverlap.ts
-- [ ] T275 · lib/chart · 1.00d · lib/chart/transform.ts lib/columnStats.ts
-- [ ] T276 · lib · 0.80d · lib/commandSchema.ts lib/connectionClipboard.ts
-- [ ] T277 · lib · 0.30d · lib/connectionConfig.ts
-- [ ] T278 · lib · 0.90d · lib/connectionEditor.ts
-- [ ] T279 · lib · 0.80d · lib/connectionFormModel.ts lib/connectionGroups.ts
-- [ ] T280 · lib · 1.30d · lib/connectionLocator.ts · split
-- [ ] T281 · lib · 0.90d · lib/connectionShare.ts
-- [ ] T282 · lib · 0.90d · lib/connectionShareError.ts lib/connectionTabContextMenu.ts lib/connectionViews/index.ts
-- [ ] T283 · lib/connectionViews · 0.90d · lib/connectionViews/types.ts lib/contextItems.ts lib/contextMenuPosition.ts
-- [ ] T284 · lib · 0.30d · lib/createDismissPrefs.ts
-- [ ] T285 · lib · 0.90d · lib/crossWindowBus.ts
-- [ ] T286 · lib · 0.80d · lib/dangerousSql.ts
-- [ ] T287 · lib/dashboard · 0.90d · lib/dashboard/runToChart.ts lib/dashboard/runToResult.ts lib/databaseObjectIdentity.ts
-- [ ] T288 · lib · 0.50d · lib/databaseTypes.ts
-- [ ] T289 · lib · 2.00d · lib/dataFetcher.ts · split
-- [ ] T290 · lib · 3.30d · lib/dataTableContextMenu.ts · split
-- [ ] T291 · lib · 0.90d · lib/dedicatedDbSession.ts
-- [ ] T292 · lib · 0.90d · lib/defaultSort.ts lib/docsUrls.ts lib/documentScrollLock.ts
-- [ ] T293 · lib · 0.90d · lib/driverCapabilities.ts
-- [ ] T294 · lib · 0.60d · lib/driverCommandIds.ts lib/endpointIdentity.ts
-- [ ] T295 · lib · 0.80d · lib/ensureNamespace.ts lib/erNodeContextMenu.ts
-- [ ] T296 · lib · 0.60d · lib/errors.ts lib/exportCapability.ts
-- [ ] T297 · lib · 2.00d · lib/exportData.ts · split
-- [ ] T298 · lib · 2.00d · lib/exportDialogShared.ts · split
-- [ ] T299 · lib · 2.00d · lib/exportFormat.ts · split
-- [ ] T300 · lib · 0.60d · lib/exportTableStructure.ts lib/extractQuestions.ts
-- [ ] T301 · lib · 0.50d · lib/extractSql.ts
-- [ ] T302 · lib · 0.90d · lib/fetchRelationDdl.ts
-- [ ] T303 · lib · 0.30d · lib/filterDbTypes.ts
-- [ ] T304 · lib · 0.80d · lib/filterExpression.ts
-- [ ] T305 · lib · 0.80d · lib/filterOperators.ts
-- [ ] T306 · lib · 0.50d · lib/fkNavigation.ts
-- [ ] T307 · lib · 1.30d · lib/fkNavigationActions.ts · split
-- [ ] T308 · lib · 1.30d · lib/fkReferencedBy.ts · split
-- [ ] T309 · lib · 0.80d · lib/fkSelector.ts lib/globalTextSelection.ts
-- [ ] T310 · lib · 0.80d · lib/gridClipboard.ts
-- [ ] T311 · lib · 0.80d · lib/gridErrors.ts lib/gridEventGuards.ts
-- [ ] T312 · lib · 1.30d · lib/gridKeyboard.ts · split
-- [ ] T313 · lib · 0.80d · lib/gridPastePlan.ts
-- [ ] T314 · lib · 0.90d · lib/historyGroups.ts lib/hostErrorMessage.ts lib/hostLucideMap.ts
-- [ ] T315 · lib · 2.00d · lib/htmlSanitizer.ts · split
-- [ ] T316 · lib · 0.90d · lib/iconIds.ts lib/iconResolver.ts lib/importConnectionFile.ts
-- [ ] T317 · lib · 2.00d · lib/importData.ts · split
-- [ ] T318 · lib · 1.30d · lib/importExecution.ts · split
-- [ ] T319 · lib · 1.00d · lib/importMapping.ts lib/keymap.ts
-- [ ] T320 · lib · 0.80d · lib/keysetPaging.ts
-- [ ] T321 · lib · 0.80d · lib/kvAiContext.ts lib/kvSlotState.ts
-- [ ] T322 · lib · 0.60d · lib/kvWorkspaceCapabilities.ts lib/kvWorkspaceSlots.ts
-- [ ] T323 · lib · 0.90d · lib/languagePackRuntime.ts
-- [ ] T324 · lib · 0.90d · lib/loadBatchExportTable.ts
-- [ ] T325 · lib · 0.90d · lib/localeSync.ts
-- [ ] T326 · lib · 0.80d · lib/mainWindowContextMenu.ts
-- [ ] T327 · lib · 0.90d · lib/mcpAgentConfig.ts
-- [ ] T328 · lib/metadata · 0.30d · lib/metadata/batch.ts
-- [ ] T329 · lib/metadata · 0.90d · lib/metadata/identity.ts
-- [ ] T330 · lib/metadata · 2.00d · lib/metadata/temporaryResults.ts · split
-- [ ] T331 · lib · 0.90d · lib/migrationJobHydration.ts
-- [ ] T332 · lib · 1.30d · lib/migrationJobVerdict.ts · split
-- [ ] T333 · lib · 0.60d · lib/migrationVerification.ts lib/migrationWindowPrefill.ts
-- [ ] T334 · lib · 1.30d · lib/namedViews.ts · split
-- [ ] T335 · lib · 0.90d · lib/nativeContextMenu.ts lib/objectBrowserContextMenu.ts lib/objectFilter.ts
-- [ ] T336 · lib · 0.30d · lib/panelContextPath.ts
-- [ ] T337 · lib · 0.90d · lib/pathPicker.ts
-- [ ] T338 · lib · 0.60d · lib/processListResult.ts lib/productFeatures.ts
-- [ ] T339 · lib · 0.80d · lib/queryContextPath.ts
-- [ ] T340 · lib · 0.90d · lib/queryExecutionViewModel.ts
-- [ ] T341 · lib · 0.90d · lib/querySidebarContextMenu.ts lib/queryStream.ts lib/relationMetadata/identity.ts
-- [ ] T342 · lib/relationMetadata · 0.80d · lib/relationMetadata/metadataCache.ts
-- [ ] T343 · lib/relationMetadata · 0.90d · lib/relationMetadata/sessionConfig.ts lib/relationMetadata/types.ts lib/relationPrediction/fromRelationMetadata.ts
-- [ ] T344 · lib/relationPrediction · 0.80d · lib/relationPrediction/fromTableSchema.ts lib/relationPrediction/normalize.ts
-- [ ] T345 · lib/relationPrediction · 2.00d · lib/relationPrediction/predictRelations.ts · split
-- [ ] T346 · lib/relationPrediction · 0.90d · lib/relationPrediction/relatedTables.ts lib/relationPrediction/types.ts lib/relativeTime.ts
-- [ ] T347 · lib · 0.30d · lib/resolveUiLanguage.ts
-- [ ] T348 · lib · 0.90d · lib/resultEditability.ts
-- [ ] T349 · lib · 0.80d · lib/resultFindReplace.ts lib/rowCountStrategy.ts
-- [ ] T350 · lib · 0.60d · lib/rowToRecord.ts lib/runPredefinedEdit.ts
-- [ ] T351 · lib · 0.80d · lib/schemaCache.ts lib/schemaChangingSql.ts
-- [ ] T352 · lib · 0.90d · lib/schemaDiffConfirm.ts
-- [ ] T353 · lib · 0.30d · lib/schemaDiffLimitationsPrefs.ts
-- [ ] T354 · lib · 0.80d · lib/schemaObjectSearch.ts
-- [ ] T355 · lib · 0.30d · lib/schemaResourceCache.ts
-- [ ] T356 · lib · 0.80d · lib/schemaTreeContextMenu.ts
-- [ ] T357 · lib · 0.80d · lib/serverStatusTrends.ts
-- [ ] T358 · lib/session · 0.90d · lib/session/counters.ts
-- [ ] T359 · lib/session · 2.00d · lib/session/EditorSessionController.ts · split
-- [ ] T360 · lib/session · 0.90d · lib/session/ExecutionProjection.ts
-- [ ] T361 · lib/session · 0.30d · lib/session/pageUnload.ts
-- [ ] T362 · lib/session · 0.90d · lib/session/QueryPanelSession.ts
-- [ ] T363 · lib/session · 0.90d · lib/session/queryPanelSessionRoot.ts
-- [ ] T364 · lib/session · 0.30d · lib/session/runEditorExplain.ts
-- [ ] T365 · lib/session · 0.90d · lib/session/runEditorQuery.ts
-- [ ] T366 · lib/session · 0.90d · lib/session/sessionPrompts.ts
-- [ ] T367 · lib/session · 0.90d · lib/session/tableSession.ts
-- [ ] T368 · lib/session · 0.90d · lib/session/targetCommand.ts
-- [ ] T369 · lib/session · 0.60d · lib/session/targetCommandPhase.ts lib/settingsExport.ts
-- [ ] T370 · lib · 0.80d · lib/setValueActions.ts lib/splash.ts
-- [ ] T371 · lib · 0.80d · lib/sqlBindParams.ts
-- [ ] T372 · lib · 2.00d · lib/sqlCompletionContext.ts · split
-- [ ] T373 · lib · 2.00d · lib/sqlCompletions.ts · split
-- [ ] T374 · lib/sqlDialects · 1.00d · lib/sqlDialects/dialectProfile.ts lib/sqlDialects/extra.ts
-- [ ] T375 · lib/sqlDialects · 0.80d · lib/sqlDialects/identifierQuoting.ts lib/sqlDialects/index.ts
-- [ ] T376 · lib/sqlDialects · 0.90d · lib/sqlDialects/mysql.ts lib/sqlDialects/postgresql.ts lib/sqlDialects/rowLimit.ts
-- [ ] T377 · lib/sqlDialects · 0.90d · lib/sqlDialects/sqlite.ts lib/sqlDialects/sqlParameterPolicy.ts lib/sqlEditorContextMenu.ts
-- [ ] T378 · lib · 0.50d · lib/sqlEditorDefaults.ts
-- [ ] T379 · lib · 0.90d · lib/sqlFileExecution.ts
-- [ ] T380 · lib · 0.80d · lib/sqlFormat.ts lib/sqlFunctionRegistry.ts
-- [ ] T381 · lib · 0.80d · lib/sqlGenerator.ts lib/sqlNamespace.ts
-- [ ] T382 · lib · 0.80d · lib/sqlPathPrefix.ts lib/sqlSchemaDropTargets.ts
-- [ ] T383 · lib · 0.90d · lib/sqlStatementRange.ts lib/sqlTransactionGuard.ts lib/startupTimer.ts
-- [ ] T384 · lib/structureEditor · 0.90d · lib/structureEditor/buildStructureChangeRequest.ts lib/structureEditor/canOpenStructureEditor.ts lib/structureEditor/controlHints.ts
-- [ ] T385 · lib/structureEditor · 0.90d · lib/structureEditor/ddlApplyWarnings.ts lib/structureEditor/draftDefaults.ts lib/structureEditor/draftIds.ts
-- [ ] T386 · lib/structureEditor · 0.90d · lib/structureEditor/isControlEnabled.ts lib/structureEditor/resolveCreateTableSchema.ts lib/structureEditor/schemaToDraft.ts
-- [ ] T387 · lib/structureEditor · 0.30d · lib/structureEditor/types.ts
-- [ ] T388 · lib · 0.90d · lib/surfaceBgCache.ts
-- [ ] T389 · lib · 0.90d · lib/syncPairing.ts
-- [ ] T390 · lib · 0.30d · lib/syncTaxonomy.ts
-- [ ] T391 · lib · 1.30d · lib/tableChanges.ts · split
-- [ ] T392 · lib · 0.80d · lib/tableSchemaForSql.ts lib/tableSqlActions.ts
-- [ ] T393 · lib · 2.00d · lib/themeEditorColors.ts · split
-- [ ] T394 · lib · 1.30d · lib/themePackApply.ts · split
-- [ ] T395 · lib · 0.30d · lib/themeTokens.ts
-- [ ] T396 · lib · 0.90d · lib/totalRowsDisplay.ts
-- [ ] T397 · lib · 0.90d · lib/transferLimitationsPrefs.ts lib/transferPairing.ts lib/tunnelDeletion.ts
-- [ ] T398 · lib · 0.80d · lib/tunnelDraft.ts
-- [ ] T399 · lib · 0.90d · lib/updater.ts
-- [ ] T400 · lib · 0.90d · lib/updateReminderSchedule.ts
-- [ ] T401 · lib/valuePresentation · 0.50d · lib/valuePresentation/columnOverrides.ts
-- [ ] T402 · lib/valuePresentation · 0.80d · lib/valuePresentation/columnPresentation.ts
-- [ ] T403 · lib/valuePresentation · 1.00d · lib/valuePresentation/columnPresentationSession.ts lib/valuePresentation/index.ts
-- [ ] T404 · lib/valuePresentation · 0.80d · lib/valuePresentation/presentationPlan.ts
-- [ ] T405 · lib/valuePresentation · 0.80d · lib/valuePresentation/registerBundledContributions.ts lib/valuePresentation/settings.ts
-- [ ] T406 · lib/valuePresentation · 0.80d · lib/valuePresentation/temporalMath.ts
-- [ ] T407 · lib/valuePresentation · 0.50d · lib/valuePresentation/timestampConfig.ts
-- [ ] T408 · lib/valuePresentation · 0.80d · lib/valuePresentation/timestampContribution.ts
-- [ ] T409 · lib/valuePresentation · 0.80d · lib/valuePresentation/timestampFormat.ts
-- [ ] T410 · lib/valuePresentation · 0.80d · lib/valuePresentation/valuePresentationRules.ts
-- [ ] T411 · lib/valuePresentation · 0.30d · lib/valuePresentation/valuePresentationSave.ts
-- [ ] T412 · lib · 1.30d · lib/valueSearch.ts · split
-- [ ] T413 · lib · 0.50d · lib/wappAssetOrigin.ts
-- [ ] T414 · lib · 1.30d · lib/wappBridge.ts · split
-- [ ] T415 · lib · 0.90d · lib/wappI18n.ts
-- [ ] T416 · lib · 0.30d · lib/windowKind.ts
-- [ ] T417 · lib · 0.90d · lib/windowManager.ts
-- [ ] T418 · lib · 0.60d · lib/workflowDraftYaml.ts lib/workflowListContextMenu.ts
-- [ ] T419 · lib · 0.80d · lib/workflowYaml.ts
-- [ ] T420 · types · 0.80d · types/ai.ts
-- [ ] T421 · types · 0.30d · types/chart.ts
-- [ ] T422 · types · 0.90d · types/connection.ts
-- [ ] T423 · types · 0.90d · types/dashboard.ts
-- [ ] T424 · types · 0.30d · types/filters.ts
-- [ ] T425 · types · 1.30d · types/index.ts · split
-- [ ] T426 · types · 0.30d · types/keyset.ts
-- [ ] T427 · types · 0.90d · types/settings.ts
-- [ ] T428 · types · 0.90d · types/theme.ts
-- [ ] T429 · types · 0.50d · types/wapp.ts
-- [ ] T430 · stores · 0.90d · stores/activeConnectionStore.ts
-- [ ] T431 · stores/ai · 3.00d · stores/ai/sessions.ts · split
-- [ ] T432 · stores/ai · 2.00d · stores/ai/streaming.ts · split
-- [ ] T433 · stores/ai · 0.80d · stores/ai/types.ts
-- [ ] T434 · stores · 1.30d · stores/aiStore.ts · split
-- [ ] T435 · stores · 0.90d · stores/connectionStore.ts
-- [ ] T436 · stores · 0.90d · stores/contextMenuStore.ts
-- [ ] T437 · stores · 0.90d · stores/dashboardStore.ts
-- [ ] T438 · stores · 0.90d · stores/editorSelectionStore.ts
-- [ ] T439 · stores · 0.50d · stores/fkNavigationStore.ts
-- [ ] T440 · stores · 0.90d · stores/languagePackStore.ts
-- [ ] T441 · stores · 0.90d · stores/metadataIdentityBinding.ts stores/paneFocus.ts stores/paneKeys.ts
-- [ ] T442 · stores · 0.30d · stores/panelCloseNotifier.ts
-- [ ] T443 · stores · 0.90d · stores/panelExecCleanup.ts
-- [ ] T444 · stores · 0.90d · stores/panelQueryContext.ts
-- [ ] T445 · stores · 0.90d · stores/panelResultEdit.ts
-- [ ] T446 · stores · 1.30d · stores/panelStore.ts · split
-- [ ] T447 · stores · 0.50d · stores/panelTypes.ts
-- [ ] T448 · stores · 0.90d · stores/queryExecActions.ts
-- [ ] T449 · stores · 0.30d · stores/queryRunRequestStore.ts
-- [ ] T450 · stores · 0.80d · stores/runningExecutionClose.ts
-- [ ] T451 · stores · 0.80d · stores/schemaColumnBatcher.ts stores/schemaColumnLoader.ts
-- [ ] T452 · stores · 0.90d · stores/schemaMetadataKeys.ts
-- [ ] T453 · stores · 0.30d · stores/schemaRequestTracker.ts
-- [ ] T454 · stores · 1.30d · stores/schemaStore.ts · split
-- [ ] T455 · stores · 0.30d · stores/schemaStoreHelpers.ts
-- [ ] T456 · stores · 0.90d · stores/schemaStoreSelectors.ts
-- [ ] T457 · stores · 0.30d · stores/schemaStoreState.ts
+- [ ] T229 · windows/schema-diff · 0.30d · windows/schema-diff/SchemaDiffSavedSetupDialogs.tsx
+- [ ] T230 · lib · 0.60d · lib/aiMemorySettings.ts lib/aiMessageBlocks.ts
+- [ ] T231 · lib/session · 0.30d · lib/session/runEditorExplain.ts
+- [ ] T232 · lib/valuePresentation · 0.50d · lib/valuePresentation/timestampConfig.ts
+- [ ] T233 · hooks · 0.30d · hooks/useCompactToolbar.ts
+- [ ] T234 · stores · 0.50d · stores/fkNavigationStore.ts
+- [ ] T235 · stores/tableData · 0.80d · stores/tableData/insertLocation.ts stores/tableData/keysetActions.ts
+- [ ] T236 · types · 0.30d · types/keyset.ts
+- [ ] T237 · commands · 0.90d · commands/dashboard.ts
+- [ ] T238 · components/DataTable · 0.80d · components/DataTable/DetailPanel.tsx
+- [ ] T239 · components/connection · 0.90d · components/connection/NewConnectionDialog.tsx
+- [ ] T240 · components/chart · 2.00d · components/chart/renderers/PieChartRenderer.tsx · split
+- [ ] T241 · components/ai · 0.90d · components/ai/DiagnosisPanel.tsx
+- [ ] T242 · components/sql-editor · 0.90d · components/sql-editor/metadata/findRelation.ts components/sql-editor/metadata/metadataCache.ts components/sql-editor/metadata/types.ts
+- [ ] T243 · components · 0.80d · components/SqlEditor.tsx components/SqlSyntaxPreview.tsx
+- [ ] T244 · windows/settings · 0.90d · windows/settings/DataCleanupSection.tsx
+- [ ] T245 · windows/connection · 1.30d · windows/connection/ContentViewDrawers.tsx · split
+- [ ] T246 · windows/workflow · 2.00d · windows/workflow/yamlLint.ts · split
+- [ ] T247 · windows/onboarding · 1.00d · windows/onboarding/steps/WelcomeStep.tsx windows/onboarding/WizardFooter.tsx
+- [ ] T248 · windows/data-transfer · 0.30d · windows/data-transfer/TransferJobResultPanel.tsx
+- [ ] T249 · windows/data-sync · 0.90d · windows/data-sync/DataSyncResultStep.tsx
+- [ ] T250 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffSelectionSteps.tsx
+- [ ] T251 · lib · 0.50d · lib/aiProviders.ts
+- [ ] T252 · lib/session · 0.90d · lib/session/runEditorQuery.ts
+- [ ] T253 · lib/valuePresentation · 0.80d · lib/valuePresentation/timestampContribution.ts
+- [ ] T254 · hooks · 0.90d · hooks/useConnectionCommand.ts
+- [ ] T255 · stores · 0.90d · stores/languagePackStore.ts
+- [ ] T256 · stores/tableData · 0.30d · stores/tableData/panelSeed.ts
+- [ ] T257 · types · 0.90d · types/settings.ts
+- [ ] T258 · commands · 1.30d · commands/database.ts · split
+- [ ] T259 · components/DataTable · 0.80d · components/DataTable/DetailPanelToggle.tsx components/DataTable/DraftRow.tsx
+- [ ] T260 · components/connection · 0.90d · components/connection/ObjectFilterDialog.tsx components/connection/SaveTunnelDialog.tsx components/connection/shared.tsx
+- [ ] T261 · components/chart · 2.00d · components/chart/renderers/ScatterChartRenderer.tsx · split
+- [ ] T262 · components/ai · 0.90d · components/ai/ExplainPanel.tsx
+- [ ] T263 · components/sql-editor · 2.00d · components/sql-editor/paste/createPasteExtensions.ts · split
+- [ ] T264 · components · 0.80d · components/StatusBar.tsx components/ThemedIcon.tsx
+- [ ] T265 · windows/settings · 0.90d · windows/settings/DriverSettingsSection.tsx
+- [ ] T266 · windows/connection · 0.60d · windows/connection/CreateDatabaseDialog.tsx windows/connection/CreateSchemaDialog.tsx
+- [ ] T267 · windows/workflow · 2.00d · windows/workflow/yamlMode.ts · split
+- [ ] T268 · windows/onboarding · 2.00d · windows/onboarding/onboardingGate.ts · split
+- [ ] T269 · windows/data-transfer · 0.90d · windows/data-transfer/TransferMappingStep.tsx
+- [ ] T270 · windows/data-sync · 1.30d · windows/data-sync/DataSyncWindow.tsx · split
+- [ ] T271 · windows/schema-diff · 0.30d · windows/schema-diff/SchemaDiffTableListPanel.tsx
+- [ ] T272 · lib · 0.80d · lib/aiQueryActions.ts
+- [ ] T273 · lib/session · 0.90d · lib/session/sessionPrompts.ts
+- [ ] T274 · lib/valuePresentation · 0.80d · lib/valuePresentation/timestampFormat.ts
+- [ ] T275 · hooks · 0.30d · hooks/useFkNavigationShortcuts.ts
+- [ ] T276 · stores · 0.90d · stores/metadataIdentityBinding.ts stores/paneFocus.ts stores/paneKeys.ts
+- [ ] T277 · stores/tableData · 2.00d · stores/tableData/pendingChanges.ts · split
+- [ ] T278 · types · 0.90d · types/theme.ts
+- [ ] T279 · commands · 0.30d · commands/driver.ts
+- [ ] T280 · components/DataTable · 0.90d · components/DataTable/EditableCell.tsx components/DataTable/editors/BinaryCellEditor.tsx components/DataTable/editors/BooleanCellEditor.tsx
+- [ ] T281 · components/connection · 0.80d · components/connection/SshTunnelFields.tsx components/connection/StandardConnectionFields.tsx
+- [ ] T282 · components/ai · 0.90d · components/ai/Nl2SqlPanel.tsx
+- [ ] T283 · components/sql-editor · 2.00d · components/sql-editor/paste/multiCursorEscape.ts · split
+- [ ] T284 · components · 0.90d · components/ThemeToggle.tsx
+- [ ] T285 · windows/settings · 0.90d · windows/settings/InstallLanguagePackDialog.tsx
+- [ ] T286 · windows/connection · 0.90d · windows/connection/CreateUserDialog.tsx
+- [ ] T287 · windows/onboarding · 0.30d · windows/onboarding/onboardingLayout.ts
+- [ ] T288 · windows/data-transfer · 0.60d · windows/data-transfer/TransferPairingNote.tsx windows/data-sync/CompareSummary.tsx
+- [ ] T289 · windows/data-sync · 0.60d · windows/data-sync/DataSyncWizardNav.tsx windows/data-sync/DataSyncWizardStepper.tsx
+- [ ] T290 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffUnifiedObjectsPicker.tsx
+- [ ] T291 · lib · 0.90d · lib/aiSafetyPresets.ts lib/aiSkills.ts lib/anyColumnFilter.ts
+- [ ] T292 · lib/session · 0.90d · lib/session/tableSession.ts
+- [ ] T293 · lib/valuePresentation · 0.80d · lib/valuePresentation/valuePresentationRules.ts
+- [ ] T294 · hooks · 1.30d · hooks/useGridClipboard.ts · split
+- [ ] T295 · stores · 0.30d · stores/panelCloseNotifier.ts
+- [ ] T296 · stores/tableData · 0.80d · stores/tableData/pendingEditActions.ts
+- [ ] T297 · types · 0.50d · types/wapp.ts
+- [ ] T298 · commands · 2.00d · commands/file.ts · split
+- [ ] T299 · components/DataTable · 0.80d · components/DataTable/editors/CellEditorHost.tsx
+- [ ] T300 · components/connection · 0.80d · components/connection/WebSocketTunnelFields.tsx components/chart/AxisConfigurator.tsx
+- [ ] T301 · components/ai · 0.90d · components/ai/NlFilterInput.tsx
+- [ ] T302 · components/sql-editor · 2.00d · components/sql-editor/paste/multiCursorPointer.ts · split
+- [ ] T303 · components · 0.30d · components/WindowChromeFallback.tsx
+- [ ] T304 · windows/settings · 0.30d · windows/settings/JsonSchemaSettingsForm.tsx
+- [ ] T305 · windows/connection · 0.90d · windows/connection/DatabaseObjectView.tsx
+- [ ] T306 · windows/onboarding · 0.90d · windows/onboarding/useDetectedImportSource.ts
+- [ ] T307 · windows/data-transfer · 0.90d · windows/data-transfer/transferMappingView.ts
+- [ ] T308 · windows/data-sync · 1.30d · windows/data-sync/DiffDetail.tsx · split
+- [ ] T309 · windows/schema-diff · 1.30d · windows/schema-diff/SchemaDiffWindow.tsx · split
+- [ ] T310 · lib · 0.80d · lib/backupProgress.ts lib/base64.ts
+- [ ] T311 · lib/session · 0.90d · lib/session/targetCommand.ts
+- [ ] T312 · lib/valuePresentation · 0.30d · lib/valuePresentation/valuePresentationSave.ts
+- [ ] T313 · hooks · 0.90d · hooks/useGridKeyboardNav.ts
+- [ ] T314 · stores · 0.90d · stores/panelExecCleanup.ts
+- [ ] T315 · stores/tableData · 0.50d · stores/tableData/selectionActions.ts
+- [ ] T316 · commands · 0.90d · commands/history.ts
+- [ ] T317 · components/DataTable · 0.90d · components/DataTable/editors/EnumCellEditor.tsx components/DataTable/editors/JsonCellEditor.tsx components/DataTable/editors/LongTextCellEditor.tsx
+- [ ] T318 · components/connection · 0.60d · components/connection/tunnelFieldContracts.ts components/connection/useConnectionClipboardFill.ts
+- [ ] T319 · components/ai · 1.30d · components/ai/WorkflowChatPanel.tsx · split
+- [ ] T320 · components/sql-editor · 2.00d · components/sql-editor/paste/multipleSelections.ts · split
+- [ ] T321 · windows/settings · 0.90d · windows/settings/LanguagePacksCard.tsx
+- [ ] T322 · windows/connection · 0.50d · windows/connection/DDLView.tsx
+- [ ] T323 · windows/onboarding · 0.80d · windows/onboarding/wizardState.ts windows/schema-diff/schemaDiffLimitationKeys.ts
+- [ ] T324 · windows/data-sync · 0.60d · windows/data-sync/EndpointsBar.tsx windows/data-sync/ExecuteBar.tsx
+- [ ] T325 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffWindowJobSection.tsx
+- [ ] T326 · lib · 2.00d · lib/batchExportJob.ts · split
+- [ ] T327 · lib/session · 0.60d · lib/session/targetCommandPhase.ts lib/settingsExport.ts
+- [ ] T328 · hooks · 1.30d · hooks/useGridSelection.ts · split
+- [ ] T329 · stores · 0.90d · stores/panelQueryContext.ts
+- [ ] T330 · stores/tableData · 2.00d · stores/tableData/stageCellValue.ts · split
+- [ ] T331 · commands · 0.90d · commands/languagePacks.ts
+- [ ] T332 · components/DataTable · 0.90d · components/DataTable/editors/NumberCellEditor.tsx components/DataTable/editors/TemporalCellEditor.tsx components/DataTable/editors/TextCellEditor.tsx
+- [ ] T333 · components/connection · 1.30d · components/connection/useConnectionForm.ts · split
+- [ ] T334 · components/ai · 1.30d · components/ai/WorkflowPanel.tsx · split
+- [ ] T335 · components/sql-editor · 2.00d · components/sql-editor/proCompartments.ts · split
+- [ ] T336 · windows/settings · 1.30d · windows/settings/McpClientSection.tsx · split
+- [ ] T337 · windows/connection · 3.60d · windows/connection/DocumentConnectionView.tsx · split
+- [ ] T338 · windows/data-sync · 0.50d · windows/data-sync/MappingPanel.tsx
+- [ ] T339 · windows/schema-diff · 0.60d · windows/schema-diff/SchemaDiffWindowNavigation.tsx windows/schema-diff/SchemaDiffWizardProgress.tsx
+- [ ] T340 · lib · 0.90d · lib/bootstrapIconResolver.ts lib/buildConnectionUrl.ts lib/buildEditorSchema.ts
+- [ ] T341 · hooks · 0.60d · hooks/useI18n.ts hooks/useKeyboardShortcuts.ts
+- [ ] T342 · stores · 0.90d · stores/panelResultEdit.ts
+- [ ] T343 · stores/tableData · 2.00d · stores/tableData/stageEdit.ts · split
+- [ ] T344 · commands · 0.30d · commands/namedViews.ts
+- [ ] T345 · components/DataTable · 0.80d · components/DataTable/GridCell.tsx
+- [ ] T346 · components/connection · 0.90d · components/connection/useConnectionImport.ts
+- [ ] T347 · components/sql-editor · 0.60d · components/sql-editor/snippets/builtinSnippets.ts components/sql-editor/snippets/index.ts
+- [ ] T348 · windows/settings · 1.30d · windows/settings/McpSettingsSection.tsx · split
+- [ ] T349 · windows/connection · 0.30d · windows/connection/er/ErRelationLegend.tsx
+- [ ] T350 · windows/data-sync · 0.90d · windows/data-sync/OptionsBar.tsx
+- [ ] T351 · windows/schema-diff · 0.90d · windows/schema-diff/schemaDiffObjectDiscovery.ts
+- [ ] T352 · lib · 0.60d · lib/cellEditorCandidates.ts lib/chart/colors.ts
+- [ ] T353 · hooks · 0.90d · hooks/useKvSlotSelectedKey.ts
+- [ ] T354 · stores · 1.30d · stores/panelStore.ts · split
+- [ ] T355 · stores/tableData · 1.00d · stores/tableData/stagePasteWrites.ts stores/tableData/tableColumnLayoutPreferences.ts
+- [ ] T356 · commands · 0.90d · commands/query.ts
+- [x] T357 · components/DataTable · 0.30d · components/DataTable/GridKeyboardHints.tsx
+- [ ] T358 · components/connection · 1.30d · components/connection/useTunnelFormState.ts · split
+- [ ] T359 · components/sql-editor · 2.00d · components/sql-editor/snippets/snippetCompletionSource.ts · split
+- [ ] T360 · windows/settings · 1.30d · windows/settings/MemorySection.tsx · split
+- [ ] T361 · windows/connection · 2.00d · windows/connection/er/TableNode.tsx · split
+- [ ] T362 · windows/data-sync · 0.90d · windows/data-sync/RecordsetEditor.tsx
+- [ ] T363 · windows/schema-diff · 0.90d · windows/schema-diff/schemaDiffObjectIdentity.ts
+- [ ] T364 · lib · 0.80d · lib/commandSchema.ts lib/connectionClipboard.ts
+- [ ] T365 · hooks · 0.90d · hooks/useLocaleDomains.ts
+- [ ] T366 · stores · 0.50d · stores/panelTypes.ts
+- [ ] T367 · stores/tableData · 0.30d · stores/tableData/tableSortPreferences.ts
+- [ ] T368 · commands · 0.90d · commands/sample.ts
+- [x] T369 · components/DataTable · 0.80d · components/DataTable/Pagination.tsx
+- [ ] T370 · components/sql-editor · 0.30d · components/sql-editor/snippets/types.ts
+- [ ] T371 · windows/settings · 0.90d · windows/settings/PromptSettingsSection.tsx
+- [ ] T372 · windows/connection · 2.20d · windows/connection/ErDiagramView.tsx · split
+- [ ] T373 · windows/data-sync · 0.90d · windows/data-sync/SqlPreview.tsx
+- [ ] T374 · windows/schema-diff · 0.60d · windows/schema-diff/schemaDiffTableNames.ts windows/schema-diff/useSchemaDiffClipboardFeedback.ts
+- [ ] T375 · lib · 0.30d · lib/connectionConfig.ts
+- [ ] T376 · hooks · 0.30d · hooks/useMigrationJobHydration.ts
+- [ ] T377 · stores · 0.90d · stores/queryExecActions.ts
+- [ ] T378 · stores/tableData · 0.90d · stores/tableData/types.ts
+- [ ] T379 · commands · 0.90d · commands/schemaDiff.ts
+- [ ] T380 · components/DataTable · 0.90d · components/DataTable/QuickLookDialog.tsx
+- [ ] T381 · windows/settings · 0.30d · windows/settings/SettingHint.tsx
+- [ ] T382 · windows/connection · 0.50d · windows/connection/ExecuteSqlFileDialog.tsx
+- [ ] T383 · windows/data-sync · 0.50d · windows/data-sync/TableListPanel.tsx
+- [ ] T384 · windows/schema-diff · 1.30d · windows/schema-diff/useSchemaDiffEndpoints.ts · split
+- [ ] T385 · lib · 0.90d · lib/connectionEditor.ts
+- [ ] T386 · hooks · 0.90d · hooks/usePlatform.ts
+- [ ] T387 · stores · 0.30d · stores/queryRunRequestStore.ts
+- [ ] T388 · commands · 0.90d · commands/settings.ts
+- [x] T389 · components/DataTable · 0.80d · components/DataTable/TableHeader.tsx
+- [ ] T390 · windows/settings · 1.30d · windows/settings/SettingsContent.tsx · split
+- [ ] T391 · windows/connection · 1.30d · windows/connection/ExportDialog.tsx · split
+- [ ] T392 · windows/data-sync · 0.90d · windows/data-sync/clientSqlPreview.ts
+- [ ] T393 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffJobLifecycle.ts
+- [ ] T394 · lib · 0.80d · lib/connectionFormModel.ts lib/connectionGroups.ts
+- [ ] T395 · hooks · 0.90d · hooks/useQueryExec.ts
+- [ ] T396 · stores · 0.80d · stores/runningExecutionClose.ts
+- [ ] T397 · commands · 0.30d · commands/structure.ts
+- [ ] T398 · components/DataTable · 3.20d · components/DataTable/VirtualBody.tsx · split
+- [ ] T399 · windows/settings · 0.30d · windows/settings/settingsUi.tsx
+- [ ] T400 · windows/connection · 0.90d · windows/connection/ForeignKeysView.tsx
+- [ ] T401 · windows/data-sync · 0.90d · windows/data-sync/compareReport.ts
+- [ ] T402 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffJobRestore.ts
+- [ ] T403 · lib · 1.30d · lib/connectionLocator.ts · split
+- [ ] T404 · hooks · 0.80d · hooks/useResizable.ts hooks/useSettings.ts
+- [ ] T405 · stores · 0.80d · stores/schemaColumnBatcher.ts stores/schemaColumnLoader.ts
+- [ ] T406 · commands · 1.30d · commands/sync.ts · split
+- [ ] T407 · components/DataTable · 0.90d · components/DataTable/dirtyCellText.ts components/DataTable/editors/activeEditor.ts components/DataTable/fkCellText.ts
+- [ ] T408 · windows/settings · 0.90d · windows/settings/SkillsSection.tsx
+- [ ] T409 · windows/connection · 0.90d · windows/connection/home/ConnectionCardList.tsx
+- [ ] T410 · windows/data-sync · 0.30d · windows/data-sync/dataSyncTypes.ts
+- [ ] T411 · windows/schema-diff · 1.30d · windows/schema-diff/useSchemaDiffSavedSetups.ts · split
+- [ ] T412 · lib · 0.90d · lib/connectionShare.ts
+- [ ] T413 · hooks · 0.90d · hooks/useSettingsSync.ts
+- [ ] T414 · stores · 0.90d · stores/schemaMetadataKeys.ts
+- [ ] T415 · commands · 0.90d · commands/transfer.ts
+- [ ] T416 · components/DataTable · 0.90d · components/DataTable/fkSelectorText.ts components/DataTable/gridClipboardBridge.ts components/DataTable/rowHeight.ts
+- [ ] T417 · windows/settings · 0.50d · windows/settings/SnippetEditDialog.tsx
+- [ ] T418 · windows/connection · 0.60d · windows/connection/home/HomeHero.tsx windows/connection/home/McpPromoBar.tsx
+- [ ] T419 · windows/data-sync · 0.90d · windows/data-sync/mappingView.ts
+- [ ] T420 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffUnifiedObjects.ts
+- [ ] T421 · lib · 0.90d · lib/connectionShareError.ts lib/connectionTabContextMenu.ts lib/connectionViews/index.ts
+- [ ] T422 · hooks · 0.30d · hooks/useTableForeignKeys.ts
+- [ ] T423 · stores · 0.30d · stores/schemaRequestTracker.ts
+- [ ] T424 · commands · 0.90d · commands/transferJobs.ts
+- [ ] T425 · components/DataTable · 0.90d · components/DataTable/useDataTableClipboardDom.ts
+- [ ] T426 · windows/settings · 0.90d · windows/settings/SqlSnippetsCard.tsx
+- [ ] T427 · windows/connection · 0.50d · windows/connection/home/RecentQueriesList.tsx
+- [ ] T428 · windows/data-sync · 0.90d · windows/data-sync/selectionScope.ts
+- [ ] T429 · lib · 0.30d · lib/createDismissPrefs.ts
+- [ ] T430 · hooks · 0.90d · hooks/useThemeSync.ts
+- [ ] T431 · stores · 1.30d · stores/schemaStore.ts · split
+- [ ] T432 · commands · 0.90d · commands/tunnel.ts
+- [ ] T433 · components/DataTable · 2.40d · components/DataTable/useDataTableContextMenu.ts · split
+- [ ] T434 · windows/settings · 0.90d · windows/settings/TableDataSettingsSection.tsx
+- [ ] T435 · windows/connection · 0.90d · windows/connection/home/ShortcutFooter.tsx
+- [ ] T436 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncComparison.ts · split
+- [ ] T437 · lib · 0.90d · lib/crossWindowBus.ts
+- [ ] T438 · hooks · 1.30d · hooks/useTransferJobRun.ts · split
+- [ ] T439 · stores · 0.30d · stores/schemaStoreHelpers.ts
+- [ ] T440 · commands · 0.90d · commands/wapps.ts
+- [ ] T441 · windows/settings · 0.90d · windows/settings/TunnelDeleteDialog.tsx
+- [ ] T442 · windows/connection · 3.70d · windows/connection/ImportDialog.tsx · split
+- [ ] T443 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncEndpoints.ts · split
+- [ ] T444 · lib · 0.80d · lib/dangerousSql.ts
+- [ ] T445 · hooks · 0.90d · hooks/useValuePresentation.ts
+- [ ] T446 · stores · 0.90d · stores/schemaStoreSelectors.ts
+- [ ] T447 · windows/settings · 0.90d · windows/settings/TunnelEditDialog.tsx
+- [ ] T448 · windows/connection · 1.30d · windows/connection/IndexesView.tsx · split
+- [ ] T449 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncExecution.ts · split
+- [ ] T450 · lib · 0.50d · lib/databaseTypes.ts
+- [ ] T451 · hooks · 0.90d · hooks/useValuePresentationSnapshot.ts
+- [ ] T452 · stores · 0.30d · stores/schemaStoreState.ts
+- [ ] T453 · windows/settings · 0.90d · windows/settings/TunnelSettingsSection.tsx
+- [ ] T454 · windows/connection · 1.30d · windows/connection/navigator/DatabaseValueSearchDialog.tsx · split
+- [ ] T455 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncExplain.ts
+- [ ] T456 · lib · 2.00d · lib/dataFetcher.ts · split
+- [ ] T457 · hooks · 2.00d · hooks/useVirtualTable.ts · split
 - [ ] T458 · stores · 1.30d · stores/settingsStore.ts · split
-- [ ] T459 · stores/tableData · 0.30d · stores/tableData/connectionState.ts
-- [ ] T460 · stores/tableData · 0.90d · stores/tableData/countStrategy.ts
-- [ ] T461 · stores/tableData · 2.00d · stores/tableData/dirtyIndex.ts · split
-- [ ] T462 · stores/tableData · 0.80d · stores/tableData/draftInserts.ts stores/tableData/enumCandidates.ts
-- [ ] T463 · stores/tableData · 0.30d · stores/tableData/filterUtils.ts
-- [ ] T464 · stores/tableData · 0.80d · stores/tableData/gridSelection.ts
-- [ ] T465 · stores/tableData · 0.80d · stores/tableData/insertLocation.ts stores/tableData/keysetActions.ts
-- [ ] T466 · stores/tableData · 0.30d · stores/tableData/panelSeed.ts
-- [ ] T467 · stores/tableData · 2.00d · stores/tableData/pendingChanges.ts · split
-- [ ] T468 · stores/tableData · 0.80d · stores/tableData/pendingEditActions.ts
-- [ ] T469 · stores/tableData · 0.50d · stores/tableData/selectionActions.ts
-- [ ] T470 · stores/tableData · 2.00d · stores/tableData/stageCellValue.ts · split
-- [ ] T471 · stores/tableData · 2.00d · stores/tableData/stageEdit.ts · split
-- [ ] T472 · stores/tableData · 1.00d · stores/tableData/stagePasteWrites.ts stores/tableData/tableColumnLayoutPreferences.ts
-- [ ] T473 · stores/tableData · 0.30d · stores/tableData/tableSortPreferences.ts
-- [ ] T474 · stores/tableData · 0.90d · stores/tableData/types.ts
-- [ ] T475 · stores · 1.30d · stores/tableDataStore.ts · split
-- [ ] T476 · stores · 0.90d · stores/tunnelStore.ts
-- [ ] T477 · stores · 0.90d · stores/uiStore.ts
+- [ ] T459 · windows/settings · 0.90d · windows/settings/TunnelTestDialog.tsx
+- [ ] T460 · windows/connection · 1.00d · windows/connection/navigator/GlobalObjectSearch.tsx windows/connection/navigator/NavigatorDialogs.tsx
+- [ ] T461 · windows/data-sync · 0.30d · windows/data-sync/useDataSyncFeedback.ts
+- [ ] T462 · lib · 3.30d · lib/dataTableContextMenu.ts · split
+- [ ] T463 · stores · 1.30d · stores/tableDataStore.ts · split
+- [ ] T464 · windows/settings · 0.90d · windows/settings/UpdateSection.tsx
+- [ ] T465 · windows/connection · 0.50d · windows/connection/navigator/NavigatorToolbar.tsx
+- [ ] T466 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncJobLifecycle.ts
+- [ ] T467 · lib · 0.90d · lib/dedicatedDbSession.ts
+- [ ] T468 · stores · 0.90d · stores/tunnelStore.ts
+- [ ] T469 · windows/settings · 0.80d · windows/settings/ValuePresentationRuleEditor.tsx
+- [ ] T470 · windows/connection · 1.30d · windows/connection/navigator/NavigatorTreeRow.tsx · split
+- [ ] T471 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncOptions.ts
+- [ ] T472 · lib · 0.90d · lib/defaultSort.ts lib/docsUrls.ts lib/documentScrollLock.ts
+- [ ] T473 · stores · 0.90d · stores/uiStore.ts
+- [ ] T474 · windows/settings · 1.30d · windows/settings/ValuePresentationSettingsSection.tsx · split
+- [ ] T475 · windows/connection · 0.90d · windows/connection/navigator/treeStatusDot.tsx
+- [ ] T476 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncProfiles.ts · split
+- [ ] T477 · lib · 0.90d · lib/driverCapabilities.ts
 - [ ] T478 · stores · 0.90d · stores/updateReminderStore.ts
-- [ ] T479 · stores · 0.90d · stores/wappStore.ts
-- [ ] T480 · stores · 0.60d · stores/workspacePanelStateStore.ts stores/workspaceTabsStore.ts
-- [ ] T481 · hooks · 0.90d · hooks/useAiEditorGrant.ts
-- [ ] T482 · hooks · 0.90d · hooks/useAiKeyboard.ts hooks/useAutoScroll.ts hooks/useClipboardCopyFeedback.ts
-- [ ] T483 · hooks · 0.90d · hooks/useColumnPresentationSession.ts
-- [ ] T484 · hooks · 0.50d · hooks/useColumnResize.ts
-- [ ] T485 · hooks · 0.90d · hooks/useColumnStats.ts
-- [ ] T486 · hooks · 0.30d · hooks/useCompactToolbar.ts
-- [ ] T487 · hooks · 0.90d · hooks/useConnectionCommand.ts
-- [ ] T488 · hooks · 0.30d · hooks/useFkNavigationShortcuts.ts
-- [ ] T489 · hooks · 1.30d · hooks/useGridClipboard.ts · split
-- [ ] T490 · hooks · 0.90d · hooks/useGridKeyboardNav.ts
-- [ ] T491 · hooks · 1.30d · hooks/useGridSelection.ts · split
-- [ ] T492 · hooks · 0.60d · hooks/useI18n.ts hooks/useKeyboardShortcuts.ts
-- [ ] T493 · hooks · 0.90d · hooks/useKvSlotSelectedKey.ts
-- [ ] T494 · hooks · 0.90d · hooks/useLocaleDomains.ts
-- [ ] T495 · hooks · 0.30d · hooks/useMigrationJobHydration.ts
-- [ ] T496 · hooks · 0.90d · hooks/usePlatform.ts
-- [ ] T497 · hooks · 0.90d · hooks/useQueryExec.ts
-- [ ] T498 · hooks · 0.80d · hooks/useResizable.ts hooks/useSettings.ts
-- [ ] T499 · hooks · 0.90d · hooks/useSettingsSync.ts
-- [ ] T500 · hooks · 0.30d · hooks/useTableForeignKeys.ts
-- [ ] T501 · hooks · 0.90d · hooks/useThemeSync.ts
-- [ ] T502 · hooks · 1.30d · hooks/useTransferJobRun.ts · split
-- [ ] T503 · hooks · 0.90d · hooks/useValuePresentation.ts
-- [ ] T504 · hooks · 0.90d · hooks/useValuePresentationSnapshot.ts
-- [ ] T505 · hooks · 2.00d · hooks/useVirtualTable.ts · split
-- [ ] T506 · commands · 0.30d · commands/adb.ts
-- [ ] T507 · commands · 1.30d · commands/ai.ts · split
-- [ ] T508 · commands · 0.90d · commands/artifact.ts
-- [ ] T509 · commands · 0.90d · commands/backup.ts
-- [ ] T510 · commands · 0.90d · commands/connection.ts
-- [ ] T511 · commands · 0.90d · commands/context.ts
-- [ ] T512 · commands · 0.90d · commands/dashboard.ts
-- [ ] T513 · commands · 1.30d · commands/database.ts · split
-- [ ] T514 · commands · 0.30d · commands/driver.ts
-- [ ] T515 · commands · 2.00d · commands/file.ts · split
-- [ ] T516 · commands · 0.90d · commands/history.ts
-- [ ] T517 · commands · 0.90d · commands/languagePacks.ts
-- [ ] T518 · commands · 0.30d · commands/namedViews.ts
-- [ ] T519 · commands · 0.90d · commands/query.ts
-- [ ] T520 · commands · 0.90d · commands/sample.ts
-- [ ] T521 · commands · 0.90d · commands/schemaDiff.ts
-- [ ] T522 · commands · 0.90d · commands/settings.ts
-- [ ] T523 · commands · 0.30d · commands/structure.ts
-- [ ] T524 · commands · 1.30d · commands/sync.ts · split
-- [ ] T525 · commands · 0.90d · commands/transfer.ts
-- [ ] T526 · commands · 0.90d · commands/transferJobs.ts
-- [ ] T527 · commands · 0.90d · commands/tunnel.ts
-- [ ] T528 · commands · 0.90d · commands/wapps.ts
-- [ ] T529 · platform · 2.00d · platform/blobTablesExporter.ts · split
-- [ ] T530 · platform · 0.30d · platform/capabilities.ts
-- [ ] T531 · platform · 1.30d · platform/contracts.ts · split
-- [ ] T532 · platform · 0.30d · platform/env.ts
-- [ ] T533 · platform · 2.00d · platform/exportPlan.ts · split
-- [ ] T534 · platform/shared · 0.30d · platform/shared/index.ts
-- [ ] T535 · platform/shared · 0.80d · platform/shared/mcpClient.ts
-- [ ] T536 · platform/web · 0.30d · platform/web/index.ts
-- [ ] T537 · platform/web · 0.90d · platform/web/stub.ts
-- [ ] T538 · components/connection · 0.60d · components/connection/tunnelFieldContracts.ts components/connection/useConnectionClipboardFill.ts
-- [ ] T539 · components/connection · 1.30d · components/connection/useConnectionForm.ts · split
-- [ ] T540 · components/connection · 0.90d · components/connection/useConnectionImport.ts
-- [ ] T541 · components/connection · 1.30d · components/connection/useTunnelFormState.ts · split
-- [ ] T542 · components/DataTable · 0.90d · components/DataTable/dirtyCellText.ts components/DataTable/editors/activeEditor.ts components/DataTable/fkCellText.ts
-- [ ] T543 · components/DataTable · 0.90d · components/DataTable/fkSelectorText.ts components/DataTable/gridClipboardBridge.ts components/DataTable/rowHeight.ts
-- [ ] T544 · components/DataTable · 0.90d · components/DataTable/useDataTableClipboardDom.ts
-- [ ] T545 · components/DataTable · 2.40d · components/DataTable/useDataTableContextMenu.ts · split
-- [ ] T546 · components/filter · 0.90d · components/filter/filterLabels.ts components/filter/filterValues.ts components/filter/types.ts
-- [ ] T547 · components/history · 0.50d · components/history/historyQuery.ts
-- [ ] T548 · components/sql-editor · 4.20d · components/sql-editor/completion/schemaCompletion.ts · split
-- [ ] T549 · components/sql-editor · 2.00d · components/sql-editor/contracts.ts · split
-- [ ] T550 · components/sql-editor · 3.40d · components/sql-editor/editorExtensions.ts · split
-- [ ] T551 · components/sql-editor · 0.60d · components/sql-editor/extensions/executionState.ts components/sql-editor/extensions/types.ts
-- [ ] T552 · components/sql-editor · 2.00d · components/sql-editor/fold/foldCompartment.ts · split
-- [ ] T553 · components/sql-editor · 2.00d · components/sql-editor/format/formatEditorDocument.ts · split
-- [ ] T554 · components/sql-editor · 0.90d · components/sql-editor/metadata/findRelation.ts components/sql-editor/metadata/metadataCache.ts components/sql-editor/metadata/types.ts
-- [ ] T555 · components/sql-editor · 2.00d · components/sql-editor/paste/createPasteExtensions.ts · split
-- [ ] T556 · components/sql-editor · 2.00d · components/sql-editor/paste/multiCursorEscape.ts · split
-- [ ] T557 · components/sql-editor · 2.00d · components/sql-editor/paste/multiCursorPointer.ts · split
-- [ ] T558 · components/sql-editor · 2.00d · components/sql-editor/paste/multipleSelections.ts · split
-- [ ] T559 · components/sql-editor · 2.00d · components/sql-editor/proCompartments.ts · split
-- [ ] T560 · components/sql-editor · 0.60d · components/sql-editor/snippets/builtinSnippets.ts components/sql-editor/snippets/index.ts
-- [ ] T561 · components/sql-editor · 2.00d · components/sql-editor/snippets/snippetCompletionSource.ts · split
-- [ ] T562 · components/sql-editor · 0.30d · components/sql-editor/snippets/types.ts
-- [ ] T563 · windows/connection · 0.90d · windows/connection/connectionPageUtils.ts
-- [ ] T564 · windows/connection · 0.90d · windows/connection/contentViewHelpers.ts
-- [ ] T565 · windows/connection · 2.00d · windows/connection/er/buildErGraph.ts · split
-- [ ] T566 · windows/connection · 2.00d · windows/connection/er/interactionState.ts · split
-- [ ] T567 · windows/connection · 2.00d · windows/connection/er/layoutErGraph.ts · split
+- [ ] T479 · windows/settings · 1.30d · windows/settings/ai/useModelProfileDraft.ts · split
+- [ ] T480 · windows/connection · 0.90d · windows/connection/ObjectBrowser.tsx
+- [ ] T481 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncRefs.ts
+- [ ] T482 · lib · 0.60d · lib/driverCommandIds.ts lib/endpointIdentity.ts
+- [ ] T483 · stores · 0.90d · stores/wappStore.ts
+- [ ] T484 · windows/settings · 0.90d · windows/settings/settingsSections.ts windows/wapps/permissionLabels.ts windows/workflow/draftBridge.ts
+- [ ] T485 · windows/connection · 1.30d · windows/connection/PanelContentRenderer.tsx · split
+- [ ] T486 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncRunState.ts
+- [ ] T487 · lib · 0.80d · lib/ensureNamespace.ts lib/erNodeContextMenu.ts
+- [ ] T488 · stores · 0.60d · stores/workspacePanelStateStore.ts stores/workspaceTabsStore.ts
+- [ ] T489 · windows/connection · 0.90d · windows/connection/PanelTabBar.tsx
+- [ ] T490 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncSelection.ts · split
+- [ ] T491 · lib · 0.60d · lib/errors.ts lib/exportCapability.ts
+- [ ] T492 · windows/connection · 0.30d · windows/connection/PendingPlanDialog.tsx
+- [ ] T493 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncSelectionState.ts
+- [ ] T494 · lib · 2.00d · lib/exportData.ts · split
+- [ ] T495 · windows/connection · 1.30d · windows/connection/PrivilegeView.tsx · split
+- [ ] T496 · windows/data-sync · 0.30d · windows/data-sync/useDataSyncWizardNavigation.ts
+- [ ] T497 · lib · 2.00d · lib/exportDialogShared.ts · split
+- [ ] T498 · windows/connection · 0.90d · windows/connection/ProcessListView.tsx
+- [ ] T499 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncWizardState.ts
+- [ ] T500 · lib · 2.00d · lib/exportFormat.ts · split
+- [ ] T501 · windows/connection · 0.30d · windows/connection/query/ExecutionStrategyAskModal.tsx
+- [ ] T502 · windows/data-sync · 0.60d · windows/data-sync/utils.ts windows/data-transfer/transferLimitationKeys.ts
+- [ ] T503 · lib · 0.60d · lib/exportTableStructure.ts lib/extractQuestions.ts
+- [ ] T504 · windows/connection · 0.90d · windows/connection/query/QueryBuilderHostAdapter.tsx
+- [ ] T505 · lib · 0.50d · lib/extractSql.ts
+- [ ] T506 · windows/connection · 1.30d · windows/connection/query/QueryEditorSection.tsx · split
+- [ ] T507 · lib · 0.90d · lib/fetchRelationDdl.ts
+- [ ] T508 · windows/connection · 1.30d · windows/connection/query/QuerySidebarSection.tsx · split
+- [ ] T509 · lib · 0.30d · lib/filterDbTypes.ts
+- [ ] T510 · windows/connection · 1.30d · windows/connection/query/QueryTransactionModals.tsx · split
+- [ ] T511 · lib · 0.80d · lib/filterExpression.ts
+- [ ] T512 · windows/connection · 0.90d · windows/connection/query/toolbar/ExecutionStrategySelect.tsx
+- [ ] T513 · lib · 0.80d · lib/filterOperators.ts
+- [ ] T514 · windows/connection · 0.90d · windows/connection/query/toolbar/RefreshCompletionButton.tsx
+- [ ] T515 · lib · 0.50d · lib/fkNavigation.ts
+- [ ] T516 · windows/connection · 0.90d · windows/connection/query/toolbar/SnippetMenuButton.tsx
+- [ ] T517 · lib · 1.30d · lib/fkNavigationActions.ts · split
+- [ ] T518 · windows/connection · 1.30d · windows/connection/query/useQueryExecutionGate.tsx · split
+- [ ] T519 · lib · 1.30d · lib/fkReferencedBy.ts · split
+- [ ] T520 · windows/connection · 1.30d · windows/connection/QueryPanel.tsx · split
+- [ ] T521 · lib · 0.80d · lib/fkSelector.ts lib/globalTextSelection.ts
+- [ ] T522 · windows/connection · 0.80d · windows/connection/result-workspace/ExecutionSummaryCard.tsx windows/connection/result-workspace/ResultFindBar.tsx
+- [ ] T523 · lib · 0.80d · lib/gridClipboard.ts
+- [ ] T524 · windows/connection · 1.30d · windows/connection/result-workspace/ResultTableView.tsx · split
+- [ ] T525 · lib · 0.80d · lib/gridErrors.ts lib/gridEventGuards.ts
+- [ ] T526 · windows/connection · 0.50d · windows/connection/result-workspace/ResultWorkspace.tsx
+- [ ] T527 · lib · 1.30d · lib/gridKeyboard.ts · split
+- [ ] T528 · windows/connection · 3.50d · windows/connection/ServerStatusView.tsx · split
+- [ ] T529 · lib · 0.80d · lib/gridPastePlan.ts
+- [ ] T530 · windows/connection · 0.80d · windows/connection/SetValueDateDialog.tsx windows/connection/structure/StructureColumnTable.tsx
+- [ ] T531 · lib · 0.90d · lib/historyGroups.ts lib/hostErrorMessage.ts lib/hostLucideMap.ts
+- [ ] T532 · windows/connection · 0.80d · windows/connection/structure/StructureIndexTable.tsx windows/connection/structure/StructurePlanPreview.tsx
+- [ ] T533 · lib · 2.00d · lib/htmlSanitizer.ts · split
+- [ ] T534 · windows/connection · 0.90d · windows/connection/StructureView.tsx
+- [ ] T535 · lib · 0.90d · lib/iconIds.ts lib/iconResolver.ts lib/importConnectionFile.ts
+- [ ] T536 · windows/connection · 0.30d · windows/connection/TableClipboardStatus.tsx
+- [ ] T537 · lib · 2.00d · lib/importData.ts · split
+- [ ] T538 · windows/connection · 0.80d · windows/connection/TableColumnFilter.tsx
+- [ ] T539 · lib · 1.30d · lib/importExecution.ts · split
+- [ ] T540 · windows/connection · 0.50d · windows/connection/TableFilterToolbar.tsx
+- [ ] T541 · lib · 1.00d · lib/importMapping.ts lib/keymap.ts
+- [ ] T542 · windows/connection · 0.90d · windows/connection/TableFkBreadcrumb.tsx
+- [ ] T543 · lib · 0.80d · lib/keysetPaging.ts
+- [ ] T544 · windows/connection · 0.90d · windows/connection/TableFkErrorBanner.tsx windows/connection/TableLoadErrorState.tsx windows/connection/TableNoPrimaryKeyTip.tsx
+- [ ] T545 · lib · 0.80d · lib/kvAiContext.ts lib/kvSlotState.ts
+- [ ] T546 · windows/connection · 0.90d · windows/connection/TablePendingChangesBar.tsx
+- [ ] T547 · lib · 0.60d · lib/kvWorkspaceCapabilities.ts lib/kvWorkspaceSlots.ts
+- [ ] T548 · windows/connection · 0.60d · windows/connection/TableReadOnlyTip.tsx windows/connection/TableStatusBanners.tsx
+- [ ] T549 · lib · 0.90d · lib/languagePackRuntime.ts
+- [ ] T550 · windows/connection · 1.30d · windows/connection/TableStructureEditor.tsx · split
+- [ ] T551 · lib · 0.90d · lib/loadBatchExportTable.ts
+- [ ] T552 · windows/connection · 0.50d · windows/connection/TableToolbar.tsx
+- [ ] T553 · lib · 0.90d · lib/localeSync.ts
+- [ ] T554 · windows/connection · 5.80d · windows/connection/TableView.tsx · split
+- [ ] T555 · lib · 0.80d · lib/mainWindowContextMenu.ts
+- [ ] T556 · windows/connection · 0.90d · windows/connection/WorkspaceModeSidebar.tsx
+- [ ] T557 · lib · 0.90d · lib/mcpAgentConfig.ts
+- [ ] T558 · windows/connection · 0.90d · windows/connection/connectionPageUtils.ts
+- [ ] T559 · lib · 0.90d · lib/migrationJobHydration.ts
+- [ ] T560 · windows/connection · 0.90d · windows/connection/contentViewHelpers.ts
+- [ ] T561 · lib · 1.30d · lib/migrationJobVerdict.ts · split
+- [ ] T562 · windows/connection · 2.00d · windows/connection/er/buildErGraph.ts · split
+- [ ] T563 · lib · 0.60d · lib/migrationVerification.ts lib/migrationWindowPrefill.ts
+- [ ] T564 · windows/connection · 2.00d · windows/connection/er/interactionState.ts · split
+- [ ] T565 · lib · 1.30d · lib/namedViews.ts · split
+- [ ] T566 · windows/connection · 2.00d · windows/connection/er/layoutErGraph.ts · split
+- [ ] T567 · lib · 0.90d · lib/nativeContextMenu.ts lib/objectBrowserContextMenu.ts lib/objectFilter.ts
 - [ ] T568 · windows/connection · 0.60d · windows/connection/er/nodeMetrics.ts windows/connection/er/relationStyle.ts
-- [ ] T569 · windows/connection · 1.30d · windows/connection/navigator/buildFlatRows.ts · split
-- [ ] T570 · windows/connection · 0.80d · windows/connection/navigator/treeRowAria.ts windows/connection/navigator/types.ts
-- [ ] T571 · windows/connection · 0.90d · windows/connection/navigator/useConnectionDrag.ts
-- [ ] T572 · windows/connection · 0.90d · windows/connection/navigator/useKvDbCounts.ts
-- [ ] T573 · windows/connection · 1.30d · windows/connection/navigator/useNavigatorContextMenus.ts · split
-- [ ] T574 · windows/connection · 2.00d · windows/connection/navigator/useNavigatorDbState.ts · split
-- [ ] T575 · windows/connection · 0.80d · windows/connection/navigator/utils.ts
-- [ ] T576 · windows/connection · 0.90d · windows/connection/openHistoryQuery.ts
-- [ ] T577 · windows/connection · 0.30d · windows/connection/query/aiDraftBridge.ts
-- [ ] T578 · windows/connection · 0.90d · windows/connection/query/contracts.ts
-- [ ] T579 · windows/connection · 1.30d · windows/connection/query/queryDropHandler.ts · split
-- [ ] T580 · windows/connection · 1.00d · windows/connection/query/queryErrorChatPrompt.ts windows/connection/query/queryExecutionRisk.ts
-- [ ] T581 · windows/connection · 0.80d · windows/connection/query/queryResultPaneHeight.ts windows/connection/query/resolveExecutionTarget.ts
-- [ ] T582 · windows/connection · 0.90d · windows/connection/query/useQueryBuilderContribution.ts
-- [ ] T583 · windows/connection · 0.90d · windows/connection/query/validateBindParams.ts windows/connection/queryToolbarWidth.ts windows/connection/result-workspace/index.ts
-- [ ] T584 · windows/connection · 0.80d · windows/connection/result-workspace/isMutationExecution.ts windows/connection/result-workspace/resultWorkspaceHelpers.ts
-- [ ] T585 · windows/connection · 0.60d · windows/connection/schema-tree/schemaTreeCategories.ts windows/connection/schema-tree/schemaTreeDrag.ts
-- [ ] T586 · windows/connection · 0.90d · windows/connection/schema-tree/useExpandedDbCacheRefresh.ts
-- [ ] T587 · windows/connection · 1.30d · windows/connection/tableEditing.ts · split
-- [ ] T588 · windows/connection · 1.30d · windows/connection/useConnectionContextMenu.ts · split
-- [ ] T589 · windows/connection · 0.90d · windows/connection/useConnectionTabs.ts
-- [ ] T590 · windows/connection · 0.90d · windows/connection/useConnectionWorkspaceMeta.ts
-- [ ] T591 · windows/connection · 0.90d · windows/connection/useDirtyIndex.ts
-- [ ] T592 · windows/connection · 0.90d · windows/connection/useKvSlotActions.ts
-- [ ] T593 · windows/connection · 0.90d · windows/connection/useKvWorkspaceSlots.ts
-- [ ] T594 · windows/connection · 0.90d · windows/connection/useNamedViewMenu.ts
-- [ ] T595 · windows/connection · 1.30d · windows/connection/usePanelHandlers.ts · split
-- [ ] T596 · windows/connection · 0.90d · windows/connection/useTableActions.ts
-- [ ] T597 · windows/connection · 0.90d · windows/connection/useTableDraftRows.ts
-- [ ] T598 · windows/connection · 1.30d · windows/connection/useTableForeignKeyNavigation.ts · split
-- [ ] T599 · windows/connection · 0.90d · windows/connection/useTableViewClipboard.ts
-- [ ] T600 · windows/data-sync · 0.90d · windows/data-sync/clientSqlPreview.ts
-- [ ] T601 · windows/data-sync · 0.90d · windows/data-sync/compareReport.ts
-- [ ] T602 · windows/data-sync · 0.30d · windows/data-sync/dataSyncTypes.ts
-- [ ] T603 · windows/data-sync · 0.90d · windows/data-sync/mappingView.ts
-- [ ] T604 · windows/data-sync · 0.90d · windows/data-sync/selectionScope.ts
-- [ ] T605 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncComparison.ts · split
-- [ ] T606 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncEndpoints.ts · split
-- [ ] T607 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncExecution.ts · split
-- [ ] T608 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncExplain.ts
-- [ ] T609 · windows/data-sync · 0.30d · windows/data-sync/useDataSyncFeedback.ts
-- [ ] T610 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncJobLifecycle.ts
-- [ ] T611 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncOptions.ts
-- [ ] T612 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncProfiles.ts · split
-- [ ] T613 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncRefs.ts
-- [ ] T614 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncRunState.ts
-- [ ] T615 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncSelection.ts · split
-- [ ] T616 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncSelectionState.ts
-- [ ] T617 · windows/data-sync · 0.30d · windows/data-sync/useDataSyncWizardNavigation.ts
-- [ ] T618 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncWizardState.ts
-- [ ] T619 · windows/data-sync · 0.60d · windows/data-sync/utils.ts windows/data-transfer/transferLimitationKeys.ts
-- [ ] T620 · windows/data-transfer · 0.90d · windows/data-transfer/transferMappingView.ts
-- [ ] T621 · windows/onboarding · 2.00d · windows/onboarding/onboardingGate.ts · split
-- [ ] T622 · windows/onboarding · 0.30d · windows/onboarding/onboardingLayout.ts
-- [ ] T623 · windows/onboarding · 0.90d · windows/onboarding/useDetectedImportSource.ts
-- [ ] T624 · windows/onboarding · 0.80d · windows/onboarding/wizardState.ts windows/schema-diff/schemaDiffLimitationKeys.ts
-- [ ] T625 · windows/schema-diff · 0.90d · windows/schema-diff/schemaDiffObjectDiscovery.ts
-- [ ] T626 · windows/schema-diff · 0.90d · windows/schema-diff/schemaDiffObjectIdentity.ts
-- [ ] T627 · windows/schema-diff · 0.60d · windows/schema-diff/schemaDiffTableNames.ts windows/schema-diff/useSchemaDiffClipboardFeedback.ts
-- [ ] T628 · windows/schema-diff · 1.30d · windows/schema-diff/useSchemaDiffEndpoints.ts · split
-- [ ] T629 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffJobLifecycle.ts
-- [ ] T630 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffJobRestore.ts
-- [ ] T631 · windows/schema-diff · 1.30d · windows/schema-diff/useSchemaDiffSavedSetups.ts · split
-- [ ] T632 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffUnifiedObjects.ts
-- [ ] T633 · windows/settings · 1.30d · windows/settings/ai/useModelProfileDraft.ts · split
-- [ ] T634 · windows/settings · 0.90d · windows/settings/settingsSections.ts windows/wapps/permissionLabels.ts windows/workflow/draftBridge.ts
-- [ ] T635 · windows/workflow · 0.60d · windows/workflow/workflowDraftConvert.ts windows/workflow/workflowPanelGuards.ts
-- [ ] T636 · windows/workflow · 2.00d · windows/workflow/yamlLint.ts · split
-- [ ] T637 · windows/workflow · 2.00d · windows/workflow/yamlMode.ts · split
-- [ ] T638 · windows/workspace · 0.90d · windows/workspace/workspacePages.ts
-- [ ] T639 · extensions · 0.30d · extensions/generated-pro.ts
-- [ ] T640 · extensions · 0.80d · extensions/generated.ts
-- [ ] T641 · ai · 0.80d · ai/grantState.ts
-- [ ] T642 · ai · 2.00d · ai/sessionCancel.ts · split
-- [ ] T643 · ai · 2.00d · ai/streamRegistry.ts · split
-- [ ] T644 · ai · 2.00d · ai/targetClaim.ts · split
-- [ ] T645 · app.ts · 0.30d · app.ts
-- [ ] T646 · index.ts · 0.90d · index.ts
-- [ ] T647 · shell.ts · 0.90d · shell.ts
+- [ ] T569 · lib · 0.30d · lib/panelContextPath.ts
+- [ ] T570 · windows/connection · 1.30d · windows/connection/navigator/buildFlatRows.ts · split
+- [ ] T571 · lib · 0.90d · lib/pathPicker.ts
+- [ ] T572 · windows/connection · 0.80d · windows/connection/navigator/treeRowAria.ts windows/connection/navigator/types.ts
+- [ ] T573 · lib · 0.60d · lib/processListResult.ts lib/productFeatures.ts
+- [ ] T574 · windows/connection · 0.90d · windows/connection/navigator/useConnectionDrag.ts
+- [ ] T575 · lib · 0.80d · lib/queryContextPath.ts
+- [ ] T576 · windows/connection · 0.90d · windows/connection/navigator/useKvDbCounts.ts
+- [ ] T577 · lib · 0.90d · lib/queryExecutionViewModel.ts
+- [ ] T578 · windows/connection · 1.30d · windows/connection/navigator/useNavigatorContextMenus.ts · split
+- [ ] T579 · lib · 0.90d · lib/querySidebarContextMenu.ts lib/queryStream.ts lib/relationMetadata/identity.ts
+- [ ] T580 · windows/connection · 2.00d · windows/connection/navigator/useNavigatorDbState.ts · split
+- [ ] T581 · lib · 0.30d · lib/resolveUiLanguage.ts
+- [ ] T582 · windows/connection · 0.80d · windows/connection/navigator/utils.ts
+- [ ] T583 · lib · 0.90d · lib/resultEditability.ts
+- [ ] T584 · windows/connection · 0.90d · windows/connection/openHistoryQuery.ts
+- [ ] T585 · lib · 0.80d · lib/resultFindReplace.ts lib/rowCountStrategy.ts
+- [ ] T586 · windows/connection · 0.30d · windows/connection/query/aiDraftBridge.ts
+- [ ] T587 · lib · 0.60d · lib/rowToRecord.ts lib/runPredefinedEdit.ts
+- [ ] T588 · windows/connection · 0.90d · windows/connection/query/contracts.ts
+- [ ] T589 · lib · 0.80d · lib/schemaCache.ts lib/schemaChangingSql.ts
+- [ ] T590 · windows/connection · 1.30d · windows/connection/query/queryDropHandler.ts · split
+- [ ] T591 · lib · 0.90d · lib/schemaDiffConfirm.ts
+- [ ] T592 · windows/connection · 1.00d · windows/connection/query/queryErrorChatPrompt.ts windows/connection/query/queryExecutionRisk.ts
+- [ ] T593 · lib · 0.30d · lib/schemaDiffLimitationsPrefs.ts
+- [ ] T594 · windows/connection · 0.80d · windows/connection/query/queryResultPaneHeight.ts windows/connection/query/resolveExecutionTarget.ts
+- [ ] T595 · lib · 0.80d · lib/schemaObjectSearch.ts
+- [ ] T596 · windows/connection · 0.90d · windows/connection/query/useQueryBuilderContribution.ts
+- [ ] T597 · lib · 0.30d · lib/schemaResourceCache.ts
+- [ ] T598 · windows/connection · 0.90d · windows/connection/query/validateBindParams.ts windows/connection/queryToolbarWidth.ts windows/connection/result-workspace/index.ts
+- [ ] T599 · lib · 0.80d · lib/schemaTreeContextMenu.ts
+- [ ] T600 · windows/connection · 0.80d · windows/connection/result-workspace/isMutationExecution.ts windows/connection/result-workspace/resultWorkspaceHelpers.ts
+- [ ] T601 · lib · 0.80d · lib/serverStatusTrends.ts
+- [ ] T602 · windows/connection · 0.60d · windows/connection/schema-tree/schemaTreeCategories.ts windows/connection/schema-tree/schemaTreeDrag.ts
+- [ ] T603 · lib · 0.80d · lib/setValueActions.ts lib/splash.ts
+- [ ] T604 · windows/connection · 0.90d · windows/connection/schema-tree/useExpandedDbCacheRefresh.ts
+- [ ] T605 · lib · 0.80d · lib/sqlBindParams.ts
+- [ ] T606 · windows/connection · 1.30d · windows/connection/tableEditing.ts · split
+- [ ] T607 · lib · 2.00d · lib/sqlCompletionContext.ts · split
+- [ ] T608 · windows/connection · 1.30d · windows/connection/useConnectionContextMenu.ts · split
+- [ ] T609 · lib · 2.00d · lib/sqlCompletions.ts · split
+- [ ] T610 · windows/connection · 0.90d · windows/connection/useConnectionTabs.ts
+- [ ] T611 · lib · 0.50d · lib/sqlEditorDefaults.ts
+- [ ] T612 · windows/connection · 0.90d · windows/connection/useConnectionWorkspaceMeta.ts
+- [ ] T613 · lib · 0.90d · lib/sqlFileExecution.ts
+- [ ] T614 · windows/connection · 0.90d · windows/connection/useDirtyIndex.ts
+- [ ] T615 · lib · 0.80d · lib/sqlFormat.ts lib/sqlFunctionRegistry.ts
+- [ ] T616 · windows/connection · 0.90d · windows/connection/useKvSlotActions.ts
+- [ ] T617 · lib · 0.80d · lib/sqlGenerator.ts lib/sqlNamespace.ts
+- [ ] T618 · windows/connection · 0.90d · windows/connection/useKvWorkspaceSlots.ts
+- [ ] T619 · lib · 0.80d · lib/sqlPathPrefix.ts lib/sqlSchemaDropTargets.ts
+- [ ] T620 · windows/connection · 0.90d · windows/connection/useNamedViewMenu.ts
+- [ ] T621 · lib · 0.90d · lib/sqlStatementRange.ts lib/sqlTransactionGuard.ts lib/startupTimer.ts
+- [ ] T622 · windows/connection · 1.30d · windows/connection/usePanelHandlers.ts · split
+- [ ] T623 · lib · 0.90d · lib/surfaceBgCache.ts
+- [ ] T624 · windows/connection · 0.90d · windows/connection/useTableActions.ts
+- [ ] T625 · lib · 0.90d · lib/syncPairing.ts
+- [ ] T626 · windows/connection · 0.90d · windows/connection/useTableDraftRows.ts
+- [ ] T627 · lib · 0.30d · lib/syncTaxonomy.ts
+- [ ] T628 · windows/connection · 1.30d · windows/connection/useTableForeignKeyNavigation.ts · split
+- [ ] T629 · lib · 1.30d · lib/tableChanges.ts · split
+- [ ] T630 · windows/connection · 0.90d · windows/connection/useTableViewClipboard.ts
+- [ ] T631 · lib · 0.80d · lib/tableSchemaForSql.ts lib/tableSqlActions.ts
+- [ ] T632 · lib · 2.00d · lib/themeEditorColors.ts · split
+- [ ] T633 · lib · 1.30d · lib/themePackApply.ts · split
+- [ ] T634 · lib · 0.30d · lib/themeTokens.ts
+- [ ] T635 · lib · 0.90d · lib/totalRowsDisplay.ts
+- [ ] T636 · lib · 0.90d · lib/transferLimitationsPrefs.ts lib/transferPairing.ts lib/tunnelDeletion.ts
+- [ ] T637 · lib · 0.80d · lib/tunnelDraft.ts
+- [ ] T638 · lib · 0.90d · lib/updater.ts
+- [ ] T639 · lib · 0.90d · lib/updateReminderSchedule.ts
+- [ ] T640 · lib · 1.30d · lib/valueSearch.ts · split
+- [ ] T641 · lib · 0.50d · lib/wappAssetOrigin.ts
+- [ ] T642 · lib · 1.30d · lib/wappBridge.ts · split
+- [ ] T643 · lib · 0.90d · lib/wappI18n.ts
+- [ ] T644 · lib · 0.30d · lib/windowKind.ts
+- [ ] T645 · lib · 0.90d · lib/windowManager.ts
+- [ ] T646 · lib · 0.60d · lib/workflowDraftYaml.ts lib/workflowListContextMenu.ts
+- [ ] T647 · lib · 0.80d · lib/workflowYaml.ts

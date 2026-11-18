@@ -232,8 +232,43 @@ function bucket(list) {
   return tasks;
 }
 
-// `.tsx` tasks keep their historical ids (T001…); the `.ts` foundation is appended.
-const tasks = [...bucket(sorted), ...bucket(tsSorted)];
+// `.tsx` tasks first, the `.ts` foundation appended (historical split preserved).
+const baseTasks = [...bucket(sorted), ...bucket(tsSorted)];
+
+/**
+ * Wave ordering. Round-robin by area so any window of 4 consecutive tasks comes
+ * from 4 distinct areas — i.e. distinct `mod.rs` registration blocks — and can
+ * be dispatched as one parallel wave without manual conflict analysis. T numbers
+ * follow this order, so "smallest T first" is also "wave order". The area's
+ * dependency rank (ORDER for .tsx, TS_ORDER for .ts) is kept as the lane seed.
+ */
+function areaRank(area) {
+  const prefixes = [...ORDER, ...TS_ORDER];
+  const i = prefixes.findIndex((p) => area === p || area.startsWith(`${p}/`));
+  return i === -1 ? 9999 : i;
+}
+function waveOrder(list) {
+  const lanes = new Map();
+  for (const t of list) {
+    if (!lanes.has(t.area)) lanes.set(t.area, []);
+    lanes.get(t.area).push(t);
+  }
+  const areas = [...lanes.keys()].sort((a, b) => areaRank(a) - areaRank(b) || a.localeCompare(b));
+  const out = [];
+  for (let i = 0; ; i += 1) {
+    let added = false;
+    for (const a of areas) {
+      const lane = lanes.get(a);
+      if (i < lane.length) {
+        out.push(lane[i]);
+        added = true;
+      }
+    }
+    if (!added) break;
+  }
+  return out;
+}
+const tasks = waveOrder(baseTasks);
 const allRows = [...rows, ...tsRows];
 const args = process.argv.slice(2);
 const flag = (name, fallback = null) => {
@@ -272,7 +307,10 @@ const TASKLIST_HEADER = [
   '状态不落到任何汇总数字里（那会逼着改状态时连带改别的行）：进度用',
   '`node scripts/rune-parity.mjs --progress` 现算。行尾的 area、工作量、涉及文件由脚本生成，',
   '不要手改；React 源码变动后跑 `node scripts/rune-parity.mjs --tasklist` 刷新，',
-  '已存在的 T 编号保留原状态。',
+  '已完成任务按 React 文件集识别，源码变动重排 T 编号也不会错位。',
+  '',
+  '台账按 **wave** 编排：T 编号顺序即执行顺序，连续任务落在不同 area（不同 `mod.rs`）。',
+  '取下一波：`node scripts/rune-parity.mjs --next-wave`（默认 4，贪心取不同 area，尾部可能不足 4）。',
   '',
   'T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖的 `.ts` 基础层',
   '（`lib/`、`types/`、`stores/`、`hooks/`、`commands/`）。`.ts` 的第一批五项',
@@ -282,6 +320,18 @@ const TASKLIST_HEADER = [
 ];
 
 const TASK_LINE = /^- \[(.)\] (T\d{3}) · (.+)$/;
+
+/**
+ * Status is keyed by the task's React file set (order-independent), never by the
+ * positional T number. When React sources change and wave ordering renumbers the
+ * ledger, a ported task keeps its `done` mark because its file set is unchanged.
+ */
+function taskKey(task) {
+  return task.rows
+    .map((r) => r.react.replace('packages/frontend/src/', ''))
+    .sort()
+    .join(' ');
+}
 
 function readTasklist(path) {
   let text;
@@ -293,7 +343,10 @@ function readTasklist(path) {
   const seen = new Map();
   for (const line of text.split('\n')) {
     const m = TASK_LINE.exec(line);
-    if (m && STATE_OF_MARK[m[1]] !== undefined) seen.set(m[2], m[1]);
+    if (!m || STATE_OF_MARK[m[1]] === undefined) continue;
+    // "- [x] T006 · area · 0.30d · file1 file2 · split" -> file set is part[3].
+    const files = line.split(' · ')[3]?.replace(/\s*· split$/, '') ?? '';
+    if (files) seen.set(files.split(/\s+/).sort().join(' '), m[1]);
   }
   return seen;
 }
@@ -307,11 +360,12 @@ function tasklistLine(index, task, mark) {
 if (flag('--tasklist')) {
   const path = flag('--tasklist') === true ? TASKLIST : flag('--tasklist');
   const previous = readTasklist(path);
-  const kept = [...previous.keys()].filter((id) => Number(id.slice(1)) > tasks.length);
-  const lines = [...TASKLIST_HEADER, ...tasks.map((t, i) => tasklistLine(i, t, previous.get(`T${String(i + 1).padStart(3, '0')}`) ?? ' '))];
+  const currentKeys = new Set(tasks.map(taskKey));
+  const stale = [...previous.keys()].filter((key) => !currentKeys.has(key)).length;
+  const lines = [...TASKLIST_HEADER, ...tasks.map((t, i) => tasklistLine(i, t, previous.get(taskKey(t)) ?? ' '))];
   writeFileSync(path, `${lines.join('\n')}\n`);
   const done = [...previous.values()].filter((m) => m === 'x').length;
-  console.log(`wrote ${path} (${tasks.length} tasks, ${done} already done${kept.length ? `, dropped ${kept.length} stale ids` : ''})`);
+  console.log(`wrote ${path} (${tasks.length} tasks, ${done} already done${stale ? `, dropped ${stale} stale file sets` : ''})`);
 } else if (flag('--status')) {
   const spec = String(flag('--status'));
   const [rawId, rawState] = spec.split('=');
@@ -336,12 +390,31 @@ if (flag('--tasklist')) {
 } else if (flag('--progress')) {
   const path = flag('--progress') === true ? TASKLIST : flag('--progress');
   const marks = readTasklist(path);
-  const id = (i) => `T${String(i + 1).padStart(3, '0')}`;
-  const count = (m) => tasks.filter((_, i) => (marks.get(id(i)) ?? ' ') === m).length;
+  const markOf = (t) => marks.get(taskKey(t)) ?? ' ';
+  const count = (m) => tasks.filter((t) => markOf(t) === m).length;
   const done = count('x');
-  const daysDone = tasks.reduce((n, t, i) => n + ((marks.get(id(i)) ?? ' ') === 'x' ? t.days : 0), 0);
+  const daysDone = tasks.reduce((n, t) => n + (markOf(t) === 'x' ? t.days : 0), 0);
   console.log(`${done}/${tasks.length} tasks done (${count('~')} doing, ${count('!')} blocked, ${count(' ')} todo)`);
   console.log(`${daysDone.toFixed(1)} of ${totals.days} working days landed on this track`);
+} else if (flag('--next-wave')) {
+  // Greedy one-per-area over todos in T order: always distinct mod.rs files.
+  // In the tail fewer than N areas may remain, so the wave can be smaller —
+  // never a duplicate area. The static wave order keeps "smallest T first".
+  const path = flag('--next-wave') === true ? TASKLIST : flag('--next-wave');
+  const n = Number(flag('--size') ?? 4);
+  const marks = readTasklist(path);
+  const seenAreas = new Set();
+  const next = [];
+  for (const t of tasks) {
+    if ((marks.get(taskKey(t)) ?? ' ') !== ' ') continue;
+    if (seenAreas.has(t.area)) continue;
+    seenAreas.add(t.area);
+    next.push(t);
+    if (next.length === n) break;
+  }
+  for (const [i, t] of next.entries()) {
+    console.log(`W${i + 1}  T${String(tasks.indexOf(t) + 1).padStart(3, '0')}  ${t.area}  ${t.days.toFixed(2)}d  ${t.rows.map((r) => r.react.replace('packages/frontend/src/', '')).join(' ')}`);
+  }
 } else if (flag('--json')) {
   writeFileSync(flag('--json'), JSON.stringify({ generatedAt: new Date().toISOString(), totals, tasks, files: allRows }, null, 2));
   console.log(`wrote ${flag('--json')} (${totals.tasks} tasks)`);
