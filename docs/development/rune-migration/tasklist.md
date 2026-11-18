@@ -48,7 +48,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T029 · lib/connectionViews · 0.90d · lib/connectionViews/types.ts lib/contextItems.ts lib/contextMenuPosition.ts
 - [ ] T030 · lib/dashboard · 0.90d · lib/dashboard/runToChart.ts lib/dashboard/runToResult.ts lib/databaseObjectIdentity.ts
 - [ ] T031 · lib/metadata · 0.30d · lib/metadata/batch.ts
-- [ ] T032 · lib/relationMetadata · 0.80d · lib/relationMetadata/metadataCache.ts
+- [x] T032 · lib/relationMetadata · 0.80d · lib/relationMetadata/metadataCache.ts
 - [ ] T033 · lib/relationPrediction · 0.80d · lib/relationPrediction/fromTableSchema.ts lib/relationPrediction/normalize.ts
 - [x] T034 · lib/session · 0.90d · lib/session/counters.ts
 - [ ] T035 · lib/sqlDialects · 1.00d · lib/sqlDialects/dialectProfile.ts lib/sqlDialects/extra.ts

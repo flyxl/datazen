@@ -9,7 +9,7 @@
 - [x] T007 · components/connection · 0.80d · components/connection/ConnectionAdvancedSettings.tsx
 - [ ] T010 · components/migration · 0.80d · components/migration/MigrationEndpointsBar.tsx
 - [x] T016 · windows/connection · 2.00d · windows/connection/BatchExportDialog.tsx · split
-- [ ] T032 · lib/relationMetadata · 0.80d · lib/relationMetadata/metadataCache.ts
+- [x] T032 · lib/relationMetadata · 0.80d · lib/relationMetadata/metadataCache.ts
 - [x] T034 · lib/session · 0.90d · lib/session/counters.ts
 - [ ] T036 · lib/structureEditor · 0.90d · lib/structureEditor/buildStructureChangeRequest.ts lib/structureEditor/canOpenStructureEditor.ts lib/structureEditor/controlHints.ts
 - [ ] T045 · platform/web · 0.30d · platform/web/index.ts
