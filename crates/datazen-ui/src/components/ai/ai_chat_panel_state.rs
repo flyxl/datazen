@@ -45,7 +45,9 @@
 //! * assistant message content is still S2's plain-text placeholder;
 //! * the 4000ms auto-clear of the remember notice (`window.setTimeout`
 //!   in `handleRemember`) has no VM clock behind it: the notice is set
-//!   and stays until the host dismisses it (or `clear_chat` clears it).
+//!   and stays until the host dismisses it (`clear_chat` never
+//!   touches it — the store `clearChat` only clears the store-owned
+//!   candidate notice).
 //!
 //! # React effects, as explicit methods
 //!
@@ -422,7 +424,17 @@ impl AiChatPanelState {
         self.list.set_stream_mcp_tool_name(None);
         self.list.set_stream_memory_used(Vec::new());
         self.list.set_session_memory_used(Vec::new());
+        self.list.set_memory_candidate_count(None);
+        self.set_session_migration_error(None);
+        self.set_session_migration_success(0);
         self.area.set_streaming(false);
+        self.area.set_loaded_skills(Vec::new());
+        self.area.set_egress(
+            None,
+            self.area.egress_database().map(str::to_string),
+            self.area.egress_relaxed(),
+            self.area.egress_has_context_files(),
+        );
         self.header.set_has_messages(false);
         self.request_id = None;
         true
@@ -658,7 +670,6 @@ impl AiChatPanelState {
         self.list.set_stream_memory_used(Vec::new());
         self.list.set_session_memory_used(Vec::new());
         self.list.set_memory_candidate_count(None);
-        self.list.set_remember_notice(None);
         self.area.set_streaming(false);
         self.area.set_loaded_skills(Vec::new());
         self.area.set_egress(
