@@ -15,7 +15,7 @@
 - [ ] T029 · lib/connectionViews · 0.90d · lib/connectionViews/types.ts lib/contextItems.ts lib/contextMenuPosition.ts
 - [ ] T035 · lib/sqlDialects · 1.00d · lib/sqlDialects/dialectProfile.ts lib/sqlDialects/extra.ts
 - [ ] T037 · lib/valuePresentation · 0.50d · lib/valuePresentation/columnOverrides.ts
-- [ ] T038 · hooks · 0.30d · hooks/useConfirmDialog.tsx
+- [x] T038 · hooks · 0.30d · hooks/useConfirmDialog.tsx
 - [ ] T044 · platform/shared · 0.30d · platform/shared/index.ts
 - [ ] T047 · bootstrap · 2.00d · bootstrap/startSharedApp.tsx · split
 - [ ] T048 · commands · 0.30d · commands/adb.ts
