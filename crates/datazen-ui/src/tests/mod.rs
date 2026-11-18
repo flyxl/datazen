@@ -243,3 +243,7 @@ mod workflow_execution_panel;
 // T020: the main window's composition root port (branches, error screen,
 // retry, and the seams that must stay honest).
 mod main_page;
+
+// T022: the install-wapp dialog port (two-step pick/review flow, the
+// native pickers, the honest host seams and the close/reset path).
+mod install_wapp_dialog;

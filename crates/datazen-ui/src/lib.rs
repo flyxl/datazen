@@ -23,6 +23,7 @@ mod search_state;
 mod schema_workflows_state;
 mod tools_state;
 mod workspace_state;
+mod wapps_state;
 pub(crate) mod ui;
 mod views;
 mod app;
