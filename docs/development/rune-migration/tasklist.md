@@ -26,7 +26,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [x] T007 · components/connection · 0.80d · components/connection/ConnectionAdvancedSettings.tsx
 - [x] T008 · components/chart · 2.00d · components/chart/ChartCanvas.tsx · split
 - [ ] T009 · components/ai · 5.30d · components/ai/AiChatPanel.tsx · split
-- [ ] T010 · components/migration · 0.80d · components/migration/MigrationEndpointsBar.tsx
+- [x] T010 · components/migration · 0.80d · components/migration/MigrationEndpointsBar.tsx
 - [ ] T011 · components/sql-editor · 2.70d · components/sql-editor/SqlEditor.tsx · split
 - [ ] T012 · components · 0.90d · components/AiWriteProposalHost.tsx
 - [ ] T013 · components/admin · 0.90d · components/admin/AdminCreateDialog.tsx
