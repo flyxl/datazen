@@ -230,6 +230,9 @@ mod migration_endpoints_audit;
 // T010 independent retest of the D1/D2 fix: label resolution, selection, fallback, value on_choose.
 mod migration_endpoints_retest;
 
+// T023-S1: ColumnMappingRow leaf (row model, target options, skip/select/text commits, disabled).
+mod column_mapping_row;
+
 // T008: ChartCanvas dispatcher, measured viewport and honest placeholders.
 mod chart_canvas;
 // T008 independent audit: marker honesty, factory seam, geometry, source guards.

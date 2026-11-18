@@ -5,6 +5,7 @@ mod chrome;
 mod connections;
 mod connections_home;
 mod dashboards_workflows;
+mod data_transfer;
 mod modals;
 mod navigation;
 mod settings;
@@ -18,6 +19,8 @@ pub(crate) use chrome::*;
 pub(crate) use connections::*;
 pub(crate) use connections_home::*;
 pub(crate) use dashboards_workflows::*;
+#[allow(unused_imports)] // the editor shell (T023-S2) is the production consumer
+pub(crate) use data_transfer::*;
 pub(crate) use modals::*;
 pub(crate) use navigation::*;
 pub(crate) use settings::*;

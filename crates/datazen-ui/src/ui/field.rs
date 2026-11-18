@@ -58,6 +58,7 @@ pub(crate) struct TextField<'a> {
     placeholder: Option<String>,
     ink: Option<Color>,
     secure: bool,
+    disabled: bool,
     label: Option<String>,
     bound: bool,
     on_edit_act: Option<Box<dyn FnOnce(rune_kit::TextInput) -> rune_kit::TextInput>>,
@@ -87,6 +88,7 @@ impl<'a> TextField<'a> {
             placeholder: None,
             ink: None,
             secure: false,
+            disabled: false,
             label: None,
             bound: false,
             on_edit_act: None,
@@ -181,6 +183,15 @@ impl<'a> TextField<'a> {
         self
     }
 
+    /// Inert: the kit renders its disabled state and the field takes no
+    /// caret (T023-S1: the column-mapping row's inputs honour `disabled`).
+    /// The row is the only caller until the editor shell (T023-S2) lands.
+    #[allow(dead_code)]
+    pub(crate) fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
+
     /// The accessible name, when no visible label names the field.
     pub(crate) fn label(mut self, label: impl Into<String>) -> Self {
         self.label = Some(label.into());
@@ -247,7 +258,8 @@ impl<'a> TextField<'a> {
         let mut ti = rune_kit::TextInput::new(self.edit)
             .text_style(self.style)
             .height(self.height)
-            .width(self.width);
+            .width(self.width)
+            .disabled(self.disabled);
         if embedded {
             ti = ti.plain();
         }
@@ -308,6 +320,7 @@ impl<'a> TextField<'a> {
             .grow(1.0)
             .shrink()
             .min_w(0.0)
+            .disabled(self.disabled)
             .single_line();
         if let Some(text) = self.placeholder {
             // No caller-specified placeholder colour in the kit-delegated
