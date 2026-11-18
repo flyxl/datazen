@@ -30,10 +30,17 @@
 //! per-row root key and the shared `data-transfer-column-row` id is the probe's
 //! single-row key, not a contract the shell can keep.
 //!
-//! Open S2 decision (T023-S1 D3, do not fix here): `build` ends in
+//! Open S2 decision (T023-S1 D3), resolved by T023-S2: `build` ends in
 //! `rune_kit::root`, which forces the row to full-window size and adds its
-//! own overlay layer — so S2 must decide how to mount N rows that each
-//! carry their own kit root, rather than stacking the rows as built.
+//! own overlay layer — so the editor shell cannot stack rows as built.
+//! The resolution is [`ColumnMappingRow::build_inner`]: the row without its
+//! kit root, returning the row element plus the overlay layer its select
+//! listbox needs. The shell calls `build_inner` once per row, collects the
+//! layers, and calls `rune_kit::root` exactly once over the whole editor.
+//! `build` is unchanged behaviour — it is `build_inner` plus the root — so
+//! the S1 single-row probes still exercise the same layout. The inner row
+//! also carries `.w_full()`: inside a kit root that was already forced by
+//! `root`, and inside the shell's rows column it fills the table width.
 //!
 //! ## Documented deviations from React
 //!
@@ -278,7 +285,19 @@ impl<'a, S: 'static> ColumnMappingRow<'a, S> {
 
     /// React's row: `flex items-center gap-3 border-t border-edge px-3 py-1.5
     /// text-sm`, with the amber wash while the row is unmapped.
-    pub(crate) fn build(mut self, dark: bool) -> El {
+    ///
+    /// A single row on its own, exactly as the S1 probes mount it.
+    pub(crate) fn build(self, dark: bool) -> El {
+        let (root, layer) = self.build_inner(dark);
+        rune_kit::root(root, layer)
+    }
+
+    /// The same row without its kit root: the row element plus the overlay
+    /// layer (the target select's listbox) the caller must mount alongside
+    /// it. The editor shell (T023-S2) calls this once per row and roots the
+    /// whole editor once — stacking `build` outputs would nest N full-window
+    /// `kit-root`s, each forcing its row to window size.
+    pub(crate) fn build_inner(mut self, dark: bool) -> (El, Vec<El>) {
         self.dark = dark;
         let k = kit(dark);
         let vm = &self.vm;
@@ -293,6 +312,7 @@ impl<'a, S: 'static> ColumnMappingRow<'a, S> {
             .border_sides([1.0, 0.0, 0.0, 0.0], k.c.border_base)
             .px(12.0)
             .py(6.0)
+            .w_full()
             .min_w(0.0);
         if is_unmapped(&vm.row) {
             root = root.fill(k.alpha(k.c.warning.fg, 0.05));
@@ -354,7 +374,7 @@ impl<'a, S: 'static> ColumnMappingRow<'a, S> {
         skip_cell = skip_cell.child(checkbox.build(k));
         root = root.child(skip_cell);
 
-        rune_kit::root(root, layer)
+        (root, layer)
     }
 
     /// The `min-w-0 flex-1` target cell: a text input when the target table is

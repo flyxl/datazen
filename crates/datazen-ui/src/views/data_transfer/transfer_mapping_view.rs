@@ -1,0 +1,245 @@
+//! T307 VM placeholder: `transferMappingView.ts`, re-implemented as local
+//! pure functions over [`TransferTableVm`].
+//!
+//! `transferMappingView.ts` (T307) is not ported yet, and the shell
+//! (T023-S2) depends on its four helpers, so this module carries them as
+//! pure functions — each mirroring its TypeScript source line for line
+//! (see the doc on each function for the TS reference) — plus the table
+//! model they operate on ([`TransferTableVm`],
+//! [`ColumnMappingTablePatch`], [`TransferMappingStatus`],
+//! [`show_create_new_toggle`], [`show_target_type`]). The signatures are
+//! deliberately the TS ones, transliterated.
+//!
+//! T307 replaces this whole module with the real port; the shell never
+//! pretends to be wired to T307 — every mapping-logic call site in the
+//! shell goes through this module and no other mapping logic exists
+//! there. Do not extend this module with new semantics: anything T307
+//! has not ported yet belongs here only as a labelled placeholder, and
+//! anything it has ported replaces the placeholder here.
+
+// The real T307 port is the production consumer of the model; until then
+// the shell and the component tests are the only callers, and the status
+// enum carries the full React union although this slice only matches on
+// `CREATE_NEW`, so the dead-code lint is silenced here rather than in a
+// crate-wide allow.
+#![allow(dead_code)]
+
+use super::column_mapping_row::TransferColumnMapping;
+
+/// React `TransferMappingStatus` (`commands/transfer.ts:8-14`).
+///
+/// Only the `CREATE_NEW` arm matters in this slice (it shows the
+/// create-new toggle); the rest are carried so the model stays the
+/// React union and T307 / the transfer view can match on it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum TransferMappingStatus {
+    #[default]
+    Matched,
+    CreateNew,
+    UnmappedSource,
+    UnmappedTarget,
+    Disabled,
+    Incompatible,
+}
+
+/// React `TransferTableResult` (`commands/transfer.ts:132-150`), cut down
+/// to what the shell (React 35–193) reads.
+///
+/// `source_columns` / `target_columns` are `Option` because React
+/// distinguishes "absent" from "empty": absent source columns fall back
+/// to the mapping rows' sources (`normalizeColumnMappings`), and absent
+/// target columns behave as `[]` in the auto-match / warning paths.
+/// `source_column_types` is the `Record<string, string>` as an ordered
+/// association list (a handful of columns; linear lookup is enough).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct TransferTableVm {
+    pub source_table: String,
+    pub target_table: String,
+    pub status: TransferMappingStatus,
+    pub create_new: bool,
+    pub enabled: bool,
+    pub column_mappings: Vec<TransferColumnMapping>,
+    pub source_columns: Option<Vec<String>>,
+    pub target_columns: Option<Vec<String>>,
+    pub source_column_types: Vec<(String, String)>,
+}
+
+impl TransferTableVm {
+    /// `table.sourceColumnTypes?.[column]`.
+    pub(crate) fn source_type(&self, column: &str) -> Option<&str> {
+        self.source_column_types
+            .iter()
+            .find(|(name, _)| name == column)
+            .map(|(_, ty)| ty.as_str())
+    }
+
+    /// `table.sourceColumns ?? mappings.map((m) => m.sourceColumn)` — the
+    /// source list `handleAutoMatch` works from (React 66).
+    pub(crate) fn auto_match_sources(&self, mappings: &[TransferColumnMapping]) -> Vec<String> {
+        match &self.source_columns {
+            Some(columns) => columns.clone(),
+            None => mappings
+                .iter()
+                .map(|m| m.source_column.clone())
+                .collect(),
+        }
+    }
+}
+
+/// React `Partial<TransferTableResult>` as the shell reports it: only the
+/// three fields the shell (React 35–193) ever commits.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct ColumnMappingTablePatch {
+    pub target_table: Option<String>,
+    pub create_new: Option<bool>,
+    pub column_mappings: Option<Vec<TransferColumnMapping>>,
+}
+
+impl ColumnMappingTablePatch {
+    /// Apply the patch to a table, exactly as the parent's `onChange`
+    /// spreads it over the stored `TransferTableResult`.
+    pub(crate) fn apply_to(&self, table: &mut TransferTableVm) {
+        if let Some(target_table) = &self.target_table {
+            table.target_table = target_table.clone();
+        }
+        if let Some(create_new) = self.create_new {
+            table.create_new = create_new;
+        }
+        if let Some(column_mappings) = &self.column_mappings {
+            table.column_mappings = column_mappings.clone();
+        }
+    }
+}
+
+/// React `showCreateNewToggle` (lines 39):
+/// `structureMode || table.status === 'CREATE_NEW' || table.createNew`.
+pub(crate) fn show_create_new_toggle(structure_mode: bool, table: &TransferTableVm) -> bool {
+    structure_mode || table.status == TransferMappingStatus::CreateNew || table.create_new
+}
+
+/// React `showTargetType` (line 40): `structureMode && table.createNew`.
+pub(crate) fn show_target_type(structure_mode: bool, table: &TransferTableVm) -> bool {
+    structure_mode && table.create_new
+}
+
+// ---------------------------------------------------------------------------
+// T307 VM placeholder: transferMappingView.ts, re-implemented as local pure
+// functions. T307 replaces this whole section with the real port; the
+// signatures are deliberately the TS ones, transliterated.
+// ---------------------------------------------------------------------------
+
+/// VM placeholder for `normalizeColumnMappings`
+/// (`transferMappingView.ts:4-17`): every source column gets a mapping row.
+/// Absent `sourceColumns` falls back to the distinct sources of the
+/// stored mappings, in first-seen order; a source with no stored mapping
+/// is synthesised as `{ targetColumn: '', skip: true }`.
+pub(crate) fn normalize_column_mappings(table: &TransferTableVm) -> Vec<TransferColumnMapping> {
+    let source_columns = match &table.source_columns {
+        Some(columns) => columns.clone(),
+        None => {
+            let mut seen: Vec<String> = Vec::new();
+            for mapping in &table.column_mappings {
+                if !seen.contains(&mapping.source_column) {
+                    seen.push(mapping.source_column.clone());
+                }
+            }
+            seen
+        }
+    };
+    source_columns
+        .iter()
+        .map(|source_column| {
+            table
+                .column_mappings
+                .iter()
+                .find(|m| &m.source_column == source_column)
+                .cloned()
+                .unwrap_or(TransferColumnMapping {
+                    source_column: source_column.clone(),
+                    target_column: String::new(),
+                    skip: true,
+                    target_native_type: None,
+                })
+        })
+        .collect()
+}
+
+/// VM placeholder for `autoMatchColumnMappings`
+/// (`transferMappingView.ts:20-37`): match source columns to target
+/// columns by identical name. A matched row takes the source name as its
+/// target and `skip: false`; an unmatched row is emptied and skipped.
+/// A row's `targetNativeType` override survives the match.
+pub(crate) fn auto_match_column_mappings(
+    source_columns: &[String],
+    target_columns: &[String],
+    existing: &[TransferColumnMapping],
+) -> Vec<TransferColumnMapping> {
+    source_columns
+        .iter()
+        .map(|source_column| {
+            let matched = target_columns.iter().any(|c| c == source_column);
+            let prev = existing
+                .iter()
+                .find(|m| &m.source_column == source_column);
+            TransferColumnMapping {
+                source_column: source_column.clone(),
+                target_column: if matched {
+                    source_column.clone()
+                } else {
+                    String::new()
+                },
+                skip: !matched,
+                target_native_type: prev.and_then(|m| m.target_native_type.clone()),
+            }
+        })
+        .collect()
+}
+
+/// VM placeholder for `clearUnmappedColumnMappings`
+/// (`transferMappingView.ts:40-45`): rows without a target column are
+/// emptied and marked skipped; mapped rows pass through unchanged.
+pub(crate) fn clear_unmapped_column_mappings(
+    mappings: &[TransferColumnMapping],
+) -> Vec<TransferColumnMapping> {
+    mappings
+        .iter()
+        .map(|m| {
+            if m.target_column.trim().is_empty() {
+                TransferColumnMapping {
+                    target_column: String::new(),
+                    skip: true,
+                    ..m.clone()
+                }
+            } else {
+                m.clone()
+            }
+        })
+        .collect()
+}
+
+/// VM placeholder for `unmappedTargetColumns`
+/// (`transferMappingView.ts:48-56`): target columns not referenced by any
+/// active (non-skipped, non-empty) mapping. A table being created, or one
+/// with no target columns, has no unmapped targets.
+pub(crate) fn unmapped_target_columns(table: &TransferTableVm) -> Vec<String> {
+    if table.create_new {
+        return Vec::new();
+    }
+    let Some(target_columns) = &table.target_columns else {
+        return Vec::new();
+    };
+    if target_columns.is_empty() {
+        return Vec::new();
+    }
+    let used: Vec<&str> = table
+        .column_mappings
+        .iter()
+        .filter(|m| !m.skip && !m.target_column.is_empty())
+        .map(|m| m.target_column.as_str())
+        .collect();
+    target_columns
+        .iter()
+        .filter(|col| !used.contains(&col.as_str()))
+        .cloned()
+        .collect()
+}

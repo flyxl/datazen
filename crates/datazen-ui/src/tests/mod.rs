@@ -234,6 +234,8 @@ mod migration_endpoints_retest;
 mod column_mapping_row;
 // T023-S1 independent audit: fresh vectors (target_options boundaries, patch/skip interaction, disabled, key scope, placeholder label).
 mod column_mapping_row_audit;
+// T023-S2: ColumnMappingEditor shell (target table + create-new toggle, auto-match/clear, warning, header, row assembly).
+mod column_mapping_editor;
 
 // T008: ChartCanvas dispatcher, measured viewport and honest placeholders.
 mod chart_canvas;
