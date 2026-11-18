@@ -36,6 +36,15 @@
 - 主检出实测 `CARGO_TARGET_DIR=$PWD/target bash scripts/rune-migrate-gate.sh` → **gate: PASS**（已切到 1.100.0）。
 - 4 个 coder 已发「继续」恢复，要求从暂停现场接着做、不 revert；warning 数字因换工具链上升不算回归。
 
+### 串行编译测试队列（2026-11-18，替代各轨自行 cargo）
+
+为避免 4 轨并发编译抢 CPU，所有 `cargo` / gate / test 收口到一个专属 build subagent 名下的单一串行 worker。
+
+- 队列目录（绝对路径，跨 worktree 共享）：`/private/var/folders/lr/_2jh91ps6f5318t_f64jb9000000gn/T/opencode/rune-buildq`，含 `submit.sh` / `worker.sh` / `README.md`。
+- 调用方（coder 与 tester）统一：`bash <Q>/submit.sh <requester> <workdir> '<原命令>'`；原子入队、阻塞等结果、原样输出、以 job 退出码退出。`running/` 中遗留 job 在 worker 重启时自动回收。
+- 专属 build subagent 会话 `ses_e127a113dffekO0rk82JLQan69` 独占 worker，禁止第二实例；活性看 `heartbeat` 与 `worker.pid`。
+- **纪律**：coder/tester 禁止直接跑 cargo/gate/test；在途的旧编译允许自然结束，不得新开。所有后续 tester 简报必须包含 submit.sh 调用方式。
+
 ### Tester 会话
 
 （待 coder 返回后填入）
