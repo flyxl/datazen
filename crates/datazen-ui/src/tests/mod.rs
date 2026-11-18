@@ -239,3 +239,5 @@ mod chart_canvas_audit;
 mod ai_chat_panel;
 // T009-S1 independent audit: fresh vectors, dual-channel selection, geometry, source guards.
 mod ai_chat_panel_audit;
+// T009-S2: AiChatPanel ChatBubble (tool/reasoning/content/memory/remember/streaming/cancelled/questions).
+mod ai_chat_panel_bubble;

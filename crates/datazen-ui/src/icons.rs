@@ -140,6 +140,15 @@ pub(crate) static ICON_SEND: rune::Icon = rune::Icon {
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m22 2-7 20-4-9-9-4Z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M22 2 11 13\"/>",
 };
+/// T009-S2: lucide `book-open`, the memory chip / remember button glyph in
+/// `ChatBubble` (`AiChatPanel.tsx` uses `BookOpen`). Paths verified against
+/// the repo's installed `lucide-react@0.487.0`
+/// (`node_modules/lucide-react/dist/esm/icons/book-open.js`).
+pub(crate) static ICON_BOOK_OPEN: rune::Icon = rune::Icon {
+    name: "book-open",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 7v14\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z\"/>",
+};
 pub(crate) static ICON_CHEVRON_LEFT: rune::Icon = rune::Icon {
     name: "chevron-left",
     view: 24.0,
