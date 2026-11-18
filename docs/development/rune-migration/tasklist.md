@@ -23,7 +23,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [x] T004 · components/schema · 0.50d · components/schema/SchemaDiffPanel.tsx
 - [ ] T005 · components/history · 1.30d · components/history/GlobalQueryHistoryDialog.tsx · split
 - [x] T006 · components/query · 0.30d · components/query/ExplainPlanTree.tsx
-- [ ] T007 · components/connection · 0.80d · components/connection/ConnectionAdvancedSettings.tsx
+- [x] T007 · components/connection · 0.80d · components/connection/ConnectionAdvancedSettings.tsx
 - [ ] T008 · components/chart · 2.00d · components/chart/ChartCanvas.tsx · split
 - [ ] T009 · components/ai · 5.30d · components/ai/AiChatPanel.tsx · split
 - [ ] T010 · components/migration · 0.80d · components/migration/MigrationEndpointsBar.tsx

@@ -6,7 +6,7 @@
 
 - [x] T003 · components/filter · 0.60d · components/filter/FilterBetweenInput.tsx components/filter/FilterConditionChip.tsx
 - [x] T004 · components/schema · 0.50d · components/schema/SchemaDiffPanel.tsx
-- [ ] T007 · components/connection · 0.80d · components/connection/ConnectionAdvancedSettings.tsx
+- [x] T007 · components/connection · 0.80d · components/connection/ConnectionAdvancedSettings.tsx
 - [ ] T010 · components/migration · 0.80d · components/migration/MigrationEndpointsBar.tsx
 - [ ] T016 · windows/connection · 2.00d · windows/connection/BatchExportDialog.tsx · split
 - [ ] T032 · lib/relationMetadata · 0.80d · lib/relationMetadata/metadataCache.ts
