@@ -16,7 +16,7 @@
 //! |---|---|
 //! | `if (!connectionsLoaded) return null` | degenerate: the bootstrap consults the adapter before the first frame (`app.rs`'s `init_state` / `app_with_adapter` both run `sync_desktop_connections` at init), so no frame exists with the first load still in flight. The never-synced state keeps the memory port's list, exactly as `AppState::default()` always has. |
 //! | `connections.length === 0 && loadError` → the `main-load-error` screen with `main-load-retry` | [`main_load_failed`]: the store's list fetch failed with a real error ([`AppState::connections_load_error`], written by `sync_desktop_connections`) and the store's list is empty. The store keeps its previous list when a fetch fails — React's zustand `connectionStore` writes only the error on failure — so an empty list means the list never answered. |
-//! | `<ConnectionPage />` + the two dialog hosts + `RunningExecutionCloseHost` | [`main_shell_body`]: the titlebar, the rail + navigator + page row, and the root modal layer (the two dialog hosts). |
+//! | `<ConnectionPage />` + the two dialog hosts + `RunningExecutionCloseHost` | [`main_shell_body`]: the titlebar, the rail + navigator + page row, the root modal layer (the two dialog hosts) and the running-execution close host's layer ([`running_execution_close_host`], ported in its own module). The failure branch mounts only the two dialog hosts — React's early return (`MainPage.tsx:112-133`) has no `RunningExecutionCloseHost`. |
 //!
 //! The failure branch keeps the same chrome slot and the same two dialog
 //! hosts as React (`MainPage.tsx:115-131`): the titlebar names the app
@@ -32,8 +32,6 @@
 //! - `ThemeToggle` — the chrome slot's right content
 //!   (`components/ThemeToggle.tsx` is T284). The binary DARK/LIGHT toggle the
 //!   shell already carries stands in.
-//! - `RunningExecutionCloseHost` — `windows/main/RunningExecutionCloseHost.tsx`
-//!   is T071.
 //! - the `listenCrossWindow` effect family (`datazen:connections-changed`
 //!   refresh, `menu:new-connection`, `menu:export-connections` and the
 //!   import-connections sources) — `lib/crossWindowBus.ts` is T437; the share
@@ -65,7 +63,7 @@ use crate::ui::kit::kit;
 use crate::ui::palette;
 use crate::views::{
     content_status_bar, content_toolbar, modal_layer, navigator_panel, page_body, query_selected,
-    rail_view, tab_strip,
+    rail_view, running_execution_close_host, tab_strip,
 };
 use crate::splitter;
 use datazen_ui_api::Setting;
@@ -127,6 +125,16 @@ pub(crate) fn main_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
         .child(titlebar)
         .child(body)
         .children(modal_layer(state, theme, dark))
+        // React's fourth fragment child (`MainPage.tsx:140`): the
+        // running-execution close host, after the two dialog hosts. The
+        // failure branch returns without it (`:112-133`), so it mounts only
+        // on the healthy branch — the load-error screen has no connection
+        // whose query could be running.
+        .children(if load_failed {
+            Vec::new()
+        } else {
+            running_execution_close_host(state, dark)
+        })
 }
 
 /// React's load-failure gate (`MainPage.tsx:112`): an empty store list plus

@@ -228,4 +228,41 @@ impl AppState {
         self.sync_grid_to_selected_tab();
         true
     }
+
+    /// T071 (segment-2's T070): the running-execution close host's ask entry —
+    /// React's gate closure `confirm({...})` inside
+    /// `RunningExecutionCloseHost.tsx`. The store cannot open a dialog, so it
+    /// asks this host, which holds the one pending request until the human
+    /// answers; each ask is a fresh mount (the epoch), so the prompt reopens
+    /// at the top and its copy mark resets. The store half — the ask queue
+    /// that serializes several closes behind one prompt
+    /// (`askRunningExecutionGate`, "close all" over several running tabs) —
+    /// is T396's port; the host assumes asks arrive serialized, as React's
+    /// `useConfirmDialog` does ("one at a time by construction").
+    ///
+    /// No production caller yet: the close guard that would ask (the panel
+    /// store's `createRunningCloseGuard` wiring) ports with T396, and until
+    /// then the tab strip's close button keeps closing directly. The entry
+    /// is the host's half of the contract the guard will call.
+    #[allow(dead_code)]
+    pub(crate) fn ask_running_execution_close(
+        &mut self,
+        request: crate::views::RunningExecutionCloseRequest,
+    ) {
+        self.running_close_request = Some(request);
+        self.running_close_epoch = self.running_close_epoch.wrapping_add(1);
+        self.running_close_outcome = None;
+        self.running_close_sql_copied = false;
+    }
+
+    /// T071: the prompt's answer — React `handleClose(result)` plus the
+    /// promise's resolve: records `(request, allowed)` for the asker (`true`
+    /// is "stop and close", `false` keeps the tab) and takes the prompt down.
+    /// A second answer without a pending ask changes nothing, as React's
+    /// settled promise resolves only once.
+    pub(crate) fn answer_running_execution_close(&mut self, allowed: bool) {
+        if let Some(request) = self.running_close_request.take() {
+            self.running_close_outcome = Some((request, allowed));
+        }
+    }
 }
