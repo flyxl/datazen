@@ -7,4 +7,5 @@
 //! line to the owning `mod.rs` instead of sharing a file.
 
 pub(crate) mod data_table;
+pub(crate) mod filter;
 pub(crate) mod history;
