@@ -198,3 +198,6 @@ mod migration_failure_notice;
 
 // T068 independent audit: i18n no-echo, key stability, two-theme geometry.
 mod migration_failure_audit;
+
+// T008: ChartCanvas dispatcher, measured viewport and honest placeholders.
+mod chart_canvas;
