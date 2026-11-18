@@ -2,6 +2,9 @@
 
 > 把 647 个 task 切成 4 段，4 台机器各领一段真正并行；本机（协调者）统一汇总。
 > 本文是执行方案，不是过程台账。状态同步用各段独立文件，故跨机零冲突。
+>
+> **其他机器开工请直接看 [segment-runbook.md](segment-runbook.md)**（从准备到 push 的可照做手册）。
+> 串行编译队列脚本已入库：`scripts/rune-buildq/{submit,worker}.sh`。
 
 ## 1. 可行性结论
 
