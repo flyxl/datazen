@@ -21,7 +21,7 @@
 // rather than in a crate-wide allow.
 #![allow(dead_code)]
 
-use rune::{icon, row, text, Color, El};
+use rune::{icon, row, text, Color, El, Key, KeyEvent};
 use rune_kit::{Button, ButtonVariant, ControlSize};
 
 use crate::i18n::t;
@@ -126,8 +126,23 @@ impl FilterConditionChip {
     }
 
     /// Called when the remove button is pressed (React `onRemove`).
-    pub(crate) fn on_remove<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Self {
-        self.remove = Some(Box::new(move |e: El| e.on_press(f)));
+    ///
+    /// React's native `<button>` also fires on Enter; Rune presses a focused
+    /// button with Space only (Return passes buttons by), so the row carries an
+    /// explicit Enter handler to keep the two activations at parity.
+    pub(crate) fn on_remove<S: 'static>(mut self, f: impl Fn(&mut S) + Clone + 'static) -> Self {
+        self.remove = Some(Box::new(move |e: El| {
+            let key_f = f.clone();
+            e.on_press(f)
+                .on_key(move |s: &mut S, ev: &KeyEvent, _tx: &mut rune::Tx| {
+                    if ev.key == Key::Enter {
+                        key_f(s);
+                        true
+                    } else {
+                        false
+                    }
+                })
+        }));
         self
     }
 
@@ -175,6 +190,7 @@ impl FilterConditionChip {
                     .color(k.alpha(k.c.text_accent, 0.8))
                     .a11y_hidden(),
             )
+            .focusable(!self.disabled)
             .key(format!("{}-remove", self.key));
         if self.disabled {
             remove = remove.disabled(true).layer_opacity(0.5);

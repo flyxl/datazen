@@ -3,7 +3,7 @@
 //! Also pins the low-risk items: the literal `NULL` value, the inverted
 //! warning's tooltip, and the connector's pressed state.
 
-use rune::{col, Cx, El, ElementInfo, Env, Runtime, TextEdit};
+use rune::{col, Cx, El, ElementInfo, Env, Key, KeyEvent, Mods, Runtime, TextEdit};
 
 use crate::components::filter::{
     FilterBetweenInput, FilterCondition, FilterConditionChip, FilterConnector,
@@ -31,6 +31,8 @@ struct Probe {
     connector: FilterConnector,
     lower: TextEdit,
     upper: TextEdit,
+    removes: u32,
+    disabled: bool,
 }
 
 impl Default for Probe {
@@ -41,12 +43,17 @@ impl Default for Probe {
             connector: FilterConnector::And,
             lower: TextEdit::new("2025-01-01"),
             upper: TextEdit::new("2024-12-31"),
+            removes: 0,
+            disabled: false,
         }
     }
 }
 
 fn chip(state: &Probe, dark: bool) -> El {
-    FilterConditionChip::new("chip", state.condition.clone()).build(dark)
+    FilterConditionChip::new("chip", state.condition.clone())
+        .disabled(state.disabled)
+        .on_remove(|state: &mut Probe| state.removes += 1)
+        .build(dark)
 }
 
 fn view(state: &Probe, cx: &mut Cx<Probe>) -> El {
@@ -287,4 +294,68 @@ fn the_fixed_chip_stays_inside_both_windows() {
             );
         }
     }
+}
+
+fn focused_key(rt: &Runtime<Probe>) -> Option<String> {
+    rt.elements()
+        .into_iter()
+        .find(|e| e.focused)
+        .and_then(|e| e.key)
+}
+
+fn press(rt: &mut Runtime<Probe>, key: Key) {
+    rt.key(KeyEvent {
+        key,
+        mods: Mods::default(),
+    });
+    rt.frame(0.0);
+}
+
+#[test]
+fn the_chip_remove_is_a_tab_stop_and_enter_and_space_both_press_it() {
+    let mut rt = runtime(Probe::default(), DESIGN, true);
+    let mut reached = false;
+    for _ in 0..4 {
+        press(&mut rt, Key::Tab);
+        if focused_key(&rt).as_deref() == Some("chip-remove") {
+            reached = true;
+            break;
+        }
+    }
+    assert!(
+        reached,
+        "Tab must reach the remove button, focus is {:?}",
+        focused_key(&rt)
+    );
+    press(&mut rt, Key::Enter);
+    assert_eq!(
+        rt.state.removes, 1,
+        "Enter presses the focused remove button"
+    );
+    press(&mut rt, Key::Text(" ".to_owned()));
+    assert_eq!(
+        rt.state.removes, 2,
+        "Space presses it too, like a native button"
+    );
+}
+
+#[test]
+fn a_disabled_chip_remove_is_not_in_the_tab_order() {
+    let mut rt = runtime(
+        Probe {
+            disabled: true,
+            ..Probe::default()
+        },
+        DESIGN,
+        true,
+    );
+    for _ in 0..6 {
+        press(&mut rt, Key::Tab);
+        assert_ne!(
+            focused_key(&rt).as_deref(),
+            Some("chip-remove"),
+            "a disabled remove button is not a Tab stop"
+        );
+    }
+    assert_eq!(rt.state.removes, 0, "disabled means no remove callback");
 }
