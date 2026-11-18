@@ -14,8 +14,8 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 （`lib/formatters`、`lib/cellTypes`、`lib/cellEditorKind`、`lib/dataTypeColors`、
 `editors/toEditString`）排在 T253–T256，因为 DataTable 主体没有它们无法 1:1 迁。
 
-- [ ] T001 · components/ui · 0.90d · components/ui/Dialog.tsx components/ui/ErrorBanner.tsx components/ui/Select.tsx
-- [ ] T002 · components/ui · 0.30d · components/ui/Spinner.tsx
+- [x] T001 · components/ui · 0.90d · components/ui/Dialog.tsx components/ui/ErrorBanner.tsx components/ui/Select.tsx
+- [x] T002 · components/ui · 0.30d · components/ui/Spinner.tsx
 - [ ] T003 · components/ui · 0.90d · components/ui/WebContextMenu.tsx
 - [ ] T004 · components/DataTable · 0.50d · components/DataTable/CellRenderer.tsx
 - [ ] T005 · components/DataTable · 1.30d · components/DataTable/ColumnPresentationDialog.tsx · split
