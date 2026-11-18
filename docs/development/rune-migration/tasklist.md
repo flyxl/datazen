@@ -17,7 +17,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T001 · components/ui · 0.90d · components/ui/Dialog.tsx components/ui/ErrorBanner.tsx components/ui/Select.tsx
 - [ ] T002 · components/ui · 0.30d · components/ui/Spinner.tsx
 - [ ] T003 · components/ui · 0.90d · components/ui/WebContextMenu.tsx
-- [~] T004 · components/DataTable · 0.80d · components/DataTable/CellRenderer.tsx components/DataTable/ColumnStatsDialog.tsx
+- [x] T004 · components/DataTable · 0.80d · components/DataTable/CellRenderer.tsx components/DataTable/ColumnStatsDialog.tsx
 - [ ] T005 · components/DataTable · 1.30d · components/DataTable/DataExportDialog.tsx · split
 - [ ] T006 · components/DataTable · 4.00d · components/DataTable/DataTable.tsx · split
 - [ ] T007 · components/DataTable · 0.90d · components/DataTable/DataTableSelectionBar.tsx
