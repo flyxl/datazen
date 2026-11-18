@@ -7,6 +7,7 @@ mod connection_views;
 mod context_items;
 mod context_menu_position;
 mod metadata;
+mod relation_prediction;
 mod tabs;
 
 use std::collections::HashMap;
@@ -27,6 +28,12 @@ pub use metadata::{
     BatchFlush, ExecutionTarget, MetadataBatcher, MetadataBatcherOptions, MetadataClock,
     MetadataIdentityInput, MetadataSessionIdentity, MetadataTarget, NamespaceTarget, ObjectTarget,
     metadata_batch_bucket, metadata_cache_key, metadata_config_bucket, metadata_session_key,
+};
+pub use relation_prediction::{
+    ColumnSchema, DeclaredForeignKey, ForeignKeyInfo, IndexInfo, PredictionColumn, PredictionTable,
+    TableSchema, TypeFamily, is_generic_key_name, normalize_data_type, normalize_identifier,
+    singularize, split_identifier_words, to_prediction_table_from_schema,
+    to_prediction_tables_from_schemas, type_family,
 };
 pub use tabs::{Tab, TabKind, Tabs};
 
