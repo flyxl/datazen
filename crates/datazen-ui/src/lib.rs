@@ -21,7 +21,6 @@ mod tools_state;
 mod workspace_state;
 pub(crate) mod components;
 pub(crate) mod ui;
-pub(crate) mod components;
 mod views;
 mod app;
 
