@@ -158,6 +158,8 @@ mod temporal_input_audit;
 // T029: history components (entry card + filter bar).
 mod history_components;
 mod history_components_audit;
+// T011: SqlEditor assembly component port (props/handle/events + geometry).
+mod sql_editor_component;
 // T005: the global query-history dialog port.
 mod global_query_history_dialog;
 mod global_query_history_audit;
