@@ -387,7 +387,25 @@ fn the_chip_pill_keeps_the_react_geometry() {
 }
 
 #[test]
-#[ignore = "DEFECT c42419d4e: the chip row stretches to its max_w(560) inside a column, painting a 560pt accent pill for a short condition where React's inline-flex pill hugs its content"]
+#[ignore = "DEFECT 23b973021: the chip remove is a bare row with role=button but focusable=false; React's button is keyboard reachable"]
+fn the_chip_remove_is_keyboard_reachable() {
+    let rt = runtime(
+        Probe {
+            scene: Scene::Chip,
+            ..Probe::default()
+        },
+        DESIGN,
+        true,
+    );
+    let remove = element(&rt, "chip-remove");
+    assert!(
+        remove.focusable,
+        "the remove button must be a keyboard stop: role={:?} label={:?}",
+        remove.role, remove.label
+    );
+}
+
+#[test]
 fn the_chip_hugs_a_short_condition_like_an_inline_pill() {
     let rt = runtime(
         Probe {
@@ -406,7 +424,6 @@ fn the_chip_hugs_a_short_condition_like_an_inline_pill() {
 }
 
 #[test]
-#[ignore = "DEFECT c42419d4e: the chip's remove icon uses ButtonVariant::GhostMuted (text_muted ink) where React paints the X in text-accent/80"]
 fn the_chip_remove_icon_keeps_the_react_accent_ink() {
     let rt = runtime(
         Probe {
@@ -432,7 +449,6 @@ fn the_chip_remove_icon_keeps_the_react_accent_ink() {
 }
 
 #[test]
-#[ignore = "DEFECT c42419d4e: the chip caps at max_w(560) with no min_w(0), so a long condition overflows a narrow filter column instead of truncating like React's max-w-full"]
 fn a_long_chip_truncates_inside_a_narrow_filter_column() {
     let long = "a".repeat(120);
     let rt = runtime(
@@ -653,7 +669,6 @@ fn one_filter_row_stays_inside_both_windows_and_themes() {
 }
 
 #[test]
-#[ignore = "DEFECT c42419d4e: even a short chip is 560pt wide inside a 360pt filter column, so it overflows instead of staying within the column like React's max-w-full"]
 fn a_narrow_filter_column_keeps_a_short_chip_inside() {
     let rt = runtime(
         Probe {
