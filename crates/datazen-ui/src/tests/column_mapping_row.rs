@@ -283,12 +283,22 @@ fn the_create_new_branch_renders_inputs_not_a_select() {
         !has_key(&rt, "data-transfer-target-select-email"),
         "create-new edits the name instead of picking it"
     );
-    // The native-type input carries React's literal placeholder.
+    // The native-type input carries React's literal placeholder — as the
+    // inner input's accessible label, never as element text (kit contract
+    // field_kit::placeholder_visible_when_empty_and_hidden_when_filled).
+    let elements = rt.elements();
+    let field = element(&rt, "data-transfer-target-type-email");
+    let input = elements
+        .iter()
+        .find(|e| e.key.as_deref() == Some("input") && e.path.starts_with(&field.path))
+        .expect("inner input of the native-type field");
+    assert_eq!(input.label.as_deref(), Some("VARCHAR(255)"));
+    assert_eq!(input.text.as_deref(), Some(""));
     assert!(
-        rt.elements()
+        !elements
             .iter()
             .any(|e| e.text.as_deref() == Some("VARCHAR(255)")),
-        "placeholder VARCHAR(255) is rendered"
+        "the placeholder is a label, not rendered text"
     );
 }
 
@@ -337,13 +347,32 @@ fn the_fixed_cells_keep_the_react_widths_and_gaps() {
             root.rect,
             skip.rect
         );
-        // `py-1.5`: the 40pt inputs sit 6pt below the row top.
+        // `py-1.5` cannot be asserted as a 6pt offset in this probe:
+        // `build` ends in `rune_kit::root`, which forces the row to the full
+        // window height (816 here, the same shape as T010's bar), so the
+        // row's `items-center` centres the 40pt input instead of leaving
+        // 6pt above it. Assert the observable relative geometry instead:
+        // the input is vertically centred in the row, its centre aligns
+        // with the source text's centre, and it fills its cell's width.
         let input = element(&rt, "data-transfer-target-type-id");
+        let input_cy = input.rect[1] + input.rect[3] / 2.0;
+        let root_cy = root.rect[1] + root.rect[3] / 2.0;
         assert!(
-            (input.rect[1] - (root.rect[1] + 6.0)).abs() <= 0.5,
-            "py-1.5 above the input: root {:?} input {:?}",
+            (input_cy - root_cy).abs() <= 0.5,
+            "input vertically centred in the row: root {:?} input {:?}",
             root.rect,
             input.rect
+        );
+        let source_cy = source.rect[1] + source.rect[3] / 2.0;
+        assert!(
+            (input_cy - source_cy).abs() <= 0.5,
+            "input centre aligns with the source text centre: source {:?} input {:?}",
+            source.rect,
+            input.rect
+        );
+        assert_eq!(
+            input.rect[2], target_type.rect[2],
+            "input fills its w-36 cell"
         );
         assert_eq!(input.rect[3], 40.0, "React Input h-10");
     }

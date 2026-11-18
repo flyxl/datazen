@@ -30,6 +30,11 @@
 //! per-row root key and the shared `data-transfer-column-row` id is the probe's
 //! single-row key, not a contract the shell can keep.
 //!
+//! Open S2 decision (T023-S1 D3, do not fix here): `build` ends in
+//! `rune_kit::root`, which forces the row to full-window size and adds its
+//! own overlay layer — so S2 must decide how to mount N rows that each
+//! carry their own kit root, rather than stacking the rows as built.
+//!
 //! ## Documented deviations from React
 //!
 //! * **Text commits on submit, not per keystroke.** React's `Input onChange`
@@ -498,6 +503,13 @@ impl<'a, S: 'static> ColumnMappingRow<'a, S> {
     /// `{ targetColumn, skip }` for the target column,
     /// `{ targetNativeType }` (cleared on blank) for the native type.
     /// The field renders in the theme `build` was called with.
+    ///
+    /// No `.grow()` here, deliberately: the field sits inside a vertical
+    /// `col()` cell (`build_target_cell` / `build_target_type_cell`), so
+    /// `grow` would grow on the vertical axis and collapse the explicit
+    /// `height(40.0)` to the text line height (~15–18pt, T023-S1 D1). The
+    /// field still fills its cell width — the kit `TextInput` fills its
+    /// parent by default, and the `col()` cross axis stretches it.
     fn build_text_input(
         &self,
         key: String,
@@ -512,8 +524,7 @@ impl<'a, S: 'static> ColumnMappingRow<'a, S> {
         let mut field = TextField::new(key, edit)
             .text_style(style)
             .height(40.0)
-            .disabled(disabled)
-            .grow();
+            .disabled(disabled);
         if let Some(placeholder) = placeholder {
             field = field.placeholder(placeholder.to_owned());
         }
