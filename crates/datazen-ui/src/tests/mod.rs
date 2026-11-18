@@ -168,6 +168,8 @@ mod overlay_merge_reaudit;
 
 // React parity: DefaultOrderSelect and GridKeyboardHints ports.
 mod data_table_selects;
+// T007: the DataTable selection bar port.
+mod data_table_selection_bar;
 mod data_table_ports_audit;
 
 // T021/T023: filter editor parts (between bounds, condition chip, connector).
