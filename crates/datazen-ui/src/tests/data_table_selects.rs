@@ -4,8 +4,8 @@
 //! The probes below build each port alone in a padded page, the way a view
 //! mounts it. Assertions cover the ported tree (label + field; hint + list +
 //! seven items), the stored values (never labels), keyboard/pointer agreement,
-//! the composite-primary-key refusal, the disabled field, the hint text, and
-//! the two-window geometry contract.
+//! the composite-primary-key omission, the disabled field, the one-point
+//! `sr-only` hint box with its list roles, and the two-window geometry contract.
 
 use rune::{Cx, El, Env, Key, KeyEvent, Mods, Runtime};
 
@@ -129,6 +129,33 @@ fn default_order_select_keeps_the_react_tree_and_labels() {
     );
 }
 
+/// The module docs name keys that actually exist: `<key>-field` is only the
+/// prefix handed to the kit, which derives the trigger, content and scrim.
+#[test]
+fn default_order_select_documents_the_derived_keys() {
+    let mut rt = Runtime::new(Probe::default(), probe, (960.0, 640.0), env(true));
+    rt.frame(0.0);
+    assert!(
+        rt.find("probe-order-field-trigger").is_some(),
+        "the trigger is <key>-field-trigger"
+    );
+    assert!(
+        rt.find("probe-order-field").is_none(),
+        "<key>-field is a prefix, not a node"
+    );
+
+    click(&mut rt, "probe-order-field-trigger");
+    assert!(
+        rt.find("probe-order-field-content").is_some(),
+        "the open listbox is <key>-field-content"
+    );
+    assert!(
+        rt.find("probe-order-field-scrim").is_some(),
+        "on_close mounts <key>-field-scrim"
+    );
+    assert!(rt.find("probe-order-field").is_none());
+}
+
 /// The keyboard (`Down`, `Down`, `Enter`) and the pointer (press the third row)
 /// store the same enum value, and it is the React value behind the label.
 #[test]
@@ -168,10 +195,10 @@ fn default_order_select_reports_values_identically_from_keys_and_pointer() {
     assert_eq!(pointer.state.value, keys.state.value);
 }
 
-/// A composite primary key refuses `primaryKeyDesc` from both input paths, and
-/// the listbox stays where it was (React's disabled row does not choose).
+/// A composite primary key does not offer `primaryKeyDesc` at all: React greys
+/// the row out, the kit has no per-option disabled row, so it is left out.
 #[test]
-fn default_order_select_refuses_descending_for_a_composite_key() {
+fn default_order_select_hides_descending_for_a_composite_key() {
     let mut rt = Runtime::new(
         Probe {
             primary_key_count: 2,
@@ -183,19 +210,33 @@ fn default_order_select_refuses_descending_for_a_composite_key() {
     );
     rt.frame(0.0);
     click(&mut rt, "probe-order-field-trigger");
-    click(&mut rt, "option2");
-    assert!(
-        rt.state.changes.is_empty(),
-        "pressing the unavailable row reports nothing"
+    assert!(rt.state.open, "a press opens the listbox");
+
+    assert!(rt.find("option3").is_none(), "there is no fourth row");
+    let labels: Vec<Option<String>> = (0..3)
+        .map(|index| element(&rt, &format!("option{index}")).label)
+        .collect();
+    assert_eq!(
+        labels,
+        vec![
+            Some(t("defaultSort.inherit").to_owned()),
+            Some(t("defaultSort.primaryKeyAsc").to_owned()),
+            Some(t("defaultSort.none").to_owned()),
+        ],
+        "the list keeps the other three choices in React order"
     );
-    assert_eq!(rt.state.value, DefaultOrderOverride::Inherit);
-    assert!(rt.state.open, "the listbox stays open after the refusal");
+    assert!(
+        !rt.elements()
+            .iter()
+            .any(|e| e.text.as_deref() == Some(t("defaultSort.primaryKeyDesc"))),
+        "the descending label never appears while the key is composite"
+    );
 
-    click(&mut rt, "option1");
-    assert_eq!(rt.state.changes, vec![DefaultOrderOverride::PrimaryKeyAsc]);
+    click(&mut rt, "option2");
+    assert_eq!(rt.state.changes, vec![DefaultOrderOverride::None]);
 
-    // The keyboard path starts from a closed field: Space opens on the current
-    // choice, two Downs land on the unavailable row, Enter refuses it.
+    // Keyboard path: Space opens on the current choice, two Downs land on the
+    // third row (React's fourth), Enter chooses it.
     let mut keys = Runtime::new(
         Probe {
             primary_key_count: 2,
@@ -210,13 +251,13 @@ fn default_order_select_refuses_descending_for_a_composite_key() {
     press(&mut keys, Key::Text(" ".into()));
     press(&mut keys, Key::Down);
     press(&mut keys, Key::Down);
-    press(&mut keys, Key::Enter);
-    assert!(
-        keys.state.changes.is_empty(),
-        "Enter on the unavailable row reports nothing"
+    assert_eq!(
+        focused(&keys).as_deref(),
+        Some("option2"),
+        "two Downs land on the remaining third row"
     );
-    assert_eq!(focused(&keys).as_deref(), Some("option2"));
-    assert!(keys.state.open, "the refusal leaves the listbox open");
+    press(&mut keys, Key::Enter);
+    assert_eq!(keys.state.changes, vec![DefaultOrderOverride::None]);
 }
 
 /// A disabled field never opens and never reports a choice.
@@ -311,10 +352,22 @@ fn grid_keyboard_hints_keep_the_react_text_and_add_no_tab_stop() {
         .iter()
         .position(|e| e.key.as_deref() == Some("probe-hints"))
         .expect("the hint strip is laid out");
+    let strip = &all[root];
+    assert!(
+        strip.rect[3] <= 2.0,
+        "sr-only is a one-point box: {:?}",
+        strip.rect
+    );
+    assert!(strip.opacity <= 0.01, "sr-only paints nothing: {}", strip.opacity);
     assert_eq!(
         all.iter().filter(|e| e.parent == Some(root)).count(),
         2,
         "root = hint paragraph + one list"
+    );
+    assert_eq!(
+        element(&rt, "probe-hints-list").role,
+        "list",
+        "React's <ul> keeps its list role"
     );
     let list = all
         .iter()
@@ -325,6 +378,13 @@ fn grid_keyboard_hints_keep_the_react_text_and_add_no_tab_stop() {
         7,
         "the list holds React's seven items"
     );
+    for index in 0..7 {
+        assert_eq!(
+            element(&rt, &format!("probe-hints-item-{index}")).role,
+            "listitem",
+            "hint item {index} keeps React's <li> role"
+        );
+    }
     assert!(
         all.iter().all(|e| !e.focusable),
         "no hint element is focusable"
@@ -333,10 +393,10 @@ fn grid_keyboard_hints_keep_the_react_text_and_add_no_tab_stop() {
     assert_eq!(focused(&rt), None, "Tab does not land on the hints");
 }
 
-/// At 240 points the long rows wrap instead of leaving their column, while the
-/// short rows stay one line.
+/// At 240 points every hint node stays inside its column; the one-point
+/// `sr-only` box does not make the text reach past the edge.
 #[test]
-fn grid_keyboard_hints_wrap_in_a_narrow_column() {
+fn grid_keyboard_hints_stay_inside_a_narrow_column() {
     struct Narrow;
     fn view(_s: &Narrow, _cx: &mut Cx<Narrow>) -> El {
         rune_kit::root(
@@ -351,14 +411,8 @@ fn grid_keyboard_hints_wrap_in_a_narrow_column() {
     let mut rt = Runtime::new(Narrow, view, (960.0, 640.0), env(false));
     rt.frame(0.0);
 
-    let long = element(&rt, "narrow-hints-item-3");
-    let short = element(&rt, "narrow-hints-item-6");
-    assert!(
-        long.rect[3] > short.rect[3] + 0.5,
-        "the long Home/End hint wraps: long {:?} vs short {:?}",
-        long.rect,
-        short.rect
-    );
+    let root = element(&rt, "narrow-hints");
+    assert!(root.rect[3] <= 2.0, "still a one-point box: {:?}", root.rect);
     for element in rt.elements() {
         let Some(key) = element.key.as_deref() else {
             continue;

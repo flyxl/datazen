@@ -17,11 +17,21 @@
 //!
 //! ## Key convention
 //!
-//! | part  | key               |
-//! |-------|-------------------|
-//! | root  | `<key>`           |
-//! | label | `<key>-label`     |
-//! | field | `<key>-field`     |
+//! | part              | key                    |
+//! |-------------------|------------------------|
+//! | root              | `<key>`                |
+//! | label             | `<key>-label`          |
+//! | field (prefix)    | `<key>-field`          |
+//! | trigger           | `<key>-field-trigger`  |
+//! | listbox content   | `<key>-field-content`  |
+//! | dismissal scrim   | `<key>-field-scrim`    |
+//!
+//! `<key>-field` is the key this module hands to `ui/select.rs`; it is only the
+//! logical group name and is **not** a findable node. The kit derives the real
+//! keys from it: `<key>-field-trigger` always exists, `<key>-field-content` and
+//! `<key>-field-scrim` exist while the listbox is open (`on_close` mounts the
+//! scrim). List rows are `option0`…`option3` (three rows while the primary key
+//! is composite).
 //!
 //! The selected row and the `primaryKeyDesc` row carry the React values
 //! (`inherit`, `primaryKeyAsc`, `primaryKeyDesc`, `none`), so a stored value
@@ -29,12 +39,12 @@
 //!
 //! ## Gaps against React (no rebuild of the control)
 //!
-//! - React disables the `primaryKeyDesc` row for a composite primary key and
-//!   puts the reason in that row's `title`; `rune-kit`'s `Select` has no
-//!   per-option disabled state and no per-option tooltip. The row stays in the
-//!   list, `on_choose` drops a choice of it while the primary key is composite,
-//!   and the reason is the field's accessible description. The row therefore
-//!   looks enabled while it refuses, and keyboard arrows do not skip it.
+//! - React renders the `primaryKeyDesc` row disabled for a composite primary
+//!   key (`aria-disabled` + `opacity-40`, and its arrow movement skips it);
+//!   `rune-kit`'s `Select` has no per-option disabled state. The port therefore
+//!   **does not offer that row at all** while the primary key is composite: the
+//!   listbox holds three choices, and the reason is the field's accessible
+//!   description. React greys the row out; we leave it out.
 //! - React's `title={composite ? unavailable : undefined}` on the trigger is a
 //!   native browser tooltip; the kit select has no `title` and DataZen's
 //!   `ui/tooltip` is state-driven (the caller owns hover intent), so the same
@@ -181,9 +191,8 @@ impl DefaultOrderSelect {
                 let Some(picked) = DefaultOrderOverride::from_value(value) else {
                     return;
                 };
-                // React renders this row disabled; the kit cannot, so refuse the
-                // choice here and leave the listbox open (React's disabled row
-                // does not move the selection either).
+                // Defensive: the row is absent while the primary key is composite, so this
+                // value cannot arrive; keep the guard so a stale stored value cannot win.
                 if composite && picked == DefaultOrderOverride::PrimaryKeyDesc {
                     return;
                 }
@@ -198,9 +207,23 @@ impl DefaultOrderSelect {
     pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let key = self.key;
         let composite = self.primary_key_count > 1;
-        let labels = DefaultOrderOverride::ALL.map(|choice| t(choice.label_key()));
+        // React greys the `primaryKeyDesc` row out for a composite key; the kit has no
+        // per-option disabled row, so the choice is left out instead of offered and ignored.
+        let choices: Vec<DefaultOrderOverride> = if composite {
+            DefaultOrderOverride::ALL
+                .into_iter()
+                .filter(|choice| *choice != DefaultOrderOverride::PrimaryKeyDesc)
+                .collect()
+        } else {
+            DefaultOrderOverride::ALL.to_vec()
+        };
+        let labels: Vec<&str> = choices
+            .iter()
+            .map(|choice| t(choice.label_key()))
+            .collect();
+        let values: Vec<&str> = choices.iter().map(|choice| choice.value()).collect();
         let mut select = Select::new(format!("{key}-field"), &labels)
-            .values(&DefaultOrderOverride::ALL.map(DefaultOrderOverride::value))
+            .values(&values)
             .current(Some(self.value.value()))
             .label(t("defaultSort.panelLabel"))
             .width(148.0)

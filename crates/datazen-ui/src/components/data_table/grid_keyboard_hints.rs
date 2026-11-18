@@ -3,28 +3,28 @@
 //!
 //! React renders one `div#<id>.sr-only` holding a `<p>` and a `<ul>` of seven
 //! `<li>`; a grid reads it through `aria-describedby`. The tree here is the
-//! same (root, hint, list, seven items) and the strings come from the same i18n
-//! keys.
+//! same (root, hint, list, seven items), the roles are the same (`list`,
+//! `listitem`) and the strings come from the same i18n keys.
 //!
 //! ## Rendering the `sr-only` half
 //!
-//! Rune has no visually-hidden-but-accessible primitive (no `sr-only`
-//! equivalent in `vendor/rune/crates/rune/src`), and `El::description` is
-//! per-element text, not an element that a sibling can reference by id. The
-//! port therefore renders the same text as a visible, muted hint strip: text
-//! only, never focusable, so it adds no Tab stop. It wraps instead of running
-//! out of the window. A later grid call site that wants React's
-//! `aria-describedby` behaviour attaches the same strings with
-//! `El::description`; that wiring belongs to the grid, not to this component.
+//! `sr-only` is a 1 point box, clipped to nothing, that remains in the
+//! accessibility tree. Rune has no visually-hidden primitive and no child
+//! clipping on a plain box (`El::a11y_hidden` removes the subtree from AT,
+//! which is the opposite of `sr-only`). The port therefore keeps the box at
+//! **1 point tall** and gives it `opacity(0.0)`: it occupies one point of
+//! layout, paints nothing, and its text and list roles stay in the
+//! accessibility tree for `aria-describedby`-style reading. The measured rect
+//! is `[x, y, width, 1.0]`; nothing here is focusable, so it adds no Tab stop.
 //!
 //! ## Key convention
 //!
-//! | part      | key               |
-//! |-----------|-------------------|
-//! | root      | `<id>`            |
-//! | hint      | `<id>-hint`       |
-//! | list      | `<id>-list`       |
-//! | item `<n>`| `<id>-item-<n>`   |
+//! | part       | key              |
+//! |------------|------------------|
+//! | root       | `<id>`           |
+//! | hint       | `<id>-hint`      |
+//! | list       | `<id>-list`      |
+//! | item `<n>` | `<id>-item-<n>`  |
 
 use rune::{col, text, El};
 
@@ -54,24 +54,28 @@ impl GridKeyboardHints {
         GridKeyboardHints { id: id.into() }
     }
 
-    /// Builds the hint strip. Nothing here is focusable.
+    /// Builds the one-point `sr-only` box: `list`/`listitem` for a reader, no
+    /// paint, no focus. Nothing here is focusable.
     pub(crate) fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let id = self.id;
-        let mut list = col().key(format!("{id}-list")).w_full().gap(2.0);
+        let mut list = col().key(format!("{id}-list")).role("list").w_full();
         for (index, hint_key) in HINT_KEYS.iter().enumerate() {
             list = list.child(
                 text(t(hint_key))
                     .key(format!("{id}-item-{index}"))
+                    .role("listitem")
                     .font(k.ty.small)
                     .color(k.c.text_muted)
                     .wrap(),
             );
         }
+        // `sr-only`: one point of layout, no paint, still in the a11y tree.
         col()
             .key(id.clone())
             .w_full()
-            .gap(2.0)
+            .h(1.0)
+            .opacity(0.0)
             .child(
                 text(t("tableView.shortcut.hint"))
                     .key(format!("{id}-hint"))
