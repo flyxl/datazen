@@ -181,3 +181,6 @@ mod filter_fixes;
 
 // T030: ExplainPlanTree port (recursive rows, expansion state, badges, bounds).
 mod explain_plan_tree;
+// T030 independent audit: i18n title, registry chevrons, S-owned state, detail
+// key collisions, clipped+scrollable overflow, light-theme window fit.
+mod explain_plan_audit;
