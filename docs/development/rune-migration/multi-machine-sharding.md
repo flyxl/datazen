@@ -44,6 +44,12 @@
 
 ## 5. 分支与合流流程
 
+> 同步方向：**子分支 →（合流）→ 父分支**；子分支通过 rebase 父分支保持更新；父分支从不反向 merge 回子分支。
+> 具体操作与命令见 [segment-runbook.md §4.5](segment-runbook.md)，脚本 `scripts/rune-segment-sync.sh`
+> 提供 `sync-from-parent`（子机 rebase 父）/ `merge-to-parent`（协调者合子）/ `refresh-segments`（协调者快进空闲子分支）。
+> `refresh-segments` 只快进「0 独有提交」的段，有在途工作的段自动跳过，绝不覆盖。
+
+
 ```
 feat/rune-native-ui-migration            （本机主分支，含全部基座 + 主 tasklist）
 ├── feat/.../segment-1                   （机器 A checkout，领段 1）

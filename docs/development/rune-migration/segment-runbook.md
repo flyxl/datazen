@@ -124,6 +124,35 @@ git branch -d "feature/$TRACK"
 - Rune 文件里禁裸 `unwrap()`/`expect()`；禁新 `oklch()` 字面量（palette.rs 除外）；图标复用 `icons.rs` 注册表。
 - 测试绿 ≠ 画对了：几何断言要有不依赖被测代码自我报告的观测通道（元素 rect / PNG 像素）。
 
+## 4.5 segment 与父分支的同步（重要）
+
+方向是**单向合流**：子分支只往父分支合，父分支由协调者维护，从不反向 merge 回子分支。子分支通过 rebase 父分支保持更新。
+
+流程已封装成脚本 `scripts/rune-segment-sync.sh`（三选一）：
+
+```bash
+# (A) segment 机器：把自己分支更新到父分支最新（每天开工前做一次）
+#     会在你的 segment 分支上 rebase origin/父分支，再 push --force-with-lease
+git checkout feat/rune-native-ui-migration-segment-N
+bash scripts/rune-segment-sync.sh sync-from-parent
+
+# (B) 协调者：把某段（或全部）合回父分支
+git checkout feat/rune-native-ui-migration
+bash scripts/rune-segment-sync.sh merge-to-parent       # 全部 1..4
+bash scripts/rune-segment-sync.sh merge-to-parent 2     # 只合 segment-2
+
+# (C) 协调者：父分支前进后，把 4 个 segment 快进到最新
+#     只对「0 个独有提交」的段快进；有在途工作的段会跳过，绝不覆盖
+bash scripts/rune-segment-sync.sh refresh-segments
+```
+
+要点：
+- **子→父**：协调者用 `merge-to-parent`（`merge --no-ff`，每段一个 merge 提交，合完即 push）。你作为 segment 机器不用做这步。
+- **父→子**：segment 机器开工前 `sync-from-parent`（rebase）。若 rebase 冲突，解决后 `git rebase --continue` 再 `git push --force-with-lease`。
+- **不要**在 segment 分支上直接 merge 主分支产生无意义的 merge 提交；用 rebase 保持线性。
+- **不要**用父分支的强推覆盖 segment 的在途工作；`refresh-segments` 已内建保护（有独有提交的段自动跳过）。
+- 状态文件 `shards/segment-N.md` 随各自分支走；rebase/合流时若有冲突，按 React 文件集核对，勿丢已完成标记。
+
 ## 5. 遇到问题
 
 - **cargo 找不到 `vendor/rune`**：重跑 §1.3 子模块初始化。
@@ -131,4 +160,5 @@ git branch -d "feature/$TRACK"
 - **`BUILDQ: unknown requester`**：submit.sh 只有绑定校验（不强制登记）；若报此错，说明你用的是旧版 submit.sh，换成仓库版 `scripts/rune-buildq/submit.sh`。
 - **worker 心跳停了**：`touch $RUNE_BUILDQ/STOP` 等退出 → `rm STOP` → 重跑 §1.5 的 nohup；遗留 job 会自动回收。
 - **T 编号对不上**：源码变动会重排编号；状态按 React 文件集识别，不会丢。以 `--shard N` 实测为准。
+- **segment 落后父分支 / 合回冲突**：按 §4.5 先 `sync-from-parent`；协调者用 `merge-to-parent`，冲突就地解决。父分支永远不与子分支强推覆盖。
 - **跨段依赖**：segment 按 area 切分，同 area 上游在本段内；若确实需要别的段的未完成件，先做本段其它任务并在 push 时说明，由协调者在汇总时处理。
