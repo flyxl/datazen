@@ -23,10 +23,10 @@
 
 | 段 | 分支 | task 数 | 人日 | 覆盖 area（以 `--shard N` 实测为准） |
 | --: | --- | --: | --: | --- |
-| 1 | `feat/rune-native-ui-migration/segment-1` | 153 | 160.5 | `windows/connection`(101), `components/connection`(15), `components/filter`(7), `components/migration`(4), `components/schema`, `lib/session`, `lib/structureEditor`, `lib/relationMetadata`, `platform/web`, `ai`, `shell.ts` |
-| 2 | `feat/rune-native-ui-migration/segment-2` | 162 | 160.6 | `lib`(117), `components/chart`(9), `windows/workflow`(9), `types`(10), `stores/ai`, `lib/relationPrediction`, `lib/metadata`, `components/export`, `windows/wapps`, `windows/main`, `extensions`, `index.ts` |
-| 3 | `feat/rune-native-ui-migration/segment-3` | 166 | 160.5 | `windows/data-sync`(37), `stores`(32), `components/DataTable`(23), `components/ai`(13), `stores/tableData`(16), `components`(11), `windows/data-transfer`(11), `platform`, `lib/chart`, `windows/backup`, `components/query`(4), `components/ui`(3), `components/admin`, `App.tsx` |
-| 4 | `feat/rune-native-ui-migration/segment-4` | 166 | 160.3 | `components/sql-editor`(16), `windows/settings`(32), `hooks`(26), `commands`(23), `windows/schema-diff`(21), `windows/onboarding`(12), `lib/valuePresentation`(11), `windows/dashboard`(7), `windows/workspace`(7), `lib/sqlDialects`, `components/history`(3), `lib/connectionViews`, `bootstrap`, `platform/shared`, `app.ts` |
+| 1 | `feat/rune-native-ui-migration-segment-1` | 153 | 160.5 | `windows/connection`(101), `components/connection`(15), `components/filter`(7), `components/migration`(4), `components/schema`, `lib/session`, `lib/structureEditor`, `lib/relationMetadata`, `platform/web`, `ai`, `shell.ts` |
+| 2 | `feat/rune-native-ui-migration-segment-2` | 162 | 160.6 | `lib`(117), `components/chart`(9), `windows/workflow`(9), `types`(10), `stores/ai`, `lib/relationPrediction`, `lib/metadata`, `components/export`, `windows/wapps`, `windows/main`, `extensions`, `index.ts` |
+| 3 | `feat/rune-native-ui-migration-segment-3` | 166 | 160.5 | `windows/data-sync`(37), `stores`(32), `components/DataTable`(23), `components/ai`(13), `stores/tableData`(16), `components`(11), `windows/data-transfer`(11), `platform`, `lib/chart`, `windows/backup`, `components/query`(4), `components/ui`(3), `components/admin`, `App.tsx` |
+| 4 | `feat/rune-native-ui-migration-segment-4` | 166 | 160.3 | `components/sql-editor`(16), `windows/settings`(32), `hooks`(26), `commands`(23), `windows/schema-diff`(21), `windows/onboarding`(12), `lib/valuePresentation`(11), `windows/dashboard`(7), `windows/workspace`(7), `lib/sqlDialects`, `components/history`(3), `lib/connectionViews`, `bootstrap`, `platform/shared`, `app.ts` |
 
 > 分段以 `node scripts/rune-parity.mjs --shard N --of 4` 的实测输出为准（上表按 2026-11-18 快照）；源码变动后 area 归属可能微调，重跑 `--shard-create` 即可刷新分片状态文件。
 
@@ -77,5 +77,5 @@ feat/rune-native-ui-migration            （本机主分支，含全部基座 + 
 ## 8. 开局操作（协调者）
 
 1. `--shard-create` 生成 4 个分片状态文件并提交。
-2. 从最新 `feat/rune-native-ui-migration` 建 4 个分支 `feat/rune-native-ui-migration/segment-{1..4}`，全部 push。
+2. 从最新 `feat/rune-native-ui-migration` 建 4 个分支（已建并 push） `feat/rune-native-ui-migration-segment-{1..4}`，全部 push。
 3. 各机器 checkout 自己的 segment 分支，按 `--shard N --next-todo` 开干。
