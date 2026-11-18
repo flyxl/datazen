@@ -240,6 +240,10 @@ mod workflow_action_bar;
 // T019: the workflow execution result panel port.
 mod workflow_execution_panel;
 
+// T051: the App.tsx root port — the window router the host's one window is
+// handed through (first-frame composition, bounds, and the wiring pin).
+mod app_root;
+
 // T020: the main window's composition root port (branches, error screen,
 // retry, and the seams that must stay honest).
 mod main_page;

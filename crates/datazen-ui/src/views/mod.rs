@@ -1,5 +1,6 @@
 //! View modules.
 
+mod app_root;
 mod chrome;
 mod connections;
 mod connections_home;
@@ -15,6 +16,7 @@ mod wapps;
 mod workflow;
 mod workspace;
 
+pub(crate) use app_root::*;
 pub(crate) use chrome::*;
 pub(crate) use connections::*;
 pub(crate) use connections_home::*;
