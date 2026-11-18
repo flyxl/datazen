@@ -127,9 +127,6 @@ pub(crate) struct EndpointVm {
     pub session_error: Option<String>,
     /// Mirrors React's `readOnlyHint` (only the target column sets it).
     pub read_only_hint: bool,
-    /// Mirrors React's `onSchemaChange` presence: the schema select is only
-    /// shown when the host supports it and there are schemas to choose from.
-    pub schema_change_enabled: bool,
 }
 
 /// The whole controlled bar. Fields mirror `MigrationEndpointsBarProps`; every
@@ -573,14 +570,17 @@ fn build_select<S: 'static>(
 ) -> El {
     let labels: Vec<&str> = options.iter().map(|o| o.label.as_str()).collect();
     let values: Vec<&str> = options.iter().map(|o| o.value.as_str()).collect();
+    // kit renders `current` verbatim and marks a row selected only when it equals
+    // that row's LABEL. React stores an opaque id and shows the resolved label, so
+    // translate value -> label here; an unknown/empty value falls back to the
+    // placeholder (`current(None)`), matching React's `selectedOption?.label`.
+    let current_label = options
+        .iter()
+        .find(|o| o.value == current)
+        .map(|o| o.label.as_str());
     let mut select = Select::new(key, &labels)
         .values(&values)
-        // React shows the placeholder for `value == ""`; kit only for `current(None)`.
-        .current(if current.is_empty() {
-            None
-        } else {
-            Some(current)
-        })
+        .current(current_label)
         .placeholder(placeholder)
         .label(label)
         .open(open);
