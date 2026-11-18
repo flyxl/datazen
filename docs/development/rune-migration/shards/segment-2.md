@@ -172,3 +172,4 @@
 - [x] T044 · platform/shared · 0.30d · platform/shared/index.ts
 - [x] T050 · App.tsx · 0.30d · App.tsx
 - [x] T059 · components/chart · 0.80d · components/chart/ChartEmptyState.tsx components/chart/ChartToolbar.tsx
+- [x] T069 · windows/workflow · 1.30d · windows/workflow/WorkflowForm.tsx · split
