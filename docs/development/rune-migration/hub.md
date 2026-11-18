@@ -8,10 +8,12 @@
 
 | 轨道 | worktree | 分支 | task | React 源 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| rune-schema | `.worktrees/datazen-rune-schema` | `feature/rune-schema` | T027 | `components/schema/SchemaDiffPanel.tsx` | coder `9d72551fa` READY_FOR_TEST → 独立 tester `ses_e12702aabffe6IBfXaVv8t0pGa` 审计中 |
-| rune-query | `.worktrees/datazen-rune-query` | `feature/rune-query` | T030 | `components/query/ExplainPlanTree.tsx` | coder `63f103886` READY_FOR_TEST → 独立 tester `ses_e1262f261ffexYarPyVb5OfxW2` 审计中 |
-| rune-migration | `.worktrees/datazen-rune-migration` | `feature/rune-migration` | T068 | `components/migration/MigrationJobFailureNotice.tsx` | coder `f310cb424` READY_FOR_TEST → 独立 tester `ses_e12643fd9ffeIuL2anSLQmyKkY` 审计中 |
-| rune-datatable | `.worktrees/datazen-rune-datatable` | `feature/rune-datatable` | T007 | `components/DataTable/DataTableSelectionBar.tsx` | coder `ad388d37d` READY_FOR_TEST → 独立 tester `ses_e12614c3affeCmhrcAFsbkFH47` 审计中 |
+| rune-schema | ~~removed~~ | ~~deleted~~ | T027 | `components/schema/SchemaDiffPanel.tsx` | ✅ 合流 `241c192bf`，audit `3fc801ef0`，T027 done |
+| rune-query | ~~removed~~ | ~~deleted~~ | T030 | `components/query/ExplainPlanTree.tsx` | ✅ 合流（首个）`20cdc2cd6` 前，audit `730c7c86a`，T030 done |
+| rune-migration | ~~removed~~ | ~~deleted~~ | T068 | `components/migration/MigrationJobFailureNotice.tsx` | ✅ 合流 `f1bac8c84`，audit `1486b380f`，T068 done |
+| rune-datatable | ~~removed~~ | ~~deleted~~ | T007 | `components/DataTable/DataTableSelectionBar.tsx` | ✅ 合流（自动）`a1d0ec8bd` 前，audit `e697d375c`，T007 done |
+
+**Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
 ### 冲突面控制
 
