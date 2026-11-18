@@ -24,6 +24,10 @@ mod icon_registry;
 mod tooltip_text_audit;
 // T0-11 row math: external selection reveal and page arithmetic.
 mod tree_rowmath_audit;
+
+// T004: the column-statistics dialog's four branches, dismissal and bounds.
+mod column_stats_audit;
+mod column_stats_dialog;
 pub(crate) use support::*;
 
 pub(crate) fn runtime() -> Runtime<AppState> {

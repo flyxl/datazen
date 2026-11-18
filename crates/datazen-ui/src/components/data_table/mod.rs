@@ -2,11 +2,13 @@
 //!
 //! | React source                         | Rune module                 |
 //! |--------------------------------------|-----------------------------|
+//! | `ColumnStatsDialog.tsx`              | `column_stats_dialog`       |
 //! | `DefaultOrderSelect.tsx`             | `default_order_select`      |
 //! | `GridKeyboardHints.tsx`              | `grid_keyboard_hints`       |
 //! | `Pagination.tsx`                     | `pagination`                |
 //! | `TableHeader.tsx`                    | `table_header`              |
 
+pub(crate) mod column_stats_dialog;
 pub(crate) mod default_order_select;
 pub(crate) mod grid_keyboard_hints;
 pub(crate) mod pagination;
