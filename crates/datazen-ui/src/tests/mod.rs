@@ -153,3 +153,6 @@ mod history_components_audit;
 
 // T029 fix round: CopyButton base feedback + filter bar metrics.
 mod copy_button;
+
+// T0-10 merged-mainline overlay re-audit.
+mod overlay_merge_reaudit;
