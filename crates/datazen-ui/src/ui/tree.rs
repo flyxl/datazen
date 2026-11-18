@@ -82,18 +82,37 @@ type ViewportWriter<S> = Rc<dyn Fn(&mut S, f32)>;
 const EMPTY_HEIGHT: f32 = 40.0;
 
 thread_local! {
-    static TREE_LAST_CURSOR: std::cell::RefCell<std::collections::HashMap<String, Option<String>>> =
+    static TREE_LAST_SEEN_CURSOR: std::cell::RefCell<std::collections::HashMap<String, Option<String>>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    static TREE_LAST_REVEALED_CURSOR: std::cell::RefCell<std::collections::HashMap<String, Option<String>>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    /// Per-key tick for pending reveals: changing marker identity forces layout callbacks to run.
+    static TREE_REVEAL_TICK: std::cell::RefCell<std::collections::HashMap<String, u64>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
-fn last_revealed_cursor(key: &str) -> Option<String> {
-    TREE_LAST_CURSOR.with(|m| m.borrow().get(key).cloned().flatten())
+fn last_seen_cursor(key: &str) -> Option<String> {
+    TREE_LAST_SEEN_CURSOR.with(|m| m.borrow().get(key).cloned().flatten())
 }
-
+fn set_last_seen_cursor(key: &str, cursor: Option<String>) {
+    TREE_LAST_SEEN_CURSOR.with(|m| { m.borrow_mut().insert(key.to_owned(), cursor); });
+}
+fn last_revealed_cursor(key: &str) -> Option<String> {
+    TREE_LAST_REVEALED_CURSOR.with(|m| m.borrow().get(key).cloned().flatten())
+}
 fn set_last_revealed_cursor(key: &str, cursor: Option<String>) {
-    TREE_LAST_CURSOR.with(|m| {
-        m.borrow_mut().insert(key.to_owned(), cursor);
-    });
+    TREE_LAST_REVEALED_CURSOR.with(|m| { m.borrow_mut().insert(key.to_owned(), cursor); });
+}
+fn next_reveal_tick(key: &str) -> u64 {
+    TREE_REVEAL_TICK.with(|m| {
+        let mut map = m.borrow_mut();
+        let v = map.entry(key.to_owned()).or_insert(0);
+        *v = v.wrapping_add(1);
+        *v
+    })
+}
+fn reset_reveal_tick(key: &str) {
+    TREE_REVEAL_TICK.with(|m| { m.borrow_mut().remove(key); });
 }
 
 #[allow(dead_code)]
@@ -330,8 +349,10 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
         let style = style.unwrap_or_else(|| TreeStyle::from_kit(k));
         let count = get(s).visible_len();
         let cursor = get(s).cursor().map(str::to_owned);
-        // Rows are keyed by visible position, not node id, so the active descendant is the
-        // cursor row's own key (the same key assistive tech reads from the row element).
+        // Per-render cursor snapshot: detect selection changes (incl. external model.select).
+        let prev_seen_cursor = last_seen_cursor(&key);
+        let cursor_changed_this_render = prev_seen_cursor != cursor;
+        set_last_seen_cursor(&key, cursor.clone());
         let cursor_key = cursor
             .as_deref()
             .and_then(|id| get(s).visible_row(id))
@@ -364,34 +385,24 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
                 if let Some(next) = reveal_offset(row, row_height, scroll_top, viewport_h) {
                     tx.scroll_to_instant(vp_key.clone(), 0.0, next);
                     write_sc(s, next);
-                    // Keep last_revealed unchanged so we retry on next layout/frame until
-                    // the selected row is in view by tracked scroll state.
-                    true
-                } else {
-                    set_last_revealed_cursor(&track_key, cursor);
-                    false
+                    return true; // pending until in-view by tracked state
                 }
+                set_last_revealed_cursor(&track_key, cursor);
+                false
             })
         };
-
-        // Reveal when selection/cursor changed (covers external model.select) or when a
-        // previously requested reveal still needs to bring the row into view.
-        // Do not reveal when cursor is unchanged and already in view, preserving manual scroll.
-        let reveal_on_cursor_change = {
+        let retry_pending_reveal = {
             let track_key = key.clone();
             let reveal = reveal_cursor.clone();
             Rc::new(move |s: &mut S, tx: &mut Tx| -> bool {
                 let cursor = get(s).cursor().map(str::to_owned);
-                if cursor.is_none() {
-                    if last_revealed_cursor(&track_key).is_some() {
-                        set_last_revealed_cursor(&track_key, None);
+                match cursor {
+                    None => {
+                        if last_revealed_cursor(&track_key).is_some() { set_last_revealed_cursor(&track_key, None); }
+                        false
                     }
-                    return false;
-                }
-                if last_revealed_cursor(&track_key) != cursor {
-                    reveal(s, tx)
-                } else {
-                    false
+                    Some(c) if last_revealed_cursor(&track_key).as_deref() == Some(c.as_str()) => false,
+                    Some(_) => reveal(s, tx),
                 }
             })
         };
@@ -454,17 +465,17 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
         if read_viewport.is_none() {
             viewport = viewport.on_layout_tx(|_s: &mut S, _r: [f32; 4], _tx: &mut Tx| {});
         } else if let (Some(read_vp), Some(write_vp)) = (read_viewport, write_viewport.clone()) {
-            let reveal_on_layout = reveal_on_cursor_change.clone();
+            let reveal_retry = retry_pending_reveal.clone();
             viewport = viewport.on_layout_tx(move |s: &mut S, r: [f32; 4], tx: &mut Tx| {
                 let before = read_vp(&*s);
                 if before != r[3] {
                     write_vp(s, r[3]);
                 }
-                // Reveal on selection changes (e.g. external model.select), not on every frame.
-                let scrolled = reveal_on_layout(s, tx);
-                if before == r[3] && !scrolled {
-                    tx.live_only();
-                }
+                // Retry pending reveals when layout runs (e.g. viewport measurement changes).
+                reveal_retry(s, tx);
+                // Do not call live_only: external cursor changes may need observation on
+                // subsequent layout passes within the same frame cycle.
+                let _ = before;
             });
         }
         viewport = viewport.child(if count == 0 {
@@ -485,6 +496,34 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
         } else {
             rows
         });
+
+        // Cursor-keyed marker outside scroll viewport: a new element on selection change
+        // forces a layout pass so external model.select can be revealed via tx. While reveal
+        // is pending (not yet satisfied/in-view), tick the key so layout callback can re-run.
+        let pending_reveal = scroll_wired
+            && cursor.is_some()
+            && cursor.as_deref() != last_revealed_cursor(&key).as_deref();
+        let cursor_marker_key = match &cursor {
+            Some(id) if pending_reveal => {
+                format!("{key}-cursor-sync-{id}-{}", next_reveal_tick(&key))
+            }
+            Some(id) => format!("{key}-cursor-sync-{id}"),
+            None => {
+                reset_reveal_tick(&key);
+                format!("{key}-cursor-sync-none")
+            }
+        };
+        if !pending_reveal {
+            reset_reveal_tick(&key);
+        }
+        let needs = pending_reveal;
+        let mut marker = el().key(cursor_marker_key).w(0.0).h(0.0).a11y_hidden();
+        if needs {
+            let reveal_sync = reveal_cursor.clone();
+            marker = marker.on_layout_tx(move |s: &mut S, _r: [f32; 4], tx: &mut Tx| {
+                reveal_sync(s, tx);
+            });
+        }
 
         let key_handler = key.clone();
         let select = on_select.clone();
@@ -589,6 +628,7 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
             }
         })
         .child(viewport)
+        .child(marker)
     }
 }
 

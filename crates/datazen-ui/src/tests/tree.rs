@@ -933,26 +933,13 @@ fn external_select_reveals_row_in_viewport() {
         // External selection (no key/pointer event) to a row above viewport.
         rt.state.model.select("node-1");
         for _ in 0..12 { rt.frame(0.016); settle(&mut rt); }
-        if rt.elements().iter().all(|e| e.key.as_deref() != Some(&format!("{KEY}-row-1"))) {
-            // Event-context nudge to ensure reveal in runtimes where layout-tx scroll is deferred.
-            rt.state.model.select("node-0");
-            settle(&mut rt);
-            press(&mut rt, Key::Down);
-            settle(&mut rt);
-        }
         assert_eq!(rt.state.model.cursor(), Some("node-1"));
         assert_in_bounds(&rt, w, h, &format!("external select to top at {w}x{h}"));
 
         // External selection to a row far below viewport.
-        rt.state.model.select("node-150");
+        rt.state.model.select("node-151");
         for _ in 0..12 { rt.frame(0.016); settle(&mut rt); }
-        if rt.elements().iter().all(|e| e.key.as_deref() != Some(&format!("{KEY}-row-150"))) {
-            rt.state.model.select("node-149");
-            settle(&mut rt);
-            press(&mut rt, Key::Down);
-            settle(&mut rt);
-        }
-        assert_eq!(rt.state.model.cursor(), Some("node-150"));
+        assert_eq!(rt.state.model.cursor(), Some("node-151"));
         assert_in_bounds(&rt, w, h, &format!("external select far below at {w}x{h}"));
     }
 }
@@ -1000,5 +987,12 @@ fn manual_scroll_away_does_not_pull_back_until_selection_changes() {
     assert_eq!(rt.state.model.cursor(), Some("node-99"));
     assert_in_bounds(&rt, w, h, "after Up selection changes and reveals");
 }
+
+
+
+
+
+
+
 
 
