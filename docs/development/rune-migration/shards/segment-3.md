@@ -32,10 +32,10 @@
 - [x] T087 · stores · 1.30d · stores/aiStore.ts · split
 - [x] T089 · stores/tableData · 0.90d · stores/tableData/countStrategy.ts
 - [x] T091 · platform · 0.30d · platform/capabilities.ts
-- [ ] T096 · components/ui · 0.90d · components/ui/WebContextMenu.tsx
+- [x] T096 · components/ui · 0.90d · components/ui/WebContextMenu.tsx
 - [x] T097 · components/DataTable · 0.30d · components/DataTable/ColumnStatsDialog.tsx
-- [ ] T100 · components/query · 1.00d · components/query/QueryContextSelectors.tsx components/query/QueryErrorPanel.tsx
-- [ ] T103 · components/ai · 0.90d · components/ai/AiEgressNotice.tsx
+- [x] T100 · components/query · 1.00d · components/query/QueryContextSelectors.tsx components/query/QueryErrorPanel.tsx
+- [x] T103 · components/ai · 0.90d · components/ai/AiEgressNotice.tsx
 - [ ] T106 · components · 2.60d · components/FilterEditor.tsx · split
 - [ ] T113 · windows/data-transfer · 0.90d · windows/data-transfer/DataTransferTerminalResults.tsx
 - [ ] T114 · windows/data-sync · 0.90d · windows/data-sync/DataSyncEndpointStep.tsx
@@ -60,7 +60,7 @@
 - [ ] T177 · windows/data-sync · 0.90d · windows/data-sync/DataSyncObjectsStep.tsx
 - [ ] T180 · lib/chart · 1.00d · lib/chart/transform.ts lib/columnStats.ts
 - [ ] T184 · stores · 0.90d · stores/dashboardStore.ts
-- [ ] T185 · stores/tableData · 0.30d · stores/tableData/filterUtils.ts
+- [x] T185 · stores/tableData · 0.30d · stores/tableData/filterUtils.ts
 - [ ] T187 · platform · 2.00d · platform/exportPlan.ts · split
 - [x] T189 · components/DataTable · 0.90d · components/DataTable/DataTableSelectionBar.tsx
 - [ ] T193 · components/ai · 0.90d · components/ai/AiSessionHistory.tsx

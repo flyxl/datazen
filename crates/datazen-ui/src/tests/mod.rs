@@ -705,3 +705,19 @@ mod structure_editor_types;
 // T156 independent audit: full 20-field capability surface, nested UiConfig
 // defaults, duplicate-definition and bare-panic source guards.
 mod structure_editor_types_audit;
+// T096: WebContextMenu — contract, position math, store, panels, presses.
+mod web_context_menu;
+// T096 independent audit: fresh vectors, id'd separators, Copy command.
+mod web_context_menu_audit;
+// T100: QueryContextSelectors + QueryErrorPanel.
+mod query_context_and_error;
+// T100 independent audit: fresh vectors for both T100 components.
+mod query_context_and_error_audit;
+// T103: AiEgressNotice — the amber strip above the chat input.
+mod ai_egress_notice;
+// T103 independent audit: fresh vectors for the egress notice.
+mod ai_egress_notice_audit;
+// T185: the filter-draft helpers (filterUtils).
+mod table_data_filter_utils;
+// T185 independent audit: fresh vectors for the filter-draft helpers.
+mod table_data_filter_utils_audit;

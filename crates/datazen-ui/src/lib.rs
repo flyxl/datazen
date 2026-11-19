@@ -46,6 +46,7 @@ pub(crate) mod ai_store_chat;
 pub(crate) mod ai_store_rest;
 pub(crate) mod table_data_connection_state;
 pub(crate) mod table_data_count_strategy;
+pub(crate) mod table_data_filter_utils;
 pub(crate) mod components;
 pub(crate) mod ai;
 pub(crate) mod hooks; // the hooks/ ports (T038: useConfirmDialog is its first)
