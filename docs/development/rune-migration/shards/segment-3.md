@@ -20,7 +20,7 @@
 - [x] T043 · platform · 2.00d · platform/blobTablesExporter.ts · split
 - [x] T049 · app.ts · 0.30d · app.ts
 - [x] T053 · components/ui · 0.30d · components/ui/Spinner.tsx
-- [ ] T054 · components/DataTable · 1.30d · components/DataTable/ColumnPresentationDialog.tsx · split
+- [~] T054 · components/DataTable · 1.30d · components/DataTable/ColumnPresentationDialog.tsx · split
 - [ ] T057 · components/query · 0.90d · components/query/QueryArtifactExport.tsx
 - [ ] T060 · components/ai · 0.80d · components/ai/AiCodeBlock.tsx
 - [ ] T063 · components · 0.90d · components/DbTypeBadge.tsx components/ErrorBoundary.tsx components/export/ExportColumnPicker.tsx
