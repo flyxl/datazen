@@ -1021,3 +1021,441 @@ fn every_part_stays_inside_the_window_in_both_themes() {
         }
     }
 }
+
+// ==== T192 audit round =============================================================
+//
+// Every test below pins a seam the port's first 24 tests missed; each one was
+// found by a probe mutation that survived the whole trimmed suite (196 green
+// with the probe live), and every probe dies on its pin. React positions cite
+// `packages/frontend/src/components/chart/renderers/BarChartRenderer.tsx` (or
+// the lean `lib/chart` slice's own file), line by line. The probes that
+// survived the round and could not be pinned are documented in the module
+// header as the equivalent-mutation exemptions.
+
+// ---- The X-tick cap's two edges (recharts auto-interval, MAX_X_TICKS = 8) ----------
+
+#[test]
+fn eight_rows_still_tick_every_band_and_nine_rows_start_thinning() {
+    // The lean recharts-interval cap is 8: eight rows take stride
+    // ceil(8/8) = 1 — every band ticks (the wide-row 10-tick pin above
+    // guards the stride-2 body; this one guards both edges of the literal).
+    // Probe: MAX_X_TICKS 8 → 7 thins eight rows (stride 2); 8 → 9 leaves
+    // nine rows untick-thinned (stride 1).
+    let eight: Vec<ChartDataPoint> = (0..8)
+        .map(|i| point(&format!("r{i}"), i as f64, 7.0 - i as f64))
+        .collect();
+    let plan = bar_chart_plan(
+        &eight,
+        &config(&["a", "b"]),
+        &BTreeSet::new(),
+        true,
+        &FormatSeams::default(),
+    );
+    let rows: Vec<usize> = plan.x_ticks.iter().map(|t| t.row).collect();
+    assert_eq!(rows, vec![0, 1, 2, 3, 4, 5, 6, 7], "stride 1 at n = 8");
+    let want: Vec<f32> = (0..8).map(|r| (r as f32 + 0.5) / 8.0).collect();
+    assert_eq!(plan.grid_xs, want, "a hairline under every band");
+
+    let nine: Vec<ChartDataPoint> = (0..9)
+        .map(|i| point(&format!("r{i}"), i as f64, 8.0 - i as f64))
+        .collect();
+    let plan = bar_chart_plan(
+        &nine,
+        &config(&["a", "b"]),
+        &BTreeSet::new(),
+        true,
+        &FormatSeams::default(),
+    );
+    let rows: Vec<usize> = plan.x_ticks.iter().map(|t| t.row).collect();
+    assert_eq!(
+        rows,
+        vec![0, 2, 4, 6, 8],
+        "stride ceil(9/8) = 2 at n = 9 — the cap starts thinning"
+    );
+}
+
+// ---- The X axis' key fallback (React 45) -------------------------------------------
+
+#[test]
+fn the_x_key_reads_the_index_fallback_column_and_an_absent_slot_ticks_empty() {
+    // React 45 (`dataKey={config.xAxis ?? '__index'}`): no xAxis configured →
+    // the axis reads the `__index` column the upstream pipeline writes; a row
+    // without it ticks the null arm's empty label. Probe: the fallback spelled
+    // `""` instead of `'__index'` survived the 24 pins.
+    let indexed = vec![
+        ChartDataPoint::new()
+            .with("__index", ChartValue::Number(0.0))
+            .with("a", ChartValue::Number(10.0))
+            .with("b", ChartValue::Number(15.0)),
+        ChartDataPoint::new()
+            .with("__index", ChartValue::Number(5.0))
+            .with("a", ChartValue::Number(20.0))
+            .with("b", ChartValue::Number(25.0)),
+        ChartDataPoint::new() // no __index slot at all
+            .with("a", ChartValue::Number(20.0))
+            .with("b", ChartValue::Number(25.0)),
+    ];
+    let plan = bar_chart_plan(
+        &indexed,
+        &config(&["a", "b"]), // x_axis stays None
+        &BTreeSet::new(),
+        true,
+        &FormatSeams::default(),
+    );
+    assert_eq!(plan.x_key, "__index", "React 45's fallback literal");
+    let labels: Vec<&str> = plan.x_ticks.iter().map(|t| t.label.as_str()).collect();
+    assert_eq!(
+        labels,
+        vec!["0", "5", ""],
+        "the __index slot feeds formatAxisTick; an absent slot is null → ''"
+    );
+}
+
+// ---- The plain tooltip's value display arms (React 55-67, js_string) ----------------
+
+#[test]
+fn the_plain_tooltip_shows_js_string_display_for_every_value_kind() {
+    // React 58-66: the non-log `<Tooltip>` content is recharts' default —
+    // each entry prints the slot through JS `String(v)`: null → '' (the
+    // trailing empty value), NaN → 'NaN', ±Infinity → 'Infinity'/
+    // '-Infinity', 0 → '0' (js_string's arms, the T136/T166 precedent).
+    // Probe: `js_string(n)` → Rust's `n.to_string()` survived — the number
+    // pins print the same, only the infinity spellings differ.
+    let data = vec![
+        ChartDataPoint::new()
+            .with("label", ChartValue::Text("r0".into()))
+            .with("a", ChartValue::Number(10.0))
+            .with("b", ChartValue::Number(f64::NAN)),
+        ChartDataPoint::new()
+            .with("label", ChartValue::Text("r1".into()))
+            .with("a", ChartValue::Number(20.0))
+            .with("b", ChartValue::Number(f64::INFINITY)),
+        ChartDataPoint::new()
+            .with("label", ChartValue::Text("r2".into()))
+            .with("a", ChartValue::Null)
+            .with("b", ChartValue::Number(25.0)),
+        ChartDataPoint::new()
+            .with("label", ChartValue::Text("r3".into()))
+            .with("a", ChartValue::Number(0.0))
+            .with("b", ChartValue::Number(f64::NEG_INFINITY)),
+    ];
+    // -Infinity (r3) flips transform.ts's hasNegative → the hint stays off
+    // and the plain tooltip arm runs for every row.
+    let mut rt = runtime(scenario(config(&["a", "b"]), data), (960.0, 640.0));
+    let item = |rt: &Runtime<ChartState>, i: usize| -> Option<String> {
+        element(rt, &format!("bar-chart-tooltip-item-{i}"))
+            .text
+            .clone()
+    };
+    hover_key_center(&mut rt, &format!("{HIT_CELL_PREFIX}0"));
+    assert_eq!(item(&rt, 0).as_deref(), Some("a : 10"));
+    assert_eq!(item(&rt, 1).as_deref(), Some("b : NaN"));
+    hover_key_center(&mut rt, &format!("{HIT_CELL_PREFIX}1"));
+    assert_eq!(item(&rt, 0).as_deref(), Some("a : 20"));
+    assert_eq!(item(&rt, 1).as_deref(), Some("b : Infinity"));
+    hover_key_center(&mut rt, &format!("{HIT_CELL_PREFIX}2"));
+    assert_eq!(
+        item(&rt, 0).as_deref(),
+        Some("a : "),
+        "a null slot shows the empty value, not 'null'"
+    );
+    assert_eq!(item(&rt, 1).as_deref(), Some("b : 25"));
+    hover_key_center(&mut rt, &format!("{HIT_CELL_PREFIX}3"));
+    assert_eq!(item(&rt, 0).as_deref(), Some("a : 0"));
+    assert_eq!(item(&rt, 1).as_deref(), Some("b : -Infinity"));
+}
+
+// ---- Text slots show verbatim (React 58-66, 93-101) ---------------------------------
+
+#[test]
+fn text_slots_show_verbatim_in_the_label_list_and_the_plain_tooltip() {
+    // React 93-101 (`<LabelList>` with `formatter` undefined — React 99 —
+    // shows recharts' default `String(value)` display) + React 58-66 (the
+    // plain tooltip's default content): a text slot is its own string,
+    // verbatim — the number coercions that *plot* it (toNumber trims) never
+    // round-trip the display. Probe: the text arms trimmed/cleared
+    // (`s.trim()`, `String::new()`) survived the 24 pins.
+    let data = vec![
+        ChartDataPoint::new()
+            .with("label", ChartValue::Text("r0".into()))
+            .with("a", ChartValue::Text(" 12 ".into()))
+            .with("b", ChartValue::Number(15.0)),
+    ];
+    let mut cfg = config(&["a", "b"]);
+    cfg.show_values = true;
+    let plan = bar_chart_plan(&data, &cfg, &BTreeSet::new(), true, &FormatSeams::default());
+    assert!(!plan.log_hint.use_log, "12 against 15 stays off");
+    assert_eq!(
+        plan.series[0].labels[0],
+        Some(" 12 ".to_string()),
+        "the LabelList text is the slot verbatim, spaces included"
+    );
+    assert_eq!(
+        plan.series[1].labels[0],
+        Some("15".to_string()),
+        "a number slot is js_string's display"
+    );
+    // The bar still plots the *coerced* 12: the domain is [0, 15], so the
+    // a bar tops at 1 - 12/15 = 0.2 with height 0.8 (and the b bar fills).
+    assert_rect(plan.series[0].rects[0], [0.05, 0.2, 0.45, 0.8], "a r0 plots 12");
+    assert_rect(plan.series[1].rects[0], [0.5, 0.0, 0.45, 1.0], "b r0 fills");
+
+    // And through the tree: the label and the plain tooltip both keep the
+    // verbatim text.
+    let mut rt = runtime(scenario(cfg, data), (960.0, 640.0));
+    assert_eq!(
+        element(&rt, &format!("{VALUE_PREFIX}0-a"))
+            .text
+            .as_deref(),
+        Some(" 12 ")
+    );
+    hover_key_center(&mut rt, &format!("{HIT_CELL_PREFIX}0"));
+    assert_eq!(
+        element(&rt, "bar-chart-tooltip-item-0").text.as_deref(),
+        Some("a :  12 "),
+        "the tooltip prints the slot verbatim, not the coerced 12"
+    );
+    assert_eq!(
+        element(&rt, "bar-chart-tooltip-item-1").text.as_deref(),
+        Some("b : 15")
+    );
+}
+
+// ---- The chrome inks (React 46, 51, 70, 98) -------------------------------------------
+
+#[test]
+fn ticks_take_the_secondary_ink_and_the_legend_names_the_strong_ink() {
+    // React 46/51 (`fill: 'var(--c-fg-secondary, #999)'` on both axes' ticks)
+    // + React 70 (the Legend wrapper's `color: 'var(--c-fg, #eee)'`): the
+    // axis ticks read the collapsed secondary ink, the legend names the
+    // strong one. Probe: both axes' tick ink and the legend name ink
+    // flipped to the opposite kit token and survived.
+    let rt = runtime(bar_scenario(near_data()), (960.0, 640.0));
+    let k = kit(true);
+    assert_eq!(
+        element(&rt, &format!("{Y_AXIS_KEY}-tick-0")).text_color,
+        Some(k.c.text_muted),
+        "Y ticks: var(--c-fg-secondary)"
+    );
+    assert_eq!(
+        element(&rt, &format!("{X_AXIS_KEY}-tick-0")).text_color,
+        Some(k.c.text_muted),
+        "X ticks: var(--c-fg-secondary)"
+    );
+    assert_eq!(
+        element(&rt, &format!("{LEGEND_LABEL_PREFIX}a")).text_color,
+        Some(k.c.text_strong),
+        "legend names: var(--c-fg, #eee)"
+    );
+}
+
+// ---- The plain tooltip's contentStyle chrome + anchor (React 58-66) -------------------
+
+#[test]
+fn the_plain_tooltip_keeps_reacts_contentstyle_chrome_and_anchor() {
+    // React 58-66 (`contentStyle`: background var(--c-surface-alt), border
+    // 1px var(--c-edge), borderRadius 6, color var(--c-fg, #eee)) on the
+    // token mapping the module docs declare (layer_01 / border_base /
+    // radius.md / text_strong) — plus the port's declared anchor: the
+    // hovered band's top-left inset by (2, 8). Probes: fill → layer_02,
+    // radius → sm and a 6pt anchor dx all survived.
+    let mut rt = runtime(bar_scenario(near_data()), (960.0, 640.0));
+    let k = kit(true);
+    hover_key_center(&mut rt, &format!("{HIT_CELL_PREFIX}0"));
+    let tip = element(&rt, TOOLTIP_KEY);
+    assert_eq!(tip.fill, k.c.layer_01, "background: var(--c-surface-alt)");
+    assert_eq!(tip.radius, k.radius.md, "borderRadius: 6");
+    assert_eq!(
+        element(&rt, &format!("{TOOLTIP_KEY}-item-0")).text_color,
+        Some(k.c.text_strong),
+        "color: var(--c-fg, #eee)"
+    );
+    let cell = element(&rt, &format!("{HIT_CELL_PREFIX}0")).rect;
+    assert!(
+        (tip.rect[0] - (cell[0] + 2.0)).abs() <= 0.5,
+        "anchored at band.x + 2: {:?} in {:?}",
+        tip.rect,
+        cell
+    );
+    assert!(
+        (tip.rect[1] - (cell[1] + 8.0)).abs() <= 0.5,
+        "anchored at band.y + 8: {:?} in {:?}",
+        tip.rect,
+        cell
+    );
+}
+
+// ---- The X axis' band ladder keeps its empty rungs (React 44-49) ----------------------
+
+#[test]
+fn the_x_axis_row_lays_every_band_even_where_no_tick_draws() {
+    // React 44-49: the X axis ticks *bands*, not ticks — recharts lays each
+    // label over its own band centre; the port's rung elements (empty where
+    // the stride skips a row) keep that ladder. Probe: dropping the empty
+    // rungs survived the 24 pins (every n = 2 row is a tick, so nothing
+    // shifted); with ten rows the surviving ticks slid a band left.
+    let data: Vec<ChartDataPoint> = (0..10)
+        .map(|i| point(&format!("r{i}"), i as f64, 9.0 - i as f64))
+        .collect();
+    let rt = runtime(bar_scenario(data), (960.0, 640.0));
+
+    let axis = element(&rt, X_AXIS_KEY).rect;
+    let drawn: Vec<String> = keys_with(&rt, &format!("{X_AXIS_KEY}-tick-"));
+    assert_eq!(drawn.len(), 5, "stride 2 draws r0/r2/r4/r6/r8: {drawn:?}");
+    // Tick r2's label centres over band 2's centre — the empty rungs for
+    // bands 1 and 3 keep it there.
+    for (row, frac) in [(0usize, 0.05f32), (2, 0.25), (8, 0.85)] {
+        let t = element(&rt, &format!("{X_AXIS_KEY}-tick-{row}")).rect;
+        let want = axis[0] + frac * axis[2];
+        assert!(
+            (t[0] + t[2] * 0.5 - want).abs() <= 2.0,
+            "tick {row} centred at {want}, got {t:?} vs axis {axis:?}"
+        );
+    }
+}
+
+// ---- The legend row's declared geometry (module docs: 22pt row, 8pt swatch) ----------
+
+#[test]
+fn the_legend_row_declares_its_22pt_row_and_8pt_swatches() {
+    // Not React literals (recharts sizes the legend from its content); the
+    // port declares the 22pt row (module docs) and the 8pt swatch chip —
+    // pinned as the layout regression guards they are, the T166 precedent.
+    // Probe: 22 → 23 and the 8pt chip → 9 both survived.
+    let rt = runtime(bar_scenario(near_data()), (960.0, 640.0));
+    let legend = element(&rt, LEGEND_KEY).rect;
+    assert!((legend[3] - 22.0).abs() <= 0.5, "the legend row is 22pt: {legend:?}");
+    let swatch = element(&rt, &format!("{LEGEND_SWATCH_PREFIX}a")).rect;
+    assert!(
+        (swatch[2] - 8.0).abs() <= 0.5 && (swatch[3] - 8.0).abs() <= 0.5,
+        "the swatch chip is 8x8: {swatch:?}"
+    );
+}
+
+// ---- The flat domain's negative arm (recharts' constant-domain extension) -------------
+
+#[test]
+fn negative_flat_data_hangs_its_bars_from_the_clamped_top_zero_line() {
+    // The lean domain's flat arm fires *before* the sign branches: a constant
+    // -5 widens to [-5, -4], which does not contain zero — the zero baseline
+    // recharts hangs every bar from clamps to the plot's *top* edge (the
+    // module docs' flat-domain clamp), and both bars hang downward from it,
+    // full-height. The mirror of the flat-positive pin ([5, 6] → baseline at
+    // the bottom); boundary pin — no probe survived alone here, the adjacent
+    // geometry pins catch the zero-line mutations.
+    let flat = vec![point("r0", -5.0, -5.0)];
+    let plan = bar_chart_plan(
+        &flat,
+        &config(&["a", "b"]),
+        &BTreeSet::new(),
+        true,
+        &FormatSeams::default(),
+    );
+    assert_eq!(plan.y_domain, [-5.0, -4.0], "flat widens upward, not to zero");
+    assert!((plan.y_ticks[0].value - (-4.0)).abs() < 1e-12, "the top tick is -4");
+    assert_eq!(plan.y_ticks[0].label, "-4");
+    assert_rect(
+        plan.series[0].rects[0],
+        [0.05, 0.0, 0.45, 1.0],
+        "a r0 hangs from the clamped top zero line",
+    );
+    assert_rect(plan.series[1].rects[0], [0.5, 0.0, 0.45, 1.0], "b r0 too");
+
+    let mut cfg = config(&["a", "b"]);
+    cfg.show_values = true;
+    let plan = bar_chart_plan(&flat, &cfg, &BTreeSet::new(), true, &FormatSeams::default());
+    assert_eq!(
+        plan.series[0].labels[0],
+        Some("-5".to_string()),
+        "a zero-area hanging bar still labels its value"
+    );
+}
+
+// ---- No Y axes, no Bars (React 82-103 gates on config.yAxes) -------------------------
+
+#[test]
+fn a_bar_chart_with_no_y_axes_keeps_the_frame_and_still_ticks_the_x_bands() {
+    // React 82-103: `config.yAxes.map(...)` mounts no `<Bar>` when yAxes is
+    // empty — the `<BarChart>` frame (grid, both axes, the hit bands over the
+    // rows) still renders, and `multiSeries` (React 35, `length > 1`) stays
+    // false so no Legend mounts. Boundary pin for the empty-series config.
+    let data = vec![point("r0", 10.0, 15.0), point("r1", 20.0, 25.0)];
+    let plan = bar_chart_plan(
+        &data,
+        &config(&[]),
+        &BTreeSet::new(),
+        true,
+        &FormatSeams::default(),
+    );
+    assert!(plan.series.is_empty(), "no yAxes → no series plans");
+    assert!(!plan.multi_series);
+    assert_eq!(plan.row_count, 2, "the rows still exist");
+    assert_eq!(plan.y_domain, [0.0, 1.0], "the honest no-data domain");
+    let rows: Vec<usize> = plan.x_ticks.iter().map(|t| t.row).collect();
+    assert_eq!(rows, vec![0, 1], "the X bands still tick");
+
+    let rt = runtime(scenario(config(&[]), data), (960.0, 640.0));
+    assert!(has_key(&rt, ROOT_KEY) && has_key(&rt, GRID_KEY) && has_key(&rt, AXES_KEY));
+    assert!(has_key(&rt, Y_AXIS_KEY) && has_key(&rt, X_AXIS_KEY));
+    assert!(!has_key(&rt, LEGEND_KEY));
+    assert!(keys_with(&rt, SERIES_KEY_PREFIX).is_empty(), "no series canvases");
+    let hit_cells: Vec<String> = keys_with(&rt, HIT_CELL_PREFIX)
+        .into_iter()
+        .filter(|k| k != HIT_ZONE_KEY)
+        .collect();
+    assert_eq!(hit_cells.len(), 2, "one hit band per row");
+}
+
+// ---- The Bar X axis has no time-domain arm (React 44-49 vs Area's 60-67) --------------
+
+#[test]
+fn the_bar_x_axis_has_no_time_domain_arm_and_never_calls_the_epoch_seam() {
+    // React 44-49: the Bar source's `<XAxis>` carries only `dataKey`,
+    // `tick`, `stroke` and `tickFormatter={formatAxisTick}` — unlike the
+    // area source (React 60-67) it never imports `formatEpochMs` and has no
+    // `domain`/`ticks` props, so `config.timeDomain` contributes nothing:
+    // every row ticks its band, in or out of the configured window, and the
+    // epoch seam is never called. Guards the module docs' "no time-domain
+    // arm" claim and the never-wired `formatEpochMs` slot.
+    let epoch_seen = Rc::new(RefCell::new(Vec::new()));
+    let epoch = {
+        let seen = epoch_seen.clone();
+        Rc::new(move |v: f64| {
+            seen.borrow_mut().push(v);
+            format!("e:{v}")
+        })
+    };
+    let seams = FormatSeams {
+        format_epoch_ms: epoch,
+        ..FormatSeams::default()
+    };
+    let mut cfg = config(&["a", "b"]);
+    cfg.x_axis = Some("t".into());
+    cfg.time_domain = Some([0.0, 100.0]);
+    cfg.time_ticks = vec![0.0, 50.0];
+    // 150 sits outside the [0, 100] window the area engine would hide.
+    let data = vec![
+        ChartDataPoint::new()
+            .with("t", ChartValue::Number(150.0))
+            .with("a", ChartValue::Number(10.0))
+            .with("b", ChartValue::Number(15.0)),
+        ChartDataPoint::new()
+            .with("t", ChartValue::Number(200.0))
+            .with("a", ChartValue::Number(20.0))
+            .with("b", ChartValue::Number(25.0)),
+    ];
+    let plan = bar_chart_plan(&data, &cfg, &BTreeSet::new(), true, &seams);
+    let rows: Vec<usize> = plan.x_ticks.iter().map(|t| t.row).collect();
+    assert_eq!(rows, vec![0, 1], "the window does not hide any row");
+    let labels: Vec<&str> = plan.x_ticks.iter().map(|t| t.label.as_str()).collect();
+    assert_eq!(
+        labels,
+        vec!["150", "200"],
+        "formatAxisTick of the t slot — plain numbers, no clock"
+    );
+    assert!(
+        epoch_seen.borrow().is_empty(),
+        "the Bar XAxis never imports formatEpochMs: {:?}",
+        epoch_seen.borrow()
+    );
+}
