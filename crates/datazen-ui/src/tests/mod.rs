@@ -793,3 +793,7 @@ mod data_transfer_terminal_results_audit;
 // T114: the Data Sync endpoint step (scope reconfirmation, profile
 // controls: name input, profile select, save/load/delete gates).
 mod data_sync_endpoint_step;
+
+// T114 independent audit: fresh vectors (empty profile list, pre-selected
+// id, pre-held name text, the dismissal close path, narrow-window notice).
+mod data_sync_endpoint_step_audit;
