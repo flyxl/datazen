@@ -42,7 +42,7 @@
 - [x] T117 · lib/chart · 0.90d · lib/chart/postQueryView.ts
 - [x] T125 · stores · 0.90d · stores/connectionStore.ts
 - [x] T127 · stores/tableData · 2.00d · stores/tableData/dirtyIndex.ts · split
-- [ ] T129 · platform · 1.30d · platform/contracts.ts · split
+- [x] T129 · platform · 1.30d · platform/contracts.ts · split
 - [ ] T132 · components/DataTable · 1.30d · components/DataTable/DataExportDialog.tsx · split
 - [ ] T134 · components/query · 0.30d · components/query/QueryExecutionStatus.tsx
 - [ ] T137 · components/ai · 0.80d · components/ai/AiInput.tsx
