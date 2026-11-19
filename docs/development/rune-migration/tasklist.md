@@ -233,7 +233,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T214 · commands · 0.90d · commands/context.ts
 - [x] T215 · components/DataTable · 0.30d · components/DataTable/DefaultOrderSelect.tsx
 - [ ] T216 · components/filter · 0.90d · components/filter/filterLabels.ts components/filter/filterValues.ts components/filter/types.ts
-- [ ] T217 · components/connection · 0.60d · components/connection/HttpProxyTunnelFields.tsx components/connection/IndexConnectionFields.tsx
+- [x] T217 · components/connection · 0.60d · components/connection/HttpProxyTunnelFields.tsx components/connection/IndexConnectionFields.tsx
 - [ ] T218 · components/chart · 2.00d · components/chart/renderers/LineChartRenderer.tsx · split
 - [ ] T219 · components/ai · 1.30d · components/ai/ContextPicker.tsx · split
 - [ ] T220 · components/sql-editor · 2.00d · components/sql-editor/format/formatEditorDocument.ts · split

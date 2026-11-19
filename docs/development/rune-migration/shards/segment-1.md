@@ -47,7 +47,7 @@
 - [x] T199 · windows/connection · 1.30d · windows/connection/ContentView.tsx · split
 - [x] T208 · lib/session · 0.90d · lib/session/queryPanelSessionRoot.ts
 - [ ] T216 · components/filter · 0.90d · components/filter/filterLabels.ts components/filter/filterValues.ts components/filter/types.ts
-- [ ] T217 · components/connection · 0.60d · components/connection/HttpProxyTunnelFields.tsx components/connection/IndexConnectionFields.tsx
+- [x] T217 · components/connection · 0.60d · components/connection/HttpProxyTunnelFields.tsx components/connection/IndexConnectionFields.tsx
 - [x] T223 · windows/connection · 0.90d · windows/connection/ContentViewDialogs.tsx
 - [ ] T231 · lib/session · 0.30d · lib/session/runEditorExplain.ts
 - [ ] T239 · components/connection · 0.90d · components/connection/NewConnectionDialog.tsx
