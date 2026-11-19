@@ -835,3 +835,7 @@ mod query_execution_status_audit;
 // T137: the AI input (coder tests: the @ trigger, the token pop, the pick
 // rewrite, the placeholder ternary, the send/stop gate).
 mod ai_input;
+
+// T137 independent audit: fresh vectors (unicode @ queries, the mid-word
+// caret pick, the Backspace key path, stop presses, the inert wire-less field).
+mod ai_input_audit;
