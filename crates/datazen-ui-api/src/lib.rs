@@ -4,6 +4,7 @@
 //! interface can run before the desktop and HTTP adapters exist.
 
 mod ai_sessions;
+mod ai_store_types;
 mod ai_streaming;
 mod ai_types;
 mod chart_types;
@@ -47,6 +48,20 @@ pub use ai_sessions::{
     message_status, new_chat_session, normalize_loaded_skills, split_legacy_key, title_for,
     truncate_bytes, MAX_MESSAGES_PER_SESSION, MAX_MESSAGE_BYTES, MAX_SESSIONS,
     MIGRATION_MARKER_KEY, STORAGE_KEY,
+};
+// The T126 AiStore contract: the zustand store's state struct and action
+// trait (the aiStore port, T128, is the implementer), the NL2SQL slice with
+// its initial literal, and the field-complete lean mirrors of the
+// `types/index.ts` shapes the store holds (T213 owns the real ports).
+pub use ai_store_types::{
+    AiMemoryMode, AiMemoryScope, AiStoreActions, AiStoreState, AnalyzeExplainParams,
+    AnalyzeQueriesParams, CallMcpToolParams, ConnectionDiagnosis, ConnectionSolution,
+    DiagnoseConnectionParams, DiagnoseErrorParams, EventListenerTeardown, ExecuteWorkflowParams,
+    GenerateSchemaDocParams, GenerateSqlParams, McpClientStatus, McpServerConfig,
+    McpServerTransport, McpToolInfo, MemoryCandidateNotice, Nl2SqlState, ParseFilterParams,
+    QueryAnalysis, QueryCategory, SendChatMessageParams, SendWorkflowChatMessageParams,
+    StepExecutionResult, StepStatus, WorkflowExecutionResult, WorkflowListItem,
+    WorkflowVariable, initial_nl2sql,
 };
 // The T088 streaming adapter: the module's own types plus the seam
 // vocabulary the future sibling tasks (streamRegistry/sessionCancel/
