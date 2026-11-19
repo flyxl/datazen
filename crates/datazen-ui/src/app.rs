@@ -1,4 +1,34 @@
 //! Root view and application bootstrap.
+//!
+//! Port of `@datazen/frontend/app` (`packages/frontend/src/app.ts`, T049).
+//! That file is a one-line barrel — it only re-exports `startSharedApp` and
+//! `StartSharedAppOptions` from `./bootstrap/startSharedApp` — and it is
+//! separate from the light `.` entry on purpose: `startSharedApp` transitively
+//! owns the whole shared app graph (App, stores, PRO host-module table,
+//! global CSS), while the desktop platform adapters consume only the light
+//! surface (ports, contracts, capability bits). Keeping the bootstrap out of
+//! `.` means a light consumer's test graph never has to know the app graph
+//! exists. The same split holds here: the launch surface below is re-exported
+//! at the crate root and nothing else in the crate needs it to render.
+//!
+//! The barrel dissolves into this module (an X-category pure re-export shell
+//! — there is no `bootstrap` module to forward to yet):
+//!
+//! * `startSharedApp` itself has **no** Rune equivalent yet. Its port is
+//!   T047 (`bootstrap/startSharedApp.tsx`, segment-4, split): the settings
+//!   preload, locale/icon/PRO init, E2E store bridge and React-root mounting
+//!   it performs do not exist in Rune. Do not invent a `start_shared_app`
+//!   here; when T047 lands, this doc points at it.
+//! * `StartSharedAppOptions` likewise arrives with T047. Its host half
+//!   already exists in another shape: `configureHost` (backend binding,
+//!   platform port injection, chrome registration) is the host building a
+//!   [`datazen_ui_api::DesktopAdapter`] and handing it to
+//!   [`run_with_adapter`] / [`app_with_adapter`]; `onSettingsPreloaded`
+//!   (the settings preload settling before first paint) is T047's bootstrap
+//!   step, not a launch-surface option.
+//! * The crate-root re-exports in `lib.rs` (`run`, `run_with_adapter`,
+//!   `app_with_adapter`) are this barrel's Rune counterpart: the shared-app
+//!   launch surface, kept apart from the light port/contract surface.
 
 use crate::constants::*;
 use crate::state_def::AppState;

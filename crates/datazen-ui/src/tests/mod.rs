@@ -350,3 +350,6 @@ mod export_success_panel_audit;
 mod filter_bar;
 // T014 independent audit: fresh vectors for the filter bar.
 mod filter_bar_audit;
+// T049: the `@datazen/frontend/app` barrel — crate-root launch surface,
+// host-entry construction, first-frame adapter consult.
+mod app_entry;
