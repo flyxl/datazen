@@ -279,6 +279,10 @@ mod ai_code_block;
 // mounted stale-expiry guard, fullscreen-toggle text deviation pin.
 mod ai_code_block_audit;
 
+// T073: DataTransferAttachedJobs port (counter reading, active-job filter,
+// cancel disposition + state machine, mounted strip).
+mod data_transfer_attached_jobs;
+
 // T027: SchemaDiffPanel port and its independent audit.
 mod schema_diff_panel;
 mod schema_diff_audit;
