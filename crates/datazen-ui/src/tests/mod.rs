@@ -338,3 +338,6 @@ mod connection_share_dialog;
 mod connection_share_audit;
 // T167: ConnectionShareDialogHost (state, callback wiring, keys, geometry).
 mod connection_share_host;
+// T167 independent audit: independent i18n formatter pin, exact 1500ms wake +
+// copied label, long-message visible-rect geometry, export failure fallback.
+mod connection_share_host_audit;
