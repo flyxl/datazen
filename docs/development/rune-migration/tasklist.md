@@ -255,7 +255,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T236 · types · 0.30d · types/keyset.ts
 - [ ] T237 · commands · 0.90d · commands/dashboard.ts
 - [ ] T238 · components/DataTable · 0.80d · components/DataTable/DetailPanel.tsx
-- [ ] T239 · components/connection · 0.90d · components/connection/NewConnectionDialog.tsx
+- [x] T239 · components/connection · 0.90d · components/connection/NewConnectionDialog.tsx
 - [ ] T240 · components/chart · 2.00d · components/chart/renderers/PieChartRenderer.tsx · split
 - [ ] T241 · components/ai · 0.90d · components/ai/DiagnosisPanel.tsx
 - [ ] T242 · components/sql-editor · 0.90d · components/sql-editor/metadata/findRelation.ts components/sql-editor/metadata/metadataCache.ts components/sql-editor/metadata/types.ts

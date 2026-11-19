@@ -50,7 +50,7 @@
 - [x] T217 · components/connection · 0.60d · components/connection/HttpProxyTunnelFields.tsx components/connection/IndexConnectionFields.tsx
 - [x] T223 · windows/connection · 0.90d · windows/connection/ContentViewDialogs.tsx
 - [x] T231 · lib/session · 0.30d · lib/session/runEditorExplain.ts
-- [ ] T239 · components/connection · 0.90d · components/connection/NewConnectionDialog.tsx
+- [x] T239 · components/connection · 0.90d · components/connection/NewConnectionDialog.tsx
 - [x] T245 · windows/connection · 1.30d · windows/connection/ContentViewDrawers.tsx · split
 - [ ] T252 · lib/session · 0.90d · lib/session/runEditorQuery.ts
 - [ ] T260 · components/connection · 0.90d · components/connection/ObjectFilterDialog.tsx components/connection/SaveTunnelDialog.tsx components/connection/shared.tsx
