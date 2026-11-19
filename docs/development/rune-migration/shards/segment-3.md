@@ -35,7 +35,7 @@
 - [x] T096 · components/ui · 0.90d · components/ui/WebContextMenu.tsx
 - [x] T097 · components/DataTable · 0.30d · components/DataTable/ColumnStatsDialog.tsx
 - [x] T100 · components/query · 1.00d · components/query/QueryContextSelectors.tsx components/query/QueryErrorPanel.tsx
-- [ ] T103 · components/ai · 0.90d · components/ai/AiEgressNotice.tsx
+- [x] T103 · components/ai · 0.90d · components/ai/AiEgressNotice.tsx
 - [ ] T106 · components · 2.60d · components/FilterEditor.tsx · split
 - [ ] T113 · windows/data-transfer · 0.90d · windows/data-transfer/DataTransferTerminalResults.tsx
 - [ ] T114 · windows/data-sync · 0.90d · windows/data-sync/DataSyncEndpointStep.tsx
