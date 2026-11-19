@@ -32,6 +32,8 @@ mod column_stats_dialog;
 mod cell_renderer;
 // Independent T002 audit: tree-observed colour, branch order, raw handoff, flags and geometry.
 mod cell_renderer_audit;
+// T054-S1: ColumnPresentationDialog draft model + pure functions (coder tests).
+mod column_presentation_dialog;
 pub(crate) use support::*;
 
 pub(crate) fn runtime() -> Runtime<AppState> {
