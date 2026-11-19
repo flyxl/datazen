@@ -33,6 +33,14 @@ impl AppState {
             // bars — the chart renders the cached answers only.
             self.refresh_widget_bars();
         }
+        if section == Section::Wapps && !self.wapps_loaded {
+            // T072: React's mount effect (`WappManagementPage.tsx:141-143`:
+            // `useEffect(() => { if (!loaded) void fetch(); }, [loaded])`) —
+            // the wapp store fetches the moment the page mounts, which the
+            // rail's entry into the section is here; the `!loaded` guard
+            // keeps a loaded store from refetching on every entry.
+            self.fetch_wapps();
+        }
     }
 
     /// Ask the desktop adapter for the connection list. A wired adapter's

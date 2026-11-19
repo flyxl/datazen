@@ -187,6 +187,54 @@ fn the_header_counts_the_installed_and_renders_one_card_per_wapp() {
 }
 
 #[test]
+fn a_wapp_without_an_author_shows_its_id_as_the_byline() {
+    // React: `wapp.author ? `by ${wapp.author}` : wapp.id`
+    // (`WappManagementPage.tsx:231-233`) — the missing and the empty author
+    // both fall back to the id the card shows instead.
+    let no_author = WappSummaryVm { author: None, ..wapp() };
+    let rt = page_runtime(vec![no_author], (1440.0, 900.0), true);
+    assert_eq!(
+        element(&rt, "extension-card-acme.bill-audit-byline").text.as_deref(),
+        Some("acme.bill-audit"),
+        "a missing author falls back to the id"
+    );
+
+    let empty_author = WappSummaryVm { author: Some(String::new()), ..wapp() };
+    let rt = page_runtime(vec![empty_author], (1440.0, 900.0), true);
+    assert_eq!(
+        element(&rt, "extension-card-acme.bill-audit-byline").text.as_deref(),
+        Some("acme.bill-audit"),
+        "an empty author falls back to the id"
+    );
+}
+
+#[test]
+fn the_chips_carry_the_counts_of_the_whole_installed_list() {
+    // React renders each chip with its kind's count over the whole installed
+    // list, whatever the search shows (`WappManagementPage.tsx:157-164`, the
+    // `t(..., { count: counts[f] })` at `362-369`) — the fixture's three
+    // wapps split 2 workspace / 1 theme so a swapped pair cannot pass.
+    let afi = WappSummaryVm { id: "acme.afi".into(), name: "AFI Pricing".into(), ..wapp() };
+    let rt = page_runtime(vec![wapp(), afi, theme_wapp()], (1440.0, 900.0), true);
+
+    assert_eq!(
+        element(&rt, "extension-filter-all").label.as_deref(),
+        Some(t("extensions.page.filterAll").replace("{count}", "3").as_str()),
+        "the all chip counts every installed wapp"
+    );
+    assert_eq!(
+        element(&rt, "extension-filter-workspace").label.as_deref(),
+        Some(t("extensions.page.filterWorkspace").replace("{count}", "2").as_str()),
+        "the workspace chip counts the workspace kind"
+    );
+    assert_eq!(
+        element(&rt, "extension-filter-theme").label.as_deref(),
+        Some(t("extensions.page.filterTheme").replace("{count}", "1").as_str()),
+        "the theme chip counts the theme kind"
+    );
+}
+
+#[test]
 fn the_filter_defaults_to_workspace_and_switches_through_all_and_theme_chips() {
     // React (`WappManagementPage.test.tsx:154-180`): the content body
     // defaults to the Workspace filter — theme-only wapps start hidden; the
@@ -271,6 +319,22 @@ fn the_all_view_groups_into_workspace_and_theme_sections() {
 }
 
 #[test]
+fn the_all_view_orders_the_workspace_group_above_the_theme_group() {
+    // React's `allGroups` memo fixes the order — the workspace pages first,
+    // then the theme-only wapps (`WappManagementPage.tsx:167-173`) — read
+    // through the two headers' rects (the tree's geometry channel).
+    let mut rt = page_runtime(vec![wapp(), theme_wapp()], (1440.0, 900.0), true);
+    click(&mut rt, "extension-filter-all");
+
+    let workspace = element(&rt, "extension-group-workspace-header").rect[1];
+    let theme = element(&rt, "extension-group-theme-header").rect[1];
+    assert!(
+        workspace < theme,
+        "the workspace group sits above the theme group ({workspace} vs {theme})"
+    );
+}
+
+#[test]
 fn empty_groups_stay_hidden_and_single_kind_filters_keep_the_flat_grid() {
     // React (`WappManagementPage.test.tsx:213-228`): a group with no wapps
     // renders nothing at all, and the non-"all" filters keep the flat grid
@@ -346,6 +410,53 @@ fn nothing_matching_renders_the_empty_state() {
     // The page still carries its header and search row.
     assert!(has_key(&rt, "extension-page-title"));
     assert!(has_key(&rt, "extension-search-input"));
+}
+
+#[test]
+fn entering_the_section_fetches_the_unloaded_store_once() {
+    // React's mount effect (`WappManagementPage.tsx:141-143`:
+    // `useEffect(() => { if (!loaded) void fetch(); }, [loaded])`) — the
+    // store fetches the moment the page mounts, which the rail's entry into
+    // the section is here; the unwired adapter answers with the fetch's
+    // honest seam error, which the page's error row renders. Once loaded,
+    // re-entering fetches nothing (the `!loaded` guard).
+    let mut state = AppState::default();
+    state.select(Section::Wapps);
+    assert!(state.wapps_loaded, "entering the section ran the store's fetch");
+    let mut rt = Runtime::new(
+        state,
+        view,
+        (1440.0, 900.0),
+        Env { system_dark: true, scale: 1.0 },
+    );
+    rt.frame(0.0);
+    rt.frame(0.0);
+    assert_eq!(
+        element(&rt, "extension-page-error").text.as_deref(),
+        Some(
+            "wapp list needs the live host; the wapps list use case is not wired into this Rune build yet"
+        ),
+        "the fetch's seam error renders in the store's error row"
+    );
+    assert!(
+        has_key(&rt, "extension-page-empty"),
+        "the empty list still renders its state under the error"
+    );
+
+    // The guard: a loaded store re-enters the section without refetching.
+    rt.state.wapps_loaded(vec![wapp()]);
+    rt.state.select(Section::Wapps);
+    rt.invalidate();
+    rt.frame(0.0);
+    rt.frame(0.0);
+    assert!(
+        has_key(&rt, "extension-card-acme.bill-audit-name"),
+        "the loaded list renders"
+    );
+    assert!(
+        !has_key(&rt, "extension-page-error"),
+        "a loaded store does not refetch on entry"
+    );
 }
 
 #[test]
@@ -432,6 +543,37 @@ fn escape_is_the_cancel_answer_and_a_settled_ask_cannot_settle_twice() {
 }
 
 #[test]
+fn the_remove_success_transition_drops_the_row_and_refreshes() {
+    // The store's remove success — the row leaves, the tabs close, and the
+    // refresh runs (`WappManagementPage.tsx:196-198`:
+    // `await remove(wapp.id)` then `await get().fetch()`) — is the
+    // `wapp_removed` transition the host wiring will call; the refresh
+    // lands the fetch's honest seam error in the store's error row.
+    let mut rt = page_runtime(vec![wapp(), theme_wapp()], (1440.0, 900.0), true);
+    rt.state.wapp_removed("acme.bill-audit");
+    rt.invalidate();
+    rt.frame(0.0);
+    rt.frame(0.0);
+
+    assert!(
+        !has_key(&rt, "extension-card-acme.bill-audit-name"),
+        "the removed wapp's card left the list"
+    );
+    assert_eq!(
+        element(&rt, "extension-page-count").text.as_deref(),
+        Some(t("extensions.page.count").replace("{count}", "1").as_str()),
+        "the count header reads the shrunk list"
+    );
+    assert_eq!(
+        element(&rt, "extension-page-error").text.as_deref(),
+        Some(
+            "wapp list needs the live host; the wapps list use case is not wired into this Rune build yet"
+        ),
+        "the refresh's seam error lands in the store's error row"
+    );
+}
+
+#[test]
 fn the_toggle_flips_the_switch_and_lands_the_seam_error() {
     // React (`WappManagementPage.test.tsx:251-282`): the toggle press runs
     // the store's `setEnabled`; a failure surfaces the store's error in the
@@ -498,6 +640,27 @@ fn api_mismatched_cards_are_dimmed_and_gated() {
         "the Open action is not rendered on a mismatch"
     );
     assert!(has_key(&rt, "extension-card-acme.bill-audit-uninstall"), "uninstall stays");
+}
+
+#[test]
+fn a_disabled_wapp_is_dimmed_like_a_mismatched_one() {
+    // React's dim has two halves (`WappManagementPage.tsx:211`:
+    // `const dimmed = apiMismatch || !wapp.enabled`) — the mismatch half is
+    // pinned above; the enabled half dims the disabled card at the same
+    // 60%, its uninstall still live (React dims, it does not disable).
+    let disabled = WappSummaryVm { enabled: false, ..wapp() };
+    let rt = page_runtime(vec![disabled], (1440.0, 900.0), true);
+
+    let card = element(&rt, "extension-card-acme.bill-audit");
+    assert!(
+        (card.opacity - 0.6).abs() < 0.01,
+        "the disabled wapp's card composites at React's 60% (opacity={})",
+        card.opacity
+    );
+    assert!(
+        has_key(&rt, "extension-card-acme.bill-audit-uninstall"),
+        "the dimmed card's uninstall stays live"
+    );
 }
 
 #[test]
