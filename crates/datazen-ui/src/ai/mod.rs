@@ -11,3 +11,5 @@ pub(crate) mod grant_state;
 pub(crate) mod session_cancel;
 #[allow(dead_code)] // T133; consumer: AI chat panel (not landed). Delete when it lands.
 pub(crate) mod stream_registry;
+#[allow(dead_code)] // T164; consumer: AI chat panel claim wiring (not landed). Delete when it lands.
+pub(crate) mod target_claim;
