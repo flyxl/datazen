@@ -663,3 +663,6 @@ mod index_entry_audit;
 // boosts, the all-columns dedup, SELECT-column extraction, and the
 // relations-by-columns filter.
 mod schema_completion;
+// T242: sql-editor metadata — findRelation's snapshot tiers and the
+// editor-schema-tree synthesis.
+mod sql_editor_metadata;

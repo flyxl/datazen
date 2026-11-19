@@ -4,7 +4,10 @@
 //! `components/sql-editor/SqlEditor.tsx` → `components/sql_editor/sql_editor.rs`.
 //! The pure helpers it ports from `lib/sqlPathPrefix.ts` and
 //! `lib/sqlEditorContextMenu.ts` live in `lib_helpers` until those ledger
-//! tasks land and absorb them.
+//! tasks land and absorb them. The `sql-editor/metadata/` directory is
+//! ported as [`metadata`] (T242), and the editor schema tree shape
+//! (`lib/sqlNamespace.ts`) is carried as [`sql_namespace`] until T617
+//! absorbs it.
 //!
 //! No production consumer yet; the workspace view track will wire this
 //! component (today the workspace renders the engine demo panel directly).
@@ -29,3 +32,13 @@ pub(crate) use completion::{
 };
 
 pub(crate) mod sql_editor;
+
+/// `lib/sqlNamespace.ts`'s tree shape, carried (T617 absorbs).
+pub(crate) mod sql_namespace;
+#[allow(unused_imports)] // consumers: metadata/find_relation + completion S2/S3
+pub(crate) use sql_namespace::{is_leaf, SqlNamespace};
+
+/// `components/sql-editor/metadata/` (T242): findRelation + re-export shims.
+pub(crate) mod metadata;
+#[allow(unused_imports)] // consumers: the completion entry points (T062 S2/S3)
+pub(crate) use metadata::{extract_columns_from_schema, find_relation_metadata};
