@@ -196,6 +196,8 @@ mod editor_session_controller;
 // T083 independent audit: refresh, detach/attach feeds, open-failure queue
 // isolation, close-awaiting-open, cancel resolution and observer publishing.
 mod editor_session_controller_audit;
+// T122: lib/session/ExecutionProjection.ts port (state machine + effects).
+mod execution_projection;
 
 // Independent re-audit of merged T0-07 menu base.
 mod menus_merge_reaudit;
