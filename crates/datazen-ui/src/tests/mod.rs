@@ -781,3 +781,7 @@ mod window_chrome_fallback;
 // T301 independent audit: fresh vectors (a 64pt chrome fixture, the
 // narrow window, the no-bar centering, the ring/label channels).
 mod window_chrome_fallback_audit;
+
+// T113: the Data Transfer terminal-results strip (the restored verdict:
+// uncompleted surfaces, verdict fold, load reducer, mounted strip).
+mod data_transfer_terminal_results;

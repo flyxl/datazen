@@ -7,10 +7,12 @@
 //! | `ColumnMappingEditor.tsx` — `RecordsetEditor` | `recordset_editor` | T023-S3 |
 //! | `transferMappingView.ts` (T307 VM placeholder) | `transfer_mapping_view` | T023-S2 |
 //! | `DataTransferAttachedJobs.tsx` | `data_transfer_attached_jobs` | T073 |
+//! | `DataTransferTerminalResults.tsx` | `data_transfer_terminal_results` | T113 |
 
 pub(crate) mod column_mapping_editor;
 pub(crate) mod column_mapping_row;
 pub(crate) mod data_transfer_attached_jobs;
+pub(crate) mod data_transfer_terminal_results;
 pub(crate) mod recordset_editor;
 pub(crate) mod transfer_mapping_view;
 
@@ -23,6 +25,12 @@ pub(crate) use data_transfer_attached_jobs::{
     active_attached_jobs, cancel_sent, cancel_unknown, job_counter_or_zero,
     job_state_label, progress_counts_text, read_job_counter, AttachedJob,
     AttachedJobsState, DataTransferAttachedJobs, JobCounter, JobProgress, JobState,
+};
+#[allow(unused_imports)] // the Data Transfer window track is the production consumer
+pub(crate) use data_transfer_terminal_results::{
+    derive_migration_job_verdict, is_migration_job_in_flight, latest_apply_job, terminal_job,
+    DataTransferTerminalResults, JobRecoveryResult, MigrationJobVerdictInput,
+    TerminalJobDetails, TerminalJobView, TerminalResultsState,
 };
 #[allow(unused_imports)] // T307 replaces this module with the real port
 pub(crate) use transfer_mapping_view::{
