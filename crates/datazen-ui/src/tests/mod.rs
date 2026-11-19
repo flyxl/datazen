@@ -99,3 +99,5 @@ mod presentation_plan;
 mod column_presentation;
 // T123: the session override store and its snapshot merge.
 mod column_presentation_session;
+// T037: table-column override persistence (validate/apply/save).
+mod column_overrides;

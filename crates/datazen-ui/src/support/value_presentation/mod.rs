@@ -30,3 +30,8 @@ pub(crate) mod timestamp_contribution; // T251: the datazen.timestamp contributi
 pub(crate) mod presentation_plan; // T155: column plans, override keys, cache keys
 pub(crate) mod column_presentation; // T085: the column panel's pure logic
 pub(crate) mod column_presentation_session; // T123: session overrides + the merge point
+// T037 brings the shared persistence shapes; their own logic lands with
+// T182/T310 (documented two-step split in each file's header).
+pub(crate) mod settings;
+pub(crate) mod value_presentation_save;
+pub(crate) mod column_overrides; // T037: override persistence
