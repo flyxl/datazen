@@ -10,5 +10,6 @@ pub(crate) mod connection_ai_notes;
 pub(crate) mod connection_form_body;
 pub(crate) mod connection_import_fields;
 pub(crate) mod connection_share_dialog;
+pub(crate) mod new_connection_dialog;
 pub(crate) mod connection_share_dialog_host;
 pub(crate) mod file_connection_fields;
