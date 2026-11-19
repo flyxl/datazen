@@ -118,7 +118,7 @@
 - [ ] T344 · commands · 0.30d · commands/namedViews.ts
 - [ ] T347 · components/sql-editor · 0.60d · components/sql-editor/snippets/builtinSnippets.ts components/sql-editor/snippets/index.ts
 - [ ] T348 · windows/settings · 1.30d · windows/settings/McpSettingsSection.tsx · split
-- [ ] T351 · windows/schema-diff · 0.90d · windows/schema-diff/schemaDiffObjectDiscovery.ts
+- [x] T351 · windows/schema-diff · 0.90d · windows/schema-diff/schemaDiffObjectDiscovery.ts
 - [ ] T353 · hooks · 0.90d · hooks/useKvSlotSelectedKey.ts
 - [ ] T356 · commands · 0.90d · commands/query.ts
 - [ ] T359 · components/sql-editor · 2.00d · components/sql-editor/snippets/snippetCompletionSource.ts · split
