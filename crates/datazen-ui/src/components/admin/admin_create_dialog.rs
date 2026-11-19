@@ -37,11 +37,12 @@
 //!   [`AdminCreateDialogState::is_open`] and the
 //!   [`AdminCreateDialogState::created_names`] outbox, which the
 //!   `CreateDatabaseDialog` / `CreateSchemaDialog` wiring task drains.
-//! * **No `AdminSchemaFields` module yet.** That component is its own task
-//!   (T065, with `PrivilegeSelector`); the optional-field rendering in the
-//!   view is a minimal local rendering of the same `commandSchema.ts`
+//! * **`AdminSchemaFields` is now its own module** (T064, with
+//!   `PrivilegeSelector`); the optional-field rendering in the view is
+//!   still a minimal local rendering of the same `commandSchema.ts`
 //!   rules (`fieldLabel` / `fieldPlaceholder` / the string-only guard —
-//!   see [`AdminSchemaField`]), and T065 replaces it with the real port.
+//!   see [`AdminSchemaField`]), and the wiring task replaces it with the
+//!   real port.
 //!   The field model here is deliberately the smallest shape that port
 //!   needs: name, JSON-schema `type`, `title`, `description`, `example` /
 //!   `examples`.
