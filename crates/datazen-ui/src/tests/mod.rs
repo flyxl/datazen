@@ -290,3 +290,9 @@ mod platform_web_stub_audit;
 mod filter_condition_editor;
 // T056 independent audit: ported contracts, dispatch paths, i18n, token events.
 mod filter_condition_editor_audit;
+
+// T106: MigrationJobVerdictPanel (verdict states, counters, copy feedback, geometry).
+mod migration_job_verdict;
+// T106 independent audit: i18n key resolution, boundary tone/gap polarity,
+// resume gating and adversarial two-size two-theme rect geometry.
+mod migration_job_verdict_audit;
