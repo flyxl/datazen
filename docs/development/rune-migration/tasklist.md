@@ -239,7 +239,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T220 · components/sql-editor · 2.00d · components/sql-editor/format/formatEditorDocument.ts · split
 - [ ] T221 · components · 2.00d · components/SqlCodeBlock.tsx · split
 - [ ] T222 · windows/settings · 0.90d · windows/settings/AppearanceSection.tsx
-- [ ] T223 · windows/connection · 0.90d · windows/connection/ContentViewDialogs.tsx
+- [x] T223 · windows/connection · 0.90d · windows/connection/ContentViewDialogs.tsx
 - [ ] T224 · windows/workspace · 0.90d · windows/workspace/workspacePages.ts
 - [ ] T225 · windows/workflow · 0.60d · windows/workflow/workflowDraftConvert.ts windows/workflow/workflowPanelGuards.ts
 - [ ] T226 · windows/onboarding · 0.90d · windows/onboarding/steps/SampleStep.tsx
