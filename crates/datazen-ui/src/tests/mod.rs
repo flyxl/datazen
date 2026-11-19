@@ -846,3 +846,8 @@ mod chart_recommend_audit;
 
 // T147-S1: the Data Transfer window's wizard state model (coder tests).
 mod data_transfer_window_state;
+
+// T147-S1 independent audit: fresh vectors (driver-meta table, pairing
+// matrix, fail-open options, sql-file round-trip, plan max count, gate
+// normalization).
+mod data_transfer_window_state_audit;
