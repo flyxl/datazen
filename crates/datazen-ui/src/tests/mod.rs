@@ -236,6 +236,8 @@ mod table_data_connection_state;
 mod table_data_connection_state_audit;
 // T089: stores/tableData/countStrategy.ts — catalog prior + count mode.
 mod table_data_count_strategy;
+// T089 independent audit: equal-to-threshold stays exact, first schema wins.
+mod table_data_count_strategy_audit;
 // T032: relationMetadata/metadataCache.ts port — standard wiring so the
 // `metadata_cache` test filter really runs these tests (tests::metadata_cache::*).
 mod metadata_cache;
