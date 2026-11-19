@@ -424,6 +424,8 @@ mod content_view_dialogs;
 // T223 independent audit: cancel/header routing, database fallback, slot
 // integration geometry and the source-contract guard.
 mod content_view_dialogs_audit;
+// T266: CreateDatabaseDialog + CreateSchemaDialog ports.
+mod create_db_schema_dialogs;
 // T245: ContentViewDrawers port (drawer keys, split-pane source, auto-context,
 // result-readonly verdicts, KV slot and geometry).
 mod content_view_drawers;
