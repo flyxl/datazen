@@ -756,3 +756,14 @@ mod manual_connection_step_audit;
 // ready/failed/preparing chrome, the path/connection/error lines, and
 // the readyConnectionName prop's ready-but-still-preparing branch).
 mod sample_step_audit;
+// T177: the onboarding import step port (the S1 inline import form: the
+// six-source picker with detected checkmarks and the selection write, the
+// bordered card carrying the shared import fields, the written-gated
+// success banner with its imported/updated split, and the submit footer
+// with the primaryActionLabel memo and the detecting line).
+mod import_step_audit;
+// T177: the onboarding done step port (the S3 summary: the centered check
+// well, the connectionSummary value branches, the skipped rows' muted
+// ink, the sample-entry hint with its stripped-and-bolded <b> segments,
+// and the open button's exit action).
+mod done_step_audit;

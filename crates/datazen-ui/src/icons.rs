@@ -254,6 +254,16 @@ pub(crate) static ICON_CHECK: rune::Icon = rune::Icon {
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 6 9 17l-5-5\"/>",
 };
+/// T177: the done step's own inline check glyph — `DoneStep.tsx` renders a
+/// hand-drawn 24-view check (`<path d="m4 12.5 5 5L20 6.5" />` at
+/// stroke-width 2.4), slightly bolder and lower-anchored than lucide's
+/// `check` above. Body verbatim from the React file (its own SVG, not a
+/// lucide icon).
+pub(crate) static ICON_DONE_CHECK: rune::Icon = rune::Icon {
+    name: "done-check",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2.4\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m4 12.5 5 5L20 6.5\"/>",
+};
 pub(crate) static ICON_STAR: rune::Icon = rune::Icon {
     name: "star",
     view: 24.0,
