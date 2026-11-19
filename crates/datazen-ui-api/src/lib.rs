@@ -4,6 +4,7 @@
 //! interface can run before the desktop and HTTP adapters exist.
 
 mod ai_sessions;
+mod ai_streaming;
 mod ai_types;
 mod chart_types;
 mod connection_types;
@@ -46,6 +47,15 @@ pub use ai_sessions::{
     message_status, new_chat_session, normalize_loaded_skills, split_legacy_key, title_for,
     truncate_bytes, MAX_MESSAGES_PER_SESSION, MAX_MESSAGE_BYTES, MAX_SESSIONS,
     MIGRATION_MARKER_KEY, STORAGE_KEY,
+};
+// The T088 streaming adapter: the module's own types plus the seam
+// vocabulary the future sibling tasks (streamRegistry/sessionCancel/
+// targetClaim/commands-ai, T503/T505, T126/T128) will implement or wire.
+pub use ai_streaming::{
+    AiCancelCommand, AiStoreView, AiStreaming, AiTargetClaim, ApplyChunkGate, ApplyGateResult,
+    CancelReceipt, ChatSessionPersister, ExtractionSeams, ExtractQuestionsOutcome,
+    Nl2sqlStreamingSlice, SessionCancellerOps, StreamRegistryOps, StreamingClock,
+    find_mcp_tool_name,
 };
 pub use ai_types::{
     AiAgentMode, AiChatAttribution, AiChatContextSnapshot, AiChatInjectionEvent,
