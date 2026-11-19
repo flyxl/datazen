@@ -5,6 +5,7 @@ mod chrome;
 mod connections;
 mod connections_home;
 mod dashboards_workflows;
+mod data_sync;
 mod data_transfer;
 mod modals;
 mod navigation;
@@ -19,6 +20,8 @@ pub(crate) use chrome::*;
 pub(crate) use connections::*;
 pub(crate) use connections_home::*;
 pub(crate) use dashboards_workflows::*;
+#[allow(unused_imports)] // the Data Sync window (T270) is the production consumer
+pub(crate) use data_sync::*;
 #[allow(unused_imports)] // the editor shell (T023-S2) is the production consumer
 pub(crate) use data_transfer::*;
 pub(crate) use modals::*;

@@ -243,6 +243,10 @@ mod recordset_editor;
 // T023-S3 independent audit (tester).
 mod recordset_editor_audit;
 
+// T024: DataSyncCompareStep (comparing / compared / prompt branches, cancel,
+// page-key/cursor derivations, empty child mounts for T288/T308/T383).
+mod data_sync_compare_step;
+
 // T008: ChartCanvas dispatcher, measured viewport and honest placeholders.
 mod chart_canvas;
 // T008 independent audit: marker honesty, factory seam, geometry, source guards.
