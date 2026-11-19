@@ -83,7 +83,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T064 · components · 0.90d · components/DbTypeBadge.tsx components/ErrorBoundary.tsx components/export/ExportColumnPicker.tsx
 - [ ] T065 · components/admin · 0.60d · components/admin/AdminSchemaFields.tsx components/admin/PrivilegeSelector.tsx
 - [ ] T066 · windows/settings · 0.30d · windows/settings/ai/ModelProfileDialog.tsx
-- [ ] T067 · windows/connection · 1.30d · windows/connection/ConnectionNavigatorTree.tsx · split
+- [x] T067 · windows/connection · 1.30d · windows/connection/ConnectionNavigatorTree.tsx · split
 - [ ] T068 · windows/workspace · 0.90d · windows/workspace/WappPageShell.tsx
 - [ ] T069 · windows/dashboard · 0.80d · windows/dashboard/ChartWidgetTile.tsx
 - [ ] T070 · windows/workflow · 1.30d · windows/workflow/WorkflowForm.tsx · split
