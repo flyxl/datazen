@@ -324,6 +324,8 @@ mod platform_web_stub_audit;
 mod filter_condition_editor;
 // T056 independent audit: ported contracts, dispatch paths, i18n, token events.
 mod filter_condition_editor_audit;
+// T166: the React FilterTokenInput + FilterValueInput ports.
+mod filter_token_value_input;
 
 // T106: MigrationJobVerdictPanel (verdict states, counters, copy feedback, geometry).
 mod migration_job_verdict;
