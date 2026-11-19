@@ -71,6 +71,9 @@ pub(crate) fn glyph_ids(system: &mut rune::text::TextSystem, text: &str) -> Vec<
 
 // Shell, navigation, connections home, data grid, fonts and rendering.
 mod shell_grid;
+// T053: React shell.ts is a pure re-export barrel; Rune's root view covers its
+// four shell-facing concerns (i18n, platform, UI store, surface colour).
+mod shell_parity;
 // Query editing/results, undo/redo/copy/cancel, generation guards.
 mod query_results;
 // ER diagram, foreign-key views, column drafts.
