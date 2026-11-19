@@ -377,6 +377,10 @@ mod chart_canvas_audit;
 // T078: chart field inference and number/axis formatting.
 mod chart_field_inference;
 mod chart_format;
+// T078 independent audit: type-name substrings, Number/Date.parse
+// deviations, Intl fraction rounding, the 1e4 compact cutoff.
+mod chart_field_inference_audit;
+mod chart_format_audit;
 
 // T009-S1: AiChatPanel leaf subcomponents (format/hasSnapshotContent/chip/QuestionBlock).
 mod ai_chat_panel;
