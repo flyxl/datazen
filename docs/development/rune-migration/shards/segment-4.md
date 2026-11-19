@@ -21,7 +21,7 @@
 - [x] T052 · shell.ts · 0.90d · shell.ts
 - [x] T057 · components/history · 1.00d · components/history/HistoryEntryCard.tsx components/history/HistoryFilterBar.tsx
 - [x] T062 · components/sql-editor · 4.20d · components/sql-editor/completion/schemaCompletion.ts · split
-- [ ] T066 · windows/settings · 0.30d · windows/settings/ai/ModelProfileDialog.tsx
+- [x] T066 · windows/settings · 0.30d · windows/settings/ai/ModelProfileDialog.tsx
 - [ ] T068 · windows/workspace · 0.90d · windows/workspace/WappPageShell.tsx
 - [ ] T069 · windows/dashboard · 0.80d · windows/dashboard/ChartWidgetTile.tsx
 - [ ] T072 · windows/onboarding · 0.90d · windows/onboarding/OnboardingWindow.tsx
@@ -31,8 +31,8 @@
 - [ ] T087 · hooks · 0.90d · hooks/useAiEditorGrant.ts
 - [ ] T096 · commands · 1.30d · commands/ai.ts · split
 - [ ] T101 · components/history · 0.50d · components/history/historyQuery.ts
-- [x] T107 · components/sql-editor · 2.00d · components/sql-editor/contracts.ts · split
-- [ ] T109 · windows/settings · 0.80d · windows/settings/ai/ModelProfileForm.tsx
+- [ ] T107 · components/sql-editor · 2.00d · components/sql-editor/contracts.ts · split
+- [x] T109 · windows/settings · 0.80d · windows/settings/ai/ModelProfileForm.tsx
 - [ ] T111 · windows/workspace · 0.30d · windows/workspace/WorkspaceDefaultCards.tsx
 - [ ] T112 · windows/dashboard · 1.30d · windows/dashboard/DashboardPanel.tsx · split
 - [ ] T114 · windows/onboarding · 0.90d · windows/onboarding/OnboardingWizard.tsx
