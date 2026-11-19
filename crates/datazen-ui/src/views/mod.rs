@@ -10,6 +10,13 @@ mod dashboards_workflows;
 mod data_sync;
 mod data_transfer;
 mod main;
+// The windows/dashboard subtree ports (T018: AddToDashboardDialog is its
+// first); the dashboards page itself stays in dashboards_workflows.rs.
+pub(crate) mod dashboard;
+// The windows/onboarding subtree ports (T021: BrandSidebar is its first).
+pub(crate) mod onboarding;
+// The windows/schema-diff subtree ports (T025: the deploy panel is its first).
+pub(crate) mod schema_diff;
 mod modals;
 mod navigation;
 mod settings;

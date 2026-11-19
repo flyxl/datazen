@@ -19,6 +19,10 @@ use rune::tok::{self, type_};
 use rune::{col, row, text, Color, Cx, El};
 use rune::{FileDialogOptions, TextEdit, Tx};
 
+// The windows/settings/ai subtree port (T015: AiContextSettings). One mod
+// line per ported React file; the ai/ directory mirrors the React layout.
+pub(crate) mod ai;
+
 /// A6: grouped settings navigation (2 groups, 12 sections) with deep-link
 /// selection by section key. Only the active section's content renders so
 /// navigation switching is observable and addressable.

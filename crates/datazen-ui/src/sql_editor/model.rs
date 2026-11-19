@@ -263,6 +263,22 @@ impl SqlEditor {
         self.selection = Selection::single(at);
     }
 
+    /// Put one range selection (anchor, head) as the only range. Used by the
+    /// SqlEditor component port (`toggleLineComment`/`insertAt` land a
+    /// selection, CodeMirror's `selection: {anchor, head}` dispatch).
+    pub fn set_main_selection(&mut self, anchor: usize, head: usize) {
+        let anchor = boundary(&self.doc, anchor);
+        let head = boundary(&self.doc, head);
+        self.selection = Selection { ranges: vec![Sel { anchor, head }], main: 0 };
+    }
+
+    /// Replace `from..to` with `text` (clamped to char boundaries, remapping
+    /// the live ranges). The component port's `applyChange` entry; history
+    /// bookkeeping stays with the caller, as with CodeMirror transactions.
+    pub fn replace_range(&mut self, from: usize, to: usize, text: &str) {
+        self.apply_change(from, to, text);
+    }
+
     /// CodeMirror `addCursor`: a new caret, and it becomes the main range.
     pub fn add_cursor(&mut self, byte: usize) {
         let at = boundary(&self.doc, byte);

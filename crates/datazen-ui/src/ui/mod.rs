@@ -7,6 +7,7 @@
 pub(crate) mod badge;
 pub(crate) mod banner;
 pub(crate) mod binary_viewer;
+pub(crate) mod confirm_dialog;
 pub(crate) mod copyable;
 pub(crate) mod dialog;
 pub(crate) mod field;

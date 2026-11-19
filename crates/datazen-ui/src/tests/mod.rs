@@ -27,6 +27,20 @@ mod tree_rowmath_audit;
 
 // T004: the column-statistics dialog's four branches, dismissal and bounds.
 mod column_stats_audit;
+// T015: the AI context settings section — budgets, editor rejections, flows.
+mod ai_context_settings_audit;
+// T017: the WappIcon port (manifest icon or puzzle, the onError cycle).
+mod wapp_icon_audit;
+// T018: the add-to-dashboard dialog port (load gate, picker, create branch).
+mod add_to_dashboard_dialog_audit;
+// T021: the onboarding brand sidebar port (fixed-dark gradient, features).
+mod brand_sidebar_audit;
+// T025: the schema-diff deploy panel port (dialect gates, confirm journey).
+mod schema_diff_deploy_panel_audit;
+// T038: the useConfirmDialog port (request ids, resolve identity, preview).
+mod confirm_dialog_hook_audit;
+// T035: the sqlDialects support layer (profiles, strategies, exact SQL).
+mod sql_dialects_audit;
 mod column_stats_dialog;
 // T002: the single DataTable cell — formatting, colour, plan and geometry.
 mod cell_renderer;
@@ -163,6 +177,8 @@ mod temporal_input_audit;
 // T029: history components (entry card + filter bar).
 mod history_components;
 mod history_components_audit;
+// T011: SqlEditor assembly component port (props/handle/events + geometry).
+mod sql_editor_component;
 // T005: the global query-history dialog port.
 mod global_query_history_dialog;
 mod global_query_history_audit;

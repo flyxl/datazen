@@ -7,6 +7,7 @@ pub(crate) mod active_connection_store;
 pub(crate) mod table_data_connection_state;
 pub(crate) mod components;
 pub(crate) mod ai;
+pub(crate) mod hooks; // the hooks/ ports (T038: useConfirmDialog is its first)
 pub mod data_grid;
 pub mod splitter;
 pub mod sql_editor;

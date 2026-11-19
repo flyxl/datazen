@@ -18,3 +18,4 @@ pub(crate) mod history;
 pub(crate) mod query;
 pub(crate) mod schema;
 pub(crate) mod migration;
+pub(crate) mod sql_editor;
