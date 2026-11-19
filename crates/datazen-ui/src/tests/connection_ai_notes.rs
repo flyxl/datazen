@@ -415,3 +415,183 @@ fn every_key_stays_inside_both_required_windows() {
         assert!(input.rect[3] >= 79.5, "textarea honours min-h-[80px]: {:?}", input.rect);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 5. Independent-audit additions: light-mode geometry, precise deadline,
+//    no-set-while-saving, 4-byte CJK, and error-element-only-on-error.
+// ---------------------------------------------------------------------------
+
+/// Same tree as `view` but built for the light palette. The coder's harness
+/// hardcodes `build(true)`/`env(true)`, so light mode was never exercised.
+fn view_light(s: &Probe, _cx: &mut Cx<Probe>) -> El {
+    let widget = if s.show {
+        let state = s.notes.as_ref().expect("state");
+        crate::components::connection::connection_ai_notes::ConnectionAiNotes::<Probe>::new(state)
+            .on_edit(rune::edit_access(|s: &mut Probe| &mut s.notes.as_mut().expect("state").content))
+            .on_action(apply_action)
+            .build(false)
+    } else {
+        rune::col().key("connection-ai-notes-unmounted").w_full().h_full()
+    };
+    rune_kit::root(widget, Vec::new())
+}
+
+fn runtime_light(probe: Probe, size: (f32, f32)) -> Runtime<Probe> {
+    let mut rt = Runtime::new(probe, view_light, size, env(false));
+    rt.poll = Some(poll);
+    rt.frame(0.0);
+    rt.frame(0.0);
+    rt
+}
+
+fn has_key(rt: &Runtime<Probe>, key: &str) -> bool {
+    rt.elements().iter().any(|e| e.key.as_deref() == Some(key) && !e.exiting)
+}
+
+#[test]
+fn light_palette_renders_every_key_inside_both_required_windows() {
+    // Prove the light branch actually rendered by checking a light-palette
+    // text colour, not just that rects happen to fit.
+    let light_title = crate::ui::kit::kit(false).c.text_muted;
+    let dark_title = crate::ui::kit::kit(true).c.text_muted;
+    assert_ne!(light_title, dark_title, "kit exposes distinct palettes");
+
+    for size in [(960.0, 640.0), (1440.0, 816.0)] {
+        let mut rt = runtime_light(Probe::new(), size);
+        mount_and_load(&mut rt, "a short note");
+        for key in [
+            "connection-ai-notes",
+            "connection-notes-title",
+            "connection-notes-hint",
+            "connection-notes-input",
+            "connection-notes-count",
+            "connection-notes-save",
+        ] {
+            assert_inside(&rt, key, size);
+        }
+        assert_eq!(
+            element(&rt, "connection-notes-title").text_color,
+            Some(light_title),
+            "title uses the LIGHT palette"
+        );
+        assert!(element(&rt, "connection-notes-input").rect[3] >= 79.5);
+    }
+}
+
+#[test]
+fn saved_label_reverts_exactly_at_the_pinned_deadline() {
+    let mut rt = runtime(Probe::new(), (900.0, 520.0));
+    mount_and_load(&mut rt, "note");
+    click(&mut rt, "connection-notes-save");
+    rt.state.port.save = Some(Ok(()));
+    rt.frame(0.05);
+
+    let until = note(&rt.state).saved_until.expect("success stamped a deadline");
+    let deadline = rt.wake_deadline().expect("successful save schedules a real wake");
+    assert!((deadline - until).abs() <= 0.01, "wake pinned to deadline");
+    // Step to 10ms before the deadline: still the success label.
+    let before = until - rt.clock - 0.01;
+    assert!(before > 0.0, "there is room before the deadline");
+    rt.frame(before);
+    assert_eq!(label_of(&rt, "connection-notes-save"), t("common.success"));
+    assert!(note(&rt.state).saved_until.is_some(), "not expired before deadline");
+    // Cross the deadline: the poll's tick consumes it and the frame repaints.
+    rt.frame(0.02);
+    assert!(note(&rt.state).saved_until.is_none(), "expired at the deadline");
+    assert_eq!(label_of(&rt, "connection-notes-save"), t("common.save"));
+}
+
+#[test]
+fn a_second_press_while_saving_never_stages_another_set() {
+    let mut rt = runtime(Probe::new(), (900.0, 520.0));
+    mount_and_load(&mut rt, "note");
+    click(&mut rt, "connection-notes-save");
+    assert_eq!(rt.state.port.sets.len(), 1);
+    assert!(note(&rt.state).saving);
+
+    // The button is disabled and has no press handler while saving.
+    click(&mut rt, "connection-notes-save");
+    assert_eq!(rt.state.port.sets.len(), 1, "no set() while a save is in flight");
+    assert_eq!(
+        rt.state.actions.iter().filter(|a| matches!(a, NotesAction::Save { .. })).count(),
+        1,
+        "only one Save action was raised"
+    );
+}
+
+#[test]
+fn a_four_byte_cjk_and_an_emoji_each_count_as_four_bytes() {
+    let mut rt = runtime(Probe::new(), (900.0, 520.0));
+    mount_and_load(&mut rt, "");
+    // "𠀀" is U+20000, a four-byte UTF-8 CJK ideograph; "😀" is four bytes too.
+    assert_eq!("𠀀".len(), 4);
+    assert_eq!("😀".len(), 4);
+    assert_eq!("𠀀".chars().count(), 1, "a char count would report 1, not 4");
+    rt.update(|s, _tx| {
+        s.notes.as_mut().expect("state").content = TextEdit::new("𠀀😀".to_owned());
+    });
+    rt.frame(1.0 / 60.0);
+    assert_eq!(text_of(&rt, "connection-notes-count"), "8 / 4096 bytes");
+    assert!(!text_of(&rt, "connection-notes-count").contains(t("connection.notes.overLimit")));
+}
+
+#[test]
+fn the_error_paragraph_is_rendered_only_on_error() {
+    let mut rt = runtime(Probe::new(), (900.0, 520.0));
+    mount_and_load(&mut rt, "note");
+    assert!(!has_key(&rt, "connection-notes-error"), "no error element on a clean load");
+
+    click(&mut rt, "connection-notes-save");
+    assert_eq!(rt.state.port.sets.len(), 1, "save was staged");
+    // Deliver the host answer *after* the press: poll runs before input handlers
+    // within a frame, so a result queued before the press would be consumed early.
+    rt.state.port.save = Some(Err("boom".to_owned()));
+    rt.frame(0.05);
+    assert!(has_key(&rt, "connection-notes-error"), "error element appears after a failed save");
+    assert_eq!(text_of(&rt, "connection-notes-error"), "boom");
+}
+
+/// The coder only checked rects with a short note in dark mode. The longest
+/// dynamic rows — the over-limit count with its suffix and a long error
+/// paragraph — must also fit at both required sizes in both palettes.
+#[test]
+fn over_limit_count_and_error_rows_fit_both_sizes_in_both_palettes() {
+    for dark in [true, false] {
+        let view_fn: fn(&Probe, &mut Cx<Probe>) -> El = if dark { view } else { view_light };
+        for size in [(960.0, 640.0), (1440.0, 816.0)] {
+            // The over-limit count row (count + suffix + button) must not overflow.
+            let mut rt = Runtime::new(Probe::new(), view_fn, size, env(dark));
+            rt.poll = Some(poll);
+            rt.frame(0.0);
+            rt.frame(0.0);
+            assert_eq!(rt.state.port.gets.len(), 1);
+            rt.state.port.load = Some(Ok("a".repeat(MAX_NOTE_BYTES + 1)));
+            rt.frame(0.05);
+            assert!(note(&rt.state).over_limit());
+            for key in ["connection-ai-notes", "connection-notes-count", "connection-notes-save"] {
+                assert_inside(&rt, key, size);
+            }
+            // The colour springs from the previous value; let it settle.
+            for _ in 0..20 { rt.frame(1.0 / 60.0); }
+            assert_eq!(
+                element(&rt, "connection-notes-count").text_color,
+                Some(crate::ui::kit::kit(dark).c.danger.fg),
+            );
+
+            // A long error paragraph must wrap and stay inside the window too.
+            let mut rt = Runtime::new(Probe::new(), view_fn, size, env(dark));
+            rt.poll = Some(poll);
+            rt.frame(0.0);
+            rt.frame(0.0);
+            rt.state.port.load = Some(Ok("note".to_owned()));
+            rt.frame(0.05);
+            click(&mut rt, "connection-notes-save");
+            rt.state.port.save = Some(Err(
+                "the host rejected this note because the backend is temporarily unavailable".to_owned(),
+            ));
+            rt.frame(0.05);
+            assert!(has_key(&rt, "connection-notes-error"));
+            assert_inside(&rt, "connection-notes-error", size);
+        }
+    }
+}
