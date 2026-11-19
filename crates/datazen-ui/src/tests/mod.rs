@@ -732,3 +732,8 @@ mod onboarding_window_audit;
 // T114: the onboarding wizard port (the step host: the step seats, the
 // footer wiring + seat, the completion handlers' seams).
 mod onboarding_wizard_audit;
+// T148: the onboarding AI provider step port (the journey framing around
+// the shared ModelProfileForm inline variant: the step tag, heading,
+// subtitle, the bordered form card, the security note and the optional
+// hint, and the hasCredentials journey link).
+mod ai_provider_step_audit;

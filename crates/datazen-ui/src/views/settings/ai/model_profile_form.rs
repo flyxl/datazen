@@ -286,12 +286,14 @@ impl<'a, S: 'static> ModelProfileForm<'a, S> {
             self.tab_button(s, k, DraftTab::Basic, t("settings.ai.tabBasic"), &ICON_SETTINGS_2);
         let safety =
             self.tab_button(s, k, DraftTab::Safety, t("settings.ai.tabSafety"), &ICON_SHIELD);
-        row()
+        // React's `border-b border-edge` sits on the STRIP CONTAINER: the
+        // buttons row and a full-width hairline under it (a w_full border
+        // CHILD of the row would push the row past its container — the
+        // onboarding inline variant caught it escaping the window).
+        col()
             .key(format!("{}-tabs", self.key))
             .w_full()
-            .child(basic)
-            .child(safety)
-            // React's `border-b border-edge` on the strip.
+            .child(row().w_full().child(basic).child(safety))
             .child(
                 el()
                     .key(format!("{}-tabs-border", self.key))

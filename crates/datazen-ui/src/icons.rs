@@ -426,6 +426,16 @@ pub(crate) static ICON_UPLOAD: rune::Icon = rune::Icon {
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"7 8 12 3 17 8\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"12\" x2=\"12\" y1=\"3\" y2=\"15\"/>",
 };
 
+/// T148: lucide `info`, the security-note glyph in the onboarding journey's
+/// AI provider step (`AiProviderStep.tsx` uses `Info`). Body verified
+/// against lucide-react 0.487.0's `info` node (a 10-radius circle with the
+/// stem and the dot of the "i").
+pub(crate) static ICON_INFO: rune::Icon = rune::Icon {
+    name: "info",
+    view: 24.0,
+    body: "<circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"12\" cy=\"12\" r=\"10\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 16v-4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 8h.01\"/>",
+};
+
 pub(crate) fn section_icon(section: Section) -> &'static rune::Icon {
     match section {
         Section::Connections => &ICON_CONNECTIONS,

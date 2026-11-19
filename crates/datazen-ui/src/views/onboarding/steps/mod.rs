@@ -1,0 +1,22 @@
+//! Rune ports of `packages/frontend/src/windows/onboarding/steps/**`.
+//!
+//! | React source | Rune module | task |
+//! |---|---|---|
+//! | `AiProviderStep.tsx` | `ai_provider_step` | T148 |
+//! | `WelcomeStep.tsx`'s `StepTag` export | `step_tag` | T148 (hoisted; T247 reuses) |
+//!
+//! `StepTag` is defined inside `WelcomeStep.tsx` and exported for the other
+//! steps (`AiProviderStep.tsx` imports it from there); the port hoists it
+//! into its own module so the first step port (T148) can mount it before
+//! `WelcomeStep` (T247) lands — the `onboarding_layout` absorb pattern.
+//! T247 reuses [`step_tag`] instead of re-defining it.
+
+pub(crate) mod ai_provider_step;
+pub(crate) mod step_tag;
+
+// The wizard host wiring (the remaining step tasks T177–T247) is the
+// production consumer.
+#[allow(unused_imports)] // the onboarding wizard host (T114's ai seat) is the production consumer
+pub(crate) use ai_provider_step::AiProviderStep;
+#[allow(unused_imports)] // the WelcomeStep port (T247) is the production consumer
+pub(crate) use step_tag::step_tag;

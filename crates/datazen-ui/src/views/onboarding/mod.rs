@@ -6,11 +6,14 @@
 //! | `OnboardingWindow.tsx` | `onboarding_window` | T072 |
 //! | `OnboardingWizard.tsx` | `onboarding_wizard` | T114 |
 //! | `onboardingLayout.ts` | `onboarding_layout` | T287 |
+//! | `steps/AiProviderStep.tsx` (+ `WelcomeStep.tsx`'s `StepTag` export) | `steps` | T148 |
 
 pub(crate) mod brand_sidebar;
 pub(crate) mod onboarding_layout;
 pub(crate) mod onboarding_window;
 pub(crate) mod onboarding_wizard;
+// T148: the journey's step components (the steps/ directory).
+pub(crate) mod steps;
 
 #[allow(unused_imports)] // the wizard host wiring (the step/footer tasks) is the production consumer
 pub(crate) use brand_sidebar::{BrandSidebar, version_label};
