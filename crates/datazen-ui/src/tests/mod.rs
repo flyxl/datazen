@@ -567,3 +567,8 @@ mod commands_adb;
 // surface): one import point, the separation invariant, capability bits
 // as the linked assembly, the light consumer's exercise.
 mod index_entry;
+// T051 audit: the publicity tripwire (the mutation round proved pub vs
+// pub(crate) invisible to in-crate tests), the no-second-import-point
+// scan, the native host's two-surface manifest, and the contracts
+// family's ported members through the api crate alone.
+mod index_entry_audit;
