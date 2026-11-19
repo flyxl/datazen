@@ -263,6 +263,16 @@ pub(crate) fn view_from_state(
 }
 
 fn replace_in_list(views: &mut Vec<NamedView>, saved: &NamedView) {
+    // React `handleSetDefault`: a default is exclusive within its scope.
+    // Clearing here covers every save path (new, rename, default, import).
+    if saved.is_default {
+        let key = scope_key(&saved.scope);
+        for entry in views.iter_mut() {
+            if scope_key(&entry.scope) == key && entry.id != saved.id {
+                entry.is_default = false;
+            }
+        }
+    }
     views.retain(|entry| entry.id != saved.id);
     views.push(saved.clone());
     let sorted = sort_named_views(views);
@@ -439,6 +449,8 @@ pub(crate) fn step(vm: &mut NamedViewVm, action: NamedViewAction) -> Vec<NamedVi
                 vm.state = MenuState::Error;
                 return Vec::new();
             }
+            // React `handleApply` closes the menu after a successful apply.
+            close(vm);
             vec![NamedViewEffect::Apply(view)]
         }
         NamedViewAction::SetDefault(id) => {
@@ -459,8 +471,21 @@ pub(crate) fn step(vm: &mut NamedViewVm, action: NamedViewAction) -> Vec<NamedVi
                 let Some(view) = find_view(&vm.views, view_id).cloned() else {
                     return Vec::new();
                 };
+                // React `handleRename` on a name conflict saves the renamed
+                // view under the conflicting view's id (taking it over) and
+                // removes the original id. Recompute the conflict from the
+                // live state so the takeover id is not lost between the
+                // ConfirmOverwrite effect and this confirmation.
+                let conflict = scoped(vm)
+                    .into_iter()
+                    .find(|entry| entry.id != view.id && view_names_equal(&entry.name, &name));
+                let takeover_id = conflict.map(|entry| entry.id).unwrap_or_else(|| view.id.clone());
                 return vec![
-                    NamedViewEffect::Save(NamedView { name, ..view.clone() }),
+                    NamedViewEffect::Save(NamedView {
+                        id: takeover_id,
+                        name,
+                        ..view.clone()
+                    }),
                     NamedViewEffect::Remove(view.id),
                 ];
             }
