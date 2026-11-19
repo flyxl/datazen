@@ -47,7 +47,7 @@
 - [x] T134 · components/query · 0.30d · components/query/QueryExecutionStatus.tsx
 - [x] T137 · components/ai · 0.80d · components/ai/AiInput.tsx
 - [x] T140 · components · 0.30d · components/LocaleDomainLoading.tsx
-- [ ] T147 · windows/data-transfer · 1.30d · windows/data-transfer/DataTransferWindow.tsx · split
+- [x] T147 · windows/data-transfer · 1.30d · windows/data-transfer/DataTransferWindow.tsx · split
 - [ ] T148 · windows/data-sync · 0.90d · windows/data-sync/DataSyncJobStatusPanel.tsx
 - [x] T151 · lib/chart · 0.60d · lib/chart/recommend.ts lib/chart/seriesOverlap.ts
 - [x] T157 · stores · 0.90d · stores/contextMenuStore.ts
