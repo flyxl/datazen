@@ -184,6 +184,9 @@ mod active_connection_store_audit;
 // T041: React stores/tableData/connectionState.ts parity (row records, cell
 // values, error messages, the empty panel state, the load target).
 mod table_data_connection_state;
+// T041 independent audit (tester): parity re-derived from the React source,
+// plus dependency-mirror completeness (keyset/grid/change enums, plan types).
+mod table_data_connection_state_audit;
 // T032: relationMetadata/metadataCache.ts port — standard wiring so the
 // `metadata_cache` test filter really runs these tests (tests::metadata_cache::*).
 mod metadata_cache;
