@@ -224,7 +224,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T205 · windows/data-sync · 0.90d · windows/data-sync/DataSyncOptionsStep.tsx
 - [ ] T206 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffRightPanel.tsx
 - [ ] T207 · lib · 0.90d · lib/aiMemoryPatterns.ts
-- [ ] T208 · lib/session · 0.90d · lib/session/queryPanelSessionRoot.ts
+- [x] T208 · lib/session · 0.90d · lib/session/queryPanelSessionRoot.ts
 - [ ] T209 · lib/valuePresentation · 0.80d · lib/valuePresentation/temporalMath.ts
 - [ ] T210 · hooks · 0.90d · hooks/useColumnStats.ts
 - [ ] T211 · stores · 0.90d · stores/editorSelectionStore.ts
