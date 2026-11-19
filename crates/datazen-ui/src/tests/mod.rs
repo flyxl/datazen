@@ -729,3 +729,6 @@ mod dashboard_panel_audit;
 mod widget_editor_drawer_audit;
 // T072: the onboarding window shell port (root row, sidebar, wizard slot).
 mod onboarding_window_audit;
+// T114: the onboarding wizard port (the step host: the step seats, the
+// footer wiring + seat, the completion handlers' seams).
+mod onboarding_wizard_audit;
