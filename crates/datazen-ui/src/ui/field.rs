@@ -58,7 +58,6 @@ pub(crate) struct TextField<'a> {
     placeholder: Option<String>,
     ink: Option<Color>,
     secure: bool,
-    disabled: bool,
     label: Option<String>,
     bound: bool,
     /// A disabled field keeps its box and text but cannot take a caret. Used by
@@ -93,7 +92,6 @@ impl<'a> TextField<'a> {
             placeholder: None,
             ink: None,
             secure: false,
-            disabled: false,
             label: None,
             bound: false,
             disabled: false,
@@ -203,14 +201,6 @@ impl<'a> TextField<'a> {
     /// The accessible name, when no visible label names the field.
     pub(crate) fn label(mut self, label: impl Into<String>) -> Self {
         self.label = Some(label.into());
-        self
-    }
-
-    /// Disable the field (a form input blocked by an in-flight action). A
-    /// disabled field keeps its box and value but is not a tab stop and does not
-    /// bind its edit accessor, so it genuinely cannot take a caret.
-    pub(crate) fn disabled(mut self, disabled: bool) -> Self {
-        self.disabled = disabled;
         self
     }
 

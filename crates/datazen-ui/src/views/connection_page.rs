@@ -90,6 +90,10 @@ pub(crate) fn connection_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
         NAVIGATOR_WIDTH_DEFAULT,
     );
 
+    // Single window-level overlay layer: dialogs and select listboxes mount
+    // here (page_body takes the same vec). Appended once at the root below.
+    let mut layer = modal_layer(state, theme, dark);
+
     let body = row()
         .key("datazen-body")
         .w_full()
@@ -99,7 +103,7 @@ pub(crate) fn connection_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
         .child(rail)
         .child(navigator)
         .child(nav_splitter)
-        .child(connection_content(state, theme, dark));
+        .child(connection_content(state, theme, dark, &mut layer));
 
     col()
         .key("datazen-root")
@@ -129,14 +133,14 @@ pub(crate) fn connection_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
                 .child(titlebar)
                 .child(body),
         )
-        .children(modal_layer(state, theme, dark))
+        .children(layer)
 }
 
 /// The content workspace: toolbar, tab strip (Workspace only), page body and
 /// status bar. Composed from the existing chrome/view functions so the keys
 /// existing tests pin (`content-toolbar`, `tab-strip`, `content-status-bar` and
 /// `page_body`'s per-section keys) do not move.
-fn connection_content(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+fn connection_content(state: &AppState, theme: tok::Theme, dark: bool, layer: &mut Vec<El>) -> El {
     col()
         .key("datazen-page")
         .grow(1.0)
@@ -152,7 +156,7 @@ fn connection_content(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         } else {
             row().key("tab-strip-absent").h(0.0)
         })
-        .child(page_body(state, theme, dark))
+        .child(page_body(state, theme, dark, layer))
         .child(content_status_bar(state, theme))
 }
 

@@ -41,12 +41,15 @@ use datazen_ui_api::UseCaseAdapter;
 use datazen_ui_api::DesktopAdapter;
 use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, Titlebar, Tx};
 
-/// The root view is the `ConnectionPage` port (React
-/// `windows/connection/ConnectionPage.tsx`): the title bar, rail, navigator,
-/// content workspace and dialog hosts are all composed in that one views-layer
-/// module, which owns the React page's glue.
+/// The app's one view entry is the root router (React `App.tsx`: `App` →
+/// `WindowContent` → `MainPage`). The router's reachable arm composes
+/// `MainPage`, which mounts the T110 `ConnectionPage` port as its sub-page
+/// together with the connection dialog hosts and the running-execution close
+/// host. `ConnectionPage` is *not* the app root: React's `MainPage.tsx:137`
+/// renders `<ConnectionPage />` beside those hosts, and owns the load-failure
+/// branch the router has to be able to show.
 pub(crate) fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
-    crate::views::connection_page(state, cx)
+    crate::views::app_root(state, cx)
 }
 
 

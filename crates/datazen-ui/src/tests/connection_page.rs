@@ -105,7 +105,10 @@ fn every_section_stays_reachable_after_the_port() {
         (Section::Tools, "tools-page"),
         (Section::Dashboards, "dashboards-page"),
         (Section::Workflows, "workflows-page"),
-        (Section::Wapps, "wapps-page"),
+        // T072 ported the real WappManagementPage, so the old C4
+        // "wapps-page" placeholder is gone: the section's body is the
+        // ported page's own testid root.
+        (Section::Wapps, "extension-management-page"),
     ];
     for (section, body_key) in bodies {
         let mut rt = runtime();
