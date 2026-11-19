@@ -5,4 +5,5 @@
 //! ships the dispatcher plus a `ChartRenderer` seam and an honest placeholder
 //! renderer for each of the five chart types. See `chart_canvas.rs`.
 
+pub(crate) mod axis_configurator;
 pub(crate) mod chart_canvas;

@@ -20,3 +20,4 @@ pub(crate) mod save_tunnel_dialog;
 pub(crate) mod shared;
 pub(crate) mod ssh_tunnel_fields;
 pub(crate) mod standard_connection_fields;
+pub(crate) mod websocket_tunnel_fields;
