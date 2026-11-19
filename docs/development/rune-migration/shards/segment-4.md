@@ -104,7 +104,7 @@
 - [ ] T304 · windows/settings · 0.30d · windows/settings/JsonSchemaSettingsForm.tsx
 - [ ] T306 · windows/onboarding · 0.90d · windows/onboarding/useDetectedImportSource.ts
 - [ ] T309 · windows/schema-diff · 1.30d · windows/schema-diff/SchemaDiffWindow.tsx · split
-- [ ] T312 · lib/valuePresentation · 0.30d · lib/valuePresentation/valuePresentationSave.ts
+- [x] T312 · lib/valuePresentation · 0.30d · lib/valuePresentation/valuePresentationSave.ts
 - [ ] T313 · hooks · 0.90d · hooks/useGridKeyboardNav.ts
 - [ ] T316 · commands · 0.90d · commands/history.ts
 - [ ] T320 · components/sql-editor · 2.00d · components/sql-editor/paste/multipleSelections.ts · split
