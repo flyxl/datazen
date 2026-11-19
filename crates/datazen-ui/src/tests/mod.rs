@@ -374,6 +374,10 @@ mod chart_canvas;
 // T008 independent audit: marker honesty, factory seam, geometry, source guards.
 mod chart_canvas_audit;
 
+// T078: chart field inference and number/axis formatting.
+mod chart_field_inference;
+mod chart_format;
+
 // T009-S1: AiChatPanel leaf subcomponents (format/hasSnapshotContent/chip/QuestionBlock).
 mod ai_chat_panel;
 // T009-S1 independent audit: fresh vectors, dual-channel selection, geometry, source guards.

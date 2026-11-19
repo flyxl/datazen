@@ -10,6 +10,8 @@
 pub(crate) mod cell_editor_kind;
 pub(crate) mod cell_types;
 pub(crate) mod chart_export;
+pub(crate) mod chart_field_inference;
+pub(crate) mod chart_format;
 pub(crate) mod data_type_colors;
 pub(crate) mod formatters;
 pub(crate) mod to_edit_string;
