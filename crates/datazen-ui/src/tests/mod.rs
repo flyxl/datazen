@@ -859,3 +859,6 @@ mod transfer_job_run;
 // replayed carve-out, downgrade spellings, stale-id refusal, cancel
 // address holes, unbacked-row verdicts).
 mod transfer_job_run_audit;
+
+// T147-S3: the Data Transfer window's rendering (coder tests).
+mod data_transfer_window;

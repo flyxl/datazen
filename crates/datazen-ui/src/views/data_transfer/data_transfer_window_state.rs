@@ -134,6 +134,19 @@ impl WizardStep {
             .unwrap_or(0)
     }
 
+    /// The React step id's own spelling (`endpoints` … `result`), for
+    /// the element keys the rail and the body name.
+    pub(crate) fn as_key(self) -> &'static str {
+        match self {
+            WizardStep::Endpoints => "endpoints",
+            WizardStep::Setup => "setup",
+            WizardStep::Objects => "objects",
+            WizardStep::Mapping => "mapping",
+            WizardStep::Preview => "preview",
+            WizardStep::Result => "result",
+        }
+    }
+
     /// The i18n key the step rail's label uses (React 1135:
     /// `` t(`transfer.step.${s}`) ``).
     pub(crate) fn label_key(self) -> &'static str {
@@ -422,6 +435,17 @@ pub(crate) enum DdlKind {
 }
 
 impl DdlKind {
+    /// The React kind union's own spelling (`table` / `index` / …), for
+    /// the element keys the DDL cards name.
+    pub(crate) fn as_key(self) -> &'static str {
+        match self {
+            DdlKind::Table => "table",
+            DdlKind::Index => "index",
+            DdlKind::ForeignKey => "foreignKey",
+            DdlKind::DropTable => "dropTable",
+        }
+    }
+
     /// React's `item.kind ?? 'table'` default (React 1631).
     pub(crate) fn or_table(self) -> &'static str {
         match self {

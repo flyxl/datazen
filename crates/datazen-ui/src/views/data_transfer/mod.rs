@@ -11,11 +11,13 @@
 //! | segment-2 pairing/prefill libs (T636/T563/T625 VM placeholders) | `transfer_pairing_vm` | T147-S1 |
 //! | `hooks/useTransferJobRun.ts` — the Job run machine | `transfer_job_run` | T147-S2 |
 //! | `DataTransferWindow.tsx` — state model | `data_transfer_window_state` | T147-S1 |
+//! | `DataTransferWindow.tsx` — rendering | `data_transfer_window` | T147-S3 |
 
 pub(crate) mod column_mapping_editor;
 pub(crate) mod column_mapping_row;
 pub(crate) mod data_transfer_attached_jobs;
 pub(crate) mod data_transfer_terminal_results;
+pub(crate) mod data_transfer_window;
 pub(crate) mod data_transfer_window_state;
 pub(crate) mod recordset_editor;
 pub(crate) mod transfer_job_run;
@@ -60,6 +62,10 @@ pub(crate) use data_transfer_window_state::{
     TransferProfileVm, TransferSourceFilter, TransferSqlFileTargetVm, TransferTableMapping,
     TransferTablePatch, TransferTableRow, TransferWritePlanVm, WizardStep,
     DataTransferWindowVm, WriteMode, STEPS, DEFAULT_TRANSFER_OPTIONS,
+};
+#[allow(unused_imports)] // the Data Transfer window (T147) is the production consumer
+pub(crate) use data_transfer_window::{
+    DataTransferWindow, DataTransferWindowEdits, MigrationJobsHydration,
 };
 #[allow(unused_imports)] // the Data Transfer window (T147) is the production consumer
 pub(crate) use transfer_job_run::{

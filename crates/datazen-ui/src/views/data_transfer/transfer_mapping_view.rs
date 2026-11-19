@@ -43,6 +43,21 @@ pub(crate) enum TransferMappingStatus {
     Incompatible,
 }
 
+impl TransferMappingStatus {
+    /// The TS union's own spelling (`'MATCHED' | 'CREATE_NEW' | …`,
+    /// `commands/transfer.ts:7-13`) — what React's objects row renders.
+    pub(crate) fn spelling(self) -> &'static str {
+        match self {
+            TransferMappingStatus::Matched => "MATCHED",
+            TransferMappingStatus::CreateNew => "CREATE_NEW",
+            TransferMappingStatus::UnmappedSource => "UNMAPPED_SOURCE",
+            TransferMappingStatus::UnmappedTarget => "UNMAPPED_TARGET",
+            TransferMappingStatus::Disabled => "DISABLED",
+            TransferMappingStatus::Incompatible => "INCOMPATIBLE",
+        }
+    }
+}
+
 /// React `TransferTableResult` (`commands/transfer.ts:132-150`), cut down
 /// to what the shell (React 35–193) reads.
 ///
