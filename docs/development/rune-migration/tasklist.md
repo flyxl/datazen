@@ -308,7 +308,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T289 · windows/data-sync · 0.60d · windows/data-sync/DataSyncWizardNav.tsx windows/data-sync/DataSyncWizardStepper.tsx
 - [ ] T290 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffUnifiedObjectsPicker.tsx
 - [ ] T291 · lib · 0.90d · lib/aiSafetyPresets.ts lib/aiSkills.ts lib/anyColumnFilter.ts
-- [ ] T292 · lib/session · 0.90d · lib/session/tableSession.ts
+- [x] T292 · lib/session · 0.90d · lib/session/tableSession.ts
 - [ ] T293 · lib/valuePresentation · 0.80d · lib/valuePresentation/valuePresentationRules.ts
 - [ ] T294 · hooks · 1.30d · hooks/useGridClipboard.ts · split
 - [ ] T295 · stores · 0.30d · stores/panelCloseNotifier.ts

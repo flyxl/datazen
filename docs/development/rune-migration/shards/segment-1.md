@@ -58,7 +58,7 @@
 - [x] T273 · lib/session · 0.90d · lib/session/sessionPrompts.ts
 - [x] T281 · components/connection · 0.80d · components/connection/SshTunnelFields.tsx components/connection/StandardConnectionFields.tsx
 - [x] T286 · windows/connection · 0.90d · windows/connection/CreateUserDialog.tsx
-- [ ] T292 · lib/session · 0.90d · lib/session/tableSession.ts
+- [x] T292 · lib/session · 0.90d · lib/session/tableSession.ts
 - [ ] T300 · components/connection · 0.80d · components/connection/WebSocketTunnelFields.tsx components/chart/AxisConfigurator.tsx
 - [ ] T305 · windows/connection · 0.90d · windows/connection/DatabaseObjectView.tsx
 - [ ] T311 · lib/session · 0.90d · lib/session/targetCommand.ts
