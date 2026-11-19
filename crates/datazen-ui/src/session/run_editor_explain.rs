@@ -220,7 +220,10 @@ impl ExplainRun {
                 }
             }
             (ExplainPhase::AwaitExecute, ExplainInput::Executed(Err(error))) => {
-                self.failed(ExplainFailure::Session(error), true)
+                // The execute await happens before the projection is created
+                // and outside the `try/finally dispose` in React, so no
+                // projection exists yet — do not emit Dispose here.
+                self.failed(ExplainFailure::Session(error), false)
             }
             (ExplainPhase::AwaitProjection, ExplainInput::Projected) => {
                 self.phase = ExplainPhase::AwaitRecover;

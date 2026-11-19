@@ -8,7 +8,8 @@
 use serde_json::json;
 
 use crate::session::editor_session_controller::{
-    CommandCall, ExecutionReceipt, ExecutionState, ExecutionTarget, NamespaceTarget, OwnerRef,
+    ApiErrorCode, CommandCall, ExecutionReceipt, ExecutionState, ExecutionTarget, NamespaceTarget,
+    OwnerRef, SessionError,
 };
 use crate::session::execution_projection::{
     ArtifactChunk, EffectOutcome, ExecutionErrorCode, ExecutionView, PublishedResultChunk,
@@ -321,4 +322,26 @@ fn stale_inputs_do_not_move_the_run() {
     assert_eq!(step.effects, Vec::new());
     assert_eq!(step.outcome, None);
     assert_eq!(run.phase(), "awaitController");
+}
+
+#[test]
+fn execute_failure_emits_no_dispose_because_no_projection_exists_yet() {
+    let (mut run, _) = start(request("p1", "SELECT 1", Some("A"), None, false));
+    let _ = run.step(ExplainInput::ControllerReady);
+    let error = SessionError {
+        code: ApiErrorCode::SessionLost,
+        message: "gone".to_owned(),
+    };
+    let step = run.step(ExplainInput::Executed(Err(error.clone())));
+    assert_eq!(
+        step.effects,
+        Vec::new(),
+        "no projection exists on execute failure, so no dispose (React parity)"
+    );
+    assert_eq!(
+        step.outcome,
+        Some(ExplainOutcome::Failed(ExplainFailure::Session(error))),
+        "the execute failure outcome is preserved"
+    );
+    assert_eq!(run.phase(), "done");
 }
