@@ -213,6 +213,8 @@ mod ai_store_config;
 // T087-S1 independent audit: isConfigured formula, delete-active fallback,
 // save does not write settings until the reload, listener retry.
 mod ai_store_config_audit;
+// T087-S2: NL2SQL, diagnosis, EXPLAIN analysis, smart filter.
+mod ai_store_assist;
 // T041: React stores/tableData/connectionState.ts parity (row records, cell
 // values, error messages, the empty panel state, the load target).
 mod table_data_connection_state;

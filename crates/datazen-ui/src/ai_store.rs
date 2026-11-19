@@ -4,7 +4,9 @@
 //! surface only: provider config, settings profiles, the provider list,
 //! remote models, validate/save/delete, and `clearError`. Chat, NL2SQL,
 //! workflows and MCP are later slices of the same task and are not
-//! represented here.
+//! Chat, workflows and MCP are later slices of the same task and are not
+//! represented here. NL2SQL, diagnosis, EXPLAIN and the smart filter are
+//! slice 2, in the same state machine.
 //!
 //! Rune is immediate-mode, so every `async` action is a synchronous
 //! transition plus an [`AiConfigEffect`] the host runs. The host feeds
@@ -135,6 +137,54 @@ pub(crate) struct ModelInfo {
     pub display_name: String,
 }
 
+/// `Nl2SqlState` (`stores/ai/types.ts`). `memory_used` is only cleared by
+/// this slice; the chat slice fills the references.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Nl2SqlState {
+    pub input: String,
+    pub streaming_sql: String,
+    pub streaming_preview: String,
+    pub generated_sql: String,
+    pub memory_used: Vec<String>,
+    pub is_generating: bool,
+    pub request_id: Option<String>,
+}
+
+impl Default for Nl2SqlState {
+    fn default() -> Self {
+        Self {
+            input: String::new(),
+            streaming_sql: String::new(),
+            streaming_preview: String::new(),
+            generated_sql: String::new(),
+            memory_used: Vec::new(),
+            is_generating: false,
+            request_id: None,
+        }
+    }
+}
+
+/// Opaque diagnosis payload. The store does not read its fields.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct DiagnosisResult {
+    pub summary: String,
+}
+
+/// Opaque EXPLAIN analysis payload.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ExplainAnalysis {
+    pub summary: String,
+}
+
+/// One smart-filter condition. The store stores the list; it does not
+/// interpret the fields.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct FilterCondition {
+    pub column: String,
+    pub operator: String,
+    pub value: String,
+}
+
 /// What the host must do next. Payloads are the request, not a promise.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum AiConfigEffect {
@@ -185,6 +235,18 @@ pub(crate) struct AiStore {
     pub saving: bool,
     pub remote_models: Vec<ModelInfo>,
     pub fetching_remote_models: bool,
+    pub nl2sql: Nl2SqlState,
+    pub nl2sql_error: Option<String>,
+    pub diagnosis: Option<DiagnosisResult>,
+    pub is_diagnosing: bool,
+    pub diagnosis_error: Option<String>,
+    pub explain_analysis: Option<ExplainAnalysis>,
+    pub is_analyzing_explain: bool,
+    pub explain_error: Option<String>,
+    pub nl_filter_input: String,
+    pub parsed_filters: Option<Vec<FilterCondition>>,
+    pub is_parsing_filter: bool,
+    pub nl_filter_error: Option<String>,
     listener_armed: bool,
 }
 
@@ -201,6 +263,18 @@ impl Default for AiStore {
             saving: false,
             remote_models: Vec::new(),
             fetching_remote_models: false,
+            nl2sql: Nl2SqlState::default(),
+            nl2sql_error: None,
+            diagnosis: None,
+            is_diagnosing: false,
+            diagnosis_error: None,
+            explain_analysis: None,
+            is_analyzing_explain: false,
+            explain_error: None,
+            nl_filter_input: String::new(),
+            parsed_filters: None,
+            is_parsing_filter: false,
+            nl_filter_error: None,
             listener_armed: false,
         }
     }
@@ -428,6 +502,125 @@ impl AiStore {
 
     pub(crate) fn clear_error(&mut self) {
         self.config_error = None;
+    }
+
+    /// `setNl2SqlInput`. Other NL2SQL fields stay.
+    pub(crate) fn set_nl2sql_input(&mut self, input: impl Into<String>) {
+        self.nl2sql.input = input.into();
+    }
+
+    /// `generateSql`. Blank or whitespace-only input returns `false` and
+    /// does not touch state. On success React leaves `is_generating` set;
+    /// streaming completion (not this slice) clears it. `fail_generate_sql`
+    /// only clears the flag and records the error.
+    ///
+    /// `console.debug` lines are dropped.
+    pub(crate) fn begin_generate_sql(&mut self, request_id: impl Into<String>) -> bool {
+        if self.nl2sql.input.trim().is_empty() {
+            return false;
+        }
+        self.nl2sql.streaming_sql.clear();
+        self.nl2sql.streaming_preview.clear();
+        self.nl2sql.generated_sql.clear();
+        self.nl2sql.memory_used.clear();
+        self.nl2sql.is_generating = true;
+        self.nl2sql.request_id = Some(request_id.into());
+        self.nl2sql_error = None;
+        true
+    }
+
+    pub(crate) fn fail_generate_sql(&mut self, message: &str) {
+        self.nl2sql.is_generating = false;
+        self.nl2sql_error = Some(message.to_owned());
+    }
+
+    /// `clearNl2Sql`.
+    pub(crate) fn clear_nl2sql(&mut self) {
+        self.nl2sql = Nl2SqlState::default();
+        self.nl2sql_error = None;
+    }
+
+    /// `diagnoseError`. The host passes `sql` and `error_message` already
+    /// run through `redactSensitiveText` (`lib/aiQueryActions.ts`). That
+    /// helper is a different file and is not part of this slice.
+    pub(crate) fn begin_diagnose(&mut self) {
+        self.is_diagnosing = true;
+        self.diagnosis_error = None;
+        self.diagnosis = None;
+    }
+
+    pub(crate) fn complete_diagnose(&mut self, result: DiagnosisResult) {
+        self.diagnosis = Some(result);
+        self.is_diagnosing = false;
+    }
+
+    pub(crate) fn fail_diagnose(&mut self, message: &str) {
+        self.is_diagnosing = false;
+        self.diagnosis_error = Some(message.to_owned());
+    }
+
+    pub(crate) fn clear_diagnosis(&mut self) {
+        self.diagnosis = None;
+        self.is_diagnosing = false;
+        self.diagnosis_error = None;
+    }
+
+    /// `analyzeExplain`.
+    pub(crate) fn begin_analyze_explain(&mut self) {
+        self.is_analyzing_explain = true;
+        self.explain_analysis = None;
+        self.explain_error = None;
+    }
+
+    pub(crate) fn complete_analyze_explain(&mut self, result: ExplainAnalysis) {
+        self.explain_analysis = Some(result);
+        self.is_analyzing_explain = false;
+    }
+
+    pub(crate) fn fail_analyze_explain(&mut self, message: &str) {
+        self.is_analyzing_explain = false;
+        self.explain_error = Some(message.to_owned());
+    }
+
+    pub(crate) fn clear_explain_analysis(&mut self) {
+        self.explain_analysis = None;
+        self.is_analyzing_explain = false;
+        self.explain_error = None;
+    }
+
+    pub(crate) fn set_nl_filter_input(&mut self, input: impl Into<String>) {
+        self.nl_filter_input = input.into();
+    }
+
+    /// `parseFilter`. Blank input returns `None` and does not clear a
+    /// previous result. Success stores and returns the filters.
+    pub(crate) fn begin_parse_filter(&mut self) -> bool {
+        if self.nl_filter_input.trim().is_empty() {
+            return false;
+        }
+        self.is_parsing_filter = true;
+        self.nl_filter_error = None;
+        self.parsed_filters = None;
+        true
+    }
+
+    pub(crate) fn complete_parse_filter(&mut self, filters: Vec<FilterCondition>) -> Vec<FilterCondition> {
+        self.parsed_filters = Some(filters.clone());
+        self.is_parsing_filter = false;
+        filters
+    }
+
+    pub(crate) fn fail_parse_filter(&mut self, message: &str) {
+        self.is_parsing_filter = false;
+        self.nl_filter_error = Some(message.to_owned());
+    }
+
+    /// `clearNlFilter`.
+    pub(crate) fn clear_nl_filter(&mut self) {
+        self.nl_filter_input.clear();
+        self.parsed_filters = None;
+        self.is_parsing_filter = false;
+        self.nl_filter_error = None;
     }
 
     fn arm_config_fetch(&mut self, backend_bound: bool) -> Option<AiConfigEffect> {
