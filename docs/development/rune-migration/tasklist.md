@@ -110,7 +110,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T091 · types · 0.30d · types/chart.ts
 - [ ] T092 · platform · 0.30d · platform/capabilities.ts
 - [ ] T093 · platform/shared · 0.80d · platform/shared/mcpClient.ts
-- [ ] T094 · platform/web · 0.90d · platform/web/stub.ts
+- [x] T094 · platform/web · 0.90d · platform/web/stub.ts
 - [ ] T095 · extensions · 0.80d · extensions/generated.ts
 - [ ] T096 · commands · 1.30d · commands/ai.ts · split
 - [x] T097 · ai · 2.00d · ai/sessionCancel.ts · split

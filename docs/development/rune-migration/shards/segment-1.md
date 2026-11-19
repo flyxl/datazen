@@ -22,7 +22,7 @@
 - [x] T081 · lib/relationMetadata · 0.90d · lib/relationMetadata/sessionConfig.ts lib/relationMetadata/types.ts lib/relationPrediction/fromRelationMetadata.ts
 - [x] T083 · lib/session · 2.00d · lib/session/EditorSessionController.ts · split
 - [x] T085 · lib/structureEditor · 0.90d · lib/structureEditor/ddlApplyWarnings.ts lib/structureEditor/draftDefaults.ts lib/structureEditor/draftIds.ts
-- [ ] T094 · platform/web · 0.90d · platform/web/stub.ts
+- [x] T094 · platform/web · 0.90d · platform/web/stub.ts
 - [x] T097 · ai · 2.00d · ai/sessionCancel.ts · split
 - [x] T100 · components/filter · 0.30d · components/filter/FilterConnectorToggle.tsx
 - [ ] T103 · components/connection · 1.00d · components/connection/ConnectionFormBody.tsx components/connection/ConnectionImportFields.tsx
