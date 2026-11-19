@@ -250,6 +250,11 @@ mod data_sync_compare_step;
 // empty child mounts, light theme.
 mod data_sync_compare_step_audit;
 
+// T026-S1: BackupWindow state model + selection logic (option tables,
+// select/session journey, grouping + search ranking, prefill, close
+// listener, empty ProgressLog mount).
+mod backup_window_state;
+
 // T008: ChartCanvas dispatcher, measured viewport and honest placeholders.
 mod chart_canvas;
 // T008 independent audit: marker honesty, factory seam, geometry, source guards.

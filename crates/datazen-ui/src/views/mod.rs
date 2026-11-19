@@ -1,6 +1,7 @@
 //! View modules.
 
 mod ai_chat;
+mod backup;
 mod chrome;
 mod connections;
 mod connections_home;
@@ -16,6 +17,8 @@ mod tools_sync;
 mod workspace;
 
 pub(crate) use ai_chat::*;
+#[allow(unused_imports)] // the Backup window (T026-S2) is the production consumer
+pub(crate) use backup::*;
 pub(crate) use chrome::*;
 pub(crate) use connections::*;
 pub(crate) use connections_home::*;
