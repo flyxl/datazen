@@ -178,6 +178,9 @@ mod counters;
 mod counters_audit;
 // T039: React stores/activeConnectionStore.ts parity (active-connection store).
 mod active_connection_store;
+// T039 independent audit: markConnected spread semantics, timeout re-arm
+// and per-entry isolation, disconnect finally ordering, reset interplay.
+mod active_connection_store_audit;
 // T032: relationMetadata/metadataCache.ts port — standard wiring so the
 // `metadata_cache` test filter really runs these tests (tests::metadata_cache::*).
 mod metadata_cache;
