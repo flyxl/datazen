@@ -346,6 +346,11 @@ mod page_unload;
 // T154 independent audit: multi-failure accumulation, re-registration and id
 // monotonicity, per-release error reset, unknown-token unregister.
 mod page_unload_audit;
+// T183: lib/session/QueryPanelSession.ts port (registry + two-phase switch).
+mod query_panel_session;
+// T183 independent audit: transaction-state matrix, error mapping, conflict
+// refresh fallback and result status strings.
+mod query_panel_session_audit;
 
 // T091: platform/capabilities.ts — desktop and web capability tables.
 mod platform_capabilities;
@@ -430,6 +435,11 @@ mod connection_ai_notes;
 mod connection_form_parts;
 // T103 independent audit: observable behaviour, structural parity and coverage gaps.
 mod connection_form_audit;
+// T193: FileConnectionFields port (path field, ADB flow, keys, geometry).
+mod file_connection_fields;
+// T193 independent audit: empty/no-match filter, load failures, cancelled pull,
+// i18n key resolution and long-message visible-rect geometry.
+mod file_connection_fields_audit;
 // T016: the batch-export dialog port.
 mod batch_export_dialog;
 mod batch_export_audit;
@@ -678,6 +688,13 @@ mod temporal_math;
 mod timestamp_format;
 // T230: valuePresentation timestamp options validation (pathed problems).
 mod timestamp_config;
+
+// T192: the React NamedViewMenu port (six-state machine, flows, geometry).
+mod named_view_menu;
+// T192 independent audit: overwrite id, apply-close, default exclusivity,
+// import refusal, keyboard commits and many-view geometry.
+mod named_view_menu_audit;
+
 // T056: the expanded filter condition editor port.
 mod filter_condition_editor;
 // T056 independent audit: ported contracts, dispatch paths, i18n, token events.
@@ -810,3 +827,9 @@ mod sql_editor_metadata;
 // T123: per-dialect strategies (postgresql/mysql/sqlite), the carried
 // BaseTableSqlGenerator, and rowLimit weaving.
 mod sql_dialect_strategies;
+
+// T199: ContentView composition (gates, drawers, split panes, geometry).
+mod content_view;
+// T199 independent audit: no-panel React gates, AI drawer independence,
+// host pinned keys and the 800-line / no-bare-panic source contract.
+mod content_view_audit;

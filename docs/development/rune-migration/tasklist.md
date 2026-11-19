@@ -199,7 +199,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T180 · windows/schema-diff · 1.30d · windows/schema-diff/SchemaDiffPlanPanel.tsx · split
 - [ ] T181 · lib · 0.90d · lib/aiMemoryCorrection.ts
 - [ ] T182 · lib/chart · 1.00d · lib/chart/transform.ts lib/columnStats.ts
-- [ ] T183 · lib/session · 0.90d · lib/session/QueryPanelSession.ts
+- [x] T183 · lib/session · 0.90d · lib/session/QueryPanelSession.ts
 - [ ] T184 · lib/valuePresentation · 0.80d · lib/valuePresentation/registerBundledContributions.ts lib/valuePresentation/settings.ts
 - [ ] T185 · hooks · 0.50d · hooks/useColumnResize.ts
 - [ ] T186 · stores · 0.90d · stores/dashboardStore.ts
@@ -208,14 +208,14 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T189 · platform · 2.00d · platform/exportPlan.ts · split
 - [ ] T190 · commands · 0.90d · commands/connection.ts
 - [x] T191 · components/DataTable · 0.90d · components/DataTable/DataTableSelectionBar.tsx
-- [ ] T192 · components/filter · 0.80d · components/filter/NamedViewMenu.tsx
-- [ ] T193 · components/connection · 0.90d · components/connection/FileConnectionFields.tsx
+- [x] T192 · components/filter · 0.80d · components/filter/NamedViewMenu.tsx
+- [x] T193 · components/connection · 0.90d · components/connection/FileConnectionFields.tsx
 - [ ] T194 · components/chart · 2.00d · components/chart/renderers/BarChartRenderer.tsx · split
 - [ ] T195 · components/ai · 0.90d · components/ai/AiSessionHistory.tsx
 - [ ] T196 · components/sql-editor · 2.00d · components/sql-editor/fold/foldCompartment.ts · split
 - [ ] T197 · components · 1.30d · components/MenuBar.tsx · split
 - [ ] T198 · windows/settings · 0.90d · windows/settings/AiToolBridgeSection.tsx
-- [ ] T199 · windows/connection · 1.30d · windows/connection/ContentView.tsx · split
+- [x] T199 · windows/connection · 1.30d · windows/connection/ContentView.tsx · split
 - [ ] T200 · windows/workspace · 0.90d · windows/workspace/WorkspaceView.tsx
 - [ ] T201 · windows/dashboard · 1.30d · windows/dashboard/WidgetEditorDrawer.tsx · split
 - [ ] T202 · windows/workflow · 2.00d · windows/workflow/WorkflowYamlEditor.tsx · split
