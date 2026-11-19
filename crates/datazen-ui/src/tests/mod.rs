@@ -809,3 +809,7 @@ mod connection_store_audit;
 // T127: the dirty-state index (identity subset, anchor priority, the
 // ambiguity guard, counts, off-page keys, structural sharing).
 mod table_data_dirty_index;
+
+// T127 independent audit: fresh vectors (composite keys, nested identity
+// values, anchor under ambiguity, expressions, the delete-mark flip).
+mod table_data_dirty_index_audit;
