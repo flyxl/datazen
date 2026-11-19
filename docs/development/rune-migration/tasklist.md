@@ -138,7 +138,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T119 · lib/chart · 0.90d · lib/chart/postQueryView.ts
 - [ ] T120 · lib/metadata · 2.00d · lib/metadata/temporaryResults.ts · split
 - [ ] T121 · lib/relationPrediction · 0.90d · lib/relationPrediction/relatedTables.ts lib/relationPrediction/types.ts lib/relativeTime.ts
-- [ ] T122 · lib/session · 0.90d · lib/session/ExecutionProjection.ts
+- [x] T122 · lib/session · 0.90d · lib/session/ExecutionProjection.ts
 - [ ] T123 · lib/sqlDialects · 0.90d · lib/sqlDialects/mysql.ts lib/sqlDialects/postgresql.ts lib/sqlDialects/rowLimit.ts
 - [ ] T124 · lib/structureEditor · 0.90d · lib/structureEditor/isControlEnabled.ts lib/structureEditor/resolveCreateTableSchema.ts lib/structureEditor/schemaToDraft.ts
 - [ ] T125 · lib/valuePresentation · 1.00d · lib/valuePresentation/columnPresentationSession.ts lib/valuePresentation/index.ts
