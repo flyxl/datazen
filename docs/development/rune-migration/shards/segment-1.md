@@ -38,7 +38,7 @@
 - [x] T154 · lib/session · 0.30d · lib/session/pageUnload.ts
 - [x] T156 · lib/structureEditor · 0.30d · lib/structureEditor/types.ts
 - [x] T164 · ai · 2.00d · ai/targetClaim.ts · split
-- [ ] T166 · components/filter · 0.80d · components/filter/FilterTokenInput.tsx components/filter/FilterValueInput.tsx
+- [x] T166 · components/filter · 0.80d · components/filter/FilterTokenInput.tsx components/filter/FilterValueInput.tsx
 - [x] T167 · components/connection · 0.90d · components/connection/ConnectionShareDialogHost.tsx
 - [x] T173 · windows/connection · 0.80d · windows/connection/ContentStatusBar.tsx windows/connection/ContentToolbar.tsx
 - [ ] T183 · lib/session · 0.90d · lib/session/QueryPanelSession.ts
