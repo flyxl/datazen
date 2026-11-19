@@ -17,6 +17,8 @@ fn caps() -> DriverCapabilities {
         supports_query_execution_cancel: false,
         supports_explain: true,
         supports_streaming_results: true,
+        supports_offset: true,
+        has_schema_level: true,
     }
 }
 

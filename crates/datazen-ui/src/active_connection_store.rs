@@ -29,9 +29,9 @@
 //! * `disconnect` — [`ActiveConnectionStore::disconnect`] returns a
 //!   [`DisconnectPlan`]. `Removed` needs nothing more. `DisconnectSession`
 //!   means the host runs the `disconnect` IPC, emits the plan's
-//!   `on_success` effect, and then calls
+//!   `on_success` effect on success, and then calls
 //!   [`ActiveConnectionStore::finish_disconnect`] — on IPC failure too
-//!   (React `finally`).
+//!   (React `finally`), so the entry is removed either way.
 //! * `removeByDbSessionId` — the returned effects always start with
 //!   [`ConnectionEffect::DropColumnReadsForSession`]. The host applies
 //!   effects in order, synchronously, before any further transition, so the
@@ -150,6 +150,10 @@ pub(crate) struct DriverCapabilities {
     pub supports_query_execution_cancel: bool,
     pub supports_explain: bool,
     pub supports_streaming_results: bool,
+    /// Whether the dialect accepts OFFSET in pagination.
+    pub supports_offset: bool,
+    /// Whether the engine has a real second namespace level (schema).
+    pub has_schema_level: bool,
 }
 
 /// One tracked connection (React `ConnectionEntry`), keyed in the store by
@@ -261,8 +265,9 @@ pub(crate) enum DisconnectPlan {
     /// and the host has nothing to do.
     Removed,
     /// A live session: the host runs the `disconnect` IPC for this session,
-    /// then emits `on_success` (`datazen:disconnect-requested`), then calls
-    /// `finish_disconnect` — on IPC failure too (React `finally`).
+    /// then emits `on_success` (`datazen:disconnect-requested`) on success,
+    /// then calls `finish_disconnect` — on IPC failure too (React `finally`),
+    /// so the entry is removed either way.
     DisconnectSession {
         db_session_id: String,
         on_success: ConnectionEffect,
