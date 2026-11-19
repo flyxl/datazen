@@ -27,7 +27,7 @@
 - [x] T064 · components/admin · 0.60d · components/admin/AdminSchemaFields.tsx components/admin/PrivilegeSelector.tsx
 - [x] T073 · windows/data-transfer · 0.90d · windows/data-transfer/DataTransferAttachedJobs.tsx
 - [x] T074 · windows/data-sync · 0.30d · windows/data-sync/DataSyncDialogs.tsx
-- [~] T076 · windows/backup · 2.00d · windows/backup/ProgressLog.tsx · split
+- [x] T076 · windows/backup · 2.00d · windows/backup/ProgressLog.tsx · split
 - [ ] T078 · lib/chart · 0.60d · lib/chart/fieldInference.ts lib/chart/format.ts
 - [ ] T087 · stores · 1.30d · stores/aiStore.ts · split
 - [ ] T089 · stores/tableData · 0.90d · stores/tableData/countStrategy.ts
