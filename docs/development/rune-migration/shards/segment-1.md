@@ -31,7 +31,7 @@
 - [x] T122 · lib/session · 0.90d · lib/session/ExecutionProjection.ts
 - [x] T124 · lib/structureEditor · 0.90d · lib/structureEditor/isControlEnabled.ts lib/structureEditor/resolveCreateTableSchema.ts lib/structureEditor/schemaToDraft.ts
 - [x] T133 · ai · 2.00d · ai/streamRegistry.ts · split
-- [ ] T135 · components/filter · 0.90d · components/filter/FilterSqlPreviewDialog.tsx
+- [x] T135 · components/filter · 0.90d · components/filter/FilterSqlPreviewDialog.tsx
 - [ ] T137 · components/connection · 0.90d · components/connection/ConnectionShareDialog.tsx
 - [ ] T140 · components/migration · 0.90d · components/migration/MigrationRunHistoryDialog.tsx
 - [ ] T144 · windows/connection · 1.30d · windows/connection/ConnectionWorkspaceHome.tsx · split
