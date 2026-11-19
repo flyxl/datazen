@@ -243,6 +243,9 @@ mod batch_export_retest;
 // T110: the React windows/connection/ConnectionPage.tsx container port
 // (composed shell, section reachability, tabs/toolbar, two-size two-theme fit).
 mod connection_page;
+// T110 independent audit: contract key families, root paste glue and a
+// stronger drawn-right geometry probe.
+mod connection_page_audit;
 // T067: the React ConnectionNavigatorTree port (groups, rows, keys, keyboard,
 // reveal and two-size two-theme geometry).
 mod connection_navigator_tree;
