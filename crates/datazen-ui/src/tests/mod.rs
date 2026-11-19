@@ -326,6 +326,9 @@ mod filter_condition_editor;
 mod filter_condition_editor_audit;
 // T166: the React FilterTokenInput + FilterValueInput ports.
 mod filter_token_value_input;
+// T166 independent audit: commit edge cases, position-based removal, editor
+// de-duplication and many-token geometry.
+mod filter_token_value_audit;
 
 // T106: MigrationJobVerdictPanel (verdict states, counters, copy feedback, geometry).
 mod migration_job_verdict;
