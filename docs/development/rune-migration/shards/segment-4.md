@@ -17,7 +17,7 @@
 - [x] T037 · lib/valuePresentation · 0.50d · lib/valuePresentation/columnOverrides.ts
 - [x] T038 · hooks · 0.30d · hooks/useConfirmDialog.tsx
 - [ ] T044 · platform/shared · 0.30d · platform/shared/index.ts
-- [ ] T047 · bootstrap · 2.00d · bootstrap/startSharedApp.tsx · split
+- [x] T047 · bootstrap · 2.00d · bootstrap/startSharedApp.tsx · split
 - [ ] T048 · commands · 0.30d · commands/adb.ts
 - [ ] T050 · app.ts · 0.30d · app.ts
 - [x] T057 · components/history · 1.00d · components/history/HistoryEntryCard.tsx components/history/HistoryFilterBar.tsx
