@@ -101,3 +101,5 @@ mod column_presentation;
 mod column_presentation_session;
 // T037: table-column override persistence (validate/apply/save).
 mod column_overrides;
+// T182: settings parse + snapshot builder + bundled registration.
+mod settings;

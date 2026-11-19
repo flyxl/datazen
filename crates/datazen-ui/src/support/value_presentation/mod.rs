@@ -35,3 +35,4 @@ pub(crate) mod column_presentation_session; // T123: session overrides + the mer
 pub(crate) mod settings;
 pub(crate) mod value_presentation_save;
 pub(crate) mod column_overrides; // T037: override persistence
+pub(crate) mod register_bundled_contributions; // T182: startup registration
