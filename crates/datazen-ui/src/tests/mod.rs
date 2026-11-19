@@ -828,3 +828,6 @@ mod data_export_dialog_audit;
 
 // T134: the query execution status strip (coder tests).
 mod query_execution_status;
+
+// T134 independent audit: fresh vectors (the a11y surface, the winding-down run, the inert button tooltip, three counted presses, both windows).
+mod query_execution_status_audit;
