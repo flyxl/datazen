@@ -220,6 +220,9 @@ mod ai_store_assist;
 mod ai_store_assist_audit;
 // T087-S3: chat session token, clobber guard, delete, send, clear.
 mod ai_store_chat;
+// T087-S3 independent audit: streaming blocks restore, select invalidates
+// the previous init token, delete of another id keeps the open session.
+mod ai_store_chat_audit;
 // T041: React stores/tableData/connectionState.ts parity (row records, cell
 // values, error messages, the empty panel state, the load target).
 mod table_data_connection_state;
