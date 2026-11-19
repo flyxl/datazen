@@ -467,4 +467,6 @@ mod content_view_drawers;
 // T245 independent audit: reason parsing, width bounds, auto-context fallback,
 // object cells, table detail row, resolving banner and visible-rect geometry.
 mod content_view_drawers_audit;
+// T305: DatabaseObjectView port (object detail, host actions, slot, geometry).
+mod database_object_view;
 

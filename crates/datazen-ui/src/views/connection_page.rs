@@ -148,6 +148,10 @@ fn connection_content(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .gap(16.0)
         .fill(theme.bg)
         .child(crate::views::content_view::build(state, theme, dark, &vm))
+        // T305: the database object detail view is composed here when the host
+        // owns an object selection. Until that panel/object store slice lands,
+        // keep a zero-sized keyed slot so the composition point is stable.
+        .child(row().key("db-object-host").size(0.0, 0.0))
 }
 
 /// The title band: React's `titleBarLeft` (back + menu bar), the centred title,
