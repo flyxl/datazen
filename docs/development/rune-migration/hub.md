@@ -39,6 +39,16 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+### 本机 segment-1 Wave B（2026-11-19，4 轨）
+
+Wave A 全部收口（26/647）后继续，从 `--shard 1 --next-todo` 取前 4 个不同 area：
+- `ses_e0e824cd7ffe2bhaM7yQk2Dma6` — T036 structureEditor helpers（rune-s1b-struct，lib/structureEditor，3 小 .ts）
+- `ses_e0e824cd7ffdGwpgzBsgczDML6` — T045 platform/web（rune-s1b-web，14 行，可能 re-export 壳）
+- `ses_e0e824cd7ffbu1bH7fKxhB7r79` — T049 ai/grantState（rune-s1b-grant，281 行）
+- `ses_e0e824cd5ffeIN0Q47Vwwj2hhd` — T053 shell.ts（rune-s1b-shell，17 行，可能 re-export 壳）
+
+队列 worker pid 38092（目录 `.../T/rune-buildq`，与 coder 的 `${TMPDIR}/rune-buildq` 一致）。合流路径同 Wave A：先合 segment-1 + 翻 shard-1 + push，整波收口后 merge-to-parent 1 + refresh 其余段。
+
 ### 本机 segment-1 Wave A（2026-11-18，4 轨）
 
 从 `feat/rune-native-ui-migration-segment-1` 的 `--shard 1 --next-todo` 取前 4 个不同 area task，worktree 已 bootstrap、队列绑定已配：
