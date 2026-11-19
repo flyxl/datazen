@@ -17,7 +17,7 @@
 - [x] T028 · lib/chart · 0.90d · lib/chart/export.ts
 - [x] T039 · stores · 0.90d · stores/activeConnectionStore.ts
 - [x] T041 · stores/tableData · 0.30d · stores/tableData/connectionState.ts
-- [~] T043 · platform · 2.00d · platform/blobTablesExporter.ts · split
+- [x] T043 · platform · 2.00d · platform/blobTablesExporter.ts · split
 - [ ] T049 · app.ts · 0.30d · app.ts
 - [x] T053 · components/ui · 0.30d · components/ui/Spinner.tsx
 - [ ] T054 · components/DataTable · 1.30d · components/DataTable/ColumnPresentationDialog.tsx · split
