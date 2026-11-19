@@ -24,7 +24,6 @@
 - [ ] T104 · components/chart · 0.80d · components/chart/ChartView.tsx
 - [x] T118 · lib · 0.80d · lib/cellEditorKind.ts
 - [ ] T128 · stores/ai · 0.80d · stores/ai/types.ts
-- [ ] T130 · types · 0.90d · types/connection.ts
 - [ ] T138 · components/chart · 2.00d · components/chart/LogScaleTooltip.tsx · split
 - [ ] T147 · windows/workflow · 1.30d · windows/workflow/WorkflowPage.tsx · split
 - [x] T152 · lib · 0.60d · lib/dataTypeColors.ts components/DataTable/editors/toEditString.ts
@@ -172,3 +171,4 @@
 - [x] T111 · windows/workflow · 0.50d · windows/workflow/WorkflowHistorySection.tsx
 - [x] T118 · lib/metadata · 2.00d · lib/metadata/temporaryResults.ts · split
 - [x] T119 · lib/relationPrediction · 0.90d · lib/relationPrediction/relatedTables.ts lib/relationPrediction/types.ts lib/relativeTime.ts
+- [x] T128 · types · 0.90d · types/connection.ts
