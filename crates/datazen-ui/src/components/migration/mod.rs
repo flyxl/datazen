@@ -7,3 +7,4 @@
 
 pub(crate) mod migration_endpoints_bar;
 pub(crate) mod migration_job_failure_notice;
+pub(crate) mod migration_job_verdict_panel;
