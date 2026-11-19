@@ -23,7 +23,6 @@
 - [ ] T095 · extensions · 0.80d · extensions/generated.ts
 - [ ] T104 · components/chart · 0.80d · components/chart/ChartView.tsx
 - [x] T118 · lib · 0.80d · lib/cellEditorKind.ts
-- [ ] T120 · lib/metadata · 2.00d · lib/metadata/temporaryResults.ts · split
 - [ ] T121 · lib/relationPrediction · 0.90d · lib/relationPrediction/relatedTables.ts lib/relationPrediction/types.ts lib/relativeTime.ts
 - [ ] T128 · stores/ai · 0.80d · stores/ai/types.ts
 - [ ] T130 · types · 0.90d · types/connection.ts
@@ -172,3 +171,4 @@
 - [x] T081 · lib/relationPrediction · 2.00d · lib/relationPrediction/predictRelations.ts · split
 - [x] T090 · types · 0.30d · types/chart.ts
 - [x] T111 · windows/workflow · 0.50d · windows/workflow/WorkflowHistorySection.tsx
+- [x] T118 · lib/metadata · 2.00d · lib/metadata/temporaryResults.ts · split
