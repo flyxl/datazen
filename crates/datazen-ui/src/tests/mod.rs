@@ -751,3 +751,8 @@ mod welcome_step_audit;
 // variant, and the Test/Save footer with the result line and the
 // `tested` Save gate).
 mod manual_connection_step_audit;
+// T226: the onboarding sample step port (the S1 sample panel: the seeding
+// journey's three states and once-per-entry guard, the status card's
+// ready/failed/preparing chrome, the path/connection/error lines, and
+// the readyConnectionName prop's ready-but-still-preparing branch).
+mod sample_step_audit;
