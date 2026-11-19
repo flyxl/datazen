@@ -215,7 +215,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T196 · components/sql-editor · 2.00d · components/sql-editor/fold/foldCompartment.ts · split
 - [ ] T197 · components · 1.30d · components/MenuBar.tsx · split
 - [ ] T198 · windows/settings · 0.90d · windows/settings/AiToolBridgeSection.tsx
-- [ ] T199 · windows/connection · 1.30d · windows/connection/ContentView.tsx · split
+- [x] T199 · windows/connection · 1.30d · windows/connection/ContentView.tsx · split
 - [ ] T200 · windows/workspace · 0.90d · windows/workspace/WorkspaceView.tsx
 - [ ] T201 · windows/dashboard · 1.30d · windows/dashboard/WidgetEditorDrawer.tsx · split
 - [ ] T202 · windows/workflow · 2.00d · windows/workflow/WorkflowYamlEditor.tsx · split
