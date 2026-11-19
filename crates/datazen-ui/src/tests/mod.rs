@@ -233,6 +233,8 @@ mod run_editor_explain;
 // T231 independent audit: missing-plan failure, DTO string views, envelope
 // field filters and typed execute-error mapping.
 mod run_editor_explain_audit;
+// T252: lib/session/runEditorQuery.ts port (artifact events + terminal rules).
+mod run_editor_query;
 
 
 // Independent re-audit of merged T0-07 menu base.
