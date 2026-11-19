@@ -469,4 +469,7 @@ mod content_view_drawers;
 mod content_view_drawers_audit;
 // T305: DatabaseObjectView port (object detail, host actions, slot, geometry).
 mod database_object_view;
+// T305 independent audit: load/message, DDL retry, execute guards, empty schema,
+// null-schema action, visible-rect geometry and real connection-page composition.
+mod database_object_view_audit;
 
