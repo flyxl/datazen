@@ -187,6 +187,11 @@ mod export_plan_audit;
 // T043-S2: platform/blobTablesExporter.ts slice 2 — data emission
 // (provided + table branches) and merged delivery.
 mod blob_tables_exporter_emission;
+// T043-S2 independent audit: re-derived emission + merge probes,
+// pinned divergences (integral floats, nested key order, the
+// `isPrimaryKey` middle step, ragged provided rows) and the S1
+// tester findings (merge MIME, null cursor, exponent rendering).
+mod blob_tables_exporter_emission_audit;
 // T039: React stores/activeConnectionStore.ts parity (active-connection store).
 mod active_connection_store;
 // T039 independent audit: markConnected spread semantics, timeout re-arm
