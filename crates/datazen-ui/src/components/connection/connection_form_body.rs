@@ -584,13 +584,23 @@ impl<S: 'static> ConnectionFormBody<S> {
 /// here it is only a placeholder node value, so it is left to the caller.
 #[allow(dead_code)] // helper; consumed by this module's build
 fn index_field<S: 'static>(edit: Option<&EditFn<S>>, value: &TextEdit, dark: bool) -> El {
-    input_field(
+    // React `IndexConnectionFields` renders a `Label` above its numeric input.
+    // Return a full `field_block` so the localized `newConn.databaseIndex` label
+    // is carried into `standard_fields` instead of a bare, unlabelled input.
+    field_block(
         "new-conn-database-index",
-        value,
-        edit,
-        Some("0"),
+        t("newConn.databaseIndex"),
         false,
-        false,
+        input_field(
+            "new-conn-database-index",
+            value,
+            edit,
+            Some("0"),
+            false,
+            false,
+            dark,
+        ),
+        None,
         dark,
     )
 }

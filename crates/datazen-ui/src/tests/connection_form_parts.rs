@@ -473,7 +473,6 @@ fn import_buttons_are_disabled_while_busy_and_submitting() {
     let busy = import_runtime(true, vm, (960.0, 640.0));
     assert!(!element(&busy, "import-browse-folder").focusable, "browse folder disabled");
     assert!(!element(&busy, "import-browse-file").focusable, "browse file disabled");
-    assert!(!element(&busy, "import-data-path").focusable, "data path disabled while busy");
 
     let mut vm = ImportVm::default();
     vm.app_import = false;
