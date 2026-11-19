@@ -240,6 +240,12 @@ mod chart_toolbar;
 // T102: the ChartView container port (config derivation, row cap, split
 // tiles, the expanded overlay and the lib/chart pipeline seam).
 mod chart_view;
+// T102 independent audit (T102-audit): the row-cap literal and the uncapped
+// recommend count, the early-return ladder's order (and the memo calls the
+// empty arm still makes), the overlay's seams and paint (95% surface, bar
+// geometry, literal captions, folded config, no click, full data), the
+// split grid's geometry, the live-config slot props and the toolbar wiring.
+mod chart_view_audit;
 
 // T019: the workflow editor action bar port.
 mod workflow_action_bar;
