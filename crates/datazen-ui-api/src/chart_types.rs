@@ -616,4 +616,80 @@ mod tests {
         }));
         assert!(rejected.is_err());
     }
+
+    // ── audit pins (T090) ──
+    //
+    // The port's own pins above caught 19 of the audit's 23 mutations.
+    // Two of the four survivors changed no observable behavior (removing
+    // `#[serde(transparent)]` from the newtype — serde_json forwards
+    // newtype structs to the inner value anyway — and reordering the
+    // untagged union's disjoint variants), so nothing to pin; the other
+    // two were real gaps, closed here:
+    //
+    // - dropping a name from lib.rs's `pub use chart_types::{…}` (the
+    //   audit dropped `ChartDataPointValue`) left all tests green and all
+    //   three crates checking — every test in this module speaks `super::`,
+    //   and no downstream crate consumes the names through the crate root
+    //   yet, so the public surface the UI glue will import was unpinned;
+    // - widening `ChartType` with a sixth variant left every table green —
+    //   the tables pin that the React members exist, not that nothing else
+    //   does, so the closedness TS guarantees at compile time had no
+    //   runtime pin (the untagged union already had one: the bool
+    //   rejection above).
+
+    #[test]
+    fn the_chart_vocabulary_is_reexported_at_the_crate_root() {
+        // Every one of the nine re-exported names resolves through the
+        // crate root (`pub use chart_types::{…}` in lib.rs) — this pin
+        // uses `crate::` paths only, so a dropped re-export stops this
+        // file from compiling instead of silently shrinking the surface.
+        let config: crate::ChartConfig = crate::ChartConfig::default();
+        assert_eq!(config.chart_type, crate::ChartType::Bar);
+        assert_eq!(config.aggregation, crate::AggregationType::None);
+        assert_eq!(config.sort_by, crate::ChartSortBy::None);
+
+        let field: crate::ChartField = decode(serde_json::json!({
+            "name": "flag",
+            "dataType": "bool",
+            "inferredType": "boolean"
+        }));
+        assert_eq!(field.inferred_type, crate::InferredFieldType::Boolean);
+
+        let rec: crate::ChartRecommendation = decode(serde_json::json!({
+            "chartType": "pie",
+            "xAxis": null,
+            "yAxes": ["amount"],
+            "groupBy": null,
+            "aggregation": "count",
+            "confidence": 0.5,
+            "reason": "one numeric column"
+        }));
+        assert_eq!(rec.chart_type, crate::ChartType::Pie);
+        assert_eq!(rec.confidence, 0.5);
+
+        let point: crate::ChartDataPoint = decode(serde_json::json!({ "amount": 1.0 }));
+        assert_eq!(
+            point.0.get("amount"),
+            Some(&crate::ChartDataPointValue::Number(1.0))
+        );
+    }
+
+    #[test]
+    fn the_literal_unions_are_closed() {
+        // TS's closed string-literal unions are compile-time contracts;
+        // the runtime mirror is serde refusing a non-member literal. The
+        // near-misses below are all spellings a widened enum would gladly
+        // accept — `Heatmap` in the audit's surviving mutant would have
+        // decoded "heatmap" as a chart type.
+        for unknown in ["heatmap", "histogram", "table"] {
+            let rejected = serde_json::from_value::<ChartType>(serde_json::json!(unknown));
+            assert!(rejected.is_err());
+        }
+        let rejected = serde_json::from_value::<AggregationType>(serde_json::json!("average"));
+        assert!(rejected.is_err());
+        let rejected = serde_json::from_value::<InferredFieldType>(serde_json::json!("date"));
+        assert!(rejected.is_err());
+        let rejected = serde_json::from_value::<ChartSortBy>(serde_json::json!("asc"));
+        assert!(rejected.is_err());
+    }
 }
