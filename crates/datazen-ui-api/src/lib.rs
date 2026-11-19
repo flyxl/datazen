@@ -62,9 +62,12 @@ pub use context_menu_position::{
     position_root_menu, position_root_menu_with_pad, position_submenu, position_submenu_with_pad,
 };
 pub use metadata::{
-    BatchFlush, ExecutionTarget, MetadataBatcher, MetadataBatcherOptions, MetadataClock,
-    MetadataIdentityInput, MetadataSessionIdentity, MetadataTarget, NamespaceTarget, ObjectTarget,
-    metadata_batch_bucket, metadata_cache_key, metadata_config_bucket, metadata_session_key,
+    BatchFlush, CurrentCallContext, CurrentProvenanceContext, ExecutionTarget,
+    InvalidationDecision, InvalidationReason, MetadataBatcher, MetadataBatcherOptions,
+    MetadataClock, MetadataIdentityInput, MetadataSessionIdentity, MetadataTarget, NamespaceTarget,
+    ObjectTarget, ResultProvenance, SessionHandle, TemporaryResult, check_temporary_result,
+    is_provenance_current, metadata_batch_bucket, metadata_cache_key, metadata_config_bucket,
+    metadata_session_key, read_temporary_result,
 };
 pub use platform_shared::{
     McpContentBlock, McpError, McpFetch, McpHttpResponse, McpJsonRpcError, McpRequestInit,
