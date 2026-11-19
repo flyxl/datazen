@@ -465,3 +465,11 @@ mod app_entry;
 // unwired adapter's error) through the assign + sync the launch closure
 // performs, which the coder's demo-path test does not exercise.
 mod app_entry_audit;
+
+// Independent segment-3 retests (tester-owned). Do not treat the *_audit
+// modules as this evidence.
+mod t076_tester;
+mod t078_tester;
+mod t087_tester;
+mod t089_tester;
+mod t091_tester;
