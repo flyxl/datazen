@@ -12,6 +12,7 @@ mod context_menu_position;
 mod metadata;
 mod platform_shared;
 mod relation_prediction;
+mod relative_time;
 mod tabs;
 
 use std::collections::HashMap;
@@ -75,13 +76,18 @@ pub use platform_shared::{
     WebMcpServerConfig, WebMcpToolInfo, format_call_tool_result, mcp_qualified_name,
 };
 pub use relation_prediction::{
-    ColumnPair, ColumnSchema, DEFAULT_AMBIGUITY_MARGIN, DEFAULT_HIGH_THRESHOLD,
-    DEFAULT_MEDIUM_THRESHOLD, DeclaredForeignKey, EVIDENCE_WEIGHTS, EvidenceWeights, ForeignKeyInfo,
-    IndexInfo, PredictionColumn, PredictionEvidence, PredictionEvidenceCode, PredictionOptions,
-    PredictionTable, PredictionTier, RelationCandidate, TableSchema, TypeFamily,
-    is_generic_key_name, normalize_data_type, normalize_identifier, predict_relations, singularize,
-    split_identifier_words, to_prediction_table_from_schema, to_prediction_tables_from_schemas,
-    type_family,
+    ColumnPair, ColumnSchema, DECLARED_RELATION_BOOST, DEFAULT_AMBIGUITY_MARGIN,
+    DEFAULT_HIGH_THRESHOLD, DEFAULT_MEDIUM_THRESHOLD, DeclaredForeignKey, EVIDENCE_WEIGHTS,
+    EvidenceWeights, ForeignKeyInfo, IndexInfo, PREDICTED_RELATION_BOOST, PredictionColumn,
+    PredictionEvidence, PredictionEvidenceCode, PredictionOptions, PredictionTable,
+    PredictionTier, RelatedTableHint, RelatedTableOrigin, RelationCandidate, TableSchema,
+    TypeFamily, is_generic_key_name, normalize_data_type, normalize_identifier, predict_relations,
+    related_table_boost_map, related_table_hints, singularize, split_identifier_words,
+    to_prediction_table_from_schema, to_prediction_tables_from_schemas, type_family,
+};
+pub use relative_time::{
+    RELATIVE_WINDOW_MS, RelativeTimeParts, RelativeTimeUnit, format_relative_time,
+    get_relative_time_parts,
 };
 pub use tabs::{Tab, TabKind, Tabs};
 
