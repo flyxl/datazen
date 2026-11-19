@@ -12,3 +12,5 @@ pub(crate) mod page_unload;
 pub(crate) mod query_panel_session;
 pub(crate) mod query_panel_session_root;
 pub(crate) mod run_editor_explain;
+pub(crate) mod run_editor_query;
+pub(crate) mod session_prompts;

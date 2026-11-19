@@ -45,6 +45,9 @@ use crate::components::connection::connection_advanced_settings::{
 use crate::components::connection::file_connection_fields::{
     FileConnectionFields, FileFieldsAction, FileFieldsState,
 };
+use crate::components::connection::standard_connection_fields::{
+    StandardConnectionFields, StandardFieldsValue,
+};
 use crate::i18n::t;
 use crate::ui::copyable::CopyableError;
 use crate::ui::field::TextField;
@@ -456,6 +459,27 @@ impl<S: 'static> ConnectionFormBody<S> {
         }
 
         // React lines 77-94: the chosen form-variant fields.
+        let host_placeholder = if vm.is_window {
+            "prod-db.example.com"
+        } else {
+            "127.0.0.1"
+        };
+        let database_placeholder = if vm.is_window {
+            Some("myapp_production")
+        } else {
+            None
+        };
+        let standard_value = StandardFieldsValue {
+            host: &vm.host,
+            port: &vm.port,
+            database: &vm.database,
+            username: &vm.username,
+            password: &vm.password,
+            host_error: &vm.host_error,
+            port_error: &vm.port_error,
+            database_error: &vm.database_error,
+            has_username: vm.has_username,
+        };
         let mut fields = row()
             .key("new-conn-fields-row")
             .w_full()
@@ -489,30 +513,36 @@ impl<S: 'static> ConnectionFormBody<S> {
             FormVariant::Index => {
                 // React `IndexConnectionFields` is passed as `databaseField`
                 // into `StandardConnectionFields` (host/port/user/password).
-                for block in standard_fields(
-                    &vm,
-                    host_edit.as_ref(),
-                    port_edit.as_ref(),
+                // T281 replaces T103's local stand-in with the real port.
+                let standard = StandardConnectionFields::new(
+                    standard_value.clone(),
+                    host_edit.clone(),
+                    port_edit.clone(),
                     None,
-                    username_edit.as_ref(),
-                    password_edit.as_ref(),
-                    Some(index_field(database_edit.as_ref(), &vm.database, dark)),
-                    dark,
-                ) {
+                    username_edit.clone(),
+                    password_edit.clone(),
+                )
+                .database_field(Some(index_field(database_edit.as_ref(), &vm.database, dark)))
+                .host_placeholder(host_placeholder)
+                .database_placeholder(database_placeholder)
+                .build(dark);
+                for block in standard {
                     fields = fields.child(block);
                 }
             }
             FormVariant::Standard => {
-                for block in standard_fields(
-                    &vm,
-                    host_edit.as_ref(),
-                    port_edit.as_ref(),
-                    database_edit.as_ref(),
-                    username_edit.as_ref(),
-                    password_edit.as_ref(),
-                    None,
-                    dark,
-                ) {
+                let standard = StandardConnectionFields::new(
+                    standard_value.clone(),
+                    host_edit.clone(),
+                    port_edit.clone(),
+                    database_edit.clone(),
+                    username_edit.clone(),
+                    password_edit.clone(),
+                )
+                .host_placeholder(host_placeholder)
+                .database_placeholder(database_placeholder)
+                .build(dark);
+                for block in standard {
                     fields = fields.child(block);
                 }
             }
@@ -606,7 +636,8 @@ impl<S: 'static> ConnectionFormBody<S> {
 fn index_field<S: 'static>(edit: Option<&EditFn<S>>, value: &TextEdit, dark: bool) -> El {
     // React `IndexConnectionFields` renders a `Label` above its numeric input.
     // Return a full `field_block` so the localized `newConn.databaseIndex` label
-    // is carried into `standard_fields` instead of a bare, unlabelled input.
+    // is carried into `StandardConnectionFields` as the `databaseField` prop
+    // instead of a bare, unlabelled input.
     field_block(
         "new-conn-database-index",
         t("newConn.databaseIndex"),
@@ -623,123 +654,6 @@ fn index_field<S: 'static>(edit: Option<&EditFn<S>>, value: &TextEdit, dark: boo
         None,
         dark,
     )
-}
-
-/// `StandardConnectionFields` stand-in: host / port / database / username /
-/// password, with validation errors on host, port and database.
-#[allow(dead_code)] // helper; consumed by this module's build
-fn standard_fields<S: 'static>(
-    vm: &FormBodyVm,
-    host_edit: Option<&EditFn<S>>,
-    port_edit: Option<&EditFn<S>>,
-    database_edit: Option<&EditFn<S>>,
-    username_edit: Option<&EditFn<S>>,
-    password_edit: Option<&EditFn<S>>,
-    database_field: Option<El>,
-    dark: bool,
-) -> Vec<El> {
-    // React window variant uses `prod-db.example.com`, dialog uses `127.0.0.1`.
-    let host_placeholder = if vm.is_window {
-        "prod-db.example.com"
-    } else {
-        "127.0.0.1"
-    };
-    let database_placeholder = if vm.is_window { Some("myapp_production") } else { None };
-
-    let mut out = Vec::new();
-    out.push(field_block(
-        "new-conn-host",
-        t("newConn.host"),
-        true,
-        input_field(
-            "new-conn-host",
-            &vm.host,
-            host_edit,
-            Some(host_placeholder),
-            !vm.host_error.is_empty(),
-            false,
-            dark,
-        ),
-        (!vm.host_error.is_empty())
-            .then_some(("new-conn-host-error", vm.host_error.as_str())),
-        dark,
-    ));
-    out.push(field_block(
-        "new-conn-port",
-        t("newConn.port"),
-        true,
-        input_field(
-            "new-conn-port",
-            &vm.port,
-            port_edit,
-            None,
-            !vm.port_error.is_empty(),
-            false,
-            dark,
-        ),
-        (!vm.port_error.is_empty())
-            .then_some(("new-conn-port-error", vm.port_error.as_str())),
-        dark,
-    ));
-
-    match database_field {
-        Some(field) => out.push(field),
-        None => {
-            out.push(field_block(
-                "new-conn-database",
-                t("newConn.database"),
-                false,
-                input_field(
-                    "new-conn-database",
-                    &vm.database,
-                    database_edit,
-                    database_placeholder,
-                    !vm.database_error.is_empty(),
-                    false,
-                    dark,
-                ),
-                (!vm.database_error.is_empty())
-                    .then_some(("new-conn-database-error", vm.database_error.as_str())),
-                dark,
-            ));
-        }
-    }
-
-    if vm.has_username {
-        out.push(field_block(
-            "new-conn-username",
-            t("newConn.username"),
-            false,
-            input_field(
-                "new-conn-username",
-                &vm.username,
-                username_edit,
-                database_placeholder.map(|_| "postgres"),
-                false,
-                false,
-                dark,
-            ),
-            None,
-            dark,
-        ));
-    }
-    out.push(field_block(
-        "new-conn-password",
-        t("newConn.password"),
-        false,
-        input_field(
-            "new-conn-password",
-            &vm.password,
-            password_edit,
-            None,
-            false,
-            true,
-            dark,
-        ),
-        None,
-        dark,
-    ));
-    out
 }
 
 // Leftover L1 (removal stage: when `views/connections.rs` is rewritten to mount

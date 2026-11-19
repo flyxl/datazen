@@ -361,6 +361,16 @@ mod run_editor_explain;
 // T231 independent audit: missing-plan failure, DTO string views, envelope
 // field filters and typed execute-error mapping.
 mod run_editor_explain_audit;
+// T252: lib/session/runEditorQuery.ts port (artifact events + terminal rules).
+mod run_editor_query;
+// T252 independent audit: disconnect exhaustion, statement chunk kinds and
+// envelope limit gating.
+mod run_editor_query_audit;
+// T273: lib/session/sessionPrompts.ts port (prompt keys + typed errors).
+mod session_prompts;
+// T273 independent audit: literal React key strings, disconnect regex branches
+// and unknown-code fallbacks.
+mod session_prompts_audit;
 
 
 // T091: platform/capabilities.ts — desktop and web capability tables.
@@ -451,11 +461,22 @@ mod connection_ai_notes;
 mod connection_form_parts;
 // T103 independent audit: observable behaviour, structural parity and coverage gaps.
 mod connection_form_audit;
+// T281: SshTunnelFields + StandardConnectionFields ports and the form-body swap.
+mod ssh_standard_fields;
+// T281 independent audit: auth mapping, toggle rule, path pick, no-username,
+// error transitions, source guards and long-value geometry.
+mod ssh_fields_audit;
 // T239: the React NewConnectionDialog port (picker, form wiring, actions, geometry).
 mod new_connection_dialog;
 // T239 independent audit: availability filter, group wiring/labels, edit AI
 // notes, host-port contract and group-heavy geometry.
 mod new_dialog_audit;
+// T260: ObjectFilterDialog + SaveTunnelDialog + shared ports.
+mod object_filter_save_tunnel;
+// T260 independent audit: Escape, reseed, busy, error actionability, no IPC,
+// long-value geometry.
+mod object_filter_audit;
+
 // T193: FileConnectionFields port (path field, ADB flow, keys, geometry).
 mod file_connection_fields;
 // T193 independent audit: empty/no-match filter, load failures, cancelled pull,
@@ -873,6 +894,17 @@ mod content_view_dialogs;
 // T223 independent audit: cancel/header routing, database fallback, slot
 // integration geometry and the source-contract guard.
 mod content_view_dialogs_audit;
+// T266: CreateDatabaseDialog + CreateSchemaDialog ports.
+mod create_db_schema_dialogs;
+// T266 independent audit: blank-name guard, failure retry, schema spec words,
+// running guard, Enter commit, visible-rect geometry and slot composition.
+mod create_db_schema_dialogs_audit;
+// T286: CreateUserDialog port (two steps, validation, host actions, slot mount).
+mod create_user_dialog;
+// T286 independent audit: select-all toggle, failed grant retry, success text,
+// reset host facts, guard errors, no-grant-step branch, visible-rect geometry,
+// database Select default/openability.
+mod create_user_dialog_audit;
 // T245: ContentViewDrawers port (drawer keys, split-pane source, auto-context,
 // result-readonly verdicts, KV slot and geometry).
 mod content_view_drawers;

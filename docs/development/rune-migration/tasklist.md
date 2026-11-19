@@ -268,7 +268,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T249 · windows/data-sync · 0.90d · windows/data-sync/DataSyncResultStep.tsx
 - [ ] T250 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffSelectionSteps.tsx
 - [ ] T251 · lib · 0.50d · lib/aiProviders.ts
-- [ ] T252 · lib/session · 0.90d · lib/session/runEditorQuery.ts
+- [x] T252 · lib/session · 0.90d · lib/session/runEditorQuery.ts
 - [ ] T253 · lib/valuePresentation · 0.80d · lib/valuePresentation/timestampContribution.ts
 - [ ] T254 · hooks · 0.90d · hooks/useConnectionCommand.ts
 - [ ] T255 · stores · 0.90d · stores/languagePackStore.ts
@@ -276,20 +276,20 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T257 · types · 0.90d · types/settings.ts
 - [ ] T258 · commands · 1.30d · commands/database.ts · split
 - [ ] T259 · components/DataTable · 0.80d · components/DataTable/DetailPanelToggle.tsx components/DataTable/DraftRow.tsx
-- [ ] T260 · components/connection · 0.90d · components/connection/ObjectFilterDialog.tsx components/connection/SaveTunnelDialog.tsx components/connection/shared.tsx
+- [x] T260 · components/connection · 0.90d · components/connection/ObjectFilterDialog.tsx components/connection/SaveTunnelDialog.tsx components/connection/shared.tsx
 - [ ] T261 · components/chart · 2.00d · components/chart/renderers/ScatterChartRenderer.tsx · split
 - [ ] T262 · components/ai · 0.90d · components/ai/ExplainPanel.tsx
 - [ ] T263 · components/sql-editor · 2.00d · components/sql-editor/paste/createPasteExtensions.ts · split
 - [ ] T264 · components · 0.80d · components/StatusBar.tsx components/ThemedIcon.tsx
 - [ ] T265 · windows/settings · 0.90d · windows/settings/DriverSettingsSection.tsx
-- [ ] T266 · windows/connection · 0.60d · windows/connection/CreateDatabaseDialog.tsx windows/connection/CreateSchemaDialog.tsx
+- [x] T266 · windows/connection · 0.60d · windows/connection/CreateDatabaseDialog.tsx windows/connection/CreateSchemaDialog.tsx
 - [ ] T267 · windows/workflow · 2.00d · windows/workflow/yamlMode.ts · split
 - [ ] T268 · windows/onboarding · 2.00d · windows/onboarding/onboardingGate.ts · split
 - [ ] T269 · windows/data-transfer · 0.90d · windows/data-transfer/TransferMappingStep.tsx
 - [ ] T270 · windows/data-sync · 1.30d · windows/data-sync/DataSyncWindow.tsx · split
 - [ ] T271 · windows/schema-diff · 0.30d · windows/schema-diff/SchemaDiffTableListPanel.tsx
 - [ ] T272 · lib · 0.80d · lib/aiQueryActions.ts
-- [ ] T273 · lib/session · 0.90d · lib/session/sessionPrompts.ts
+- [x] T273 · lib/session · 0.90d · lib/session/sessionPrompts.ts
 - [ ] T274 · lib/valuePresentation · 0.80d · lib/valuePresentation/timestampFormat.ts
 - [ ] T275 · hooks · 0.30d · hooks/useFkNavigationShortcuts.ts
 - [ ] T276 · stores · 0.90d · stores/metadataIdentityBinding.ts stores/paneFocus.ts stores/paneKeys.ts
@@ -297,12 +297,12 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T278 · types · 0.90d · types/theme.ts
 - [ ] T279 · commands · 0.30d · commands/driver.ts
 - [ ] T280 · components/DataTable · 0.90d · components/DataTable/EditableCell.tsx components/DataTable/editors/BinaryCellEditor.tsx components/DataTable/editors/BooleanCellEditor.tsx
-- [ ] T281 · components/connection · 0.80d · components/connection/SshTunnelFields.tsx components/connection/StandardConnectionFields.tsx
+- [x] T281 · components/connection · 0.80d · components/connection/SshTunnelFields.tsx components/connection/StandardConnectionFields.tsx
 - [ ] T282 · components/ai · 0.90d · components/ai/Nl2SqlPanel.tsx
 - [ ] T283 · components/sql-editor · 2.00d · components/sql-editor/paste/multiCursorEscape.ts · split
 - [ ] T284 · components · 0.90d · components/ThemeToggle.tsx
 - [ ] T285 · windows/settings · 0.90d · windows/settings/InstallLanguagePackDialog.tsx
-- [ ] T286 · windows/connection · 0.90d · windows/connection/CreateUserDialog.tsx
+- [x] T286 · windows/connection · 0.90d · windows/connection/CreateUserDialog.tsx
 - [ ] T287 · windows/onboarding · 0.30d · windows/onboarding/onboardingLayout.ts
 - [ ] T288 · windows/data-transfer · 0.60d · windows/data-transfer/TransferPairingNote.tsx windows/data-sync/CompareSummary.tsx
 - [ ] T289 · windows/data-sync · 0.60d · windows/data-sync/DataSyncWizardNav.tsx windows/data-sync/DataSyncWizardStepper.tsx

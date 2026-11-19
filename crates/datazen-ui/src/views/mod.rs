@@ -9,6 +9,9 @@ pub(crate) mod content_toolbar;
 mod connection_page;
 mod connection_workspace_home;
 pub(crate) mod content_view;
+pub(crate) mod create_database_dialog;
+pub(crate) mod create_schema_dialog;
+pub(crate) mod create_user_dialog;
 pub(crate) mod content_view_dialogs;
 pub(crate) mod content_view_drawers;
 
