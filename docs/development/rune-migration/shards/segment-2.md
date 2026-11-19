@@ -132,7 +132,6 @@
 - [ ] T613 · lib · 0.90d · lib/sqlFileExecution.ts
 - [ ] T615 · lib · 0.80d · lib/sqlFormat.ts lib/sqlFunctionRegistry.ts
 - [ ] T617 · lib · 0.80d · lib/sqlGenerator.ts lib/sqlNamespace.ts
-- [ ] T619 · lib · 0.80d · lib/sqlPathPrefix.ts lib/sqlSchemaDropTargets.ts
 - [ ] T621 · lib · 0.90d · lib/sqlStatementRange.ts lib/sqlTransactionGuard.ts lib/startupTimer.ts
 - [ ] T623 · lib · 0.90d · lib/surfaceBgCache.ts
 - [ ] T625 · lib · 0.90d · lib/syncPairing.ts
@@ -172,3 +171,4 @@
 - [x] T159 · types · 0.90d · types/dashboard.ts
 - [x] T188 · types · 0.30d · types/filters.ts
 - [x] T174 · windows/workflow · 0.30d · windows/workflow/workflowStepResultUtils.tsx
+- [x] T619 · lib · 0.80d · lib/sqlPathPrefix.ts lib/sqlSchemaDropTargets.ts
