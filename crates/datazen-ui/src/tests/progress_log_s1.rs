@@ -55,11 +55,14 @@ fn visible_range_bottom_clamps_overscan_at_count() {
 }
 
 #[test]
-fn visible_range_scrolled_past_end_is_empty() {
-    assert_eq!(visible_range(5000.0, 200.0, 100), (100, 100));
-    // Exactly at the end (scroll_top == total height) the overscan band
-    // still shows the tail rows; only far past the end is it empty.
-    assert_eq!(visible_range(2000.0, 200.0, 100), (80, 100));
+fn visible_range_scrolled_past_end_clamps_to_the_last_row() {
+    // TanStack clamps the anchor to the last row, then overscan walks
+    // backward. Far past the end is not an empty window: 100 rows,
+    // anchor 99, overscan 20 → (79, 100).
+    assert_eq!(visible_range(5000.0, 200.0, 100), (79, 100));
+    // scroll_top == total height (2000) is already past the last row
+    // origin (1980), so the window is that same tail band.
+    assert_eq!(visible_range(2000.0, 200.0, 100), (79, 100));
 }
 
 #[test]
@@ -72,9 +75,11 @@ fn visible_range_negative_scroll_is_treated_as_top() {
 }
 
 #[test]
-fn visible_range_zero_viewport_still_covers_overscan() {
-    // No visible rows, but the overscan band around row 20 renders.
-    assert_eq!(visible_range(400.0, 0.0, 100), (0, 40));
+fn visible_range_non_positive_viewport_is_empty() {
+    // `calculateRange` renders nothing unless outerSize > 0, including
+    // a negative measurement.
+    assert_eq!(visible_range(400.0, 0.0, 100), (0, 0));
+    assert_eq!(visible_range(0.0, -8.0, 40), (0, 0));
 }
 
 #[test]

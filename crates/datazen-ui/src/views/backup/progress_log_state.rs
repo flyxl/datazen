@@ -20,7 +20,9 @@
 //! * **The virtual window is computed, not measured.** TanStack keeps a
 //!   measurement cache and can shift the window by a row while it
 //!   measures; here every row is exactly [`ROW_HEIGHT`], so
-//!   [`visible_range`] computes the same window directly.
+//!   [`visible_range`] is `calculateRange` + `defaultRangeExtractor`
+//!   (one lane, overscan 20). A viewport that is not positive renders
+//!   no rows. A scroll offset past the last row clamps onto that row.
 //! * **Scroll geometry is `f64`, not `f32`.** React reads `scrollTop` /
 //!   `clientHeight` / `scrollHeight` as JS numbers (f64); the helpers
 //!   take the same type instead of narrowing to `f32`.
@@ -61,30 +63,63 @@ pub(crate) const COPIED_FEEDBACK_MS: u64 = 1500;
 pub(crate) const NEAR_BOTTOM_MARGIN: f64 = ROW_HEIGHT * 2.0;
 
 /// React's virtualizer window for a scroll position, as a half-open
-/// `(start, end)` row range: `start` is the first row to render, `end`
-/// is one past the last row to render, both clamped to `[0, count)`.
+/// `(start, end)` row range. This is `@tanstack/virtual-core@3.13`
+/// `calculateRange` plus `defaultRangeExtractor` for one lane of fixed
+/// [`ROW_HEIGHT`] rows and [`OVERSCAN`] 20.
 ///
-/// `start` is the first visible row (`scroll_top / ROW_HEIGHT`,
-/// rounded down) minus [`OVERSCAN`], clamped at 0; `end` is the first
-/// row past the visible window (`(scroll_top + viewport_height) /
-/// ROW_HEIGHT`, rounded up, so a partially visible row counts) plus
-/// [`OVERSCAN`], clamped at `count`. An empty log returns `(0, 0)`, and
-/// scrolling past the end returns the empty range `(count, count)`.
-/// A negative `scroll_top` cannot happen in a browser (it clamps to 0)
-/// and is clamped here too, so a defensive caller gets the top window
-/// instead of an underflow.
+/// A non-positive viewport renders nothing: `calculateRange` requires
+/// `outerSize > 0`. Otherwise the anchor is the greatest row whose
+/// origin is `<= scroll_top`, never past the last row, so a scroll
+/// offset beyond the log still paints that row and the overscan above
+/// it. `end` walks forward while the row's end is strictly above the
+/// bottom of the viewport, then overscan is applied on both sides.
+/// A negative `scroll_top` cannot happen in a browser and is clamped
+/// to 0 before the search.
 #[allow(dead_code)] // T076-S2 wires this into the ProgressLog component
 pub(crate) fn visible_range(scroll_top: f64, viewport_height: f64, count: usize) -> (usize, usize) {
-    if count == 0 {
+    if count == 0 || viewport_height <= 0.0 {
         return (0, 0);
     }
-    let top = scroll_top.max(0.0);
-    let height = viewport_height.max(0.0);
-    let first = (top / ROW_HEIGHT).floor() as usize;
-    let last_exclusive = ((top + height) / ROW_HEIGHT).ceil() as usize;
-    let start = first.saturating_sub(OVERSCAN);
-    let end = last_exclusive.saturating_add(OVERSCAN).min(count);
-    (start.min(end), end)
+    let scroll_offset = scroll_top.max(0.0);
+    let last = count - 1;
+    let (start_index, end_index) = if count == 1 {
+        (0, last)
+    } else {
+        let start_index = nearest_row_start(count, scroll_offset);
+        let mut end_index = start_index;
+        let bottom = scroll_offset + viewport_height;
+        while end_index < last && (end_index + 1) as f64 * ROW_HEIGHT < bottom {
+            end_index += 1;
+        }
+        (start_index, end_index)
+    };
+    let start = start_index.saturating_sub(OVERSCAN);
+    let end_inclusive = end_index.saturating_add(OVERSCAN).min(last);
+    (start, end_inclusive + 1)
+}
+
+/// TanStack `findNearestBinarySearch` over row origins `index * ROW_HEIGHT`:
+/// the greatest index whose origin is `<= value`, or 0 when `value` is
+/// above the first row.
+fn nearest_row_start(count: usize, value: f64) -> usize {
+    let mut low = 0isize;
+    let mut high = count as isize - 1;
+    while low <= high {
+        let middle = (low + high) / 2;
+        let current = middle as f64 * ROW_HEIGHT;
+        if current < value {
+            low = middle + 1;
+        } else if current > value {
+            high = middle - 1;
+        } else {
+            return middle as usize;
+        }
+    }
+    if low > 0 {
+        (low - 1) as usize
+    } else {
+        0
+    }
 }
 
 /// React `virtualizer.getTotalSize()`: the inner spacer's height, one

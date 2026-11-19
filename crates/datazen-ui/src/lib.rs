@@ -4,7 +4,11 @@
 //! implementations. Platform adapters will be added behind typed UI ports.
 
 pub(crate) mod active_connection_store;
+pub(crate) mod ai_store;
+pub(crate) mod ai_store_chat;
+pub(crate) mod ai_store_rest;
 pub(crate) mod table_data_connection_state;
+pub(crate) mod table_data_count_strategy;
 pub(crate) mod components;
 pub(crate) mod ai;
 pub(crate) mod hooks; // the hooks/ ports (T038: useConfirmDialog is its first)

@@ -275,12 +275,36 @@ mod active_connection_store;
 // T039 independent audit: markConnected spread semantics, timeout re-arm
 // and per-entry isolation, disconnect finally ordering, reset interplay.
 mod active_connection_store_audit;
+// T087-S1: stores/aiStore.ts config/profile/provider slice.
+mod ai_store_config;
+// T087-S1 independent audit: isConfigured formula, delete-active fallback,
+// save does not write settings until the reload, listener retry.
+mod ai_store_config_audit;
+// T087-S2: NL2SQL, diagnosis, EXPLAIN analysis, smart filter.
+mod ai_store_assist;
+// T087-S2 independent audit: blank generate leaves an in-flight request,
+// clearNl2Sql does not touch diagnosis, blank parseFilter keeps filters.
+mod ai_store_assist_audit;
+// T087-S3: chat session token, clobber guard, delete, send, clear.
+mod ai_store_chat;
+// T087-S3 independent audit: streaming blocks restore, select invalidates
+// the previous init token, delete of another id keeps the open session.
+mod ai_store_chat_audit;
+// T087-S4: workflow chat, spinner, insights, MCP, injection/skill guards.
+mod ai_store_rest;
+// T087-S4 independent audit: 300ms spinner deadline, MCP plan order,
+// skill identity by name when id is empty.
+mod ai_store_rest_audit;
 // T041: React stores/tableData/connectionState.ts parity (row records, cell
 // values, error messages, the empty panel state, the load target).
 mod table_data_connection_state;
 // T041 independent audit (tester): parity re-derived from the React source,
 // plus dependency-mirror completeness (keyset/grid/change enums, plan types).
 mod table_data_connection_state_audit;
+// T089: stores/tableData/countStrategy.ts — catalog prior + count mode.
+mod table_data_count_strategy;
+// T089 independent audit: equal-to-threshold stays exact, first schema wins.
+mod table_data_count_strategy_audit;
 // T032: relationMetadata/metadataCache.ts port — standard wiring so the
 // `metadata_cache` test filter really runs these tests (tests::metadata_cache::*).
 mod metadata_cache;
@@ -302,6 +326,12 @@ mod execution_projection_audit;
 // T122 independent re-audit (D1 retest): reconnect flow, permanent binding
 // invalidation, null-handle guards and dispose (previously uncovered branches).
 mod execution_projection_retest;
+
+// T091: platform/capabilities.ts — desktop and web capability tables.
+mod platform_capabilities;
+// T091 independent audit: web keeps behavior, drops logging, desktop ends
+// at extensions, neither table uses the http version source.
+mod platform_capabilities_audit;
 
 // Independent re-audit of merged T0-07 menu base.
 mod menus_merge_reaudit;
@@ -610,3 +640,11 @@ mod migration_job_verdict;
 // T106 independent audit: i18n key resolution, boundary tone/gap polarity,
 // resume gating and adversarial two-size two-theme rect geometry.
 mod migration_job_verdict_audit;
+
+// Independent segment-3 retests (tester-owned). Do not treat the *_audit
+// modules as this evidence.
+mod t076_tester;
+mod t078_tester;
+mod t087_tester;
+mod t089_tester;
+mod t091_tester;

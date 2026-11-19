@@ -9,10 +9,12 @@
 //! `defaultRangeExtractor`, lanes = 1, fixed 20pt rows, no
 //! `measureElement` attached — `ProgressLog.tsx` never measures rows,
 //! so the estimate is exact and no measurement cache can drift), not
-//! from `progress_log_state.rs`. The sweep only covers the
-//! browser-reachable domain (`0 <= scroll_top <= count * 20 -
-//! viewport`, `viewport > 0`); outside it the two deliberately differ
-//! — see `visible_range_past_end_differs_from_tanstack_by_design`.
+//! from `progress_log_state.rs`. The sweep covers the browser-reachable
+//! domain (`0 <= scroll_top <= count * 20 - viewport`, `viewport > 0`).
+//! A non-positive viewport and a scroll offset past the last row match
+//! TanStack too: nothing is rendered when `outerSize <= 0`, and a
+//! past-the-end scroll clamps onto the last row before overscan walks
+//! backward. Negative `scroll_top` is clamped to 0.
 
 use crate::views::{visible_range, ProgressLogState};
 
@@ -67,25 +69,27 @@ fn audit_visible_range_matches_tanstack_on_the_reachable_domain() {
 }
 
 #[test]
-fn audit_visible_range_past_end_differs_from_tanstack_by_design() {
-    // A browser clamps scrollTop to scrollHeight - clientHeight, so
-    // scrollTop == total height is unreachable; the brief specifies
-    // the empty (count, count) range there instead of TanStack's
-    // tail-overscan band. Pinned so the divergence is a decision,
-    // not an accident. (TanStack would give (79, 100) here: its
-    // startIndex clamps to the last row, 99, minus overscan 20.)
-    assert_eq!(visible_range(2000.0, 200.0, 100), (80, 100));
-    assert_eq!(visible_range(5000.0, 200.0, 100), (100, 100));
-    assert_eq!(tanstack_window(2000.0, 200.0, 100), (79, 100));
+fn audit_visible_range_past_end_clamps_like_tanstack() {
+    // scrollTop past the last row origin still anchors on that row.
+    // 100 rows, anchor 99, overscan 20 → (79, 100), not an empty window
+    // and not one row short of that band.
+    assert_eq!(visible_range(2000.0, 200.0, 100), (79, 100));
+    assert_eq!(visible_range(5000.0, 200.0, 100), (79, 100));
+    assert_eq!(
+        visible_range(2000.0, 200.0, 100),
+        tanstack_window(2000.0, 200.0, 100)
+    );
+    assert_eq!(
+        visible_range(5000.0, 200.0, 100),
+        tanstack_window(5000.0, 200.0, 100)
+    );
 }
 
 #[test]
-fn audit_visible_range_zero_viewport_differs_from_tanstack_by_design() {
-    // TanStack returns no items when outerSize is 0 (calculateRange
-    // requires outerSize > 0); the helper still returns the overscan
-    // band around the scroll position. A zero-height container shows
-    // nothing either way, so this is unreachable in practice.
-    assert_eq!(visible_range(400.0, 0.0, 100), (0, 40));
+fn audit_visible_range_zero_viewport_is_empty_like_tanstack() {
+    // `calculateRange` requires outerSize > 0.
+    assert_eq!(visible_range(400.0, 0.0, 100), (0, 0));
+    assert_eq!(visible_range(0.0, -8.0, 40), (0, 0));
     assert_eq!(tanstack_window(400.0, 0.0, 100), (0, 0));
 }
 

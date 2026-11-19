@@ -19,6 +19,8 @@
 
 #![allow(dead_code)] // consumer: the chart view, not landed yet
 
+use std::cmp::Ordering;
+
 use chrono::DateTime;
 
 /// `InferredFieldType` (`types/chart.ts`).
@@ -238,7 +240,9 @@ fn js_date_parse_ok(text: &str) -> bool {
     DateTime::parse_from_rfc3339(text).is_ok() || DateTime::parse_from_rfc2822(text).is_ok()
 }
 
-/// `String(value)` for the distinct-set.
+/// `String(value)` for the distinct-set. Numbers use V8's `String(number)`:
+/// scientific notation when the exponent is `<= -7` or `>= 21`, with `+`
+/// on a positive exponent (`1e-7`, `1e+21`).
 pub(crate) fn js_string(value: &ChartValue) -> String {
     match value {
         ChartValue::Null => "null".to_owned(),
@@ -254,9 +258,16 @@ pub(crate) fn js_string(value: &ChartValue) -> String {
     }
 }
 
-fn js_number_text(number: f64) -> String {
+/// V8 `String(number)`. `-0` is `0`. A finite non-zero value uses the
+/// shortest round-trip digits, then decimal notation while the scientific
+/// exponent is in `-6..=20` and exponential notation otherwise. A tie
+/// between two shortest spellings takes the even last digit.
+pub(crate) fn js_number_text(number: f64) -> String {
     if number.is_nan() {
         return "NaN".to_owned();
+    }
+    if number == 0.0 {
+        return "0".to_owned();
     }
     if number.is_infinite() {
         return if number.is_sign_positive() {
@@ -265,13 +276,316 @@ fn js_number_text(number: f64) -> String {
             "-Infinity".to_owned()
         };
     }
-    if number == 0.0 {
-        return "0".to_owned();
+    let negative = number.is_sign_negative();
+    let abs = number.abs();
+    let Some((sig, exp)) = significand_from_debug(abs) else {
+        return if negative {
+            format!("-{abs}")
+        } else {
+            abs.to_string()
+        };
+    };
+    let (sig, exp) = prefer_even_tie(abs, sig, exp);
+    let body = render_js_body(&sig, exp);
+    if negative {
+        format!("-{body}")
+    } else {
+        body
     }
-    if number.is_finite() && number.fract() == 0.0 && number.abs() < 1e21 {
-        return format!("{number:.0}");
+}
+
+/// Shortest digits from Rust's debug printer, as `(significand, scientific
+/// exponent)`. Debug and V8 agree on those digits except on a halfway tie,
+/// which [`prefer_even_tie`] then resolves.
+fn significand_from_debug(abs: f64) -> Option<(String, i32)> {
+    normalize_debug(&format!("{abs:?}"))
+}
+
+fn normalize_debug(dbg: &str) -> Option<(String, i32)> {
+    if let Some((mantissa, exponent)) = dbg.split_once(['e', 'E']) {
+        let mut exp: i32 = exponent.parse().ok()?;
+        let digits: String = mantissa.chars().filter(|ch| *ch != '.' && *ch != '+').collect();
+        let lead = digits.len() - digits.trim_start_matches('0').len();
+        let digits = digits.trim_start_matches('0');
+        exp = exp.checked_sub(i32::try_from(lead).ok()?)?;
+        let trimmed = digits.trim_end_matches('0');
+        if trimmed.is_empty() {
+            return Some(("0".to_owned(), 0));
+        }
+        return Some((trimmed.to_owned(), exp));
     }
-    // JS `String(number)` for a non-integral finite float.
-    let text = format!("{number}");
-    text
+    let plain = dbg.strip_suffix(".0").unwrap_or(dbg);
+    let (digits, mut point) = if let Some((head, tail)) = plain.split_once('.') {
+        (format!("{head}{tail}"), i32::try_from(head.len()).ok()?)
+    } else {
+        (plain.to_owned(), i32::try_from(plain.len()).ok()?)
+    };
+    let lead = digits.len() - digits.trim_start_matches('0').len();
+    let digits = digits.trim_start_matches('0');
+    point = point.checked_sub(i32::try_from(lead).ok()?)?;
+    let trimmed = digits.trim_end_matches('0');
+    if trimmed.is_empty() {
+        return Some(("0".to_owned(), 0));
+    }
+    Some((trimmed.to_owned(), point.checked_sub(1)?))
+}
+
+fn prefer_even_tie(abs: f64, sig: String, exp: i32) -> (String, i32) {
+    let Some(last) = sig.as_bytes().last().copied() else {
+        return (sig, exp);
+    };
+    if (last - b'0') % 2 == 0 {
+        return (sig, exp);
+    }
+    for delta in [-1i32, 1] {
+        let Some(alt) = add_sig_digits(&sig, delta) else {
+            continue;
+        };
+        if alt.len() != sig.len() || (alt.as_bytes()[alt.len() - 1] - b'0') % 2 != 0 {
+            continue;
+        }
+        let alt_text = render_js_body(&alt, exp);
+        if alt_text.parse::<f64>().ok().map(f64::to_bits) != Some(abs.to_bits()) {
+            continue;
+        }
+        match (scaled_distance(abs, &sig, exp), scaled_distance(abs, &alt, exp)) {
+            (Some(left), Some(right)) if left == right => return (alt, exp),
+            _ => {}
+        }
+    }
+    (sig, exp)
+}
+
+fn render_js_body(sig: &str, exp: i32) -> String {
+    if (-6..=20).contains(&exp) {
+        format_js_decimal(sig, exp)
+    } else {
+        format_js_exp(sig, exp)
+    }
+}
+
+fn add_sig_digits(sig: &str, delta: i32) -> Option<String> {
+    let mut digits: Vec<u8> = sig.bytes().map(|byte| byte - b'0').collect();
+    if digits.is_empty() {
+        return None;
+    }
+    if delta == 1 {
+        let mut carry = 1u8;
+        for digit in digits.iter_mut().rev() {
+            let sum = *digit + carry;
+            *digit = sum % 10;
+            carry = sum / 10;
+            if carry == 0 {
+                break;
+            }
+        }
+        if carry != 0 {
+            digits.insert(0, carry);
+        }
+    } else {
+        let mut borrow = 1u8;
+        for digit in digits.iter_mut().rev() {
+            if *digit >= borrow {
+                *digit -= borrow;
+                borrow = 0;
+                break;
+            }
+            *digit = *digit + 10 - borrow;
+            borrow = 1;
+        }
+        if borrow != 0 {
+            return None;
+        }
+        if digits.first() == Some(&0) {
+            digits.remove(0);
+        }
+        if digits.is_empty() {
+            return None;
+        }
+    }
+    Some(digits.into_iter().map(|digit| char::from(b'0' + digit)).collect())
+}
+
+fn format_js_decimal(sig: &str, exp: i32) -> String {
+    if exp >= 0 {
+        let places = exp as usize + 1;
+        if places >= sig.len() {
+            let mut text = sig.to_owned();
+            text.push_str(&"0".repeat(places - sig.len()));
+            text
+        } else {
+            format!("{}.{}", &sig[..places], &sig[places..])
+        }
+    } else {
+        let zeros = (-exp - 1) as usize;
+        format!("0.{}{sig}", "0".repeat(zeros))
+    }
+}
+
+fn format_js_exp(sig: &str, exp: i32) -> String {
+    let sign = if exp >= 0 { '+' } else { '-' };
+    let magnitude = exp.unsigned_abs();
+    if sig.len() == 1 {
+        format!("{sig}e{sign}{magnitude}")
+    } else {
+        format!("{}.{}e{sign}{magnitude}", &sig[..1], &sig[1..])
+    }
+}
+
+/// `|sig * 10^(exp-len+1) - abs|` scaled onto a common integer, so two
+/// candidates that share `exp` and length compare by limb equality.
+fn scaled_distance(abs: f64, sig: &str, exp: i32) -> Option<Vec<u32>> {
+    let digits: u128 = sig.parse().ok()?;
+    let len = i32::try_from(sig.len()).ok()?;
+    let power = exp.checked_sub(len.checked_sub(1)?)?;
+    let (bin, bin_exp) = binary_decompose_js(abs);
+    let ten_pow: u32 = if power < 0 {
+        u32::try_from(power.checked_neg()?).ok()?
+    } else {
+        0
+    };
+    let two_pow: u32 = if bin_exp < 0 {
+        u32::try_from(bin_exp.checked_neg()?).ok()?
+    } else {
+        0
+    };
+    let left_pow = u32::try_from(power.checked_add(i32::try_from(ten_pow).ok()?)?).ok()?;
+    let right_pow = u32::try_from(bin_exp.checked_add(i32::try_from(two_pow).ok()?)?).ok()?;
+    let left = shl_limbs(mul_pow10(from_u128(digits), left_pow), two_pow);
+    let right = mul_pow10(shl_limbs(from_u128(u128::from(bin)), right_pow), ten_pow);
+    Some(abs_sub_limbs(left, right))
+}
+
+fn binary_decompose_js(abs: f64) -> (u64, i32) {
+    let bits = abs.to_bits();
+    let exp_bits = ((bits >> 52) & 0x7ff) as i32;
+    let frac = bits & ((1u64 << 52) - 1);
+    if exp_bits == 0 {
+        return (frac, if frac == 0 { 0 } else { -1074 });
+    }
+    let significand = frac | (1u64 << 52);
+    (significand, exp_bits - 1023 - 52)
+}
+
+fn from_u128(mut value: u128) -> Vec<u32> {
+    if value == 0 {
+        return vec![0];
+    }
+    let mut limbs = Vec::new();
+    while value > 0 {
+        limbs.push(value as u32);
+        value >>= 32;
+    }
+    limbs
+}
+
+fn mul_u32_limbs(limbs: &mut Vec<u32>, factor: u64) {
+    let mut carry = 0u64;
+    for limb in limbs.iter_mut() {
+        let prod = u64::from(*limb) * factor + carry;
+        *limb = prod as u32;
+        carry = prod >> 32;
+    }
+    if carry != 0 {
+        limbs.push(carry as u32);
+    }
+}
+
+fn mul_pow10(mut limbs: Vec<u32>, mut exp: u32) -> Vec<u32> {
+    while exp >= 9 {
+        mul_u32_limbs(&mut limbs, 1_000_000_000);
+        exp -= 9;
+    }
+    if exp > 0 {
+        let mut factor = 1u64;
+        for _ in 0..exp {
+            factor *= 10;
+        }
+        mul_u32_limbs(&mut limbs, factor);
+    }
+    limbs
+}
+
+fn shl_limbs(limbs: Vec<u32>, bits: u32) -> Vec<u32> {
+    if bits == 0 || limbs.iter().all(|limb| *limb == 0) {
+        return if limbs.is_empty() { vec![0] } else { limbs };
+    }
+    let limb_shift = (bits / 32) as usize;
+    let bit = bits % 32;
+    let mut out = vec![0u32; limbs.len() + limb_shift + 1];
+    if bit == 0 {
+        out[limb_shift..limb_shift + limbs.len()].copy_from_slice(&limbs);
+    } else {
+        let mut carry = 0u32;
+        for (index, limb) in limbs.iter().copied().enumerate() {
+            out[index + limb_shift] = (limb << bit) | carry;
+            carry = limb >> (32 - bit);
+        }
+        out[limbs.len() + limb_shift] = carry;
+    }
+    trim_limbs(&mut out);
+    out
+}
+
+fn abs_sub_limbs(mut left: Vec<u32>, mut right: Vec<u32>) -> Vec<u32> {
+    trim_limbs(&mut left);
+    trim_limbs(&mut right);
+    if cmp_limbs(&left, &right) == Ordering::Less {
+        std::mem::swap(&mut left, &mut right);
+    }
+    let mut borrow = 0i64;
+    for index in 0..left.len() {
+        let other = if index < right.len() {
+            i64::from(right[index])
+        } else {
+            0
+        };
+        let mut diff = i64::from(left[index]) - other - borrow;
+        if diff < 0 {
+            diff += 1i64 << 32;
+            borrow = 1;
+        } else {
+            borrow = 0;
+        }
+        left[index] = diff as u32;
+    }
+    trim_limbs(&mut left);
+    left
+}
+
+fn cmp_limbs(left: &[u32], right: &[u32]) -> Ordering {
+    let left = trim_slice(left);
+    let right = trim_slice(right);
+    match left.len().cmp(&right.len()) {
+        Ordering::Equal => {}
+        other => return other,
+    }
+    for (lhs, rhs) in left.iter().rev().zip(right.iter().rev()) {
+        match lhs.cmp(rhs) {
+            Ordering::Equal => {}
+            other => return other,
+        }
+    }
+    Ordering::Equal
+}
+
+fn trim_slice(limbs: &[u32]) -> &[u32] {
+    let mut end = limbs.len();
+    while end > 0 && limbs[end - 1] == 0 {
+        end -= 1;
+    }
+    if end == 0 {
+        &limbs[..0]
+    } else {
+        &limbs[..end]
+    }
+}
+
+fn trim_limbs(limbs: &mut Vec<u32>) {
+    while limbs.len() > 1 && limbs.last() == Some(&0) {
+        limbs.pop();
+    }
+    if limbs.is_empty() {
+        limbs.push(0);
+    }
 }
