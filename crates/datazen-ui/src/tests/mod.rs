@@ -745,3 +745,9 @@ mod wizard_footer_audit;
 // three stacked entry cards with their accent wells, the FASTEST pill,
 // the detected-client sub-line, and the three entry actions).
 mod welcome_step_audit;
+// T203: the onboarding manual-connection step port (the S1 manual frame:
+// the driver sidebar with its search/query/availability filters and
+// popularity order, the shared connection form body in its window
+// variant, and the Test/Save footer with the result line and the
+// `tested` Save gate).
+mod manual_connection_step_audit;

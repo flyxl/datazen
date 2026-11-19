@@ -5,6 +5,7 @@
 //! | `AiProviderStep.tsx` | `ai_provider_step` | T148 |
 //! | `WelcomeStep.tsx`'s `StepTag` export | `step_tag` | T148 (hoisted; T247 reuses) |
 //! | `WelcomeStep.tsx` | `welcome_step` | T247 |
+//! | `ManualConnectionStep.tsx` | `manual_connection_step` | T203 |
 //!
 //! `StepTag` is defined inside `WelcomeStep.tsx` and exported for the other
 //! steps (`AiProviderStep.tsx` imports it from there); the port hoists it
@@ -13,6 +14,7 @@
 //! T247 reuses [`step_tag`] instead of re-defining it.
 
 pub(crate) mod ai_provider_step;
+pub(crate) mod manual_connection_step;
 pub(crate) mod step_tag;
 pub(crate) mod welcome_step;
 
@@ -24,3 +26,5 @@ pub(crate) use ai_provider_step::AiProviderStep;
 pub(crate) use step_tag::step_tag;
 #[allow(unused_imports)] // the onboarding wizard host (T114's welcome seat) is the production consumer
 pub(crate) use welcome_step::WelcomeStep;
+#[allow(unused_imports)] // the onboarding wizard host (T114's `-step-s1-manual` seat) is the production consumer
+pub(crate) use manual_connection_step::ManualConnectionStep;
