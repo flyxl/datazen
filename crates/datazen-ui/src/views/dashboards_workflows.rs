@@ -19,51 +19,6 @@ use rune::{col, row, text, Color, Cx, El};
 use crate::ui::palette;
 use rune::{FileDialogOptions, TextEdit, Tx};
 
-pub(crate) fn wapps_page(theme: tok::Theme) -> El {
-    let entry = |key: &'static str, title: &'static str, body: &'static str| {
-        col()
-            .key(key)
-            .w_full()
-            .gap(6.0)
-            .px(12.0)
-            .py(10.0)
-            .radius(8.0)
-            .fill(theme.control_off)
-            .child(text(title.to_owned()).font(type_::TITLE).color(theme.text))
-            .child(
-                text(body.to_owned())
-                    .font(type_::LABEL)
-                    .color(theme.text_secondary)
-                    .w_full(),
-            )
-    };
-    col()
-        .key("wapps-page")
-        .w_full()
-        .gap(8.0)
-        .child(
-            text("Not yet migrated".to_owned())
-                .font(type_::TITLE)
-                .color(theme.text),
-        )
-        .child(
-            text("These areas are not yet migrated to Rune. The React pages are still there — use the React interface for them.")
-                .font(type_::LABEL)
-                .color(theme.text_secondary)
-                .w_full(),
-        )
-        .child(entry(
-            "wapps-pending",
-            "WAPPS management",
-            "Not yet migrated. The React page is still there: install and manage WAPPS in the React interface. WAPP iframes do not go into Rune.",
-        ))
-        .child(entry(
-            "onboarding-pending",
-            "Onboarding wizard",
-            "Not yet migrated. The React wizard is still there: first-run onboarding runs in the React interface.",
-        ))
-}
-
 /// The workflows page: the list, sorted by name, and the step editor.
 pub(crate) fn workflows_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let workflows = state.host_workflows();

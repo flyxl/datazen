@@ -25,11 +25,16 @@
 //!
 //! ## Output types
 //!
-//! `PredictionColumn`/`DeclaredForeignKey`/`PredictionTable` are the slices of
-//! React `relationPrediction/types.ts` (tasklist T121) that this adapter
-//! populates. The optional `schema` namespace field and the evidence /
-//! candidate output types stay with their own tasks (T081/T082/T121); they
-//! extend this module's types when they land.
+//! `PredictionColumn`/`DeclaredForeignKey`/`PredictionTable` are the input
+//! half of React `relationPrediction/types.ts` — the slice this adapter
+//! populates, landed tasklist T033. The `schema` namespace field landed
+//! with the engine (`predict_relations/`, tasklist T082): prediction does
+//! not cross schemas, so the engine reads it, while this adapter leaves it
+//! unset — the ER diagram feeds table names as ids and the metadata
+//! adapter (React `fromRelationMetadata.ts`, still to land) is the caller
+//! that knows the namespace. The output half of `types.ts`
+//! (`PredictionEvidence*`/`RelationCandidate`/`PredictionOptions`) lives
+//! with the engine in `predict_relations/`.
 
 use std::collections::HashSet;
 
@@ -95,13 +100,17 @@ pub struct DeclaredForeignKey {
 }
 
 /// A table to consider as a source and/or target of a relationship (React
-/// `types.ts` `PredictionTable`, the fields this adapter fills).
+/// `types.ts` `PredictionTable`, the fields this adapter fills plus the
+/// engine's schema namespace field).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PredictionTable {
     /// Stable identity used in evidence and output.
     pub id: String,
     /// Bare table name, used for name matching.
     pub name: String,
+    /// Schema the table lives in; prediction does not cross schemas.
+    /// `None` when the caller does not know (React leaves it `undefined`).
+    pub schema: Option<String>,
     pub columns: Vec<PredictionColumn>,
     pub primary_key: Vec<String>,
     /// Every column set covered by a unique index (single-column or
@@ -166,6 +175,9 @@ pub fn to_prediction_table_from_schema(id: &str, schema: &TableSchema) -> Predic
     PredictionTable {
         id: id.to_string(),
         name: schema.table_name.clone(),
+        // React's adapter leaves the namespace undefined; callers that know
+        // it (the metadata adapter) are the ones to fill it in.
+        schema: None,
         columns,
         primary_key: schema.primary_keys.clone(),
         unique_column_sets: unique_column_sets(schema),
@@ -184,12 +196,15 @@ pub fn to_prediction_tables_from_schemas(schemas: &[TableSchema]) -> Vec<Predict
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::relation_prediction::predict_relations::{
+        PredictionOptions, PredictionTier, predict_relations,
+    };
 
     // The React suite (`relationPrediction/__tests__/fromTableSchema.test.ts`)
-    // is carried case by case; the one end-to-end case that calls
-    // `predictRelations` is reduced to its conversion half here — the
-    // inference assertion lands with the predictRelations port (tasklist
-    // T082).
+    // is carried case by case, including the end-to-end case that calls
+    // `predictRelations` over the converted schema pair — the engine
+    // (predict_relations/, tasklist T082) now in reach of this adapter's
+    // output.
 
     /// The suite's `schema(over)` helper: one `id` column, itself the primary
     /// key, no indexes, no foreign keys.
@@ -340,10 +355,9 @@ mod tests {
         // No constraint anywhere: only the naming convention links the two,
         // which is exactly the case the ER diagram has to draw. React feeds
         // this pair straight into predictRelations and finds `orders →
-        // users`; that inference assertion belongs to the predictRelations
-        // port (tasklist T082) — here the conversion half is pinned: the
-        // tables enter with the ids, names and columns the convention check
-        // reads.
+        // users`; the conversion half is pinned here — the tables enter with
+        // the ids, names and columns the convention check reads — and the
+        // inference half rides along now that the engine has landed.
         let mut users = schema("users");
         users.columns = vec![column("id", "integer", false)];
         let mut orders = schema("orders");
@@ -363,6 +377,12 @@ mod tests {
         );
         assert_eq!(tables[1].unique_column_sets, vec![vec!["id"]]);
         assert!(tables.iter().all(|t| t.declared_foreign_keys.is_empty()));
+
+        let found = predict_relations(&tables, &PredictionOptions::default());
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].from_table, "orders");
+        assert_eq!(found[0].to_table, "users");
+        assert_eq!(found[0].tier, PredictionTier::High);
     }
 
     #[test]
@@ -382,10 +402,12 @@ mod tests {
     #[test]
     fn a_default_schema_converts_to_an_empty_but_well_formed_table() {
         // All-empty input stays all-empty output — in particular an empty
-        // primary key is not pushed as a (zero-column) key set.
+        // primary key is not pushed as a (zero-column) key set, and the
+        // schema namespace stays unknown.
         let table = to_prediction_table_from_schema("t", &TableSchema::default());
         assert_eq!(table.id, "t");
         assert_eq!(table.name, "");
+        assert_eq!(table.schema, None);
         assert!(table.columns.is_empty());
         assert!(table.primary_key.is_empty());
         assert!(table.unique_column_sets.is_empty());

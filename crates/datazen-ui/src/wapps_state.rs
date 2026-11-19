@@ -3,17 +3,17 @@
 #![allow(unused_imports)]
 use crate::i18n::t;
 use crate::state_def::*;
-use crate::views::{InstallWappStep, WappPackageKind, WappPackagePreview};
+use crate::types::Section;
+use crate::views::{InstallWappStep, WappFilter, WappPackageKind, WappPackagePreview, WappRemoveRequest, WappSummaryVm};
 use rune::{FileDialogOptions, FileDialogResult, Tx};
 
 impl AppState {
     /// T022: open the install-wapp dialog over the window — React's
     /// `installOpen` in `WappManagementPage.tsx`. The open press (the
-    /// "安装插件…" action, `extensions.page.install`) belongs to the wapps
-    /// management page port (T073); the root modal layer
-    /// (`views/modals.rs`) mounts the dialog once this runs, exactly as
-    /// React's portal does.
-    #[allow(dead_code)] // the wapps management page (T073) is the production caller
+    /// "安装插件…" action, `extensions.page.install`) is the wapps
+    /// management page's install button (`views/wapps/
+    /// wapp_management_page.rs`); the root modal layer (`views/modals.rs`)
+    /// mounts the dialog once this runs, exactly as React's portal does.
     pub(crate) fn open_install_wapp_dialog(&mut self) {
         self.install_wapp_open = true;
         // A new open is a new body for the dialog base, so its scroll
@@ -83,8 +83,8 @@ impl AppState {
             Ok(Some(_path)) => {
                 // The validate-only inspect is a host use case
                 // (`inspect_wapp_package`) that the Rune adapter does not
-                // carry yet — the wapps host wiring lands with the
-                // management page port (T073). The path is not echoed back
+                // carry yet — the wapps host wiring is still ahead of the
+                // management page port. The path is not echoed back
                 // into an error the way a summary must not carry absolute
                 // paths; the answer is the honest error branch React renders
                 // from a failed inspect (`handlePick`'s catch).
@@ -112,9 +112,9 @@ impl AppState {
     /// The inspect answer's success transition: the review step with the
     /// preview the host answered (`handlePick`'s `setPickToken`/
     /// `setPackageLabel`/`setManifest`/`setStep('review')`). No production
-    /// caller exists until the wapps host wiring (T073) lands; tests pin
+    /// caller exists until the wapps host wiring lands; tests pin
     /// the transition the wiring will call.
-    #[allow(dead_code)] // the wapps host wiring (T073) is the production caller
+    #[allow(dead_code)] // the wapps host wiring is the production caller
     pub(crate) fn install_wapp_inspected(&mut self, preview: WappPackagePreview) {
         self.install_wapp_preview = Some(preview);
         self.install_wapp_step = InstallWappStep::Review;
@@ -123,7 +123,7 @@ impl AppState {
     /// React's `handleInstall` (`InstallWappDialog.tsx:71-87`): the
     /// confirmed install. The install use case (`install_wapp`) and the
     /// wapp store's refresh are host concerns the Rune adapter does not
-    /// carry yet (the same T073 wiring), so the press cannot reach a real
+    /// carry yet (the same wiring seam), so the press cannot reach a real
     /// install and runs React's failure branch honestly: back to the
     /// select step with the error showing there (`backToSelect()` then
     /// `setError(...)` in the catch).
@@ -145,14 +145,171 @@ impl AppState {
     }
 
     /// The install answer's success transition — React's try branch:
-    /// `backToSelect()`, `onClose()`, `onInstalled()`. The store refresh and
-    /// the `onInstalled` callback belong to the hosting page (T073), so the
-    /// seam's caller here only resets and closes the dialog. No production
-    /// caller exists until the host wiring lands; tests pin the transition.
-    #[allow(dead_code)] // the wapps host wiring (T073) is the production caller
+    /// `backToSelect()`, `onClose()`, `onInstalled()`. The dialog itself
+    /// refreshes the store after a successful install
+    /// (`InstallWappDialog.tsx:77`: `await useWappStore.getState().fetch()`),
+    /// so the transition runs the same refresh here (the store's fetch seam
+    /// below); the `onInstalled` callback is the page's own seam, and no
+    /// production caller reaches this transition until the host wiring
+    /// lands — tests pin it.
+    #[allow(dead_code)] // the wapps host wiring is the production caller
     pub(crate) fn install_wapp_succeeded(&mut self) {
         self.install_wapp_installing = false;
         self.close_install_wapp_dialog();
+        self.fetch_wapps();
+    }
+
+    // ------------------------------------------------------------------
+    // The wapps management page (T072): the wapp store's surface and the
+    // page's own actions — React `WappManagementPage.tsx` over
+    // `stores/wappStore.ts`.
+
+    /// React's wapp store `fetch` (`wappStore.ts:23-30`): the installed list
+    /// from the host's `list_wapps` command. The adapter carries no wapp use
+    /// case yet, so the answer is the honest failure branch React renders —
+    /// `loaded` turns true and the error slot carries the seam sentence; the
+    /// previous list survives (React's failed fetch writes only the error).
+    pub(crate) fn fetch_wapps(&mut self) {
+        self.wapps_loaded = true;
+        self.wapps_error = Some(
+            "wapp list needs the live host; the wapps list use case is not wired into this Rune build yet"
+                .into(),
+        );
+    }
+
+    /// The fetch answer's success transition — the wiring's call once the
+    /// adapter answers the list (`wapps`, `loaded`, `error: null`). No
+    /// production caller exists yet; tests pin the transition.
+    #[allow(dead_code)] // the wapps host wiring is the production caller
+    pub(crate) fn wapps_loaded(&mut self, wapps: Vec<WappSummaryVm>) {
+        self.wapps = wapps;
+        self.wapps_loaded = true;
+        self.wapps_error = None;
+    }
+
+    /// React's `handleToggle` (`WappManagementPage.tsx:175-186`): the
+    /// page-side half of the switch press — clear the action error, run the
+    /// store's `setEnabled`, and land the store's error in the page's catch
+    /// slot. The success branch's `closeByWapp` (disabling removes the
+    /// wapp's workspace tabs) is the workspace-tabs seam: this build's
+    /// workspace carries table/query tabs only, so no tab exists to close.
+    pub(crate) fn toggle_wapp(&mut self, wapp_id: &str) {
+        self.wapp_action_error = None;
+        let was_enabled = self
+            .wapps
+            .iter()
+            .any(|wapp| wapp.id == wapp_id && wapp.enabled);
+        if let Err(message) = self.set_wapp_enabled(wapp_id, !was_enabled) {
+            self.wapp_action_error = Some(message);
+        }
+    }
+
+    /// React's store `setEnabled` (`wappStore.ts:32-47`): the optimistic flip
+    /// and the store's error slot cleared, then the host command. The enable
+    /// use case (`set_wapp_enabled`) has no adapter method, so the flow runs
+    /// the catch branch exactly — the refetch (`fetch_wapps`'s own failure
+    /// branch lands first), then the command's error over the store's slot,
+    /// then the `throw` the caller reads as its action error. The optimistic
+    /// flip survives the failed refetch, as React's does (a failed fetch
+    /// writes only the error).
+    pub(crate) fn set_wapp_enabled(&mut self, wapp_id: &str, enabled: bool) -> Result<(), String> {
+        for wapp in &mut self.wapps {
+            if wapp.id == wapp_id {
+                wapp.enabled = enabled;
+            }
+        }
+        self.wapps_error = None;
+        self.fetch_wapps();
+        let error =
+            "wapp enable/disable needs the live host; the wapps enable use case is not wired into this Rune build yet"
+                .to_owned();
+        self.wapps_error = Some(error.clone());
+        Err(error)
+    }
+
+    /// React's `handleRemove` press half (`WappManagementPage.tsx:188-203`):
+    /// the confirm ask the `useConfirmDialog` gate holds — the uninstall
+    /// title and the message with the wapp's name resolved at ask time (the
+    /// options object the promise carries). A new ask is a fresh mount
+    /// (`wapp_remove_epoch`), so the dialog's body starts at the top.
+    pub(crate) fn ask_remove_wapp(&mut self, wapp_id: &str) {
+        let Some(wapp) = self.wapps.iter().find(|wapp| wapp.id == wapp_id) else {
+            // The card only renders wapps the list carries; a vanished row
+            // leaves nothing to ask about.
+            return;
+        };
+        let message = t("extensions.page.uninstallMessage").replace("{name}", &wapp.name);
+        self.wapp_remove_request = Some(WappRemoveRequest {
+            wapp_id: wapp.id.clone(),
+            message,
+        });
+        self.wapp_remove_epoch = self.wapp_remove_epoch.wrapping_add(1);
+    }
+
+    /// The confirm dialog's answer (`handleClose(true|false)` resolving the
+    /// ask): cancel only clears the ask; confirm clears the page's action
+    /// error and runs the store's `remove` (whose seam error lands in the
+    /// action slot through the same catch). The dialog unmounts either way.
+    pub(crate) fn answer_remove_wapp(&mut self, ok: bool) {
+        let Some(request) = self.wapp_remove_request.take() else {
+            return;
+        };
+        if !ok {
+            // React: `if (!ok) return;` — the wapp stays.
+            return;
+        }
+        self.wapp_action_error = None;
+        if let Err(message) = self.remove_wapp(&request.wapp_id) {
+            self.wapp_action_error = Some(message);
+        }
+    }
+
+    /// React's store `remove` (`wappStore.ts:49-57`): the uninstall command.
+    /// The remove use case (`remove_wapp`) has no adapter method, so the
+    /// flow is the catch branch — the store's error slot, and the `throw`
+    /// the page's catch turns into its action error. React's success path
+    /// (`closeByWapp` after the remove) is the same workspace-tabs seam
+    /// `toggle_wapp` documents.
+    pub(crate) fn remove_wapp(&mut self, _wapp_id: &str) -> Result<(), String> {
+        let error =
+            "wapp uninstall needs the live host; the wapps uninstall use case is not wired into this Rune build yet"
+                .to_owned();
+        self.wapps_error = Some(error.clone());
+        Err(error)
+    }
+
+    /// The remove answer's success transition — the wiring's call once the
+    /// adapter uninstalls: the row leaves the list, the store's slot clears,
+    /// and the same refresh React's success path runs (`await get().fetch()`).
+    /// No production caller exists yet; tests pin the transition.
+    #[allow(dead_code)] // the wapps host wiring is the production caller
+    pub(crate) fn wapp_removed(&mut self, wapp_id: &str) {
+        self.wapps.retain(|wapp| wapp.id != wapp_id);
+        self.wapps_error = None;
+        self.fetch_wapps();
+    }
+
+    /// React's `handleOpen` (`WappManagementPage.tsx:205-207`) over
+    /// `openWappPage` (`windows/workspace/workspacePages.ts:76-83`): resolve
+    /// the wapp (enabled, with pages — the first page the tab would carry),
+    /// then the host switch the caller makes of the answer
+    /// (`onOpenInWorkspace()` → the workspace mode). The workspace tab the
+    /// resolve opens (`workspaceTabKey(wappId, pageId)` keyed, with the
+    /// page's title/icon/version) is the workspace-tabs seam — this build's
+    /// workspace carries table/query tabs only, so the switch lands without
+    /// it and the resolve's gate still refuses a disabled or page-less wapp.
+    pub(crate) fn open_wapp_page(&mut self, wapp_id: &str) -> bool {
+        let Some(wapp) = self.wapps.iter().find(|wapp| wapp.id == wapp_id) else {
+            return false;
+        };
+        if !wapp.enabled || wapp.pages.is_empty() {
+            return false;
+        }
+        // The first page exists by the gate above; the tab it would open is
+        // the seam's payload (the page's id and title).
+        let _ = wapp.pages.first();
+        self.select(Section::Workspace);
+        true
     }
 
     /// The dialog's full reset — React unmounts the component on close, so

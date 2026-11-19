@@ -17,9 +17,9 @@ use rune_kit::{Button, ButtonVariant, ControlSize};
 
 /// The floating layer for whatever dialog is open — the import dialog first
 /// (the React share dialog opens at most one), else the connection form,
-/// else the wapps install dialog (T022; it only ever opens once its page's
-/// press lands with T073). Empty mounts nothing and the window keeps its
-/// plain layout.
+/// else the wapps install dialog (T022), else the wapps uninstall confirm
+/// (T072; one ask at a time, the layer's one-dialog precedent). Empty mounts
+/// nothing and the window keeps its plain layout.
 pub(crate) fn modal_layer(state: &AppState, theme: tok::Theme, dark: bool) -> Vec<El> {
     let mut layer = Vec::new();
     let dialog = if state.import_dialog_open {
@@ -29,8 +29,13 @@ pub(crate) fn modal_layer(state: &AppState, theme: tok::Theme, dark: bool) -> Ve
     } else if state.install_wapp_open {
         // T022: the wapps install dialog — React renders it through a portal
         // to `document.body`, so the root layer hosts it exactly as it hosts
-        // the other two; the open press belongs to the wapps page (T073).
+        // the other two; the open press belongs to the wapps page (T072).
         Some(install_wapp_dialog(state, dark))
+    } else if state.wapp_remove_request.is_some() {
+        // T072: the uninstall confirm — React's `useConfirmDialog` portal.
+        // The ask is held in state (`wapp_remove_request`); the answers run
+        // `answer_remove_wapp`, so the dialog unmounts either way.
+        Some(wapp_remove_confirm_dialog(state, dark))
     } else {
         None
     };

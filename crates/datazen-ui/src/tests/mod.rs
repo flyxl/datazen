@@ -434,3 +434,8 @@ mod timestamp_config;
 mod filter_condition_editor;
 // T056 independent audit: ported contracts, dispatch paths, i18n, token events.
 mod filter_condition_editor_audit;
+
+// T072: the wapps management page port (header/counts, the search/filter
+// chips and derivations, the grouped all view, the cards and their gates,
+// the toggle/uninstall/open seams, and the geometry at both sizes).
+mod wapp_management_page;

@@ -17,11 +17,8 @@
 - [ ] T046 · extensions · 0.30d · extensions/generated-pro.ts
 - [ ] T052 · index.ts · 0.90d · index.ts
 - [ ] T060 · components/chart · 0.80d · components/chart/ChartEmptyState.tsx components/chart/ChartToolbar.tsx
-- [ ] T071 · windows/main · 0.90d · windows/main/RunningExecutionCloseHost.tsx
-- [ ] T073 · windows/wapps · 1.30d · windows/wapps/WappManagementPage.tsx · split
 - [x] T078 · lib · 0.80d · lib/cellTypes.ts
 - [ ] T080 · lib/metadata · 0.90d · lib/metadata/identity.ts
-- [ ] T082 · lib/relationPrediction · 2.00d · lib/relationPrediction/predictRelations.ts · split
 - [ ] T089 · stores/ai · 2.00d · stores/ai/streaming.ts · split
 - [ ] T091 · types · 0.30d · types/chart.ts
 - [ ] T095 · extensions · 0.80d · extensions/generated.ts
@@ -173,3 +170,5 @@
 - [x] T059 · components/chart · 0.80d · components/chart/ChartEmptyState.tsx components/chart/ChartToolbar.tsx
 - [x] T069 · windows/workflow · 1.30d · windows/workflow/WorkflowForm.tsx · split
 - [x] T070 · windows/main · 0.90d · windows/main/RunningExecutionCloseHost.tsx
+- [x] T072 · windows/wapps · 1.30d · windows/wapps/WappManagementPage.tsx · split
+- [x] T081 · lib/relationPrediction · 2.00d · lib/relationPrediction/predictRelations.ts · split
