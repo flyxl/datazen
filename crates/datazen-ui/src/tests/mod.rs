@@ -198,6 +198,9 @@ mod editor_session_controller;
 mod editor_session_controller_audit;
 // T122: lib/session/ExecutionProjection.ts port (state machine + effects).
 mod execution_projection;
+// T122 independent audit: terminal truth table, stream reset resubscribe,
+// error projection, count-0/exclusive fan-out, source & binding guards.
+mod execution_projection_audit;
 
 // Independent re-audit of merged T0-07 menu base.
 mod menus_merge_reaudit;
