@@ -180,6 +180,10 @@ mod counters_audit;
 // gates, DDL resolution and shared planning (planner mirror + exporter seam).
 mod blob_tables_exporter;
 mod export_plan;
+// T043-S1 independent audit: gate-order combinations, DDL in
+// data_and_structure, the S1/S2 boundary, planner error propagation.
+mod blob_tables_exporter_audit;
+mod export_plan_audit;
 // T039: React stores/activeConnectionStore.ts parity (active-connection store).
 mod active_connection_store;
 // T039 independent audit: markConnected spread semantics, timeout re-arm
