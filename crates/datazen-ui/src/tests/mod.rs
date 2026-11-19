@@ -264,6 +264,11 @@ mod schema_diff_audit;
 
 mod connection_advanced_settings;
 mod connection_advanced_audit;
+// T217: HttpProxyTunnelFields + IndexConnectionFields ports.
+mod tunnel_fields;
+// T217 independent audit: placeholders/secure password, scheme back-switch and
+// dismissal, parseInt edges, Enter clamp commit, i18n and visible-rect geometry.
+mod tunnel_fields_audit;
 // T059: the ConnectionAiNotes port (load/save, UTF-8 byte limit, timed feedback, geometry).
 mod connection_ai_notes;
 // T103: ConnectionFormBody + ConnectionImportFields ports (keys, validation,
