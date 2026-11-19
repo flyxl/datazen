@@ -8,9 +8,10 @@
 //! - `history_section.rs` — `WorkflowHistorySection.tsx` (the two
 //!   run-history list views: the page's sidebar list and the inline tab
 //!   with its detail branch).
-//! - `step_result_utils.rs` — the view models plus the minimal slice of
-//!   `workflowStepResultUtils.tsx` / `lib/chart/fieldInference.ts` the panel
-//!   consumes (the full helper port is T176).
+//! - `step_result_utils.rs` — `workflowStepResultUtils.tsx` (the status
+//!   icon ladder, the column extraction and the step → statement-result
+//!   conversion) plus the run view models and the chartability slice the
+//!   panel renders from.
 //! - `workflow_form.rs` — `WorkflowForm.tsx` (the visual workflow editor
 //!   form: the draft model, field/variable/step editors, the command-input
 //!   schema editor and the two footer variants).

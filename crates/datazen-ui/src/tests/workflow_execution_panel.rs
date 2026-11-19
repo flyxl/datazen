@@ -648,7 +648,7 @@ fn the_panel_fits_both_window_sizes_with_no_horizontal_overflow() {
     }
 }
 
-// ---- the helper slice (T176-pending) ----------------------------------------
+// ---- the helper surface (step_result_utils) ----------------------------------
 
 #[test]
 fn the_helper_slice_matches_react_semantics() {

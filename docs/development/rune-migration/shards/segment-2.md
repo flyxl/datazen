@@ -28,7 +28,6 @@
 - [ ] T147 · windows/workflow · 1.30d · windows/workflow/WorkflowPage.tsx · split
 - [x] T152 · lib · 0.60d · lib/dataTypeColors.ts components/DataTable/editors/toEditString.ts
 - [ ] T168 · components/chart · 2.00d · components/chart/renderers/AreaChartRenderer.tsx · split
-- [ ] T176 · windows/workflow · 0.30d · windows/workflow/workflowStepResultUtils.tsx
 - [ ] T181 · lib · 0.90d · lib/aiMemoryCorrection.ts
 - [ ] T194 · components/chart · 2.00d · components/chart/renderers/BarChartRenderer.tsx · split
 - [ ] T202 · windows/workflow · 2.00d · windows/workflow/WorkflowYamlEditor.tsx · split
@@ -133,7 +132,6 @@
 - [ ] T613 · lib · 0.90d · lib/sqlFileExecution.ts
 - [ ] T615 · lib · 0.80d · lib/sqlFormat.ts lib/sqlFunctionRegistry.ts
 - [ ] T617 · lib · 0.80d · lib/sqlGenerator.ts lib/sqlNamespace.ts
-- [ ] T619 · lib · 0.80d · lib/sqlPathPrefix.ts lib/sqlSchemaDropTargets.ts
 - [ ] T621 · lib · 0.90d · lib/sqlStatementRange.ts lib/sqlTransactionGuard.ts lib/startupTimer.ts
 - [ ] T623 · lib · 0.90d · lib/surfaceBgCache.ts
 - [ ] T625 · lib · 0.90d · lib/syncPairing.ts
@@ -172,3 +170,5 @@
 - [x] T128 · types · 0.90d · types/connection.ts
 - [x] T159 · types · 0.90d · types/dashboard.ts
 - [x] T188 · types · 0.30d · types/filters.ts
+- [x] T174 · windows/workflow · 0.30d · windows/workflow/workflowStepResultUtils.tsx
+- [x] T619 · lib · 0.80d · lib/sqlPathPrefix.ts lib/sqlSchemaDropTargets.ts
