@@ -18,6 +18,7 @@
 - [x] T047 · bootstrap · 2.00d · bootstrap/startSharedApp.tsx · split
 - [x] T048 · commands · 0.30d · commands/adb.ts
 - [x] T051 · index.ts · 0.90d · index.ts
+- [x] T052 · shell.ts · 0.90d · shell.ts
 - [x] T057 · components/history · 1.00d · components/history/HistoryEntryCard.tsx components/history/HistoryFilterBar.tsx
 - [ ] T063 · components/sql-editor · 4.20d · components/sql-editor/completion/schemaCompletion.ts · split
 - [ ] T066 · windows/settings · 0.30d · windows/settings/ai/ModelProfileDialog.tsx
