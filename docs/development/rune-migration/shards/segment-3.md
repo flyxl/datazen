@@ -14,7 +14,7 @@
 - [x] T023 · windows/data-transfer · 1.30d · windows/data-transfer/ColumnMappingEditor.tsx · split
 - [x] T024 · windows/data-sync · 0.90d · windows/data-sync/DataSyncCompareStep.tsx
 - [x] T026 · windows/backup · 1.30d · windows/backup/BackupWindow.tsx · split
-- [~] T028 · lib/chart · 0.90d · lib/chart/export.ts
+- [x] T028 · lib/chart · 0.90d · lib/chart/export.ts
 - [ ] T039 · stores · 0.90d · stores/activeConnectionStore.ts
 - [ ] T041 · stores/tableData · 0.30d · stores/tableData/connectionState.ts
 - [ ] T043 · platform · 2.00d · platform/blobTablesExporter.ts · split
