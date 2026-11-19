@@ -1251,6 +1251,555 @@ mod tests {
         }
     }
 
+    // ── T126 audit round: near-miss rejection pins ──
+    //
+    // The accept tables above only prove the seven/three React literals
+    // decode. They stay green while the union is *widened* — an extra
+    // variant (the T234 lesson: a widened literal table decodes its new
+    // spellings all the same). The React unions are closed, so the
+    // near-miss spellings must be pinned to *fail*.
+
+    /// The literal unions of `generateSql`/`sendChatMessage`
+    /// (`types.ts` 112/174: `'off' | 'ask' | 'auto'`) are closed at
+    /// three values: the plausible widen spellings must not decode.
+    /// Verified blind before this round: adding a variant survived
+    /// every existing test.
+    #[test]
+    fn memory_mode_rejects_the_widen_near_misses() {
+        for near_miss in ["on", "always", "manual", "none", "off "] {
+            let err = serde_json::from_value::<AiMemoryMode>(serde_json::json!(near_miss));
+            assert!(err.is_err(), "AiMemoryMode decoded near-miss {near_miss:?}");
+        }
+        // The scope union's own literals must not leak into the mode
+        // union either (the two enums share a param object).
+        let err = serde_json::from_value::<AiMemoryMode>(serde_json::json!("organization"));
+        assert!(err.is_err());
+    }
+
+    /// `types.ts` 113-120/175-182: the run scope union is the
+    /// **seven-literal subset without `org`** — the module docs name the
+    /// near-miss (`ai_types::AiMemoryScopeKind`'s eighth literal). A
+    /// variant copy-paste from that enum must be caught: `"org"` is the
+    /// one spelling the widened table would decode. Verified blind
+    /// before this round (the `Org` variant survived every test).
+    #[test]
+    fn memory_scope_rejects_the_widen_near_misses() {
+        for near_miss in ["org", "db", "global", "workspace"] {
+            let err = serde_json::from_value::<AiMemoryScope>(serde_json::json!(near_miss));
+            assert!(err.is_err(), "AiMemoryScope decoded near-miss {near_miss:?}");
+        }
+        // The mode union's literals must not leak into the scope union.
+        let err = serde_json::from_value::<AiMemoryScope>(serde_json::json!("ask"));
+        assert!(err.is_err());
+    }
+
+    /// `types.ts` 156: `exportChatSession(format: 'json' | 'markdown')`
+    /// re-uses T040's `ai_sessions::ExportFormat` — an in-process enum
+    /// with **no serde derives** (the T040 ruling; the format never
+    /// crosses a wire), whose two spellings are already pinned by that
+    /// module's own `as_str` table (`ai_sessions/model.rs` 514-519).
+    /// This module's surface is the reference itself — the compile is
+    /// the pin, and an enum with no wire face has no observable widen
+    /// seam here (equivalence exemption, noted in the audit report).
+
+    /// `types/index.ts` 164: `StepStatus = 'success' | 'failed' |
+    /// 'skipped' | 'timed_out'`. Only `timed_out`/`failed` had wire
+    /// coverage before this round — a `Success` → `Succeeded` rename
+    /// survived every test (verified by mutation). This table pins all
+    /// four literals both ways, plus the widened-rename near-misses.
+    #[test]
+    fn step_statuses_keep_the_react_literals() {
+        let table = [
+            (StepStatus::Success, "success"),
+            (StepStatus::Failed, "failed"),
+            (StepStatus::Skipped, "skipped"),
+            (StepStatus::TimedOut, "timed_out"),
+        ];
+        for (value, literal) in table {
+            assert_eq!(value.as_str(), literal);
+            let parsed: StepStatus = decode(serde_json::json!(literal));
+            assert_eq!(parsed, value);
+            assert_eq!(
+                serde_json::to_value(parsed).ok(),
+                Some(serde_json::json!(literal))
+            );
+        }
+    }
+
+    #[test]
+    fn step_status_rejects_the_widen_near_misses() {
+        for near_miss in [
+            "timeout",     // the un-snaked spelling
+            "timedout",    // the joined spelling
+            "succeeded",   // the rename drift of `Success`
+            "running",
+            "cancelled",
+        ] {
+            let err = serde_json::from_value::<StepStatus>(serde_json::json!(near_miss));
+            assert!(err.is_err(), "StepStatus decoded near-miss {near_miss:?}");
+        }
+    }
+
+    /// `types/index.ts` 513: `transport: 'stdio'` — a single-literal
+    /// union. Widening it (the web host's `'http'`, the classic `'sse'`)
+    /// or a case drift must not decode: verified blind before this
+    /// round (adding an `Sse` variant survived every test).
+    #[test]
+    fn mcp_server_transport_rejects_the_widen_near_misses() {
+        for near_miss in ["sse", "http", "Stdio", "STDIO"] {
+            let err =
+                serde_json::from_value::<McpServerTransport>(serde_json::json!(near_miss));
+            assert!(err.is_err(), "McpServerTransport decoded near-miss {near_miss:?}");
+        }
+    }
+
+    // ── T126 audit round: Option serde semantics ──
+
+    /// `types/index.ts` 430-433 `ConnectionSolution.command?: string` —
+    /// the module ruling's "missing key = None vs explicit null"
+    /// distinction: both spellings fold to `None`, and the serializer
+    /// drops the key either way (round-trips to the missing-key wire).
+    /// Without this pin a `#[serde(default)]` removal only breaks the
+    /// missing-key half, leaving the explicit-null half unpinned.
+    #[test]
+    fn wire_optionals_fold_explicit_null_like_a_missing_key() {
+        let with_key = serde_json::json!({
+            "diagnosis": "refused",
+            "possibleCauses": [],
+            "solutions": [
+                { "description": "Start it.", "command": null }
+            ],
+            "category": "connect_refused"
+        });
+        let solution: ConnectionDiagnosis = decode(with_key.clone());
+        assert_eq!(solution.solutions[0].command, None);
+        // Null folds to None, and None skips — the explicit-null wire
+        // round-trips to the missing-key spelling.
+        let round = serde_json::to_value(&solution).unwrap();
+        assert_eq!(round, serde_json::json!({
+            "diagnosis": "refused",
+            "possibleCauses": [],
+            "solutions": [ { "description": "Start it." } ],
+            "category": "connect_refused"
+        }));
+        assert_ne!(round, with_key);
+
+        // The same fold for `McpServerConfig.enabledForAi?`
+        // (`types/index.ts` 519) and `WorkflowListItem.scheduled?`
+        // (backend-client workflow.ts 161): explicit null ≡ missing.
+        let config: McpServerConfig = decode(serde_json::json!({
+            "id": "srv-1", "name": "n", "transport": "stdio",
+            "command": null, "enabled": true, "enabledForAi": null
+        }));
+        assert_eq!(config.command, None);
+        assert_eq!(config.enabled_for_ai, None);
+        let item: WorkflowListItem = decode(serde_json::json!({
+            "id": "wf-1", "name": "n", "description": "d",
+            "variables": [], "scheduled": null
+        }));
+        assert_eq!(item.scheduled, None);
+    }
+
+    /// `McpToolInfo.inputSchema` (`types/index.ts` 554) is **required**
+    /// in React (`Record<string, unknown>`, no `?`), but this mirror
+    /// decodes a missing key leniently via its explicit
+    /// `#[serde(default)]`: the pin locks the committed behavior — the
+    /// key may be absent on decode (folding to `Value::Null`), and the
+    /// serializer always emits the key (no skip annotation, so `Null`
+    /// serializes as `"inputSchema": null`). Removing the `default`
+    /// silently (verified surviving every test by mutation) would
+    /// change this contract unannounced.
+    #[test]
+    fn mcp_tool_input_schema_is_leniently_defaulted_when_absent() {
+        let without_key = serde_json::json!({
+            "serverId": "srv-1",
+            "serverName": "filesystem",
+            "toolName": "read_file",
+            "qualifiedName": "mcp/srv-1/read_file"
+        });
+        let tool: McpToolInfo = decode(without_key);
+        assert_eq!(tool.input_schema, serde_json::Value::Null);
+        // The two annotation strategies side by side, pinned: the
+        // `Option` half (`description`) **skips** its key when `None`
+        // (its `skip_serializing_if`), while the defaulted `Value` half
+        // (`input_schema`, no skip) always emits the key — `null` when
+        // the default fired.
+        let round = serde_json::to_value(&tool).unwrap();
+        assert_eq!(
+            round,
+            serde_json::json!({
+                "serverId": "srv-1",
+                "serverName": "filesystem",
+                "toolName": "read_file",
+                "qualifiedName": "mcp/srv-1/read_file",
+                "inputSchema": null
+            })
+        );
+        assert!(!round.as_object().unwrap().contains_key("description"));
+    }
+
+    // ── T126 audit round: number-fold and container-choice pins ──
+
+    /// React `number` folds to unsigned integers on the wire mirrors
+    /// (`McpClientStatus.toolsCount` — `types/index.ts` 530;
+    /// `StepExecutionResult.executionTimeMs` / `WorkflowExecutionResult
+    /// .totalTimeMs` — workflow.ts 171/181). The fold is a decision,
+    /// not an accident: negative and fractional counts/times must be
+    /// rejected (a `f64`/`i64` fold would accept them).
+    #[test]
+    fn unsigned_number_folds_reject_negative_and_fractional() {
+        let base = serde_json::json!({
+            "serverId": "srv-1", "serverName": "n", "toolsCount": 1
+        });
+        let mut negative = base.clone();
+        negative["toolsCount"] = serde_json::json!(-1);
+        assert!(serde_json::from_value::<McpClientStatus>(negative).is_err());
+        let mut fractional = base;
+        fractional["toolsCount"] = serde_json::json!(1.5);
+        assert!(serde_json::from_value::<McpClientStatus>(fractional).is_err());
+
+        let step = serde_json::json!({
+            "stepId": "s", "stepType": "query", "status": "success",
+            "executionTimeMs": -5
+        });
+        assert!(serde_json::from_value::<StepExecutionResult>(step).is_err());
+        let run = serde_json::json!({
+            "success": true, "finalOutput": "", "steps": [],
+            "totalTimeMs": -1
+        });
+        assert!(serde_json::from_value::<WorkflowExecutionResult>(run).is_err());
+    }
+
+    /// `McpServerConfig.env?: Record<string, string>`
+    /// (`types/index.ts` 516) takes `BTreeMap` — the deterministic
+    /// serialization rule the module docs inherit from `ai_types`
+    /// (contrasted with the store-internal `mcpServerErrors` taking
+    /// `HashMap`). A `HashMap` swap survives every round-trip (verified
+    /// by mutation — single-key wires cannot observe key order), so the
+    /// container choice is pinned as a type identity here, next to the
+    /// `mcp_server_errors` `HashMap` pin above.
+    #[test]
+    fn mcp_server_env_is_the_btreemap_wire_choice() {
+        // Type identity first: the field is the deterministic-serialization
+        // container the ai_types rule prescribes for wire `Record`s (the
+        // store-internal `mcpServerErrors` is the HashMap counterpart).
+        let config = McpServerConfig {
+            id: "srv-1".to_owned(),
+            name: "n".to_owned(),
+            transport: McpServerTransport::Stdio,
+            command: None,
+            args: None,
+            env: Some(BTreeMap::from([("NO_COLOR".to_owned(), "1".to_owned())])),
+            enabled: true,
+            enabled_for_ai: None,
+        };
+        let env: std::collections::BTreeMap<String, String> = config.env.clone().unwrap();
+        assert_eq!(env.get("NO_COLOR").map(String::as_str), Some("1"));
+        // Deterministic order on the wire: a two-key env serializes its
+        // keys sorted, whatever the insertion order was (a HashMap swap
+        // here survives every round-trip — verified by mutation).
+        let mut sorted_env = BTreeMap::new();
+        sorted_env.insert("Z".to_owned(), "z".to_owned());
+        sorted_env.insert("A".to_owned(), "a".to_owned());
+        let config = McpServerConfig {
+            env: Some(sorted_env),
+            ..config
+        };
+        let wire = serde_json::to_value(&config).unwrap();
+        let keys: Vec<&str> = wire["env"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(keys, vec!["A", "Z"]);
+    }
+
+    // ── T126 audit round: the crate-root re-export manifest ──
+
+    /// React's file tail is `export type { AiChatMessage, AiChatSession
+    /// }` — a re-export manifest. The Rust counterpart is this module's
+    /// `pub use` **plus** the crate root's 32-name `pub use
+    /// ai_store_types::{…}` (lib.rs 56-65). The root manifest is a
+    /// list, and lists drift: deleting a name from it survives every
+    /// test in this module (verified by mutation — these tests import
+    /// through `super::*`, not the root). This pin resolves every name
+    /// through the crate root, so a dropped or renamed root re-export
+    /// stops the build.
+    #[test]
+    fn the_crate_root_re_exports_every_module_name() {
+        // State + action halves.
+        let state: crate::AiStoreState = crate::AiStoreState::default();
+        assert_eq!(state.nl2sql, crate::initial_nl2sql());
+        let _nl2sql: crate::Nl2SqlState = state.nl2sql;
+        fn implements_actions<T: crate::AiStoreActions>() {}
+        implements_actions::<DummyRootStore>();
+        // The two inline unions.
+        let _: crate::AiMemoryMode = crate::AiMemoryMode::Off;
+        let _: crate::AiMemoryScope = crate::AiMemoryScope::Organization;
+        // The inline state shape.
+        let _: crate::MemoryCandidateNotice = crate::MemoryCandidateNotice {
+            request_id: String::new(),
+            count: 0,
+        };
+        // The lean mirrors (types/index.ts + backend-client workflow.ts).
+        let _: crate::ConnectionDiagnosis = crate::ConnectionDiagnosis {
+            diagnosis: String::new(),
+            possible_causes: Vec::new(),
+            solutions: Vec::new(),
+            category: String::new(),
+        };
+        let _: crate::ConnectionSolution = crate::ConnectionSolution {
+            description: String::new(),
+            command: None,
+        };
+        let _: crate::QueryAnalysis = crate::QueryAnalysis {
+            summary: String::new(),
+            categories: Vec::new(),
+            insights: Vec::new(),
+            frequent_tables: Vec::new(),
+            recommendations: Vec::new(),
+        };
+        let _: crate::QueryCategory = crate::QueryCategory {
+            name: String::new(),
+            count: 0,
+            examples: Vec::new(),
+        };
+        let _: crate::McpServerConfig = crate::McpServerConfig {
+            id: String::new(),
+            name: String::new(),
+            transport: crate::McpServerTransport::Stdio,
+            command: None,
+            args: None,
+            env: None,
+            enabled: true,
+            enabled_for_ai: None,
+        };
+        let _: crate::McpClientStatus = crate::McpClientStatus {
+            server_id: String::new(),
+            server_name: String::new(),
+            tools_count: 0,
+        };
+        let _: crate::McpToolInfo = crate::McpToolInfo {
+            server_id: String::new(),
+            server_name: String::new(),
+            tool_name: String::new(),
+            qualified_name: String::new(),
+            description: None,
+            input_schema: serde_json::Value::Null,
+        };
+        let _: crate::WorkflowListItem = crate::WorkflowListItem {
+            id: String::new(),
+            name: String::new(),
+            description: String::new(),
+            variables: Vec::new(),
+            scheduled: None,
+        };
+        let _: crate::WorkflowVariable = crate::WorkflowVariable {
+            name: String::new(),
+            r#type: String::new(),
+            description: String::new(),
+            required: None,
+            default: None,
+        };
+        let _: crate::WorkflowExecutionResult = crate::WorkflowExecutionResult {
+            success: true,
+            final_output: String::new(),
+            steps: Vec::new(),
+            total_time_ms: 0,
+            error: None,
+        };
+        let _: crate::StepExecutionResult = crate::StepExecutionResult {
+            step_id: String::new(),
+            step_type: String::new(),
+            status: crate::StepStatus::Success,
+            result: None,
+            execution_time_ms: 0,
+            error: None,
+            connection_name: None,
+            sql_executed: None,
+        };
+        // The action param structs + the teardown alias.
+        let _: crate::GenerateSqlParams = crate::GenerateSqlParams::default();
+        let _: crate::DiagnoseErrorParams = crate::DiagnoseErrorParams::default();
+        let _: crate::AnalyzeExplainParams = crate::AnalyzeExplainParams::default();
+        let _: crate::ParseFilterParams = crate::ParseFilterParams::default();
+        let _: crate::SendChatMessageParams = crate::SendChatMessageParams::default();
+        let _: crate::SendWorkflowChatMessageParams =
+            crate::SendWorkflowChatMessageParams::default();
+        let _: crate::ExecuteWorkflowParams = crate::ExecuteWorkflowParams::default();
+        let _: crate::GenerateSchemaDocParams = crate::GenerateSchemaDocParams::default();
+        let _: crate::DiagnoseConnectionParams = crate::DiagnoseConnectionParams::default();
+        let _: crate::AnalyzeQueriesParams = crate::AnalyzeQueriesParams::default();
+        let _: crate::CallMcpToolParams = crate::CallMcpToolParams::default();
+        let teardown: crate::EventListenerTeardown = Box::new(|| {});
+        teardown();
+
+        // The React tail's two message re-exports ride the root through
+        // `ai_types` (already re-exported there); the module-level `pub
+        // use` this file adds is the direct counterpart.
+        let _: Option<crate::AiChatMessage> = None;
+        let _: Option<crate::AiChatSession> = None;
+    }
+
+    /// A root-path-visible implementor for the manifest test's trait
+    /// bound (the module-local fake above also implements it, but this
+    /// one is reachable without `super::`).
+    struct DummyRootStore;
+
+    impl crate::AiStoreActions for DummyRootStore {
+        fn load_config(&mut self) -> Result<(), String> {
+            Ok(())
+        }
+        fn load_settings_config(&mut self) -> Result<(), String> {
+            Ok(())
+        }
+        fn save_settings_config(&mut self, _config: &AiSettingsConfig) -> Result<bool, String> {
+            Ok(true)
+        }
+        fn set_active_profile(&mut self, _profile_id: &str) -> Result<bool, String> {
+            Ok(true)
+        }
+        fn save_profile(&mut self, _profile: &AiModelProfile) -> Result<bool, String> {
+            Ok(true)
+        }
+        fn delete_profile(&mut self, _profile_id: &str) -> Result<bool, String> {
+            Ok(true)
+        }
+        fn load_providers(&mut self) -> Result<(), String> {
+            Ok(())
+        }
+        fn fetch_remote_models(
+            &mut self,
+            _protocol: &str,
+            _endpoint: &str,
+            _api_key: &str,
+        ) -> Result<Vec<ModelInfo>, String> {
+            Ok(Vec::new())
+        }
+        fn validate_config(&mut self, _config: &AiProviderConfig) -> Result<bool, String> {
+            Ok(true)
+        }
+        fn save_config(&mut self, _config: &AiProviderConfig) -> Result<bool, String> {
+            Ok(true)
+        }
+        fn delete_config(&mut self) -> Result<(), String> {
+            Ok(())
+        }
+        fn clear_error(&mut self) {}
+        fn set_nl2sql_input(&mut self, _input: &str) {}
+        fn generate_sql(&mut self, _params: GenerateSqlParams) -> Result<(), String> {
+            Ok(())
+        }
+        fn clear_nl2sql(&mut self) {}
+        fn diagnose_error(&mut self, _params: DiagnoseErrorParams) -> Result<(), String> {
+            Ok(())
+        }
+        fn clear_diagnosis(&mut self) {}
+        fn analyze_explain(&mut self, _params: AnalyzeExplainParams) -> Result<(), String> {
+            Ok(())
+        }
+        fn clear_explain_analysis(&mut self) {}
+        fn set_nl_filter_input(&mut self, _input: &str) {}
+        fn parse_filter(
+            &mut self,
+            _params: ParseFilterParams,
+        ) -> Result<Option<Vec<FilterCondition>>, String> {
+            Ok(None)
+        }
+        fn clear_nl_filter(&mut self) {}
+        fn init_chat_session(
+            &mut self,
+            _db_session_id: Option<&str>,
+            _database: Option<&str>,
+            _connection_id: Option<&str>,
+        ) -> Result<(), String> {
+            Ok(())
+        }
+        fn refresh_chat_sessions(&mut self) -> Result<(), String> {
+            Ok(())
+        }
+        fn select_chat_session(&mut self, _id: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn new_chat_session(&mut self) {}
+        fn delete_chat_session(&mut self, _id: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn export_chat_session(&mut self, _format: ExportFormat) -> Result<(), String> {
+            Ok(())
+        }
+        fn send_chat_message(&mut self, _params: SendChatMessageParams) -> Result<(), String> {
+            Ok(())
+        }
+        fn clear_chat(&mut self) {}
+        fn dismiss_memory_candidate_notice(&mut self) {}
+        fn cancel_chat(
+            &mut self,
+            _request_id: Option<&str>,
+        ) -> Result<Option<CancelReceipt>, String> {
+            Ok(None)
+        }
+        fn handle_cancel_timeout(&mut self, _request_id: &str) {}
+        fn init_workflow_chat(&mut self) {}
+        fn send_workflow_chat_message(
+            &mut self,
+            _params: SendWorkflowChatMessageParams,
+        ) -> Result<(), String> {
+            Ok(())
+        }
+        fn clear_workflow_chat(&mut self) {}
+        fn handle_stream_chunk(&mut self, _payload: &StreamChunkPayload) {}
+        fn setup_event_listeners(&mut self) -> Result<EventListenerTeardown, String> {
+            Ok(Box::new(|| {}))
+        }
+        fn load_workflows(&mut self) -> Result<(), String> {
+            Ok(())
+        }
+        fn execute_workflow(&mut self, _params: ExecuteWorkflowParams) -> Result<(), String> {
+            Ok(())
+        }
+        fn clear_workflow_result(&mut self) {}
+        fn generate_schema_doc(
+            &mut self,
+            _params: GenerateSchemaDocParams,
+        ) -> Result<(), String> {
+            Ok(())
+        }
+        fn clear_schema_doc(&mut self) {}
+        fn diagnose_connection(
+            &mut self,
+            _params: DiagnoseConnectionParams,
+        ) -> Result<(), String> {
+            Ok(())
+        }
+        fn clear_connection_diagnosis(&mut self) {}
+        fn analyze_queries(&mut self, _params: AnalyzeQueriesParams) -> Result<(), String> {
+            Ok(())
+        }
+        fn clear_query_analysis(&mut self) {}
+        fn connect_mcp_server(&mut self, _server_id: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn disconnect_mcp_server(&mut self, _server_id: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn save_mcp_client_servers(&mut self, _configs: &[McpServerConfig]) -> Result<(), String> {
+            Ok(())
+        }
+        fn load_mcp_servers(&mut self) -> Result<(), String> {
+            Ok(())
+        }
+        fn load_mcp_tools(&mut self) -> Result<(), String> {
+            Ok(())
+        }
+        fn call_mcp_tool(&mut self, _params: CallMcpToolParams) -> Result<String, String> {
+            Ok(String::new())
+        }
+        fn clear_mcp_error(&mut self) {}
+        fn clear_mcp_server_error(&mut self, _server_id: &str) {}
+    }
+
     // ── Lean mirrors: wire round-trips (field names + camelCase pins) ──
 
     #[test]
