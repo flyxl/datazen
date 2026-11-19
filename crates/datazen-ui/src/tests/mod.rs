@@ -284,6 +284,9 @@ mod connection_form_parts;
 mod connection_form_audit;
 // T260: ObjectFilterDialog + SaveTunnelDialog + shared ports.
 mod object_filter_save_tunnel;
+// T260 independent audit: Escape, reseed, busy, error actionability, no IPC,
+// long-value geometry.
+mod object_filter_audit;
 // T193: FileConnectionFields port (path field, ADB flow, keys, geometry).
 mod file_connection_fields;
 // T193 independent audit: empty/no-match filter, load failures, cancelled pull,
