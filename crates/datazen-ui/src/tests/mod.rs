@@ -239,3 +239,9 @@ mod migration_endpoints_retest;
 mod chart_canvas;
 // T008 independent audit: marker honesty, factory seam, geometry, source guards.
 mod chart_canvas_audit;
+
+// T045: platform/web/index.ts is a pure re-export barrel; document Rune's
+// existing cross-platform assembly + unwired-port equivalent (no shell to port).
+mod platform_web;
+// T045 independent audit: source-guard the barrel ruling + prove adapter injection.
+mod platform_web_audit;
