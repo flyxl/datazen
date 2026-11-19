@@ -669,3 +669,6 @@ mod sql_editor_metadata;
 // T123: per-dialect strategies (postgresql/mysql/sqlite), the carried
 // BaseTableSqlGenerator, and rowLimit weaving.
 mod sql_dialect_strategies;
+// T479: the model-profile draft state machine — presets, providers, reseed,
+// validate/save payloads and the high-risk egress gate.
+mod use_model_profile_draft;

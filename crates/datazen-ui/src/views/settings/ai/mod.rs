@@ -3,3 +3,5 @@
 //! land with their own tasks).
 
 pub(crate) mod ai_context_settings;
+// T479: the draft/validate/save state machine behind the model-profile form.
+pub(crate) mod use_model_profile_draft;
