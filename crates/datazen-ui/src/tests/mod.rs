@@ -770,3 +770,8 @@ mod query_run_request_store;
 // T385 independent audit: fresh vectors (runner replacement, foreign
 // mounts, the acceptance contract, duplicate requests).
 mod query_run_request_store_audit;
+// T421: the schema request tracker (session/slot barriers).
+mod schema_request_tracker;
+// T421 independent audit: fresh vectors (parallel sessions, the bind
+// chain, cross-session slot names, reset scoping).
+mod schema_request_tracker_audit;

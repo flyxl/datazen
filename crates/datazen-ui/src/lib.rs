@@ -77,6 +77,8 @@ mod connections_io_state;
 pub(crate) mod panel_close_notifier;
 // T385: the query-run request bridge (queryRunRequestStore.ts).
 pub(crate) mod query_run_request_store;
+// T421: the schema request tracker (schemaRequestTracker.ts).
+pub(crate) mod schema_request_tracker;
 mod search_state;
 mod schema_workflows_state;
 mod tools_state;
