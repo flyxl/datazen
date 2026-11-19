@@ -126,7 +126,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T107 · components/sql-editor · 2.00d · components/sql-editor/contracts.ts · split
 - [ ] T108 · components · 2.60d · components/FilterEditor.tsx · split
 - [ ] T109 · windows/settings · 0.80d · windows/settings/ai/ModelProfileForm.tsx
-- [ ] T110 · windows/connection · 1.30d · windows/connection/ConnectionPage.tsx · split
+- [x] T110 · windows/connection · 1.30d · windows/connection/ConnectionPage.tsx · split
 - [ ] T111 · windows/workspace · 0.30d · windows/workspace/WorkspaceDefaultCards.tsx
 - [ ] T112 · windows/dashboard · 1.30d · windows/dashboard/DashboardPanel.tsx · split
 - [ ] T113 · windows/workflow · 0.50d · windows/workflow/WorkflowHistorySection.tsx
