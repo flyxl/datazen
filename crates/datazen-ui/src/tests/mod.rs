@@ -572,3 +572,8 @@ mod index_entry;
 // scan, the native host's two-surface manifest, and the contracts
 // family's ported members through the api crate alone.
 mod index_entry_audit;
+// T062-S1: schema completion's pure core — dialect facade (quote/fold/
+// must-quote), the three quoting policies, qualifier filtering with
+// boosts, the all-columns dedup, SELECT-column extraction, and the
+// relations-by-columns filter.
+mod schema_completion;

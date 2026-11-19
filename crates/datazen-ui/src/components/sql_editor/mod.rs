@@ -21,4 +21,11 @@ pub(crate) mod lib_helpers;
 #[allow(unused_imports)] // re-exports keep the module boundary flat for callers
 pub(crate) use lib_helpers::{parse_qualified_path_parents, toggle_sql_line_comments};
 
+pub(crate) mod completion;
+#[allow(unused_imports)] // consumers land with the S2/S3 slices
+pub(crate) use completion::{
+    RelatedTableBoost, SHORT_PREFIX_COLUMN_CAP, SHORT_PREFIX_LEN, SchemaCompletionItem,
+    SchemaCompletionKind, SqlCompletionDialect, SqlToken, SqlTokenKind,
+};
+
 pub(crate) mod sql_editor;
