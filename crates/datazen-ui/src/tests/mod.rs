@@ -290,3 +290,7 @@ mod log_scale_tooltip;
 // T166: the area chart engine port (the log-hint pipeline, geometry, the
 // hidden-series toggle, hit-bucket routing and the tooltip mounts).
 mod area_chart_renderer;
+
+// T192: the bar chart engine port (the shared log-hint pipeline, bar
+// rectangle geometry, the LabelList, hit-band routing and the tooltips).
+mod bar_chart_renderer;
