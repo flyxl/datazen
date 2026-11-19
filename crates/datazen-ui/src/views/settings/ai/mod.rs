@@ -11,3 +11,8 @@ pub(crate) mod model_profile_form_controls;
 pub(crate) mod model_profile_form_sections;
 // T479: the draft/validate/save state machine behind the model-profile form.
 pub(crate) mod use_model_profile_draft;
+// T065: the settings dialog shell around the form (open/close gate, the
+// add/edit title, and the hook's onSave/onSaved wiring).
+pub(crate) mod model_profile_dialog;
+// T141: one configured model profile row (badges, meta line, actions).
+pub(crate) mod model_profile_list_item;

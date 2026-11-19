@@ -676,3 +676,7 @@ mod use_model_profile_draft;
 // branches, fetch-models row, safety presets/sliders/policies, the validate
 // label's four states and the high-risk egress confirmation.
 mod model_profile_form_audit;
+// T065 audit: the model profile dialog shell — open/close gate, add vs edit
+// title, Esc/header-close/cancel, and the performSave wiring (save + close
+// on success, the high-risk confirm path).
+mod model_profile_dialog_audit;
