@@ -282,9 +282,11 @@ impl<'a, S: 'static> ContentToolbar<'a, S> {
             ));
         }
         if vm.show_er_diagram {
-            bar = bar.child(button(
+            // React tags both the wrapper span and the inner button; the e2e
+            // helper queries the inner key.
+            let inner = button(
                 &theme,
-                "content-toolbar-er-diagram",
+                "content-toolbar-er-diagram-button",
                 None,
                 t("common.erDiagram"),
                 t("common.erDiagram"),
@@ -292,7 +294,8 @@ impl<'a, S: 'static> ContentToolbar<'a, S> {
                 vm.compact,
                 false,
                 &self.actions.er_diagram,
-            ));
+            );
+            bar = bar.child(row().key("content-toolbar-er-diagram").child(inner));
         }
         if vm.show_objects {
             bar = bar.child(button(
@@ -351,12 +354,19 @@ impl<'a, S: 'static> ContentToolbar<'a, S> {
         }
 
         if vm.show_ai && vm.show_ai_chat() {
+            // React keeps the visible "AI" label but sets `title` to the KV
+            // context tooltip whenever a KV panel relay is present.
+            let ai_title = if vm.kv_panel.is_some() {
+                t("redis.ai.context.tooltip")
+            } else {
+                "AI"
+            };
             bar = bar.child(button(
                 &theme,
                 "conn-toolbar-ai",
                 None,
                 "AI",
-                "AI",
+                ai_title,
                 &ICON_SPARKLES,
                 true,
                 vm.ai_chat_open,
@@ -365,12 +375,18 @@ impl<'a, S: 'static> ContentToolbar<'a, S> {
         }
 
         if vm.detail_panel_applicable {
+            // DetailPanelToggle swaps its title with the open state.
+            let detail_title = if vm.detail_open {
+                t("detail.hide")
+            } else {
+                t("detail.show")
+            };
             bar = bar.child(button(
                 &theme,
                 "content-toolbar-detail-toggle",
                 None,
-                t("detail.title"),
-                t("detail.title"),
+                detail_title,
+                detail_title,
                 if vm.detail_open {
                     &ICON_PANEL_LEFT_CLOSE
                 } else {
