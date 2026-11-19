@@ -352,6 +352,15 @@ pub(crate) static ICON_MAXIMIZE_2: rune::Icon = rune::Icon {
     view: 24.0,
     body: "<polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"15 3 21 3 21 9\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"9 21 3 21 3 15\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"21\" x2=\"14\" y1=\"3\" y2=\"10\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"3\" x2=\"10\" y1=\"21\" y2=\"14\"/>",
 };
+// T102 (chart view): the expanded overlay's collapse glyph. The same
+// lucide-react 0.487.0 `Minimize2` alias as the `Maximize2` above: the two
+// diagonal shafts are shared and the arrowheads sit at the inner ends, so the
+// arrows converge — the minimize counterpart of the toolbar's expand glyph.
+pub(crate) static ICON_MINIMIZE_2: rune::Icon = rune::Icon {
+    name: "minimize-2",
+    view: 24.0,
+    body: "<polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"4 14 10 14 10 20\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"20 10 14 10 14 4\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"14\" x2=\"21\" y1=\"10\" y2=\"3\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"3\" x2=\"10\" y1=\"21\" y2=\"14\"/>",
+};
 
 pub(crate) static ICON_PACKAGE_OPEN: rune::Icon = rune::Icon {
     // lucide-react 0.487.0's `PackageOpen` node (the wapps page's empty state).

@@ -19,12 +19,8 @@
 - [ ] T060 · components/chart · 0.80d · components/chart/ChartEmptyState.tsx components/chart/ChartToolbar.tsx
 - [x] T078 · lib · 0.80d · lib/cellTypes.ts
 - [ ] T080 · lib/metadata · 0.90d · lib/metadata/identity.ts
-- [ ] T089 · stores/ai · 2.00d · stores/ai/streaming.ts · split
 - [ ] T095 · extensions · 0.80d · extensions/generated.ts
-- [ ] T104 · components/chart · 0.80d · components/chart/ChartView.tsx
 - [x] T118 · lib · 0.80d · lib/cellEditorKind.ts
-- [ ] T128 · stores/ai · 0.80d · stores/ai/types.ts
-- [ ] T138 · components/chart · 2.00d · components/chart/LogScaleTooltip.tsx · split
 - [ ] T147 · windows/workflow · 1.30d · windows/workflow/WorkflowPage.tsx · split
 - [x] T152 · lib · 0.60d · lib/dataTypeColors.ts components/DataTable/editors/toEditString.ts
 - [ ] T168 · components/chart · 2.00d · components/chart/renderers/AreaChartRenderer.tsx · split
@@ -36,7 +32,6 @@
 - [ ] T218 · components/chart · 2.00d · components/chart/renderers/LineChartRenderer.tsx · split
 - [ ] T225 · windows/workflow · 0.60d · windows/workflow/workflowDraftConvert.ts windows/workflow/workflowPanelGuards.ts
 - [ ] T230 · lib · 0.60d · lib/aiMemorySettings.ts lib/aiMessageBlocks.ts
-- [ ] T236 · types · 0.30d · types/keyset.ts
 - [ ] T240 · components/chart · 2.00d · components/chart/renderers/PieChartRenderer.tsx · split
 - [ ] T246 · windows/workflow · 2.00d · windows/workflow/yamlLint.ts · split
 - [ ] T251 · lib · 0.50d · lib/aiProviders.ts
@@ -172,3 +167,9 @@
 - [x] T188 · types · 0.30d · types/filters.ts
 - [x] T174 · windows/workflow · 0.30d · windows/workflow/workflowStepResultUtils.tsx
 - [x] T619 · lib · 0.80d · lib/sqlPathPrefix.ts lib/sqlSchemaDropTargets.ts
+- [x] T234 · types · 0.30d · types/keyset.ts
+
+- [x] T088 · stores/ai · 2.00d · stores/ai/streaming.ts · split
+- [x] T102 · components/chart · 0.80d · components/chart/ChartView.tsx
+- [x] T126 · stores/ai · 0.80d · stores/ai/types.ts
+- [x] T136 · components/chart · 2.00d · components/chart/LogScaleTooltip.tsx · split

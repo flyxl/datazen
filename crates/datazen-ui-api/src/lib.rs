@@ -4,6 +4,8 @@
 //! interface can run before the desktop and HTTP adapters exist.
 
 mod ai_sessions;
+mod ai_store_types;
+mod ai_streaming;
 mod ai_types;
 mod chart_types;
 mod connection_types;
@@ -19,6 +21,7 @@ mod context_menu_position;
 // else re-exports at the root (see `dashboard_types`' docs).
 pub mod dashboard_types;
 mod filter_types;
+mod keyset_types;
 mod metadata;
 mod platform_shared;
 mod relation_prediction;
@@ -45,6 +48,29 @@ pub use ai_sessions::{
     message_status, new_chat_session, normalize_loaded_skills, split_legacy_key, title_for,
     truncate_bytes, MAX_MESSAGES_PER_SESSION, MAX_MESSAGE_BYTES, MAX_SESSIONS,
     MIGRATION_MARKER_KEY, STORAGE_KEY,
+};
+// The T126 AiStore contract: the zustand store's state struct and action
+// trait (the aiStore port, T128, is the implementer), the NL2SQL slice with
+// its initial literal, and the field-complete lean mirrors of the
+// `types/index.ts` shapes the store holds (T213 owns the real ports).
+pub use ai_store_types::{
+    AiMemoryMode, AiMemoryScope, AiStoreActions, AiStoreState, AnalyzeExplainParams,
+    AnalyzeQueriesParams, CallMcpToolParams, ConnectionDiagnosis, ConnectionSolution,
+    DiagnoseConnectionParams, DiagnoseErrorParams, EventListenerTeardown, ExecuteWorkflowParams,
+    GenerateSchemaDocParams, GenerateSqlParams, McpClientStatus, McpServerConfig,
+    McpServerTransport, McpToolInfo, MemoryCandidateNotice, Nl2SqlState, ParseFilterParams,
+    QueryAnalysis, QueryCategory, SendChatMessageParams, SendWorkflowChatMessageParams,
+    StepExecutionResult, StepStatus, WorkflowExecutionResult, WorkflowListItem,
+    WorkflowVariable, initial_nl2sql,
+};
+// The T088 streaming adapter: the module's own types plus the seam
+// vocabulary the future sibling tasks (streamRegistry/sessionCancel/
+// targetClaim/commands-ai, T503/T505, T126/T128) will implement or wire.
+pub use ai_streaming::{
+    AiCancelCommand, AiStoreView, AiStreaming, AiTargetClaim, ApplyChunkGate, ApplyGateResult,
+    CancelReceipt, ChatSessionPersister, ExtractionSeams, ExtractQuestionsOutcome,
+    Nl2sqlStreamingSlice, SessionCancellerOps, StreamRegistryOps, StreamingClock,
+    find_mcp_tool_name,
 };
 pub use ai_types::{
     AiAgentMode, AiChatAttribution, AiChatContextSnapshot, AiChatInjectionEvent,
@@ -107,6 +133,12 @@ pub use dashboard_types::{
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
     FilterOperator, SHARED_FILTER_OPERATORS,
+};
+// The T234 keyset paging vocabulary: the aggregate (`types/index`)
+// re-exports everything `types/keyset.ts` declares, so the crate root
+// carries the same names.
+pub use keyset_types::{
+    CursorValue, KeysetUnavailableReason, OrderColumn, PagePagingInfo, PagingMode,
 };
 pub use metadata::{
     BatchFlush, CurrentCallContext, CurrentProvenanceContext, ExecutionTarget,
