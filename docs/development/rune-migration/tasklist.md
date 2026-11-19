@@ -268,7 +268,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T249 · windows/data-sync · 0.90d · windows/data-sync/DataSyncResultStep.tsx
 - [ ] T250 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffSelectionSteps.tsx
 - [ ] T251 · lib · 0.50d · lib/aiProviders.ts
-- [ ] T252 · lib/session · 0.90d · lib/session/runEditorQuery.ts
+- [x] T252 · lib/session · 0.90d · lib/session/runEditorQuery.ts
 - [ ] T253 · lib/valuePresentation · 0.80d · lib/valuePresentation/timestampContribution.ts
 - [ ] T254 · hooks · 0.90d · hooks/useConnectionCommand.ts
 - [ ] T255 · stores · 0.90d · stores/languagePackStore.ts
@@ -282,7 +282,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T263 · components/sql-editor · 2.00d · components/sql-editor/paste/createPasteExtensions.ts · split
 - [ ] T264 · components · 0.80d · components/StatusBar.tsx components/ThemedIcon.tsx
 - [ ] T265 · windows/settings · 0.90d · windows/settings/DriverSettingsSection.tsx
-- [ ] T266 · windows/connection · 0.60d · windows/connection/CreateDatabaseDialog.tsx windows/connection/CreateSchemaDialog.tsx
+- [x] T266 · windows/connection · 0.60d · windows/connection/CreateDatabaseDialog.tsx windows/connection/CreateSchemaDialog.tsx
 - [ ] T267 · windows/workflow · 2.00d · windows/workflow/yamlMode.ts · split
 - [ ] T268 · windows/onboarding · 2.00d · windows/onboarding/onboardingGate.ts · split
 - [ ] T269 · windows/data-transfer · 0.90d · windows/data-transfer/TransferMappingStep.tsx
