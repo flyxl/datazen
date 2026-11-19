@@ -336,3 +336,5 @@ mod connection_share_dialog;
 // T137 independent audit: full error table, stale epochs, footer disable,
 // React-faithful field/error placement and adversarial geometry.
 mod connection_share_audit;
+// T167: ConnectionShareDialogHost (state, callback wiring, keys, geometry).
+mod connection_share_host;
