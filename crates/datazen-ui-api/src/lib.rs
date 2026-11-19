@@ -18,6 +18,7 @@ mod context_menu_position;
 // names reach the outside world through the module path while everything
 // else re-exports at the root (see `dashboard_types`' docs).
 pub mod dashboard_types;
+mod filter_types;
 mod metadata;
 mod platform_shared;
 mod relation_prediction;
@@ -97,6 +98,13 @@ pub use dashboard_types::{
     WidgetRunStatus, DEFAULT_MONITOR_SETTINGS, DEFAULT_REFRESH, MIN_REFRESH_SEC,
     REFRESH_WARN_BELOW_SEC, clamp_refresh_sec, normalize_refresh_policy,
     should_warn_refresh_sec,
+};
+// The T188 filter vocabulary: the aggregate (`types/index`) re-exports
+// everything `types/filters.ts` declares, so the crate root carries the
+// same names.
+pub use filter_types::{
+    DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
+    FilterOperator, SHARED_FILTER_OPERATORS,
 };
 pub use metadata::{
     BatchFlush, CurrentCallContext, CurrentProvenanceContext, ExecutionTarget,
