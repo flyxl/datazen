@@ -71,6 +71,11 @@ pub(crate) fn glyph_ids(system: &mut rune::text::TextSystem, text: &str) -> Vec<
 
 // Shell, navigation, connections home, data grid, fonts and rendering.
 mod shell_grid;
+// T053: React shell.ts is a pure re-export barrel; Rune's root view covers its
+// four shell-facing concerns (i18n, platform, UI store, surface colour).
+mod shell_parity;
+// T053 independent audit: vary Cx's window-control inset and watch the titlebar.
+mod shell_parity_audit;
 // Query editing/results, undo/redo/copy/cancel, generation guards.
 mod query_results;
 // ER diagram, foreign-key views, column drafts.
@@ -166,6 +171,10 @@ mod global_query_history_audit;
 mod copy_button;
 // T253-T256: the .ts support layer semantics.
 mod support_layer_audit;
+// T036: lib/structureEditor .ts helper parity (pure value logic).
+mod structure_editor_helpers;
+// T036 independent audit: extra edge cases on the ported helpers.
+mod structure_editor_audit;
 // T034: React lib/session/counters.ts parity (counter + handle value logic).
 mod counters;
 // T034 independent audit: 2^53 gate, branch order, regex-vs-BigInt faithfulness.
@@ -223,6 +232,10 @@ mod migration_failure_notice;
 // T068 independent audit: i18n no-echo, key stability, two-theme geometry.
 mod migration_failure_audit;
 
+// T049: the AI grant lifecycle state machine port and its branch coverage.
+mod grant_state;
+// T049 independent audit: receipt-id races, exact timing boundaries, observers.
+mod grant_state_audit;
 // T010: the controlled source/target endpoint bar port.
 mod migration_endpoints_bar;
 // T010 independent audit: label-vs-id display, close-on-choice, geometry.
@@ -234,3 +247,9 @@ mod migration_endpoints_retest;
 mod chart_canvas;
 // T008 independent audit: marker honesty, factory seam, geometry, source guards.
 mod chart_canvas_audit;
+
+// T045: platform/web/index.ts is a pure re-export barrel; document Rune's
+// existing cross-platform assembly + unwired-port equivalent (no shell to port).
+mod platform_web;
+// T045 independent audit: source-guard the barrel ruling + prove adapter injection.
+mod platform_web_audit;

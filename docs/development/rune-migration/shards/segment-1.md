@@ -11,10 +11,10 @@
 - [x] T016 · windows/connection · 2.00d · windows/connection/BatchExportDialog.tsx · split
 - [x] T032 · lib/relationMetadata · 0.80d · lib/relationMetadata/metadataCache.ts
 - [x] T034 · lib/session · 0.90d · lib/session/counters.ts
-- [ ] T036 · lib/structureEditor · 0.90d · lib/structureEditor/buildStructureChangeRequest.ts lib/structureEditor/canOpenStructureEditor.ts lib/structureEditor/controlHints.ts
-- [ ] T045 · platform/web · 0.30d · platform/web/index.ts
-- [ ] T049 · ai · 0.80d · ai/grantState.ts
-- [ ] T053 · shell.ts · 0.90d · shell.ts
+- [x] T036 · lib/structureEditor · 0.90d · lib/structureEditor/buildStructureChangeRequest.ts lib/structureEditor/canOpenStructureEditor.ts lib/structureEditor/controlHints.ts
+- [x] T045 · platform/web · 0.30d · platform/web/index.ts
+- [x] T049 · ai · 0.80d · ai/grantState.ts
+- [x] T053 · shell.ts · 0.90d · shell.ts
 - [ ] T056 · components/filter · 0.90d · components/filter/FilterConditionEditor.tsx
 - [ ] T059 · components/connection · 0.90d · components/connection/ConnectionAiNotes.tsx
 - [x] T062 · components/migration · 0.50d · components/migration/MigrationJobFailureNotice.tsx
