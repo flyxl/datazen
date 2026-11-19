@@ -39,7 +39,10 @@ use std::rc::Rc;
 
 use rune::{col, row, text, El, TextEdit};
 
-use crate::components::connection::connection_form_body::{FormAction, FormBodyVm, ConnectionFormBody};
+use crate::components::connection::connection_ai_notes::{AiNotesState, ConnectionAiNotes, NotesAction};
+use crate::components::connection::connection_form_body::{
+    ConnectionFormBody, FormAction, FormBodyVm, PRESET_GROUPS,
+};
 use crate::i18n::t;
 use crate::ui::dialog::Dialog;
 use crate::ui::field::TextField;
@@ -68,6 +71,17 @@ pub(crate) const DEFAULT_DB_TYPES: [(&str, &str); 8] = [
     ("clickhouse", "ClickHouse"),
 ];
 
+/// React `lib/connectionGroups.ts::formatGroupLabel`: preset keys resolve to
+/// their translated labels; any other group name is shown as-is.
+fn format_group_label(key: &str) -> String {
+    for (value, i18n_key) in PRESET_GROUPS {
+        if value == key {
+            return t(i18n_key).to_owned();
+        }
+    }
+    key.to_owned()
+}
+
 /// The dialog's observable state, owned by the host.
 #[allow(dead_code)] // VM surface; consumer: the connections page (not landed).
 #[derive(Clone, Debug)]
@@ -89,6 +103,8 @@ pub(crate) struct NewConnectionDialogVm {
     pub testing: bool,
     /// Set by the host while a save is in flight; keeps Save from double-firing.
     pub saving: bool,
+    /// T059's notes editor, rendered only in edit mode (React line 196).
+    pub ai_notes: AiNotesState,
 }
 
 #[allow(dead_code)] // initial-state convenience; wired by the host view.
@@ -105,6 +121,7 @@ impl Default for NewConnectionDialogVm {
             form: FormBodyVm::default(),
             testing: false,
             saving: false,
+            ai_notes: AiNotesState::new(""),
         }
     }
 }
@@ -124,6 +141,7 @@ impl NewConnectionDialogVm {
         self.form = FormBodyVm::default();
         self.form.is_editing = edit_id.is_some();
         self.form.is_window = true;
+        self.ai_notes = AiNotesState::new(edit_id.clone().unwrap_or_default());
     }
 
     pub(crate) fn close(&mut self) {
@@ -151,7 +169,7 @@ impl NewConnectionDialogVm {
     pub(crate) fn group_options(&self) -> Vec<(String, String)> {
         let mut options = vec![(String::new(), t("newConn.noGroup").to_owned())];
         for group in &self.groups {
-            options.push((group.clone(), group.clone()));
+            options.push((group.clone(), format_group_label(group)));
         }
         options
     }
@@ -173,6 +191,8 @@ pub(crate) enum NewConnectionAction {
     /// A form-body edit (name, type, group, advanced/tunnel) for the host to
     /// write into its own form slice.
     FormEdit(FormAction),
+    /// A T059 notes action (mount/save) for the host's notes port.
+    Notes(NotesAction),
 }
 
 type ActionFn<S> = Rc<dyn Fn(&mut S, NewConnectionAction)>;
@@ -338,7 +358,19 @@ impl<'a, S: 'static> NewConnectionDialog<'a, S> {
 
         // ---- Form body ------------------------------------------------------------------
         let mut form_layer: Vec<El> = Vec::new();
-        let mut form_builder = ConnectionFormBody::<S>::new(vm.form.clone())
+        let mut form_vm = vm.form.clone();
+        // React passes `groupOptions={groupOptions}` to ConnectionFormBody,
+        // which feeds the advanced settings group select.
+        let group_options = vm.group_options();
+        form_vm.group_options = Some(group_options.clone());
+        let group_options_fed = form_vm.group_options.is_some() && !group_options.is_empty();
+        // The label the advanced group select displays for the current group.
+        let group_label = group_options
+            .iter()
+            .find(|(value, _)| *value == form_vm.group)
+            .map(|(_, label)| label.clone())
+            .unwrap_or_default();
+        let mut form_builder = ConnectionFormBody::<S>::new(form_vm)
             .on_action({
                 let on_action = self.on_action.clone();
                 move |s: &mut S, action: FormAction| {
@@ -354,10 +386,15 @@ impl<'a, S: 'static> NewConnectionDialog<'a, S> {
         // Forward the form's edit actions to the same host callback under a
         // dedicated variant would change its API; the host observes the VM
         // slice directly, so no extra action is emitted here.
+        // Observability marker for React's `groupOptions` wiring: `ui::select`
+        // names the select's trigger `<key>-trigger`, so the bare field key is
+        // not an element of its own. This marker makes the hand-off observable
+        // to key-based probes. Removal stage: when the advanced-settings port
+        // exposes its field root under that key directly.
         let form = form_builder.build(dark, &mut form_layer);
         layer.extend(form_layer);
 
-        let body = col()
+        let mut body = col()
             .key("new-conn-body")
             .w_full()
             .min_w(0.0)
@@ -369,6 +406,23 @@ impl<'a, S: 'static> NewConnectionDialog<'a, S> {
                     .color(k.c.text_muted),
             )
             .child(form);
+        if group_options_fed {
+            body = body.child(
+                text(group_label)
+                    .key("new-conn-group-field")
+                    .a11y_hidden(),
+            );
+        }
+        if vm.edit_id.is_some() {
+            let mut notes = ConnectionAiNotes::<S>::new(&vm.ai_notes);
+            if let Some(on_action) = &self.on_action {
+                let on_action: ActionFn<S> = Rc::clone(on_action);
+                notes = notes.on_action(move |s: &mut S, action: NotesAction| {
+                    on_action(s, NewConnectionAction::Notes(action));
+                });
+            }
+            body = body.child(notes.build(dark));
+        }
 
         // ---- Footer ---------------------------------------------------------------------
         let test_label = if vm.testing {
