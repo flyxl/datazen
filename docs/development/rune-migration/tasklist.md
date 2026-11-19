@@ -209,7 +209,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T190 · commands · 0.90d · commands/connection.ts
 - [x] T191 · components/DataTable · 0.90d · components/DataTable/DataTableSelectionBar.tsx
 - [ ] T192 · components/filter · 0.80d · components/filter/NamedViewMenu.tsx
-- [ ] T193 · components/connection · 0.90d · components/connection/FileConnectionFields.tsx
+- [x] T193 · components/connection · 0.90d · components/connection/FileConnectionFields.tsx
 - [ ] T194 · components/chart · 2.00d · components/chart/renderers/BarChartRenderer.tsx · split
 - [ ] T195 · components/ai · 0.90d · components/ai/AiSessionHistory.tsx
 - [ ] T196 · components/sql-editor · 2.00d · components/sql-editor/fold/foldCompartment.ts · split
