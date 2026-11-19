@@ -6,6 +6,7 @@ mod filter_condition_editor;
 mod filter_connector_toggle;
 mod filter_operators;
 mod filter_values;
+pub(crate) mod filter_sql_preview_dialog;
 
 #[allow(unused_imports)] // consumed by the component tests until the filter panel view lands
 pub(crate) use filter_between_input::{is_inverted, FilterBetweenInput};
