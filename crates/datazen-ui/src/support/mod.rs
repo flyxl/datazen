@@ -13,6 +13,8 @@ pub(crate) mod cell_types;
 pub(crate) mod chart_export;
 pub(crate) mod chart_field_inference;
 pub(crate) mod chart_format;
+// T117: the post-query table-vs-chart decision (lib/chart/postQueryView.ts).
+pub(crate) mod chart_post_query_view;
 pub(crate) mod data_type_colors;
 pub(crate) mod formatters;
 pub(crate) mod to_edit_string;

@@ -276,6 +276,12 @@ mod blob_tables_exporter_emission;
 mod blob_tables_exporter_emission_audit;
 // T039: React stores/activeConnectionStore.ts parity (active-connection store).
 mod active_connection_store;
+// T209: the per-panel editor-selection store (empty removes, no-op
+// unchanged, clear drops, the nullish read).
+mod editor_selection_store;
+// T209 independent audit: whitespace selections, overwrite semantics,
+// panel isolation, the full global round-trip grid.
+mod editor_selection_store_audit;
 // T039 independent audit: markConnected spread semantics, timeout re-arm
 // and per-entry isolation, disconnect finally ordering, reset interplay.
 mod active_connection_store_audit;
@@ -343,6 +349,11 @@ mod page_unload_audit;
 
 // T091: platform/capabilities.ts — desktop and web capability tables.
 mod platform_capabilities;
+// T160: platform/env.ts — the compile-time form determination.
+mod platform_env;
+// T160 independent audit: the fold agrees with the capability tables,
+// and the consumer branch shape.
+mod platform_env_audit;
 // T091 independent audit: web keeps behavior, drops logging, desktop ends
 // at extensions, neither table uses the http version source.
 mod platform_capabilities_audit;
@@ -593,6 +604,11 @@ mod install_wapp_dialog;
 // T078: chart field inference and number/axis formatting.
 mod chart_field_inference;
 mod chart_format;
+// T117: the post-query table-vs-chart decision.
+mod chart_post_query_view;
+// T117 independent audit: fresh vectors (float8/numeric/timestamptz
+// columns, rowless corners, the four-way fallback grid).
+mod chart_post_query_view_audit;
 // T078 independent audit: type-name substrings, Number/Date.parse
 // deviations, Intl fraction rounding, the 1e4 compact cutoff.
 mod chart_field_inference_audit;
@@ -642,6 +658,18 @@ mod export_success_panel;
 mod export_success_panel_audit;
 // T014: FilterBar (label, one pill per condition, clear-all; loading disables).
 mod filter_bar;
+// T106: the FilterEditor shell (summary row, mode row, Any Column / Raw SQL
+// panes, logic row, chip list; dirty/incomplete/badge/summary model).
+mod filter_editor;
+// T140: the LocaleDomainLoading skeleton (page/section variants, status
+// role, hardcoded fallback, geometry).
+mod locale_domain_loading;
+// T140 independent audit: fresh vectors (a different testId, the narrow
+// window, channels measured apart).
+mod locale_domain_loading_audit;
+// T106 independent audit: fresh vectors (uuid/unknown columns, no-value
+// operators, verbatim predicates, one-channel badge, geometry).
+mod filter_editor_audit;
 // T014 independent audit: fresh vectors for the filter bar.
 mod filter_bar_audit;
 // T207: valuePresentation temporal math — parsers, DST refusal, LMT offsets.
@@ -719,6 +747,11 @@ mod structure_editor_types;
 mod structure_editor_types_audit;
 // T096: WebContextMenu — contract, position math, store, panels, presses.
 mod web_context_menu;
+// T157: the contextMenuStore singleton — normalized opens, hide, reopen.
+mod context_menu_store;
+// T157 independent audit: fresh vectors (empty submenus, disabled rows,
+// predefined separators, cursor overwrite, idempotent hide).
+mod context_menu_store_audit;
 // T096 independent audit: fresh vectors, id'd separators, Copy command.
 mod web_context_menu_audit;
 // T100: QueryContextSelectors + QueryErrorPanel.
@@ -731,6 +764,11 @@ mod ai_egress_notice;
 mod ai_egress_notice_audit;
 // T185: the filter-draft helpers (filterUtils).
 mod table_data_filter_utils;
+// T210: grid-selection geometry and state transitions (DB-01).
+mod table_data_grid_selection;
+// T210 independent audit: fresh vectors (render order disagreeing with
+// lexicographic everywhere, boundary walls, combined deltas, reconcile).
+mod table_data_grid_selection_audit;
 // T185 independent audit: fresh vectors for the filter-draft helpers.
 mod table_data_filter_utils_audit;
 // T167: ConnectionShareDialogHost (state, callback wiring, keys, geometry).
@@ -744,3 +782,25 @@ mod content_bar_ports;
 // T173 independent audit: preserved inner ER testid, React detail/AI titles,
 // KV slot branches and adversarial two-size two-theme geometry.
 mod content_bar_audit;
+// T293: the tab-closed notification (panelCloseNotifier).
+mod panel_close_notifier;
+// T293 independent audit: fresh vectors (multi-close diffs, re-add in the
+// same change, stranger unsubscribes, per-panel independence).
+mod panel_close_notifier_audit;
+// T385: the query-run request bridge (immediate accept, ordered queue,
+// flush-on-mount, unregister drops both).
+mod query_run_request_store;
+// T385 independent audit: fresh vectors (runner replacement, foreign
+// mounts, the acceptance contract, duplicate requests).
+mod query_run_request_store_audit;
+// T421: the schema request tracker (session/slot barriers).
+mod schema_request_tracker;
+// T421 independent audit: fresh vectors (parallel sessions, the bind
+// chain, cross-session slot names, reset scoping).
+mod schema_request_tracker_audit;
+// T301: the window chrome fallback (the chrome slot, the announcing
+// spinner, center geometry).
+mod window_chrome_fallback;
+// T301 independent audit: fresh vectors (a 64pt chrome fixture, the
+// narrow window, the no-bar centering, the ring/label channels).
+mod window_chrome_fallback_audit;

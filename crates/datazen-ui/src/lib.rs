@@ -42,11 +42,15 @@
 
 pub(crate) mod active_connection_store;
 pub(crate) mod ai_store;
+// T209: the per-panel editor-selection store (editorSelectionStore.ts).
+pub(crate) mod editor_selection_store;
 pub(crate) mod ai_store_chat;
 pub(crate) mod ai_store_rest;
 pub(crate) mod table_data_connection_state;
 pub(crate) mod table_data_count_strategy;
 pub(crate) mod table_data_filter_utils;
+// T210: the grid-selection geometry and state transitions (gridSelection.ts).
+pub(crate) mod table_data_grid_selection;
 pub(crate) mod components;
 pub(crate) mod ai;
 pub(crate) mod hooks; // the hooks/ ports (T038: useConfirmDialog is its first)
@@ -69,6 +73,12 @@ mod session_state;
 mod settings_state;
 mod snippets_state;
 mod connections_io_state;
+// T293: the tab-closed notification (panelCloseNotifier.ts).
+pub(crate) mod panel_close_notifier;
+// T385: the query-run request bridge (queryRunRequestStore.ts).
+pub(crate) mod query_run_request_store;
+// T421: the schema request tracker (schemaRequestTracker.ts).
+pub(crate) mod schema_request_tracker;
 mod search_state;
 mod schema_workflows_state;
 mod tools_state;
