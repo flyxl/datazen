@@ -479,3 +479,5 @@ mod web_context_menu;
 mod web_context_menu_audit;
 // T100: QueryContextSelectors + QueryErrorPanel.
 mod query_context_and_error;
+// T100 independent audit: fresh vectors for both T100 components.
+mod query_context_and_error_audit;
