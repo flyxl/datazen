@@ -36,6 +36,24 @@ pub(crate) fn problem(path: impl Into<String>, message: impl Into<String>) -> Va
     }
 }
 
+/// JS 空白：`char::is_whitespace`（Unicode White_Space）之外还含
+/// U+FEFF（ZERO WIDTH NO-BREAK SPACE）——TS 的 `/\s/` 与
+/// `String.prototype.trim` 都把它当空白。只用于 `rendererId` 判定
+/// （见 [`validate_column_presentation_override`]）。
+fn is_js_whitespace(c: char) -> bool {
+    c.is_whitespace() || c == '\u{FEFF}'
+}
+
+/// 按 JS 空白剥首尾空白（见 [`is_js_whitespace`]）。
+fn trim_js_whitespace(value: &str) -> &str {
+    value.trim_matches(is_js_whitespace)
+}
+
+/// 是否含 JS 空白（见 [`is_js_whitespace`]）。
+fn contains_js_whitespace(value: &str) -> bool {
+    value.chars().any(is_js_whitespace)
+}
+
 // ---------------------------------------------------------------------------
 // 校验：`validateTimestampOptions` / `validateColumnPresentationOverride`
 // 的逐行镜像（`unknown` 入参 → 规范值或全部路径化问题，不中断于第一个
@@ -273,10 +291,16 @@ pub(crate) fn validate_column_presentation_override(
     match object.get("rendererId").and_then(Value::as_str) {
         None => problems.push(problem("rendererId", "expected a string")),
         Some(raw) => {
-            let trimmed = raw.trim();
+            // T054-S2 顺手修（S1 tester 非阻塞发现 1）：TS 在这里用
+            // `/\s/` 判名内空白、用 `.trim()` 剥首尾空白，二者都把
+            // U+FEFF 当空白；Rust 的 `char::is_whitespace` 与 `trim()`
+            // 都不含 U+FEFF，所以 `"datazen.timestamp\u{FEFF}"` 在 TS
+            // 下合法、在 Rust 下会报 `unknown renderer`。只在这一处
+            // 判定上按 JS 空白对齐，S1 其余 trim/空白判定不动。
+            let trimmed = trim_js_whitespace(raw);
             if trimmed.is_empty() {
                 problems.push(problem("rendererId", "must not be empty"));
-            } else if trimmed.chars().any(char::is_whitespace) {
+            } else if contains_js_whitespace(trimmed) {
                 problems.push(problem("rendererId", "must not contain whitespace"));
             } else {
                 renderer_id = Some(trimmed.to_owned());

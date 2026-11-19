@@ -46,9 +46,10 @@
 //!   `ColumnPresentationOverride` 在此做了最小镜像；
 //!   `ColumnSource` / `PresentationValue` / `ValuePresentationRegistry`
 //!   是 S2 预览与保存链路的输入，本片不需要，不镜像。
-//! - `ValuePresentationSnapshot`：只镜像了 S1 用到的 `configs` 字段
-//!   （[`VersionedPresentationConfig`] 亦然）；S2 需要 `revision` /
-//!   `environment` / `enabledRendererIds` / `overrides` / `rules` 时再扩。
+//! - `ValuePresentationSnapshot`：S1 只镜像了 `configs` 字段
+//!   （[`VersionedPresentationConfig`] 亦然）；S2 已把 `revision` /
+//!   `environment` / `enabledRendererIds` / `overrides` / `rules` 全部扩
+//!   进来（环境与规则类型见 `column_presentation_plan.rs`）。
 //! - `isValidTimeZoneName`（已知性，TS 用 Intl try/catch）：本 crate
 //!   没有时区数据库（无 `chrono-tz`，`chrono` 只带本地时区探测），
 //!   无法在本地复现 Intl 的已知性判断。接线口是
@@ -352,10 +353,20 @@ pub(crate) struct VersionedPresentationConfig {
 /// 展示快照的 S1 最小镜像：只有 [`global_timestamp_options_from_snapshot`]
 /// 读到的 `configs`；S2 需要 `revision` / `environment` /
 /// `enabledRendererIds` / `overrides` / `rules` 时再扩。
+///
+/// S2 已扩（T054-S2）：`revision` / `environment` /
+/// `enabled_renderer_ids` / `overrides` / `rules` 全部就位 ——
+/// 规则与环境类型的定义在同目录的 `column_presentation_plan.rs`
+/// （计划层），本模块只存字段，不解释它们。
 #[allow(dead_code)] // S2 / 宿主构建快照；S1 只读 `configs`。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct ValuePresentationSnapshot {
+    pub(crate) revision: u64,
+    pub(crate) environment: super::column_presentation_plan::PresentationEnvironment,
     pub(crate) configs: HashMap<String, VersionedPresentationConfig>,
+    pub(crate) enabled_renderer_ids: Vec<String>,
+    pub(crate) overrides: HashMap<String, ColumnPresentationOverride>,
+    pub(crate) rules: Vec<super::column_presentation_rules::ValuePresentationRule>,
 }
 
 // ---------------------------------------------------------------------------

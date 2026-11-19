@@ -37,6 +37,9 @@ mod column_presentation_dialog;
 // T054-S1 audit: independent mirror checks (IANA bounds, verbatim messages,
 // predicate wiring, fallback and round-trips).
 mod column_presentation_dialog_audit;
+// T054-S2: ColumnPresentationDialog dialog component + state + save/enable
+// wiring (coder tests: plan/preview/rules, state machine, render).
+mod column_presentation_dialog_s2;
 pub(crate) use support::*;
 
 pub(crate) fn runtime() -> Runtime<AppState> {

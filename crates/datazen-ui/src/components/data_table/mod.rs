@@ -4,6 +4,10 @@
 //! |--------------------------------------|-----------------------------|
 //! | `ColumnPresentationDialog.tsx`     | `column_presentation_dialog` (T054-S1: draft model + pure fns) |
 //! |                                      | + `column_presentation_validation` (T054-S1: JSON validators) |
+//! |                                      | + `column_presentation_plan` (T054-S2: plan / preview) |
+//! |                                      | + `column_presentation_rules` (T054-S2: registry + rules) |
+//! |                                      | + `column_presentation_dialog_state` (T054-S2: state + save/enable) |
+//! |                                      | + `column_presentation_dialog_view` (T054-S2: render) |
 //! | `ColumnStatsDialog.tsx`              | `column_stats_dialog`       |
 //! | `DefaultOrderSelect.tsx`             | `default_order_select`      |
 //! | `GridKeyboardHints.tsx`              | `grid_keyboard_hints`       |
@@ -13,6 +17,10 @@
 
 pub(crate) mod cell_renderer;
 pub(crate) mod column_presentation_dialog;
+pub(crate) mod column_presentation_dialog_state;
+pub(crate) mod column_presentation_dialog_view;
+pub(crate) mod column_presentation_plan;
+pub(crate) mod column_presentation_rules;
 pub(crate) mod column_presentation_validation;
 pub(crate) mod column_stats_dialog;
 pub(crate) mod data_table_selection_bar;
