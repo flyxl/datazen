@@ -24,7 +24,7 @@
 - [x] T066 · windows/settings · 0.30d · windows/settings/ai/ModelProfileDialog.tsx
 - [x] T068 · windows/workspace · 0.90d · windows/workspace/WappPageShell.tsx
 - [x] T069 · windows/dashboard · 0.80d · windows/dashboard/ChartWidgetTile.tsx
-- [ ] T072 · windows/onboarding · 0.90d · windows/onboarding/OnboardingWindow.tsx
+- [x] T072 · windows/onboarding · 0.90d · windows/onboarding/OnboardingWindow.tsx
 - [ ] T076 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffExecutionPanels.tsx
 - [ ] T084 · lib/sqlDialects · 0.80d · lib/sqlDialects/identifierQuoting.ts lib/sqlDialects/index.ts
 - [x] T086 · lib/valuePresentation · 0.80d · lib/valuePresentation/columnPresentation.ts
@@ -93,7 +93,7 @@
 - [ ] T279 · commands · 0.30d · commands/driver.ts
 - [ ] T283 · components/sql-editor · 2.00d · components/sql-editor/paste/multiCursorEscape.ts · split
 - [ ] T285 · windows/settings · 0.90d · windows/settings/InstallLanguagePackDialog.tsx
-- [ ] T287 · windows/onboarding · 0.30d · windows/onboarding/onboardingLayout.ts
+- [x] T287 · windows/onboarding · 0.30d · windows/onboarding/onboardingLayout.ts
 - [ ] T290 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffUnifiedObjectsPicker.tsx
 - [x] T293 · lib/valuePresentation · 0.80d · lib/valuePresentation/valuePresentationRules.ts
 - [ ] T294 · hooks · 1.30d · hooks/useGridClipboard.ts · split
