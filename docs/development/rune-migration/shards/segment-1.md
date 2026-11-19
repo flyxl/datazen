@@ -45,13 +45,13 @@
 - [x] T192 · components/filter · 0.80d · components/filter/NamedViewMenu.tsx
 - [x] T193 · components/connection · 0.90d · components/connection/FileConnectionFields.tsx
 - [x] T199 · windows/connection · 1.30d · windows/connection/ContentView.tsx · split
-- [ ] T208 · lib/session · 0.90d · lib/session/queryPanelSessionRoot.ts
-- [ ] T216 · components/filter · 0.90d · components/filter/filterLabels.ts components/filter/filterValues.ts components/filter/types.ts
-- [ ] T217 · components/connection · 0.60d · components/connection/HttpProxyTunnelFields.tsx components/connection/IndexConnectionFields.tsx
-- [ ] T223 · windows/connection · 0.90d · windows/connection/ContentViewDialogs.tsx
-- [ ] T231 · lib/session · 0.30d · lib/session/runEditorExplain.ts
-- [ ] T239 · components/connection · 0.90d · components/connection/NewConnectionDialog.tsx
-- [ ] T245 · windows/connection · 1.30d · windows/connection/ContentViewDrawers.tsx · split
+- [x] T208 · lib/session · 0.90d · lib/session/queryPanelSessionRoot.ts
+- [x] T216 · components/filter · 0.90d · components/filter/filterLabels.ts components/filter/filterValues.ts components/filter/types.ts
+- [x] T217 · components/connection · 0.60d · components/connection/HttpProxyTunnelFields.tsx components/connection/IndexConnectionFields.tsx
+- [x] T223 · windows/connection · 0.90d · windows/connection/ContentViewDialogs.tsx
+- [x] T231 · lib/session · 0.30d · lib/session/runEditorExplain.ts
+- [x] T239 · components/connection · 0.90d · components/connection/NewConnectionDialog.tsx
+- [x] T245 · windows/connection · 1.30d · windows/connection/ContentViewDrawers.tsx · split
 - [ ] T252 · lib/session · 0.90d · lib/session/runEditorQuery.ts
 - [ ] T260 · components/connection · 0.90d · components/connection/ObjectFilterDialog.tsx components/connection/SaveTunnelDialog.tsx components/connection/shared.tsx
 - [ ] T266 · windows/connection · 0.60d · windows/connection/CreateDatabaseDialog.tsx windows/connection/CreateSchemaDialog.tsx

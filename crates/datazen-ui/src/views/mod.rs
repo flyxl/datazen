@@ -9,6 +9,9 @@ pub(crate) mod content_toolbar;
 mod connection_page;
 mod connection_workspace_home;
 pub(crate) mod content_view;
+pub(crate) mod content_view_dialogs;
+pub(crate) mod content_view_drawers;
+
 mod connections;
 mod connections_home;
 mod dashboards_workflows;
@@ -42,6 +45,7 @@ pub(crate) use content_toolbar::*;
 pub(crate) use connection_page::*;
 pub(crate) use connection_workspace_home::*;
 pub(crate) use content_view::*;
+pub(crate) use content_view_dialogs::*;
 pub(crate) use connections::*;
 pub(crate) use connections_home::*;
 pub(crate) use dashboards_workflows::*;

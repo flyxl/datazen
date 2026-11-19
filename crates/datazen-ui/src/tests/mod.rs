@@ -351,6 +351,17 @@ mod query_panel_session;
 // T183 independent audit: transaction-state matrix, error mapping, conflict
 // refresh fallback and result status strings.
 mod query_panel_session_audit;
+// T208: lib/session/queryPanelSessionRoot.ts port (root singleton + identity).
+mod query_panel_session_root;
+// T208 independent audit: ambient exports, independent namespace defaults,
+// exact fail-loud messages.
+mod query_panel_session_root_audit;
+// T231: lib/session/runEditorExplain.ts port (effect flow + plan extraction).
+mod run_editor_explain;
+// T231 independent audit: missing-plan failure, DTO string views, envelope
+// field filters and typed execute-error mapping.
+mod run_editor_explain_audit;
+
 
 // T091: platform/capabilities.ts — desktop and web capability tables.
 mod platform_capabilities;
@@ -428,6 +439,11 @@ mod schema_diff_panel;
 mod schema_diff_audit;
 mod connection_advanced_settings;
 mod connection_advanced_audit;
+// T217: HttpProxyTunnelFields + IndexConnectionFields ports.
+mod tunnel_fields;
+// T217 independent audit: placeholders/secure password, scheme back-switch and
+// dismissal, parseInt edges, Enter clamp commit, i18n and visible-rect geometry.
+mod tunnel_fields_audit;
 // T059: the ConnectionAiNotes port (load/save, UTF-8 byte limit, timed feedback, geometry).
 mod connection_ai_notes;
 // T103: ConnectionFormBody + ConnectionImportFields ports (keys, validation,
@@ -435,6 +451,11 @@ mod connection_ai_notes;
 mod connection_form_parts;
 // T103 independent audit: observable behaviour, structural parity and coverage gaps.
 mod connection_form_audit;
+// T239: the React NewConnectionDialog port (picker, form wiring, actions, geometry).
+mod new_connection_dialog;
+// T239 independent audit: availability filter, group wiring/labels, edit AI
+// notes, host-port contract and group-heavy geometry.
+mod new_dialog_audit;
 // T193: FileConnectionFields port (path field, ADB flow, keys, geometry).
 mod file_connection_fields;
 // T193 independent audit: empty/no-match filter, load failures, cancelled pull,
@@ -695,6 +716,10 @@ mod named_view_menu;
 // import refusal, keyboard commits and many-view geometry.
 mod named_view_menu_audit;
 
+// T216: the real filterValues / FilterColumn / filterLabels contracts.
+mod filter_types_labels;
+// T216 independent audit: boundary semantics, formatCell path, source guards.
+mod filter_contracts_audit;
 // T056: the expanded filter condition editor port.
 mod filter_condition_editor;
 // T056 independent audit: ported contracts, dispatch paths, i18n, token events.
@@ -833,3 +858,16 @@ mod content_view;
 // T199 independent audit: no-panel React gates, AI drawer independence,
 // host pinned keys and the 800-line / no-bare-panic source contract.
 mod content_view_audit;
+
+// T223: ContentViewDialogs host (keys, open gates, callbacks, geometry).
+mod content_view_dialogs;
+// T223 independent audit: cancel/header routing, database fallback, slot
+// integration geometry and the source-contract guard.
+mod content_view_dialogs_audit;
+// T245: ContentViewDrawers port (drawer keys, split-pane source, auto-context,
+// result-readonly verdicts, KV slot and geometry).
+mod content_view_drawers;
+// T245 independent audit: reason parsing, width bounds, auto-context fallback,
+// object cells, table detail row, resolving banner and visible-rect geometry.
+mod content_view_drawers_audit;
+

@@ -71,28 +71,11 @@ impl FilterCondition {
 }
 
 /// The text of one condition, e.g. `name = alice` (React `conditionSummary`).
+///
+/// The single definition lives in T216's `filter_labels` module; the chip keeps
+/// this thin re-export so its callers and tests do not change.
 pub(crate) fn condition_summary(filter: &FilterCondition) -> String {
-    let key = format!("filter.{}", filter.operator);
-    let op = t(&key);
-    match &filter.value {
-        FilterValue::None => format!("{} {}", filter.column, op),
-        FilterValue::Single(value) => {
-            // React only elides an empty value; the literal text `NULL` is a value
-            // the user typed and stays visible.
-            let shown = if value.is_empty() {
-                "…".to_owned()
-            } else {
-                value.clone()
-            };
-            format!("{} {} {}", filter.column, op, shown)
-        }
-        FilterValue::Pair(lower, upper) => {
-            format!("{} {} {}, {}", filter.column, op, lower, upper)
-        }
-        FilterValue::Tokens(tokens) => {
-            format!("{} {} {}", filter.column, op, tokens.join(", "))
-        }
-    }
+    super::filter_labels::condition_summary(filter)
 }
 
 pub(crate) struct FilterConditionChip {

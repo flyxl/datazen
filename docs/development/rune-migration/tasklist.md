@@ -224,7 +224,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T205 · windows/data-sync · 0.90d · windows/data-sync/DataSyncOptionsStep.tsx
 - [ ] T206 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffRightPanel.tsx
 - [ ] T207 · lib · 0.90d · lib/aiMemoryPatterns.ts
-- [ ] T208 · lib/session · 0.90d · lib/session/queryPanelSessionRoot.ts
+- [x] T208 · lib/session · 0.90d · lib/session/queryPanelSessionRoot.ts
 - [ ] T209 · lib/valuePresentation · 0.80d · lib/valuePresentation/temporalMath.ts
 - [ ] T210 · hooks · 0.90d · hooks/useColumnStats.ts
 - [ ] T211 · stores · 0.90d · stores/editorSelectionStore.ts
@@ -232,14 +232,14 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T213 · types · 1.30d · types/index.ts · split
 - [ ] T214 · commands · 0.90d · commands/context.ts
 - [x] T215 · components/DataTable · 0.30d · components/DataTable/DefaultOrderSelect.tsx
-- [ ] T216 · components/filter · 0.90d · components/filter/filterLabels.ts components/filter/filterValues.ts components/filter/types.ts
-- [ ] T217 · components/connection · 0.60d · components/connection/HttpProxyTunnelFields.tsx components/connection/IndexConnectionFields.tsx
+- [x] T216 · components/filter · 0.90d · components/filter/filterLabels.ts components/filter/filterValues.ts components/filter/types.ts
+- [x] T217 · components/connection · 0.60d · components/connection/HttpProxyTunnelFields.tsx components/connection/IndexConnectionFields.tsx
 - [ ] T218 · components/chart · 2.00d · components/chart/renderers/LineChartRenderer.tsx · split
 - [ ] T219 · components/ai · 1.30d · components/ai/ContextPicker.tsx · split
 - [ ] T220 · components/sql-editor · 2.00d · components/sql-editor/format/formatEditorDocument.ts · split
 - [ ] T221 · components · 2.00d · components/SqlCodeBlock.tsx · split
 - [ ] T222 · windows/settings · 0.90d · windows/settings/AppearanceSection.tsx
-- [ ] T223 · windows/connection · 0.90d · windows/connection/ContentViewDialogs.tsx
+- [x] T223 · windows/connection · 0.90d · windows/connection/ContentViewDialogs.tsx
 - [ ] T224 · windows/workspace · 0.90d · windows/workspace/workspacePages.ts
 - [ ] T225 · windows/workflow · 0.60d · windows/workflow/workflowDraftConvert.ts windows/workflow/workflowPanelGuards.ts
 - [ ] T226 · windows/onboarding · 0.90d · windows/onboarding/steps/SampleStep.tsx
@@ -247,7 +247,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T228 · windows/data-sync · 0.90d · windows/data-sync/DataSyncPreviewStep.tsx
 - [ ] T229 · windows/schema-diff · 0.30d · windows/schema-diff/SchemaDiffSavedSetupDialogs.tsx
 - [ ] T230 · lib · 0.60d · lib/aiMemorySettings.ts lib/aiMessageBlocks.ts
-- [ ] T231 · lib/session · 0.30d · lib/session/runEditorExplain.ts
+- [x] T231 · lib/session · 0.30d · lib/session/runEditorExplain.ts
 - [ ] T232 · lib/valuePresentation · 0.50d · lib/valuePresentation/timestampConfig.ts
 - [ ] T233 · hooks · 0.30d · hooks/useCompactToolbar.ts
 - [ ] T234 · stores · 0.50d · stores/fkNavigationStore.ts
@@ -255,13 +255,13 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T236 · types · 0.30d · types/keyset.ts
 - [ ] T237 · commands · 0.90d · commands/dashboard.ts
 - [ ] T238 · components/DataTable · 0.80d · components/DataTable/DetailPanel.tsx
-- [ ] T239 · components/connection · 0.90d · components/connection/NewConnectionDialog.tsx
+- [x] T239 · components/connection · 0.90d · components/connection/NewConnectionDialog.tsx
 - [ ] T240 · components/chart · 2.00d · components/chart/renderers/PieChartRenderer.tsx · split
 - [ ] T241 · components/ai · 0.90d · components/ai/DiagnosisPanel.tsx
 - [ ] T242 · components/sql-editor · 0.90d · components/sql-editor/metadata/findRelation.ts components/sql-editor/metadata/metadataCache.ts components/sql-editor/metadata/types.ts
 - [ ] T243 · components · 0.80d · components/SqlEditor.tsx components/SqlSyntaxPreview.tsx
 - [ ] T244 · windows/settings · 0.90d · windows/settings/DataCleanupSection.tsx
-- [ ] T245 · windows/connection · 1.30d · windows/connection/ContentViewDrawers.tsx · split
+- [x] T245 · windows/connection · 1.30d · windows/connection/ContentViewDrawers.tsx · split
 - [ ] T246 · windows/workflow · 2.00d · windows/workflow/yamlLint.ts · split
 - [ ] T247 · windows/onboarding · 1.00d · windows/onboarding/steps/WelcomeStep.tsx windows/onboarding/WizardFooter.tsx
 - [ ] T248 · windows/data-transfer · 0.30d · windows/data-transfer/TransferJobResultPanel.tsx

@@ -27,10 +27,13 @@
 //! Every reusable item carries `#[allow(dead_code)]` with the same removal
 //! stage: the panel-store / drawer / dialog view track that wires real content.
 
+use std::rc::Rc;
+
 use rune::tok::{self, type_};
 use rune::{col, row, text, El};
 
 use crate::i18n::t;
+use crate::state_def::AppState;
 
 /// The conditional structure of React `ContentView` that Rune can represent.
 #[allow(dead_code)] // VM surface; consumed by connection_page and the tests
@@ -52,6 +55,9 @@ pub(crate) struct ContentViewVm {
     pub(crate) react_toolbar_gate: bool,
     /// React `activePanel` — the status-bar gate.
     pub(crate) react_status_gate: bool,
+    /// The seven dialogs of React `ContentViewDialogs`; `None` until a host
+    /// view owns their open flags (leftover: connection view track).
+    pub(crate) dialogs_vm: Option<super::content_view_dialogs::DialogsVm>,
 }
 
 impl ContentViewVm {
@@ -87,6 +93,7 @@ impl ContentViewVm {
             // the pre-port connection_content did (tests/connection_page.rs).
             react_toolbar_gate: false,
             react_status_gate: false,
+            dialogs_vm: None,
         }
     }
 }
@@ -157,24 +164,43 @@ pub(crate) fn build(
     main = main.child(panes);
 
     if vm.show_drawers() {
-        let mut drawers = col()
-            .key("content-view-drawers")
-            .w(280.0)
-            .min_w(0.0)
-            .h_full()
-            .gap(8.0);
-        if vm.detail_open && vm.detail_panel_applicable {
-            drawers = drawers.child(drawer(
-                "content-view-detail",
-                "content-view-detail-close",
-                t("detail.title"),
-                theme,
-            ));
-        }
-        if vm.ai_chat_open {
-            drawers = drawers.child(drawer("content-view-ai", "content-view-ai-close", "AI", theme));
-        }
-        main = main.child(drawers);
+        // T245: the drawer host is the real `ContentViewDrawers` port. The VM
+        // carries the two flags; every other input defaults (the host that owns
+        // the panel store will fill it). The pinned drawer keys are preserved by
+        // the port itself.
+        let drawer_vm = super::content_view_drawers::DrawerState {
+            detail_open: vm.detail_open,
+            ai_chat_open: vm.ai_chat_open,
+            detail_panel_applicable: vm.detail_panel_applicable,
+            // The pre-port host has no db-session id, but its existing tests
+            // pin that `ai_chat_open` alone mounts the AI drawer. Supply the
+            // flag as the gate so the old composition behavior is preserved.
+            has_db_session: vm.ai_chat_open,
+            panel_id: String::new(),
+            panel_kind: super::content_view_drawers::PanelKind::Other,
+            focused_pane: None,
+            panes: std::collections::HashMap::new(),
+            editor_selection: String::new(),
+            verdict: None,
+            resolving_origin: false,
+            key_props_slot: false,
+            // The pre-port host has no resizable sidebar; use the minimum so
+            // the AI drawer fits the fixed 280pt drawer column at 960px.
+            sidebar_width: 240.0,
+            table_columns: Vec::new(),
+            table_rows: Vec::new(),
+            table_detail_row_index: None,
+            kv_selected_key: None,
+        };
+        let mut layer = Vec::new();
+        super::content_view_drawers::build::<AppState>(
+            &drawer_vm,
+            None::<std::rc::Rc<dyn Fn(&mut AppState, super::content_view_drawers::DrawerAction) + 'static>>,
+            dark,
+            &mut layer,
+        );
+        // The port mounts the `content-view-drawers` root and its drawers.
+        main = main.children(layer);
     } else {
         main = main.child(row().key("content-view-drawers-absent").size(0.0, 0.0));
     }
@@ -188,36 +214,31 @@ pub(crate) fn build(
         root = root.child(super::content_status_bar(state, theme));
     }
 
-    // React's dialog hosts have no Rune port yet; keep the structural key.
-    root.child(row().key("content-view-dialogs").size(0.0, 0.0))
-}
-
-fn drawer(key: &str, close_key: &str, title: &str, theme: tok::Theme) -> El {
-    col()
-        .key(key)
-        .label(title)
-        .w_full()
-        .h(160.0)
-        .radius(8.0)
-        .fill(theme.control_off)
-        .px(12.0)
-        .py(8.0)
-        .gap(8.0)
-        .child(
-            row()
-                .w_full()
-                .center_y()
-                .child(text(title).font(type_::LABEL).color(theme.text)),
-        )
-        .child(
-            row()
-                .key(close_key)
-                .role("button")
-                .label("Close")
-                .focusable(true)
-                .w(20.0)
-                .h(20.0)
-                .center()
-                .child(text("×").font(type_::LABEL).color(theme.text_secondary)),
-        )
+    // React's seven dialogs. The host has no state slice for their open flags
+    // yet (leftover: connection view track), so it supplies an empty VM and a
+    // no-op callback; a view that owns the flags can pass both without changing
+    // any key here.
+    let mut dialog_layer = Vec::new();
+    if let Some(dialogs) = vm.dialogs_vm.as_ref() {
+        let no_op: Rc<dyn Fn(&mut crate::state_def::AppState, super::content_view_dialogs::DialogAction)> =
+            Rc::new(|_state: &mut crate::state_def::AppState, _action| {});
+        super::content_view_dialogs::build::<crate::state_def::AppState>(
+            dialogs,
+            dark,
+            &mut dialog_layer,
+            &no_op,
+        );
+    }
+    // Dialog scrim/layer elements are `absolute(0,0).w_full().h_full()`, so the
+    // host slot must itself be a full-window overlay or they anchor to the page
+    // bottom (y=640 in the minimum window) and render off-screen. Keep the
+    // empty slot zero-sized so the host layout is untouched when no dialog is
+    // mounted.
+    let slot = row().key("content-view-dialogs");
+    let slot = if dialog_layer.is_empty() {
+        slot.size(0.0, 0.0)
+    } else {
+        slot.absolute(0.0, 0.0).w_full().h_full()
+    };
+    root.child(slot.children(dialog_layer))
 }
