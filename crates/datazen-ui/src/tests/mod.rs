@@ -253,3 +253,32 @@ mod chart_canvas_audit;
 mod platform_web;
 // T045 independent audit: source-guard the barrel ruling + prove adapter injection.
 mod platform_web_audit;
+
+// T059: the chart toolbar + empty-state ports (type switch, display toggles,
+// split/expand buttons and the export dropdown seam).
+mod chart_toolbar;
+
+// T019: the workflow editor action bar port.
+mod workflow_action_bar;
+// T019: the workflow execution result panel port.
+mod workflow_execution_panel;
+// T070: the workflow visual editor form port (draft model, field/variable/
+// step editors, command-input schema editor, both footer variants).
+mod workflow_form;
+
+// T051: the App.tsx root port — the window router the host's one window is
+// handed through (first-frame composition, bounds, and the wiring pin).
+mod app_root;
+
+// T020: the main window's composition root port (branches, error screen,
+// retry, and the seams that must stay honest).
+mod main_page;
+
+// T071 (segment-2's T070): the running-execution close host port (the
+// prompt behind "close a tab whose query is still running": the ask
+// payload, the confirm dialog it opens, and the answer routing).
+mod running_execution_close_host;
+
+// T022: the install-wapp dialog port (two-step pick/review flow, the
+// native pickers, the honest host seams and the close/reset path).
+mod install_wapp_dialog;

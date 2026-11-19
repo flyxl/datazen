@@ -58,14 +58,17 @@ pub(crate) struct TextField<'a> {
     placeholder: Option<String>,
     ink: Option<Color>,
     secure: bool,
+    disabled: bool,
     label: Option<String>,
     bound: bool,
     on_edit_act: Option<Box<dyn FnOnce(rune_kit::TextInput) -> rune_kit::TextInput>>,
     on_submit_act: Option<Box<dyn FnOnce(rune_kit::TextInput) -> rune_kit::TextInput>>,
     on_key_act: Option<Box<dyn FnOnce(rune_kit::TextInput) -> rune_kit::TextInput>>,
+    on_change_act: Option<Box<dyn FnOnce(rune_kit::TextInput) -> rune_kit::TextInput>>,
     on_edit_el: Option<Box<dyn FnOnce(El) -> El>>,
     on_submit_el: Option<Box<dyn FnOnce(El) -> El>>,
     on_key_el: Option<Box<dyn FnOnce(El) -> El>>,
+    on_change_el: Option<Box<dyn FnOnce(El) -> El>>,
 }
 
 impl<'a> TextField<'a> {
@@ -87,14 +90,17 @@ impl<'a> TextField<'a> {
             placeholder: None,
             ink: None,
             secure: false,
+            disabled: false,
             label: None,
             bound: false,
             on_edit_act: None,
             on_submit_act: None,
             on_key_act: None,
+            on_change_act: None,
             on_edit_el: None,
             on_submit_el: None,
             on_key_el: None,
+            on_change_el: None,
         }
     }
 
@@ -181,6 +187,14 @@ impl<'a> TextField<'a> {
         self
     }
 
+    /// Refuse input and focus (React's `disabled`): the box is neither a
+    /// tab stop nor editable and dims. T070's workflow form disables the id
+    /// field while editing a saved workflow.
+    pub(crate) fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
+
     /// The accessible name, when no visible label names the field.
     pub(crate) fn label(mut self, label: impl Into<String>) -> Self {
         self.label = Some(label.into());
@@ -220,6 +234,20 @@ impl<'a> TextField<'a> {
         self
     }
 
+    /// A change handler that runs after each committed edit into the bound
+    /// `TextEdit` (the kit's `on_change`, installed on both build paths via
+    /// the input change event). T070's workflow command-input fields coerce
+    /// their typed text into the draft here.
+    pub(crate) fn on_change<S: 'static>(
+        mut self,
+        f: impl Fn(&mut S, &mut rune::Tx) + Clone + 'static,
+    ) -> Self {
+        let f1 = f.clone();
+        self.on_change_act = Some(Box::new(move |e| e.on_change(f1)));
+        self.on_change_el = Some(Box::new(move |e: El| e.on_input_change(f)));
+        self
+    }
+
     pub(crate) fn build(self, dark: bool) -> El {
         // Rune focuses a text box only when it can reach the `TextEdit` it
         // edits (`can_focus` asks the input for its accessor), and that comes
@@ -248,6 +276,9 @@ impl<'a> TextField<'a> {
             .text_style(self.style)
             .height(self.height)
             .width(self.width);
+        if self.disabled {
+            ti = ti.disabled(true);
+        }
         if embedded {
             ti = ti.plain();
         }
@@ -267,6 +298,9 @@ impl<'a> TextField<'a> {
             ti = act(ti);
         }
         if let Some(act) = self.on_key_act {
+            ti = act(ti);
+        }
+        if let Some(act) = self.on_change_act {
             ti = act(ti);
         }
         let mut e = ti.build(k).key(self.key);
@@ -333,6 +367,9 @@ impl<'a> TextField<'a> {
         if let Some(act) = self.on_key_el {
             input = act(input);
         }
+        if let Some(act) = self.on_change_el {
+            input = act(input);
+        }
 
         // Wrap in a full-height row that centres the editor line, so the whole
         // box remains a hit target (matching the kit's outer structure).
@@ -342,6 +379,9 @@ impl<'a> TextField<'a> {
             .h(self.height)
             .center_y()
             .child(input);
+        if self.disabled {
+            e = e.disabled(true).layer_opacity(0.5);
+        }
         match self.width {
             Some(width) => e = e.w(width),
             None => e = e.w_full(),

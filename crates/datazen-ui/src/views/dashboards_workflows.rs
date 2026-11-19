@@ -113,17 +113,6 @@ pub(crate) fn workflows_page(state: &AppState, theme: tok::Theme, dark: bool) ->
                     .child(text(name.clone()).font(type_::LABEL).color(theme.text))
                     .child(
                         row()
-                            .key("workflow-save")
-                            .h(20.0)
-                            .px(6.0)
-                            .center_y()
-                            .radius(4.0)
-                            .fill(theme.control_off)
-                            .child(text("Save").font(type_::LABEL).color(theme.text))
-                            .on_press(|state: &mut AppState| state.save_workflow_form()),
-                    )
-                    .child(
-                        row()
                             .key("workflow-run")
                             .h(20.0)
                             .px(6.0)
@@ -132,21 +121,6 @@ pub(crate) fn workflows_page(state: &AppState, theme: tok::Theme, dark: bool) ->
                             .fill(theme.control_off)
                             .child(text("Run").font(type_::LABEL).color(theme.text))
                             .on_press(|state: &mut AppState| state.run_edited_workflow()),
-                    )
-                    .child(
-                        row()
-                            .key("workflow-cancel")
-                            .h(20.0)
-                            .px(6.0)
-                            .center_y()
-                            .radius(4.0)
-                            .fill(theme.control_off)
-                            .child(
-                                text("Close".to_owned())
-                                    .font(type_::LABEL)
-                                    .color(theme.text_secondary),
-                            )
-                            .on_press(|state: &mut AppState| state.close_workflow_editor()),
                     ),
             );
         for (index, step) in steps.iter().enumerate() {
@@ -197,6 +171,24 @@ pub(crate) fn workflows_page(state: &AppState, theme: tok::Theme, dark: bool) ->
             theme.text_secondary,
             dark,
         ));
+        // T019: the shared bottom action bar (React's sibling of the edit
+        // tabs). Save keeps the page's long-standing `workflow-save` key
+        // (React's `saveTestId` slot names the save button; the page pins its
+        // own) and Cancel mounts under the bar's own
+        // `workflow-editor-cancel` key — the inline Close button's
+        // `workflow-cancel` key went with the button it named (nothing pins
+        // it: the workspace-tabs tests click `workflow-save` only).
+        // `save_disabled` is false: React derives it from the
+        // draft-validity checks (id/name/steps/connection) the lite editor
+        // does not carry yet — the lite form's save path refuses invalid
+        // input after the press, honestly.
+        page = page.child(workflow_editor_action_bar::<AppState>(
+            "workflow-save",
+            false,
+            |state: &mut AppState| state.save_workflow_form(),
+            |state: &mut AppState| state.close_workflow_editor(),
+            dark,
+        ));
         if !state.workflow_results.is_empty() {
             let mut results = col()
                 .key("run-results")
@@ -242,6 +234,26 @@ pub(crate) fn workflows_page(state: &AppState, theme: tok::Theme, dark: bool) ->
                 );
             }
             page = page.child(results);
+        }
+        // T019: the ported execution-result panel over the same run
+        // (the detailed view React's WorkflowExecutionResultPanel renders).
+        // The lite summary rows above stay: their keys are pinned by the
+        // workspace-tabs tests and remain the compact read of the run.
+        if let Some(execution) = &state.workflow_execution {
+            page = page.child(
+                WorkflowExecutionResultPanel::<AppState>::new(
+                    execution,
+                    StepUiSlots {
+                        expanded: |s: &AppState| &s.workflow_step_expanded,
+                        toggle: |s: &mut AppState, id| s.toggle_workflow_step_expanded(&id),
+                        chart: |s: &AppState| &s.workflow_step_chart,
+                        set_chart: |s: &mut AppState, id, chart| {
+                            s.set_workflow_step_chart(&id, chart)
+                        },
+                    },
+                )
+                .build(state, dark),
+            );
         }
     }
     page

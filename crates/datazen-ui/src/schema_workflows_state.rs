@@ -2,7 +2,10 @@
 
 #![allow(unused_imports)]
 use crate::state_def::*;
-use crate::views::{next_connection, workflow_yaml};
+use crate::views::next_connection;
+use crate::views::WorkflowExecutionResult;
+use crate::views::WorkflowFormSlots;
+use crate::views::workflow_yaml;
 use crate::constants::*;
 use crate::data_grid::DataGrid;
 use crate::sql_editor::SqlEditor;
@@ -210,6 +213,71 @@ impl AppState {
     pub(crate) fn close_workflow_editor(&mut self) {
         self.workflow_editing = None;
         self.workflow_results.clear();
+        // T019: closing the editor unmounts the execution-result panel —
+        // React's row `useState`s reset with it, so the interaction sets go.
+        self.workflow_execution = None;
+        self.workflow_step_expanded.clear();
+        self.workflow_step_chart.clear();
+    }
+
+    /// T019: one run's answers land together — the lite step report the
+    /// summary rows read, and the projection the execution-result panel
+    /// renders from.
+    pub(crate) fn set_workflow_results(&mut self, results: Vec<WorkflowStepResult>) {
+        self.workflow_execution = Some(WorkflowExecutionResult::from_step_results(&results));
+        self.workflow_results = results;
+    }
+
+    /// T019: a failed run reports nothing; both reads of it go together.
+    pub(crate) fn clear_workflow_results(&mut self) {
+        self.workflow_results.clear();
+        self.workflow_execution = None;
+    }
+
+    /// T019: the execution-result panel's per-row expansion state.
+    pub(crate) fn toggle_workflow_step_expanded(&mut self, step_id: &str) {
+        if !self.workflow_step_expanded.remove(step_id) {
+            self.workflow_step_expanded.insert(step_id.to_owned());
+        }
+    }
+
+    /// T019: the execution-result panel's per-row table/chart view state.
+    pub(crate) fn set_workflow_step_chart(&mut self, step_id: &str, chart: bool) {
+        if chart {
+            self.workflow_step_chart.insert(step_id.to_owned());
+        } else {
+            self.workflow_step_chart.remove(step_id);
+        }
+    }
+
+    /// T070: the visual workflow form's slots over the real state — the
+    /// wiring [`WorkflowForm`] consumes. The page mount is T147's
+    /// WorkflowPage port; the form's tests drive the same slots.
+    #[allow(dead_code)]
+    pub(crate) fn workflow_form_slots(&self) -> WorkflowFormSlots<AppState> {
+        WorkflowFormSlots {
+            draft: |s: &AppState| &s.workflow_draft,
+            draft_mut: |s: &mut AppState| &mut s.workflow_draft,
+            open: |s: &AppState| s.workflow_form_open,
+            set_open: |s: &mut AppState, which| s.workflow_form_open = which,
+            input_edits: |s: &mut AppState| &mut s.workflow_form_input_edits,
+            input_edits_read: |s: &AppState| &s.workflow_form_input_edits,
+            commands: |s: &AppState| &s.workflow_form_commands,
+            commands_loading: |s: &AppState| &s.workflow_form_commands_loading,
+            databases: |s: &AppState| &s.workflow_form_databases,
+            databases_loading: |s: &AppState| &s.workflow_form_databases_loading,
+            on_save: |s: &mut AppState| s.save_workflow_form(),
+            on_cancel: |s: &mut AppState| s.close_workflow_editor(),
+        }
+    }
+
+    /// T070: the form's ephemeral interaction state (React resets it by
+    /// unmounting the form — the AI panel's `showForm` toggle); the draft
+    /// itself stays. The first caller is T147's page mount.
+    #[allow(dead_code)]
+    pub(crate) fn reset_workflow_form_caches(&mut self) {
+        self.workflow_form_open = None;
+        self.workflow_form_input_edits.clear();
     }
 
     /// W7: run the edited workflow; the results list below is read-only.
@@ -232,8 +300,8 @@ impl AppState {
             Err(error) => Err(error),
         };
         match ran {
-            Ok(results) => self.workflow_results = results,
-            Err(_) => self.workflow_results.clear(),
+            Ok(results) => self.set_workflow_results(results),
+            Err(_) => self.clear_workflow_results(),
         }
     }
     pub(crate) fn next_workflow_generation(&mut self) -> u32 {

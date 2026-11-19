@@ -2773,6 +2773,8 @@ dependencies = [
  "datazen",
  "datazen-driver-api",
  "futures-executor",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

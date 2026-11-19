@@ -15,14 +15,21 @@ use crate::ui::palette;
 use rune_kit::{Button, ButtonVariant, ControlSize};
 
 /// The floating layer for whatever dialog is open — the import dialog first
-/// (the React share dialog opens at most one), else the connection form.
-/// Empty mounts nothing and the window keeps its plain layout.
+/// (the React share dialog opens at most one), else the connection form,
+/// else the wapps install dialog (T022; it only ever opens once its page's
+/// press lands with T073). Empty mounts nothing and the window keeps its
+/// plain layout.
 pub(crate) fn modal_layer(state: &AppState, theme: tok::Theme, dark: bool) -> Vec<El> {
     let mut layer = Vec::new();
     let dialog = if state.import_dialog_open {
         Some(import_dialog(state, theme, dark))
     } else if state.connection_dialog_open {
         Some(connection_dialog(state, theme, dark))
+    } else if state.install_wapp_open {
+        // T022: the wapps install dialog — React renders it through a portal
+        // to `document.body`, so the root layer hosts it exactly as it hosts
+        // the other two; the open press belongs to the wapps page (T073).
+        Some(install_wapp_dialog(state, dark))
     } else {
         None
     };

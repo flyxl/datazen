@@ -6,18 +6,17 @@
 
 - [x] T008 · components/chart · 2.00d · components/chart/ChartCanvas.tsx · split
 - [ ] T014 · components/export · 0.60d · components/export/ExportSuccessPanel.tsx components/FilterBar.tsx
-- [ ] T019 · windows/workflow · 0.80d · windows/workflow/WorkflowEditorActionBar.tsx windows/workflow/WorkflowExecutionResultPanel.tsx
-- [ ] T020 · windows/main · 0.90d · windows/main/MainPage.tsx
-- [ ] T022 · windows/wapps · 0.90d · windows/wapps/InstallWappDialog.tsx
+- [x] T019 · windows/workflow · 0.80d · windows/workflow/WorkflowEditorActionBar.tsx windows/workflow/WorkflowExecutionResultPanel.tsx
+- [x] T020 · windows/main · 0.90d · windows/main/MainPage.tsx
+- [x] T022 · windows/wapps · 0.90d · windows/wapps/InstallWappDialog.tsx
 - [x] T027 · lib · 0.30d · lib/formatters.ts
-- [ ] T031 · lib/metadata · 0.30d · lib/metadata/batch.ts
-- [ ] T033 · lib/relationPrediction · 0.80d · lib/relationPrediction/fromTableSchema.ts lib/relationPrediction/normalize.ts
-- [ ] T040 · stores/ai · 3.00d · stores/ai/sessions.ts · split
-- [ ] T042 · types · 0.80d · types/ai.ts
+- [x] T031 · lib/metadata · 0.30d · lib/metadata/batch.ts
+- [x] T033 · lib/relationPrediction · 0.80d · lib/relationPrediction/fromTableSchema.ts lib/relationPrediction/normalize.ts
+- [x] T040 · stores/ai · 3.00d · stores/ai/sessions.ts · split
+- [x] T042 · types · 0.80d · types/ai.ts
 - [ ] T046 · extensions · 0.30d · extensions/generated-pro.ts
 - [ ] T052 · index.ts · 0.90d · index.ts
 - [ ] T060 · components/chart · 0.80d · components/chart/ChartEmptyState.tsx components/chart/ChartToolbar.tsx
-- [ ] T070 · windows/workflow · 1.30d · windows/workflow/WorkflowForm.tsx · split
 - [ ] T071 · windows/main · 0.90d · windows/main/RunningExecutionCloseHost.tsx
 - [ ] T073 · windows/wapps · 1.30d · windows/wapps/WappManagementPage.tsx · split
 - [x] T078 · lib · 0.80d · lib/cellTypes.ts
@@ -68,6 +67,7 @@
 - [ ] T385 · lib · 0.90d · lib/connectionEditor.ts
 - [ ] T394 · lib · 0.80d · lib/connectionFormModel.ts lib/connectionGroups.ts
 - [ ] T403 · lib · 1.30d · lib/connectionLocator.ts · split
+- [x] T029 · lib/connectionViews · 0.90d · lib/connectionViews/types.ts lib/contextItems.ts lib/contextMenuPosition.ts
 - [ ] T412 · lib · 0.90d · lib/connectionShare.ts
 - [ ] T421 · lib · 0.90d · lib/connectionShareError.ts lib/connectionTabContextMenu.ts lib/connectionViews/index.ts
 - [ ] T429 · lib · 0.30d · lib/createDismissPrefs.ts
@@ -166,3 +166,10 @@
 - [ ] T645 · lib · 0.90d · lib/windowManager.ts
 - [ ] T646 · lib · 0.60d · lib/workflowDraftYaml.ts lib/workflowListContextMenu.ts
 - [ ] T647 · lib · 0.80d · lib/workflowYaml.ts
+- [x] T079 · lib/metadata · 0.90d · lib/metadata/identity.ts
+- [x] T092 · platform/shared · 0.80d · platform/shared/mcpClient.ts
+- [x] T044 · platform/shared · 0.30d · platform/shared/index.ts
+- [x] T050 · App.tsx · 0.30d · App.tsx
+- [x] T059 · components/chart · 0.80d · components/chart/ChartEmptyState.tsx components/chart/ChartToolbar.tsx
+- [x] T069 · windows/workflow · 1.30d · windows/workflow/WorkflowForm.tsx · split
+- [x] T070 · windows/main · 0.90d · windows/main/RunningExecutionCloseHost.tsx

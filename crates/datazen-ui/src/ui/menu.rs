@@ -224,6 +224,8 @@ pub(crate) struct Menu<S: 'static> {
     min_width: Option<f32>,
     at: Option<(f32, f32)>,
     placement: Option<Placement>,
+    gutter: Option<f32>,
+    standard: bool,
     on_close: Option<SelectFn<S>>,
     close_on_select: bool,
     context: bool,
@@ -239,6 +241,8 @@ impl<S: 'static> Menu<S> {
             min_width: None,
             at: None,
             placement: None,
+            gutter: None,
+            standard: false,
             on_close: None,
             close_on_select: true,
             context: false,
@@ -294,6 +298,21 @@ impl<S: 'static> Menu<S> {
         self
     }
 
+    /// The gap between the anchor and the panel (the kit's default is 6pt;
+    /// a dropdown with React's `mt-1` passes 4pt).
+    pub(crate) fn gutter(mut self, gutter: f32) -> Self {
+        self.gutter = Some(gutter);
+        self
+    }
+
+    /// The older bordered, raised look (the kit's `appearance="standard"`),
+    /// for dropdowns React styles as bordered floating panels. Its default
+    /// `min_width` is 128pt; an explicit `min_width` still wins.
+    pub(crate) fn standard(mut self, standard: bool) -> Self {
+        self.standard = standard;
+        self
+    }
+
     /// Called when the menu closes via Escape or an outside press, and (by default)
     /// after a leaf item is selected.
     pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
@@ -318,6 +337,8 @@ impl<S: 'static> Menu<S> {
             min_width,
             at,
             placement,
+            gutter,
+            standard,
             on_close,
             close_on_select,
             context,
@@ -346,11 +367,19 @@ impl<S: 'static> Menu<S> {
             m
         };
 
+        // `standard()` resets the kit's default min_width, so it runs before an
+        // explicit `min_width` override.
+        if standard {
+            menu = menu.standard();
+        }
         if let Some(w) = min_width {
             menu = menu.min_width(w);
         }
         if let Some(p) = placement {
             menu = menu.placement(p);
+        }
+        if let Some(g) = gutter {
+            menu = menu.gutter(g);
         }
         // Always wire Esc/outside dismissal to the close callback when provided.
         if let Some(close) = close_rc {

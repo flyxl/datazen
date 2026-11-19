@@ -3,6 +3,14 @@
 //! Hosts implement [`WorkspaceApi`]. The memory workspace is only a stand-in so the
 //! interface can run before the desktop and HTTP adapters exist.
 
+mod ai_sessions;
+mod ai_types;
+mod connection_views;
+mod context_items;
+mod context_menu_position;
+mod metadata;
+mod platform_shared;
+mod relation_prediction;
 mod tabs;
 
 use std::collections::HashMap;
@@ -10,6 +18,60 @@ use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
 use datazen_driver_api::{ConnectionConfig, SslMode};
 
+pub use ai_sessions::{
+    ActiveConnectionEntry, ActiveConnections, AiSessionBackend, AiSessionStore, ExportFormat,
+    MigrationOutcome, NewId, SessionClock, SessionDeleteResult, SessionExport, SessionKey,
+    SessionListParams, SessionLocalStorage, SessionMap, SessionPersistResult,
+    SessionRestoreResult, SessionScope, StoredSession, chat_session_from_detail,
+    chat_session_from_stored, chat_session_to_upsert_input, compute_session_key, export_filename,
+    iso_from_epoch_ms, local_detail, markdown_for, message_from_stored, message_metadata,
+    message_status, new_chat_session, normalize_loaded_skills, split_legacy_key, title_for,
+    truncate_bytes, MAX_MESSAGES_PER_SESSION, MAX_MESSAGE_BYTES, MAX_SESSIONS,
+    MIGRATION_MARKER_KEY, STORAGE_KEY,
+};
+pub use ai_types::{
+    AiAgentMode, AiChatAttribution, AiChatContextSnapshot, AiChatInjectionEvent,
+    AiChatInjectionSnapshot, AiChatMessage, AiChatResultPreview, AiChatSession, AiDataEgressLevel,
+    AiLoadedSkill, AiMemoryCandidatesEvent, AiMemoryCloudPolicy, AiMemoryCorrectionInput,
+    AiMemoryCreateInput, AiMemoryEntry, AiMemoryExtractionInput, AiMemoryKind, AiMemoryListParams,
+    AiMemoryPage, AiMemoryReference, AiMemoryScopeKind, AiMemorySensitivity, AiMemorySettings,
+    AiMemorySource, AiMemorySqlSample, AiMemoryStaleInput, AiMemoryStats, AiMemoryStatus,
+    AiMemoryUpdateInput,
+    AiMessageRole, AiMessageStatus, AiModelProfile, AiPreviewCell, AiProviderConfig,
+    AiProviderType, AiQuestion, AiQuestionOption, AiSafetyGateConfig, AiSessionDetail,
+    AiSessionMessage, AiSessionMessageInput, AiSessionSummary, AiSessionUpsertInput,
+    AiSettingsConfig, AiSkillContent, AiSkillSource, AiSkillSummary, AiSkillsSettings, AiToolCall,
+    AiToolPermissionPolicy, AiToolResult, AiWriteApplyReceipt, AiWriteAuditDecision,
+    AiWriteAuditDecisionKind, AiWriteAuditRecord, AiWriteImpact, AiWriteProposal,
+    AiWriteStatement, Bottleneck, BottleneckSeverity, DiagnosisResult, ExplainAnalysis,
+    ExplainSuggestion, ModelInfo, PromptTemplate, ProviderListItem, StreamChunkPayload,
+    StreamChunkUsage, StreamErrorPayload, DEFAULT_AI_MEMORY_SETTINGS, DEFAULT_AI_SKILLS_SETTINGS,
+};
+pub use connection_views::{
+    ConnectionOpenTarget, ConnectionViewActions, ConnectionViewProps, NewQueryContext,
+    NodeContextMenuPayload, ObjectKind, TableContextInput, TableSqlActionKind,
+};
+pub use context_items::{ContextItem, ContextKind, SplitContextItems, split_context_items};
+pub use context_menu_position::{
+    CONTEXT_MENU_PAD, Point, Rect, RootMenuPosition, Size, SubmenuPosition, SubmenuSide, Viewport,
+    position_root_menu, position_root_menu_with_pad, position_submenu, position_submenu_with_pad,
+};
+pub use metadata::{
+    BatchFlush, ExecutionTarget, MetadataBatcher, MetadataBatcherOptions, MetadataClock,
+    MetadataIdentityInput, MetadataSessionIdentity, MetadataTarget, NamespaceTarget, ObjectTarget,
+    metadata_batch_bucket, metadata_cache_key, metadata_config_bucket, metadata_session_key,
+};
+pub use platform_shared::{
+    McpContentBlock, McpError, McpFetch, McpHttpResponse, McpJsonRpcError, McpRequestInit,
+    McpToolCallResult, WebMcpClient, WebMcpClientManager, WebMcpConnectedServer,
+    WebMcpServerConfig, WebMcpToolInfo, format_call_tool_result, mcp_qualified_name,
+};
+pub use relation_prediction::{
+    ColumnSchema, DeclaredForeignKey, ForeignKeyInfo, IndexInfo, PredictionColumn, PredictionTable,
+    TableSchema, TypeFamily, is_generic_key_name, normalize_data_type, normalize_identifier,
+    singularize, split_identifier_words, to_prediction_table_from_schema,
+    to_prediction_tables_from_schemas, type_family,
+};
 pub use tabs::{Tab, TabKind, Tabs};
 
 /// One foreign key: this table's columns (a compound key stays together), the

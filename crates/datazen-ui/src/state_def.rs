@@ -3,6 +3,11 @@
 use crate::data_grid::DataGrid;
 use crate::sql_editor::SqlEditor;
 use crate::types::{QuerySidebarPanel, ResultView, Section, TableView, Tool};
+use crate::views::{InstallWappStep, RunningExecutionCloseRequest, WappPackagePreview};
+use crate::views::WorkflowExecutionResult;
+use crate::views::{
+    WorkflowCommandDefinition, WorkflowConnectionOption, WorkflowDraft, WorkflowFormSelect,
+};
 use std::cell::Cell;
 
 /// A3: one query result tab. Multiple executions produce multiple tabs; pinned
@@ -39,10 +44,19 @@ pub struct AppState {
     /// use case; the remaining methods answer the fixed error until H4/H5.
     pub(crate) desktop: Box<dyn DesktopAdapter>,
     /// The adapter's connection list once it answers (H3); None while the
-    /// page falls back to the memory port's list.
+    /// page falls back to the memory port's list — never answered, or
+    /// unwired. A failed re-fetch keeps the previous list (the zustand
+    /// store's `connections` survives a failed fetch).
     pub(crate) desktop_connections: Option<Vec<ConnectionProfile>>,
     /// The adapter's last error, displayed on the connections page.
     pub(crate) desktop_error: Option<String>,
+    /// T020: the connection store's list-fetch error — React
+    /// `useConnectionStore`'s `error`, read by the main window's load-failure
+    /// gate (`MainPage.tsx:112`). Only the list fetch (the adapter sync)
+    /// writes it; the shared adapter-notice slot [`Self::desktop_error`]
+    /// keeps collecting every failure the page shows as a banner, including
+    /// open-job sentences, which never gate the window.
+    pub(crate) connections_load_error: Option<String>,
     pub(crate) tabs: Tabs,
     /// The page the workspace last opened for the selected table tab.
     pub(crate) table_page: u32,
@@ -136,6 +150,26 @@ pub struct AppState {
     pub(crate) import_dialog_epoch: u64,
     /// The export file the import dialog picked (None until chosen).
     pub(crate) import_file: Option<String>,
+    /// T022: the install-wapp dialog (React `InstallWappDialog.tsx`) is open
+    /// over the window; the root modal layer (`views/modals.rs`) mounts it.
+    pub(crate) install_wapp_open: bool,
+    /// The generation of an install-wapp dialog open (`Dialog::open_epoch`);
+    /// see [`Self::connection_dialog_epoch`].
+    pub(crate) install_wapp_epoch: u64,
+    /// T022: the dialog's step (React's `InstallStep`): the pick step, then
+    /// the review of the inspected package. The host inspect seam that
+    /// advances it is the wapps management page wiring (T073).
+    pub(crate) install_wapp_step: InstallWappStep,
+    /// T022: the picked package's preview — the pick token, the package label
+    /// and the inspected manifest (React's three `useState`s, set and cleared
+    /// together). The inspect use case is a host seam (T073).
+    pub(crate) install_wapp_preview: Option<WappPackagePreview>,
+    /// T022: the pick→inspect pass is in flight (React's `inspecting`).
+    pub(crate) install_wapp_inspecting: bool,
+    /// T022: the confirm→install pass is in flight (React's `installing`).
+    pub(crate) install_wapp_installing: bool,
+    /// T022: the install flow's last error (the dialog's error branch).
+    pub(crate) install_wapp_error: Option<String>,
     pub(crate) connection_name: TextEdit,
     pub(crate) connection_engine: TextEdit,
     pub(crate) connection_address: TextEdit,
@@ -257,15 +291,78 @@ pub struct AppState {
     pub(crate) workflow_yaml: SqlEditor,
     /// The last workflow run's results.
     pub(crate) workflow_results: Vec<WorkflowStepResult>,
+    /// T019: the same run as the ported execution-result panel's view model
+    /// (the honest projection of `workflow_results`; see
+    /// `WorkflowExecutionResult::from_step_results`).
+    pub(crate) workflow_execution: Option<WorkflowExecutionResult>,
+    /// T019: the panel's per-step interaction state — step ids whose rows are
+    /// expanded, and step ids currently showing the chart view.
+    pub(crate) workflow_step_expanded: std::collections::BTreeSet<String>,
+    pub(crate) workflow_step_chart: std::collections::BTreeSet<String>,
     /// T8: the workflow run's generation and its in-flight marker. The host's
     /// engine runs as a job; a delivery from a generation the state has moved
     /// past is dropped.
     pub(crate) workflow_generation: u32,
     pub(crate) workflow_loading: Option<u32>,
+    /// T070: the visual workflow form's draft (React `WorkflowForm`'s
+    /// `draft` prop). The page mount that drives it is the WorkflowPage
+    /// port (T147); the form's tests drive the real state through
+    /// `workflow_form_slots()`.
+    #[allow(dead_code)]
+    pub(crate) workflow_draft: WorkflowDraft,
+    /// T070: the form's open listbox (React's `ui/Select` keeps its own open
+    /// state internally; immediate mode puts the one open select in `S`).
+    #[allow(dead_code)]
+    pub(crate) workflow_form_open: Option<WorkflowFormSelect>,
+    /// T070: the command-input text areas' editing state (React's
+    /// `CommandInputEditor` locals), keyed `step<i>.<field>` / `step<i>.raw`.
+    #[allow(dead_code)]
+    pub(crate) workflow_form_input_edits: std::collections::BTreeMap<String, TextEdit>,
+    /// T070: the connections the form offers (React's `connections` prop —
+    /// the page's `savedConnections`), held here for the page mount (T147)
+    /// and the form's probes.
+    #[allow(dead_code)]
+    pub(crate) workflow_form_connections: Vec<WorkflowConnectionOption>,
+    /// T070: the loaded command definitions per connection (React's
+    /// `commandsByConnection` — the loader itself is a host-side seam).
+    #[allow(dead_code)]
+    pub(crate) workflow_form_commands:
+        std::collections::BTreeMap<String, Vec<WorkflowCommandDefinition>>,
+    /// T070: the connections whose command list is in flight (React's
+    /// `loadingCommands`).
+    #[allow(dead_code)]
+    pub(crate) workflow_form_commands_loading: std::collections::BTreeSet<String>,
+    /// T070: the loaded database lists per multi-db connection (React's
+    /// `databasesByConn`; the `listDatabasesDedicated` loader is T467's).
+    #[allow(dead_code)]
+    pub(crate) workflow_form_databases: std::collections::BTreeMap<String, Vec<String>>,
+    /// T070: the connections whose database list is in flight (React's
+    /// `loadingDatabases`).
+    #[allow(dead_code)]
+    pub(crate) workflow_form_databases_loading: std::collections::BTreeSet<String>,
     /// Live size for the splitter being dragged (L2): (region key, points).
     /// While `Some`, `splitter_size` returns this instead of the persisted
     /// value; a cancelled or finished drag clears it.
     pub(crate) splitter_preview: Option<(String, u32)>,
+    /// T071 (segment-2's T070): the running-execution close host's pending
+    /// ask — React `useConfirmDialog`'s single pending request, installed by
+    /// `RunningExecutionCloseHost` (the prompt behind "close a tab whose
+    /// query is still running"). `Some` while the confirm dialog is on
+    /// screen; `ask_running_execution_close` opens it.
+    pub(crate) running_close_request: Option<RunningExecutionCloseRequest>,
+    /// T071: the prompt's open generation; each ask bumps it so a reopened
+    /// dialog starts at the top (`Dialog::open_epoch`).
+    pub(crate) running_close_epoch: u64,
+    /// T071: the last settled ask — `(request, allowed)`. The host's answer
+    /// routing (React `handleClose(result)` + the promise's resolve);
+    /// written by `answer_running_execution_close`, read by the close guard
+    /// when it ports (T396's `stores/runningExecutionClose.ts`), so no
+    /// production reader yet.
+    #[allow(dead_code)]
+    pub(crate) running_close_outcome: Option<(RunningExecutionCloseRequest, bool)>,
+    /// T071: whether the prompt's copy control has copied the SQL (the
+    /// dialog's copied mark; the next ask resets it).
+    pub(crate) running_close_sql_copied: bool,
     /// The system appearance preference, updated by the root view so helpers
     /// like `dark_theme()` can fall back consistently when no theme is saved.
     pub(crate) system_dark: Cell<bool>,
@@ -281,6 +378,7 @@ impl Default for AppState {
             desktop: Box::new(UnimplementedAdapter),
             desktop_connections: None,
             desktop_error: None,
+            connections_load_error: None,
             tabs: Tabs::new(),
             table_page: 0,
             sort: None,
@@ -325,6 +423,13 @@ impl Default for AppState {
             import_dialog_open: false,
             import_dialog_epoch: 0,
             import_file: None,
+            install_wapp_open: false,
+            install_wapp_epoch: 0,
+            install_wapp_step: InstallWappStep::Select,
+            install_wapp_preview: None,
+            install_wapp_inspecting: false,
+            install_wapp_installing: false,
+            install_wapp_error: None,
             connection_name: TextEdit::new(String::new()),
             connection_engine: TextEdit::new(String::new()),
             connection_address: TextEdit::new(String::new()),
@@ -402,9 +507,24 @@ impl Default for AppState {
             workflow_editing: None,
             workflow_yaml: SqlEditor::new(),
             workflow_results: Vec::new(),
+            workflow_execution: None,
+            workflow_step_expanded: std::collections::BTreeSet::new(),
+            workflow_step_chart: std::collections::BTreeSet::new(),
             workflow_generation: 0,
             workflow_loading: None,
+            workflow_draft: WorkflowDraft::empty(),
+            workflow_form_open: None,
+            workflow_form_input_edits: std::collections::BTreeMap::new(),
+            workflow_form_connections: Vec::new(),
+            workflow_form_commands: std::collections::BTreeMap::new(),
+            workflow_form_commands_loading: std::collections::BTreeSet::new(),
+            workflow_form_databases: std::collections::BTreeMap::new(),
+            workflow_form_databases_loading: std::collections::BTreeSet::new(),
             splitter_preview: None,
+            running_close_request: None,
+            running_close_epoch: 0,
+            running_close_outcome: None,
+            running_close_sql_copied: false,
             system_dark: Cell::new(true),
         }
     }
