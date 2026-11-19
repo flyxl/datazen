@@ -19,12 +19,11 @@ use crate::ui::badge::BadgeTone;
 use crate::ui::kit::kit;
 use crate::views::{
     abort_restore_before_execute, append_progress_log, apply_backup_progress,
-    apply_restore_progress, backup_progress_ratio, begin_backup, begin_restore,
-    db_badge_meta, fail_run, finish_backup, finish_restore, format_backup_progress,
-    format_restore_progress, restore_progress_line, BackupConnection, BackupLogPump,
-    BackupProgress, BackupProgressPhase, BackupWindow, BackupWindowEdits, BackupWindowVm,
-    RestoreConfirm, SelectConnectionOutcome, SessionConnected, MAX_PROGRESS_LOG_CHARS,
-    MAX_PROGRESS_LOG_LINES,
+    apply_restore_progress, backup_progress_ratio, begin_backup, begin_restore, db_badge_meta,
+    fail_run, finish_backup, finish_restore, format_backup_progress, format_restore_progress,
+    restore_progress_line, BackupConnection, BackupLogPump, BackupProgress, BackupProgressPhase,
+    BackupWindow, BackupWindowEdits, BackupWindowVm, RestoreConfirm, SelectConnectionOutcome,
+    SessionConnected, MAX_PROGRESS_LOG_CHARS, MAX_PROGRESS_LOG_LINES,
 };
 
 const MIN: (f32, f32) = (960.0, 640.0);
@@ -436,7 +435,14 @@ fn loaded_probe() -> Probe {
                 Some("db.internal"),
                 Some("app"),
             ),
-            conn_full("my", "Legacy MySQL", "mysql", Some("team"), None, Some("app")),
+            conn_full(
+                "my",
+                "Legacy MySQL",
+                "mysql",
+                Some("team"),
+                None,
+                Some("app"),
+            ),
             conn_full("kv", "Cache", "redis", None, Some("cache.internal"), None),
         ],
         vec!["team".to_owned()],
@@ -698,7 +704,11 @@ fn backup_run_begin_apply_finish_success() {
     assert_eq!(vm.status_message, t("backup.progressPreparing"));
     assert_eq!(vm.progress_log, [t("backup.progressPreparing")]);
 
-    apply_backup_progress(&mut vm, &mut pump, &progress(1, 2, "orders", BackupProgressPhase::Object));
+    apply_backup_progress(
+        &mut vm,
+        &mut pump,
+        &progress(1, 2, "orders", BackupProgressPhase::Object),
+    );
     assert_eq!(vm.status_message, "正在导出 orders（1/2）");
     assert_eq!(
         vm.progress,
@@ -716,14 +726,21 @@ fn backup_run_begin_apply_finish_success() {
         vm.progress,
         Some(progress(0, 0, "", BackupProgressPhase::Done))
     );
-    assert_eq!(vm.progress_log.last().map(String::as_str), Some(t("backup.success")));
+    assert_eq!(
+        vm.progress_log.last().map(String::as_str),
+        Some(t("backup.success"))
+    );
 }
 
 #[test]
 fn backup_run_cancel_clears_status_progress_and_log() {
     let (mut vm, mut pump) = run_vm();
     begin_backup(&mut vm, &mut pump);
-    apply_backup_progress(&mut vm, &mut pump, &progress(1, 2, "orders", BackupProgressPhase::Object));
+    apply_backup_progress(
+        &mut vm,
+        &mut pump,
+        &progress(1, 2, "orders", BackupProgressPhase::Object),
+    );
     finish_backup(&mut vm, &mut pump, false);
     assert!(!vm.backing);
     assert_eq!(vm.status_message, "");
@@ -882,7 +899,10 @@ fn chrome_title_and_three_columns_render_in_dark_and_light() {
         let mut probe = loaded_probe();
         probe.dark = dark;
         let rt = runtime(probe, DESIGN);
-        assert_eq!(text_of(&rt, "backup-window-title"), t("common.backupDatabase"));
+        assert_eq!(
+            text_of(&rt, "backup-window-title"),
+            t("common.backupDatabase")
+        );
         assert!(has_key(&rt, "backup-file-name-row"));
         assert!(has_key(&rt, "backup-connections"));
         assert!(has_key(&rt, "backup-databases"));
@@ -895,7 +915,10 @@ fn chrome_title_and_three_columns_render_in_dark_and_light() {
 fn restore_mode_has_no_file_name_row_and_uses_restore_labels() {
     let probe = Probe::new(BackupWindowVm::new(true));
     let rt = runtime(probe, DESIGN);
-    assert_eq!(text_of(&rt, "backup-window-title"), t("common.restoreDatabase"));
+    assert_eq!(
+        text_of(&rt, "backup-window-title"),
+        t("common.restoreDatabase")
+    );
     assert!(!has_key(&rt, "backup-file-name-row"));
     assert!(!has_key(&rt, "backup-file-name"));
     assert!(any_text(&rt, t("backup.startRestore")));
@@ -954,10 +977,7 @@ fn unsupported_connection_rows_are_dimmed_and_statused() {
     // like React, which sets the id before the type check.
     assert_eq!(rt.state.vm.selected_conn_id.as_deref(), Some("kv"));
     assert_eq!(rt.state.vm.db_session_id, None);
-    assert_eq!(
-        rt.state.vm.status_message,
-        t("backup.unsupportedType")
-    );
+    assert_eq!(rt.state.vm.status_message, t("backup.unsupportedType"));
 }
 
 #[test]
@@ -1086,7 +1106,10 @@ fn progress_bar_geometry_matches_the_ratio() {
     let bar = element(&rt, "backup-progress-bar").rect;
     assert!(track[2] > 100.0, "track has real width: {track:?}");
     let ratio = bar[2] / track[2];
-    assert!((ratio - 0.5).abs() < 0.05, "bar/track = {ratio}, track {track:?}, bar {bar:?}");
+    assert!(
+        (ratio - 0.5).abs() < 0.05,
+        "bar/track = {ratio}, track {track:?}, bar {bar:?}"
+    );
 
     // Indeterminate (backing, no progress yet) sits at 1/3.
     let mut probe = loaded_probe();
@@ -1152,7 +1175,10 @@ fn backup_success_calls_backup_database_with_the_right_args() {
             t("backup.success"),
         ]
     );
-    assert_eq!(rt.state.vm.progress, Some(progress(0, 0, "", BackupProgressPhase::Done)));
+    assert_eq!(
+        rt.state.vm.progress,
+        Some(progress(0, 0, "", BackupProgressPhase::Done))
+    );
     assert!(any_text(&rt, t("backup.success")));
 }
 
@@ -1163,7 +1189,10 @@ fn backup_with_gzip_uses_the_gz_extension() {
     probe.vm.compress_gzip = true;
     let mut rt = runtime(probe, DESIGN);
     click(&mut rt, "backup-start-backup");
-    assert_eq!(rt.state.backup_calls[0].default_file_name, "untitled.sql.gz");
+    assert_eq!(
+        rt.state.backup_calls[0].default_file_name,
+        "untitled.sql.gz"
+    );
     assert_eq!(rt.state.backup_calls[0].filter_extension, "gz");
     assert!(rt.state.backup_calls[0].compress);
 }
@@ -1286,7 +1315,10 @@ fn restore_with_tables_confirms_then_emits_refresh() {
     click(&mut rt, "backup-start-restore");
     // The dialog opens with the overwrite question.
     assert!(has_key(&rt, "backup-restore-confirm"));
-    assert_eq!(text_of(&rt, "backup-restore-confirm-title"), t("common.restoreDatabase"));
+    assert_eq!(
+        text_of(&rt, "backup-restore-confirm-title"),
+        t("common.restoreDatabase")
+    );
     assert!(any_text(
         &rt,
         "目标数据库「app」已有 3 个对象。继续将先删除现有表/视图，再写入备份内容。是否覆盖？"
@@ -1398,8 +1430,21 @@ fn prefill_after_load_selects_and_prefers_the_given_database() {
 #[test]
 fn prefill_with_an_unknown_id_does_nothing_but_a_later_load_retries() {
     let mut probe = Probe::new(BackupWindowVm::default());
-    let conns = vec![conn_full("pg", "Main PG", "postgresql", None, None, Some("app"))];
-    load_and_prefill(&mut probe, conns.clone(), vec![], Some("ghost"), Some("app"));
+    let conns = vec![conn_full(
+        "pg",
+        "Main PG",
+        "postgresql",
+        None,
+        None,
+        Some("app"),
+    )];
+    load_and_prefill(
+        &mut probe,
+        conns.clone(),
+        vec![],
+        Some("ghost"),
+        Some("app"),
+    );
     assert_eq!(probe.vm.selected_conn_id, None);
     load_and_prefill(&mut probe, conns, vec![], Some("pg"), Some("app"));
     assert_eq!(probe.vm.selected_conn_id.as_deref(), Some("pg"));

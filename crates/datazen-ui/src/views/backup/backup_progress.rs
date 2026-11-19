@@ -126,10 +126,7 @@ fn total_chars(lines: &[String]) -> usize {
 /// `omittedLabel` (`backupProgress.ts`): the localized
 /// `… N lines omitted …` marker.
 fn omitted_label(omitted: usize) -> String {
-    fill(
-        t("backup.logOmitted"),
-        &[("count", &omitted.to_string())],
-    )
+    fill(t("backup.logOmitted"), &[("count", &omitted.to_string())])
 }
 
 /// The `… N` prefix that marks an omitted-lines marker, so a later
@@ -158,23 +155,24 @@ fn trim_line(line: &str) -> String {
     if line.len() <= MAX_LINE_CHARS {
         line.to_owned()
     } else {
-        format!("{}… (truncated)", &line[..MAX_LINE_CHARS])
+        // Back off to a char boundary: `MAX_LINE_CHARS` is a byte
+        // index, and slicing a multi-byte character mid-way panics.
+        let mut end = MAX_LINE_CHARS.min(line.len());
+        while !line.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}… (truncated)", &line[..end])
     }
 }
 
 /// `trimProgressLog` (`backupProgress.ts`): bound the log to the head
 /// (restore start), one omitted marker, and the tail (newest entries).
 fn trim_progress_log(lines: Vec<String>) -> Vec<String> {
-    if lines.len() <= MAX_PROGRESS_LOG_LINES
-        && total_chars(&lines) <= MAX_PROGRESS_LOG_CHARS
-    {
+    if lines.len() <= MAX_PROGRESS_LOG_LINES && total_chars(&lines) <= MAX_PROGRESS_LOG_CHARS {
         return lines;
     }
     let head_count = LOG_HEAD_KEEP.min(lines.len());
-    let mut tail_start = lines
-        .len()
-        .saturating_sub(LOG_TAIL_KEEP)
-        .max(head_count);
+    let mut tail_start = lines.len().saturating_sub(LOG_TAIL_KEEP).max(head_count);
 
     let mut total = total_chars(&lines[..head_count]) + total_chars(&lines[tail_start..]);
     while total > MAX_PROGRESS_LOG_CHARS && tail_start < lines.len() - 1 {

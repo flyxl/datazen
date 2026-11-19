@@ -276,12 +276,7 @@ pub(crate) fn db_badge_meta(db_type: &str) -> (&'static str, BadgeTone) {
 /// DbTypeBadge.tsx`): a `size` square, `rounded-lg`, the short label
 /// in bold white on the tone fill. The font is 9pt at size 20
 /// (`badgeFontSize`), matching the window's `size={20}` use.
-pub(crate) fn db_type_badge(
-    key: impl Into<String>,
-    db_type: &str,
-    size: f32,
-    dark: bool,
-) -> El {
+pub(crate) fn db_type_badge(key: impl Into<String>, db_type: &str, size: f32, dark: bool) -> El {
     let k = kit(dark);
     let (label, tone) = db_badge_meta(db_type);
     let fill = match tone {
@@ -606,7 +601,9 @@ impl<'a, S: 'static> BackupWindow<'a, S> {
             .w_full()
             .grow(1.0)
             .min_h(0.0)
-            .scroll(ScrollSpec { stick_bottom: false });
+            .scroll(ScrollSpec {
+                stick_bottom: false,
+            });
         for group in vm.grouped() {
             list = list.child(self.group_block(&group, vm, k));
         }
@@ -757,7 +754,9 @@ impl<'a, S: 'static> BackupWindow<'a, S> {
             .w_full()
             .grow(1.0)
             .min_h(0.0)
-            .scroll(ScrollSpec { stick_bottom: false });
+            .scroll(ScrollSpec {
+                stick_bottom: false,
+            });
         for db in vm.filtered_dbs() {
             list = list.child(self.database_row(db, vm, k));
         }
@@ -773,11 +772,7 @@ impl<'a, S: 'static> BackupWindow<'a, S> {
                     .w_full()
                     .padding(12.0)
                     .justify_center()
-                    .child(
-                        text(hint)
-                            .font(k.ty.text_xsmall)
-                            .color(k.c.text_faint),
-                    ),
+                    .child(text(hint).font(k.ty.text_xsmall).color(k.c.text_faint)),
             );
         }
         if vm.selected_conn_id.is_none() {
@@ -932,10 +927,9 @@ impl<'a, S: 'static> BackupWindow<'a, S> {
             .clone()
             .unwrap_or_else(no_op_unit::<S>);
         let close_for_scrim = close.clone();
-        layer.push(scrim(
-            "backup-options-scrim",
-            move |s: &mut S| close_for_scrim(s),
-        ));
+        layer.push(scrim("backup-options-scrim", move |s: &mut S| {
+            close_for_scrim(s)
+        }));
         let mut panel = col()
             .key("backup-options-panel")
             .min_w(200.0)
@@ -970,11 +964,7 @@ impl<'a, S: 'static> BackupWindow<'a, S> {
     /// iterate sorted). Each chip carries its label and a remove
     /// press.
     fn option_chips(&self, vm: &BackupWindowVm, k: &Kit) -> El {
-        let mut chips = row()
-            .key("backup-option-chips")
-            .w_full()
-            .mb(12.0)
-            .gap(4.0);
+        let mut chips = row().key("backup-option-chips").w_full().mb(12.0).gap(4.0);
         for opt in vm.backup_options() {
             if !vm.enabled_options.contains(opt.id) {
                 continue;
@@ -1089,10 +1079,7 @@ impl<'a, S: 'static> BackupWindow<'a, S> {
     /// module docs).
     fn progress_log_area(&self, vm: &BackupWindowVm, k: &Kit) -> El {
         if vm.progress_log.is_empty() {
-            return col()
-                .key("backup-progress-log-spacer")
-                .grow(1.0)
-                .min_h(0.0);
+            return col().key("backup-progress-log-spacer").grow(1.0).min_h(0.0);
         }
         let copy = self.on_copy_log.clone().unwrap_or_else(no_op_unit::<S>);
         let mut lines = col()
@@ -1176,11 +1163,11 @@ impl<'a, S: 'static> BackupWindow<'a, S> {
             "backup-start-backup"
         };
         let start = if vm.is_restore {
-            self.on_start_restore.clone()
+            self.on_start_restore
+                .clone()
                 .unwrap_or_else(no_op_unit::<S>)
         } else {
-            self.on_start_backup.clone()
-                .unwrap_or_else(no_op_unit::<S>)
+            self.on_start_backup.clone().unwrap_or_else(no_op_unit::<S>)
         };
         let button = Button::new(label)
             .variant(ButtonVariant::Submit)

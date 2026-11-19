@@ -47,9 +47,7 @@
 use crate::i18n::t;
 use crate::views::{BackupProgress, BackupProgressPhase, BackupWindowVm};
 
-use super::backup_progress::{
-    format_backup_progress, format_restore_progress, BackupLogPump,
-};
+use super::backup_progress::{format_backup_progress, format_restore_progress, BackupLogPump};
 
 /// The `done` payload both runs finish with
 /// (`{ current: 0, total: 0, objectName: '', phase: 'done' }`).
@@ -98,11 +96,7 @@ pub(crate) fn apply_backup_progress(
 /// `t('backup.success')`, the progress becomes `done`, and the
 /// success line is pushed and flushed. Either way the run ends
 /// (`backing` clears, React's `finally`).
-pub(crate) fn finish_backup(
-    vm: &mut BackupWindowVm,
-    pump: &mut BackupLogPump,
-    saved: bool,
-) {
+pub(crate) fn finish_backup(vm: &mut BackupWindowVm, pump: &mut BackupLogPump, saved: bool) {
     if !saved {
         vm.status_message.clear();
         vm.progress = None;
@@ -157,11 +151,7 @@ pub(crate) fn apply_restore_progress(
 /// becomes that line. Either way the run ends. The host emits
 /// `datazen:refresh-connection` after this returns, only when
 /// `executed` is true.
-pub(crate) fn finish_restore(
-    vm: &mut BackupWindowVm,
-    pump: &mut BackupLogPump,
-    executed: bool,
-) {
+pub(crate) fn finish_restore(vm: &mut BackupWindowVm, pump: &mut BackupLogPump, executed: bool) {
     if !executed {
         pump.reset(Vec::new());
         apply_pump(vm, pump);
@@ -193,11 +183,7 @@ pub(crate) fn abort_restore_before_execute(vm: &mut BackupWindowVm) {
 /// flushed; the run ends. (`runSqlFileExecution`'s own catch pushes
 /// first, so a restore error reaches the pump twice — the pump
 /// dedupes the consecutive identical line.)
-pub(crate) fn fail_run(
-    vm: &mut BackupWindowVm,
-    pump: &mut BackupLogPump,
-    message: &str,
-) {
+pub(crate) fn fail_run(vm: &mut BackupWindowVm, pump: &mut BackupLogPump, message: &str) {
     vm.status_message = message.to_owned();
     vm.progress = None;
     pump.push(message);
