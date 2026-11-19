@@ -638,6 +638,9 @@ mod filter_bar;
 // T106: the FilterEditor shell (summary row, mode row, Any Column / Raw SQL
 // panes, logic row, chip list; dirty/incomplete/badge/summary model).
 mod filter_editor;
+// T106 independent audit: fresh vectors (uuid/unknown columns, no-value
+// operators, verbatim predicates, one-channel badge, geometry).
+mod filter_editor_audit;
 // T014 independent audit: fresh vectors for the filter bar.
 mod filter_bar_audit;
 // T207: valuePresentation temporal math — parsers, DST refusal, LMT offsets.
