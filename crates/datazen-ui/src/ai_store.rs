@@ -247,6 +247,16 @@ pub(crate) struct AiStore {
     pub parsed_filters: Option<Vec<FilterCondition>>,
     pub is_parsing_filter: bool,
     pub nl_filter_error: Option<String>,
+    pub chat_session: Option<crate::ai_store_chat::ChatSession>,
+    pub chat_sessions: Vec<crate::ai_store_chat::ChatSessionSummary>,
+    pub session_history_loading: bool,
+    pub session_history_error: Option<String>,
+    pub session_migration_error: Option<String>,
+    pub session_migration_success: u32,
+    pub memory_candidate_notice: Option<crate::ai_store_chat::MemoryCandidateNotice>,
+    /// Module-level `chatInitToken`. Bumped by init, select, and new chat.
+    pub chat_init_token: u64,
+    pub(crate) init_message_baseline: Option<usize>,
     listener_armed: bool,
 }
 
@@ -275,6 +285,15 @@ impl Default for AiStore {
             parsed_filters: None,
             is_parsing_filter: false,
             nl_filter_error: None,
+            chat_session: None,
+            chat_sessions: Vec::new(),
+            session_history_loading: false,
+            session_history_error: None,
+            session_migration_error: None,
+            session_migration_success: 0,
+            memory_candidate_notice: None,
+            chat_init_token: 0,
+            init_message_baseline: None,
             listener_armed: false,
         }
     }

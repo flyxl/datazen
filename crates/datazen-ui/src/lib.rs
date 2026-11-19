@@ -5,6 +5,7 @@
 
 pub(crate) mod active_connection_store;
 pub(crate) mod ai_store;
+pub(crate) mod ai_store_chat;
 pub(crate) mod table_data_connection_state;
 pub(crate) mod components;
 pub mod data_grid;
