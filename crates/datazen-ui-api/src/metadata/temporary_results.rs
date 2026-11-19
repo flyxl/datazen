@@ -264,6 +264,29 @@ mod tests {
         }
     }
 
+    /// Supplementary fixture: an execution target with a caller-chosen
+    /// connection id and all three namespace layers settable. The React
+    /// fixtures never vary the target's own connectionId nor the catalog
+    /// layer, so the pins below build their moves through this instead of
+    /// `target_at` (which fixes connection `c1` and catalog `None`).
+    fn target_with(
+        connection: &str,
+        database: Option<&str>,
+        schema: Option<&str>,
+        catalog: Option<&str>,
+    ) -> ExecutionTarget {
+        ExecutionTarget {
+            connection_id: connection.to_string(),
+            namespace: NamespaceTarget::new(
+                database.map(|layer| layer.to_string()),
+                catalog.map(|layer| layer.to_string()),
+                schema.map(|layer| layer.to_string()),
+                Vec::new(),
+            ),
+            object: None,
+        }
+    }
+
     /// React fixture `provenance(overrides = {})`: the defaults only — the
     /// invalidation describe block never passes overrides, and the defaults
     /// are exactly the three fields the lean mirror keeps (`connectionId:
@@ -414,5 +437,131 @@ mod tests {
         let mut new_epoch = current();
         new_epoch.handle = handle_at("s1", "e2");
         assert_eq!(read_temporary_result(Some(&entry), &new_epoch), None);
+    }
+
+    #[test]
+    fn reports_each_reason_under_its_own_label_in_rule_order() {
+        // Supplementary (no React case pins it): the React suite only reads
+        // `valid` / the null read, never the reasons list. Each single-rule
+        // move must fire exactly its own literal — and only it — and an
+        // everything-moved entry must report all four in the order the
+        // rules run: handle → connection → config revision → target.
+        let entry = entry();
+        let base = check_temporary_result(&entry, &current());
+        assert!(base.valid);
+        assert!(base.reasons.is_empty());
+
+        let mut epoch = current();
+        epoch.handle = handle_at("s1", "e2");
+        let decision = check_temporary_result(&entry, &epoch);
+        assert!(!decision.valid);
+        assert_eq!(
+            decision.reasons,
+            vec![InvalidationReason::RuntimeEpochChanged]
+        );
+
+        let mut connection = current();
+        connection.connection_id = "c2".to_string();
+        assert_eq!(
+            check_temporary_result(&entry, &connection).reasons,
+            vec![InvalidationReason::ConnectionChanged]
+        );
+
+        let mut revision = current();
+        revision.config_revision = 4;
+        assert_eq!(
+            check_temporary_result(&entry, &revision).reasons,
+            vec![InvalidationReason::ConfigRevisionChanged]
+        );
+
+        let mut target = current();
+        target.target = target_at(Some("db2"), Some("public"));
+        assert_eq!(
+            check_temporary_result(&entry, &target).reasons,
+            vec![InvalidationReason::TargetChanged]
+        );
+
+        let mut everything = current();
+        everything.handle = handle_at("s2", "e2");
+        everything.connection_id = "c2".to_string();
+        everything.config_revision = 4;
+        everything.target = target_at(Some("db2"), Some("public"));
+        assert_eq!(
+            check_temporary_result(&entry, &everything).reasons,
+            vec![
+                InvalidationReason::RuntimeEpochChanged,
+                InvalidationReason::ConnectionChanged,
+                InvalidationReason::ConfigRevisionChanged,
+                InvalidationReason::TargetChanged,
+            ]
+        );
+    }
+
+    #[test]
+    fn the_target_rule_is_four_way_on_the_targets_own_connection_and_namespace() {
+        // Supplementary (no React case pins it): the React fixture only
+        // moves the namespace database layer, so the schema / catalog legs
+        // and the target's own connectionId leg of the four-way comparison
+        // are unpinned. Each alone must drop the entry.
+        let entry = entry();
+
+        let mut schema = current();
+        schema.target = target_at(Some("db"), Some("other"));
+        assert_eq!(read_temporary_result(Some(&entry), &schema), None);
+
+        let mut catalog = current();
+        catalog.target = target_with("c1", Some("db"), Some("public"), Some("cat"));
+        assert_eq!(read_temporary_result(Some(&entry), &catalog), None);
+
+        // The target's own connectionId is a dimension of the *target* rule:
+        // moving it alone (caller-level connectionId untouched) fires
+        // TargetChanged, not ConnectionChanged.
+        let mut target_connection = current();
+        target_connection.target = target_with("c9", Some("db"), Some("public"), None);
+        let decision = check_temporary_result(&entry, &target_connection);
+        assert!(!decision.valid);
+        assert_eq!(decision.reasons, vec![InvalidationReason::TargetChanged]);
+    }
+
+    #[test]
+    fn a_missing_entry_reads_back_none() {
+        // Supplementary (no React case pins it): React's `if (!entry) return
+        // null;` — an absent entry reads back null regardless of how the
+        // current context moved (the read must not inspect or demand the
+        // entry at all).
+        assert_eq!(read_temporary_result::<i32>(None, &current()), None);
+        let mut moved = current();
+        moved.handle = handle_at("s2", "e2");
+        moved.connection_id = "c2".to_string();
+        assert_eq!(read_temporary_result::<i32>(None, &moved), None);
+    }
+
+    #[test]
+    fn is_provenance_current_compares_all_three_namespace_layers() {
+        // Supplementary (no React case pins it): the React case only moves
+        // the database layer, so the schema and catalog legs of the
+        // namespace comparison are unpinned. Each alone flips the verdict
+        // stale.
+        let mut schema = provenance_context();
+        schema.target = target_at(Some("db"), Some("other"));
+        assert!(!is_provenance_current(&provenance(), &schema));
+
+        let mut catalog = provenance_context();
+        catalog.target = target_with("c1", Some("db"), Some("public"), Some("cat"));
+        assert!(!is_provenance_current(&provenance(), &catalog));
+    }
+
+    #[test]
+    fn is_provenance_current_ignores_the_targets_own_connection_id() {
+        // Supplementary (no React case pins it): unlike the target rule in
+        // `check_temporary_result`, `isProvenanceCurrent` deliberately does
+        // not compare the target's own connectionId — the caller-level
+        // connectionId comparison already covers that dimension (see the
+        // fn docs). Moving the target's connectionId alone, caller-level
+        // connection untouched, must leave the provenance classified
+        // current.
+        let mut target_connection = provenance_context();
+        target_connection.target = target_with("c9", Some("db"), Some("public"), None);
+        assert!(is_provenance_current(&provenance(), &target_connection));
     }
 }
