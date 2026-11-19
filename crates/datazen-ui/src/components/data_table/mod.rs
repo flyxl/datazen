@@ -9,6 +9,7 @@
 //! |                                      | + `column_presentation_dialog_state` (T054-S2: state + save/enable) |
 //! |                                      | + `column_presentation_dialog_view` (T054-S2: render) |
 //! | `ColumnStatsDialog.tsx`              | `column_stats_dialog`       |
+//! | `DataExportDialog.tsx`                | `data_export_dialog` (T132: VM + view) + `data_export_dialog_options` (T132: the `lib/exportDialogShared.ts` vocabulary) |
 //! | `DefaultOrderSelect.tsx`             | `default_order_select`      |
 //! | `GridKeyboardHints.tsx`              | `grid_keyboard_hints`       |
 //! | `Pagination.tsx`                     | `pagination`                |
@@ -23,6 +24,8 @@ pub(crate) mod column_presentation_plan;
 pub(crate) mod column_presentation_rules;
 pub(crate) mod column_presentation_validation;
 pub(crate) mod column_stats_dialog;
+pub(crate) mod data_export_dialog;
+pub(crate) mod data_export_dialog_options;
 pub(crate) mod data_table_selection_bar;
 pub(crate) mod default_order_select;
 pub(crate) mod grid_keyboard_hints;
