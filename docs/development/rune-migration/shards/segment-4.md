@@ -35,7 +35,7 @@
 - [x] T109 · windows/settings · 0.80d · windows/settings/ai/ModelProfileForm.tsx
 - [x] T111 · windows/workspace · 0.30d · windows/workspace/WorkspaceDefaultCards.tsx
 - [x] T112 · windows/dashboard · 1.30d · windows/dashboard/DashboardPanel.tsx · split
-- [ ] T114 · windows/onboarding · 0.90d · windows/onboarding/OnboardingWizard.tsx
+- [x] T114 · windows/onboarding · 0.90d · windows/onboarding/OnboardingWizard.tsx
 - [ ] T117 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffJobStatusPanel.tsx
 - [x] T123 · lib/sqlDialects · 0.90d · lib/sqlDialects/mysql.ts lib/sqlDialects/postgresql.ts lib/sqlDialects/rowLimit.ts
 - [x] T125 · lib/valuePresentation · 1.00d · lib/valuePresentation/columnPresentationSession.ts lib/valuePresentation/index.ts
