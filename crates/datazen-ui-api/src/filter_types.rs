@@ -557,4 +557,139 @@ mod tests {
             Some(serde_json::json!({ "column": "id", "operator": "eq" }))
         );
     }
+
+    // ── audit pins (T188) ──
+    //
+    // The port's own ten pins caught the audit's literal, serde and
+    // array mutations (as_str drift, camelCase/lowercase removal, the
+    // optional pair's skip/default rules, every three-array edit tried).
+    // Three mutants survived green, all silent:
+    //
+    // - `#[serde(default)]` on `column` let `{"operator":"eq"}` decode to
+    //   `column: ""` — every round-trip witness sent both required keys,
+    //   so nothing pinned the required pair against the optional pair
+    //   (TS's `column: string` has no runtime mirror);
+    // - shrinking lib.rs's re-export to `FilterCondition` alone kept
+    //   every test compiling — only `FilterCondition`/`Value` were used
+    //   through `crate::` paths, not the other five root names (the T159
+    //   audit's "resolves sees types only" hole, now with a value half);
+    // - widening the vocabulary with a 23rd variant (`Ilike`, wire
+    //   "ilike") passed all ten pins — the tables pin what each member
+    //   spells, not how many members exist (the same hole T159's `grid`
+    //   ViewMode mutant fell through; a near-miss list alone can only
+    //   reject the spellings someone thought to try).
+
+    #[test]
+    fn a_condition_rejects_a_wire_without_its_required_keys() {
+        // React `column: string` / `operator: FilterOperator` are required
+        // — the `?` pair is only `value`/`connector`. A `#[serde(default)]`
+        // slipped onto either required field would let a half-empty wire
+        // decode into a silently-empty condition, the `column` half
+        // especially: `""` is a shape a real column name could take.
+        assert!(
+            serde_json::from_value::<FilterCondition>(serde_json::json!({
+                "operator": "eq", "value": 1
+            }))
+            .is_err(),
+            "a wire without `column` must not decode"
+        );
+        assert!(
+            serde_json::from_value::<FilterCondition>(serde_json::json!({
+                "column": "id", "value": 1
+            }))
+            .is_err(),
+            "a wire without `operator` must not decode"
+        );
+        // And the degenerate end: neither required key present.
+        assert!(
+            serde_json::from_value::<FilterCondition>(serde_json::json!({})).is_err(),
+            "an empty wire must not decode"
+        );
+        // One explicit witness of the contrast — the optional pair absent,
+        // the required pair present — keeps the pair-of-pairs honest.
+        assert!(
+            serde_json::from_value::<FilterCondition>(serde_json::json!({
+                "column": "id", "operator": "eq"
+            }))
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn the_filter_vocabulary_is_reexported_at_the_crate_root() {
+        // `crate::` paths only — a dropped root re-export stops this file
+        // from compiling instead of silently shrinking the facade (the pin
+        // style `dashboard_types` set). `FilterCondition` and `Value` are
+        // already pinned by the aggregate-identity tests above; this
+        // covers the other five of the six root names.
+        fn resolves<T>() {}
+        resolves::<crate::FilterOperator>();
+        resolves::<crate::FilterConnector>();
+        // The value half — `resolves` sees types only, so the three arrays
+        // are *used* through their root paths.
+        assert_eq!(crate::EXISTING_FILTER_OPERATORS.len(), 10);
+        assert_eq!(crate::SHARED_FILTER_OPERATORS.len(), 19);
+        assert_eq!(
+            crate::DIALECT_FILTER_OPERATORS.first().copied(),
+            Some(crate::FilterOperator::Regex)
+        );
+        // One live decode through the root paths keeps the pin honest.
+        let condition: crate::FilterCondition = decode(serde_json::json!({
+            "column": "id",
+            "operator": "notIn",
+            "connector": "or"
+        }));
+        assert_eq!(condition.operator, crate::FilterOperator::NotIn);
+        assert_eq!(condition.connector, Some(crate::FilterConnector::Or));
+    }
+
+    #[test]
+    fn the_operator_vocabulary_is_closed_at_twenty_two_variants() {
+        // Compile-time closure witness: the match below carries one arm per
+        // declared variant and no wildcard, so it stops compiling the moment
+        // a 23rd variant is added — or a declared one renamed or removed.
+        // The runtime tables pin what each member spells; this pins the
+        // membership itself, which no array of literals can (a widened enum
+        // would happily spell its extra literal too).
+        fn variant_index(op: FilterOperator) -> usize {
+            match op {
+                FilterOperator::Eq => 0,
+                FilterOperator::Ne => 1,
+                FilterOperator::Gt => 2,
+                FilterOperator::Lt => 3,
+                FilterOperator::Gte => 4,
+                FilterOperator::Lte => 5,
+                FilterOperator::Like => 6,
+                FilterOperator::In => 7,
+                FilterOperator::IsNull => 8,
+                FilterOperator::IsNotNull => 9,
+                FilterOperator::NotIn => 10,
+                FilterOperator::Between => 11,
+                FilterOperator::NotBetween => 12,
+                FilterOperator::Contains => 13,
+                FilterOperator::NotContains => 14,
+                FilterOperator::StartsWith => 15,
+                FilterOperator::EndsWith => 16,
+                FilterOperator::IsEmpty => 17,
+                FilterOperator::IsNotEmpty => 18,
+                FilterOperator::Regex => 19,
+                FilterOperator::NotRegex => 20,
+                FilterOperator::JsonContains => 21,
+            }
+        }
+        // The witness and the wire-order array agree index for index, so
+        // the closure pin runs over the same list the coverage pins do.
+        for (index, operator) in ALL_OPERATORS.iter().enumerate() {
+            assert_eq!(variant_index(*operator), index);
+        }
+        // The runtime half of the closure: the spellings a widened
+        // vocabulary would accept reject (the T159 rule). `ilike` is the
+        // literal the audit's surviving mutant carried.
+        for near_miss in ["ilike", "nlike", "notLike", "inList", "isNullIf"] {
+            assert!(
+                serde_json::from_value::<FilterOperator>(serde_json::json!(near_miss)).is_err(),
+                "near-miss operator literal {near_miss:?} must not parse"
+            );
+        }
+    }
 }
