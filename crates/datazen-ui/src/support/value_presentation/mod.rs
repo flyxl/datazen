@@ -22,3 +22,8 @@ pub(crate) mod temporal_math;
 pub(crate) mod timestamp_format; // T272: the three output formats
 pub(crate) mod timestamp_config; // T230: persisted options + full validation
 pub(crate) mod value_presentation_rules; // T291: rules, restricted regex, matching
+// The extension-points valuePresentation slice (contracts + registry) —
+// ported beside their first in-tree consumer (T251).
+pub(crate) mod contracts;
+pub(crate) mod registry;
+pub(crate) mod timestamp_contribution; // T251: the datazen.timestamp contribution

@@ -258,3 +258,5 @@ mod timestamp_format;
 mod timestamp_config;
 // T291: valuePresentation rules — restricted regex, validation, matching.
 mod value_presentation_rules;
+// T251: the datazen.timestamp contribution + contracts/registry slice.
+mod timestamp_contribution;
