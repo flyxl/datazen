@@ -91,9 +91,12 @@
 //! * `overflow-y-auto` on the chart area is the standard `scroll`
 //!   viewport; `shrink-0` has no inverse builder (the toolbar's ruling) and
 //!   the fixed-width axis panel keeps its 208pt anyway.
-//! * The fields/recommendation memos compute before React's early returns
-//!   only because hooks must precede them; this port computes them first
-//!   too, and everything downstream is identical.
+//! * React's whole memo chain — fields, recommendation, `chartResult`
+//!   (the row cap), `transformData`, `renderConfig` and `splitConfigs` —
+//!   computes above the early returns because hooks must precede them
+//!   (source #310): the transform seam therefore fires once per build even
+//!   when an empty arm renders. This port evaluates the same chain before
+//!   the early returns, and everything downstream is identical.
 
 use std::borrow::Cow;
 use std::rc::Rc;
@@ -535,23 +538,14 @@ impl<'a, S: 'static> ChartView<'a, S> {
     /// `document.body` portal target): the toolbar's dropdowns and the
     /// expanded overlay mount there, the overlay last.
     pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+        // React's whole memo chain evaluates above the early returns — hooks
+        // must precede them (source #310): fields → recommendation →
+        // chartResult (the row cap) → transformData → renderConfig →
+        // splitConfigs. The transform seam therefore fires once per build
+        // even when an empty arm renders, over the capped result and with
+        // the live config.
         let fields = self.pipeline.infer_fields(self.result);
         let recommendation = self.pipeline.recommend(&fields, self.result.rows.len());
-
-        // React's early returns, order preserved: empty rows first, then a
-        // result with no numeric column. Either replaces the whole view.
-        if self.result.rows.is_empty() {
-            return ChartEmptyState::new(ChartEmptyReason::NoData).build(dark);
-        }
-        if !fields
-            .iter()
-            .any(|f| f.inferred_type == InferredFieldType::Numeric)
-        {
-            return ChartEmptyState::new(ChartEmptyReason::NoNumericField).build(dark);
-        }
-
-        // React's chartResult memo: the rows capped at MAX_CHART_ROWS, then
-        // the transform over the capped result.
         let chart_result = truncate(self.result);
         let transform = self.pipeline.transform(&chart_result, self.config);
         let render_config = render_config(self.config, &transform.series_keys);
@@ -568,6 +562,19 @@ impl<'a, S: 'static> ChartView<'a, S> {
         } else {
             Vec::new()
         };
+
+        // React's early returns, order preserved: empty rows first, then a
+        // result with no numeric column. Either replaces the whole view.
+        if self.result.rows.is_empty() {
+            return ChartEmptyState::new(ChartEmptyReason::NoData).build(dark);
+        }
+        if !fields
+            .iter()
+            .any(|f| f.inferred_type == InferredFieldType::Numeric)
+        {
+            return ChartEmptyState::new(ChartEmptyReason::NoNumericField).build(dark);
+        }
+
         let derived = Derived {
             fields,
             recommendation,

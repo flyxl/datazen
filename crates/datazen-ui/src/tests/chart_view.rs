@@ -441,6 +441,66 @@ fn an_empty_y_axis_config_renders_the_no_config_pane_inside_the_chart_area() {
     assert_in_window(&rt, 960.0, 640.0, "noConfig pane");
 }
 
+#[test]
+fn the_early_return_arms_still_evaluate_the_transform_seam_once() {
+    // React's memos evaluate above the early returns — hooks must precede
+    // them (source #310) — so an empty-arm render still hands the pipeline
+    // exactly one transform call, over the capped chartResult, with the
+    // live config. The audit pinned `recommendChart`'s call (its pin #5);
+    // this pin completes the protocol for `transformData`, which the port
+    // skipped on these arms before the fix.
+    //
+    // Empty rows → the noData arm: the transform sees the empty result.
+    let p = probe(StatementResult::default(), default_fields());
+    let rt = chart_runtime(p, (960.0, 640.0));
+    assert!(has_key(&rt, EMPTY_KEY), "the noData pane is the whole view");
+    assert_eq!(
+        rt.state.pipeline.transform_rows.borrow().len(),
+        1,
+        "the transform memo ran once above the early return, as React's hooks must"
+    );
+    assert_eq!(
+        rt.state.pipeline.transform_rows.borrow().last().copied(),
+        Some(0),
+        "the transform saw the truncated chartResult (0 rows here)"
+    );
+    assert_eq!(
+        rt.state.pipeline.transform_configs.borrow().last().cloned(),
+        Some(rt.state.config.clone()),
+        "the transform carried the live config the view rendered with"
+    );
+
+    // No numeric column, 1001 rows → the noNumericField arm: the cap ran
+    // above the return too, so the transform sees 1000, not the uncapped
+    // 1001 (the literal, not the imported constant, per the audit's ruling).
+    let p = probe(
+        rows_result(1001),
+        vec![field("label", InferredFieldType::Categorical)],
+    );
+    let rt = chart_runtime(p, (960.0, 640.0));
+    assert!(has_key(&rt, EMPTY_KEY), "the noNumericField pane is the whole view");
+    assert_eq!(
+        element(&rt, EMPTY_TEXT_KEY).text.as_deref(),
+        Some("需要至少一个数值列才能生成图表"),
+        "the arm is the noNumericField one"
+    );
+    assert_eq!(
+        rt.state.pipeline.transform_rows.borrow().len(),
+        1,
+        "one transform call on this arm too, not zero"
+    );
+    assert_eq!(
+        rt.state.pipeline.transform_rows.borrow().last().copied(),
+        Some(1000),
+        "the transform saw the capped chartResult (1001 rows → 1000)"
+    );
+    assert_eq!(
+        rt.state.pipeline.transform_configs.borrow().last().cloned(),
+        Some(rt.state.config.clone()),
+        "the transform carried the live config on this arm too"
+    );
+}
+
 // ---- The config initialisation paths -------------------------------------------
 
 #[test]
