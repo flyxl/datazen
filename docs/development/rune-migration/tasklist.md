@@ -189,7 +189,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T170 · components/sql-editor · 0.60d · components/sql-editor/extensions/executionState.ts components/sql-editor/extensions/types.ts
 - [ ] T171 · components · 0.90d · components/McpApprovalHost.tsx
 - [ ] T172 · windows/settings · 0.90d · windows/settings/AiSettingsSection.tsx
-- [ ] T173 · windows/connection · 0.80d · windows/connection/ContentStatusBar.tsx windows/connection/ContentToolbar.tsx
+- [x] T173 · windows/connection · 0.80d · windows/connection/ContentStatusBar.tsx windows/connection/ContentToolbar.tsx
 - [ ] T174 · windows/workspace · 0.90d · windows/workspace/WorkspaceTabBar.tsx
 - [ ] T175 · windows/dashboard · 0.90d · windows/dashboard/RunHistoryDrawer.tsx
 - [ ] T176 · windows/workflow · 0.30d · windows/workflow/workflowStepResultUtils.tsx
