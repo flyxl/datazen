@@ -229,6 +229,9 @@ mod batch_export_retest;
 // T067: the React ConnectionNavigatorTree port (groups, rows, keys, keyboard,
 // reveal and two-size two-theme geometry).
 mod connection_navigator_tree;
+// Independent T067 audit: isolated keyboard branches, active-descendant
+// mounted-row contract, filter trim/case, key preservation and object geometry.
+mod connection_navigator_tree_audit;
 
 // T068: MigrationJobFailureNotice (fail-closed refusal notice).
 mod migration_failure_notice;
