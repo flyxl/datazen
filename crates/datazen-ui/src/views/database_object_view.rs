@@ -235,21 +235,25 @@ pub(crate) fn build<S: 'static>(
                 ),
         );
     } else {
-        root = root.child(
-            col()
-                .key("db-object-editor")
-                .w_full()
-                .grow(1.0)
-                .min_h(0.0)
-                .child(
-                    text(state.ddl.clone())
-                        .key("db-object-ddl")
-                        .font(crate::sql_editor::editor_font())
-                        .color(k.c.text_base)
-                        .selectable(true)
-                        .wrap_anywhere(),
-                ),
+        // T322: the DDL text block is the real DDLView (read-only code block,
+        // copy control and header). The `db-object-ddl` root key is preserved.
+        let mut ddl_layer = Vec::new();
+        crate::views::ddl_view::build_snapshot::<S>(
+            &state.ddl,
+            None::<std::rc::Rc<dyn Fn(&mut S, &mut rune::Tx)>>,
+            dark,
+            &mut ddl_layer,
         );
+        let mut editor = col()
+            .key("db-object-editor")
+            .w_full()
+            .grow(1.0)
+            .min_h(0.0)
+            .min_w(0.0);
+        for element in ddl_layer {
+            editor = editor.child(element);
+        }
+        root = root.child(editor);
     }
     if !state.message.is_empty() {
         root = root.child(
