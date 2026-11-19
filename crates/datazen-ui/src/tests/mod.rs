@@ -233,6 +233,8 @@ mod table_data_connection_state_audit;
 mod metadata_cache;
 // Fresh-tester independent re-audit of the D1/D2 fix (test-only probes).
 mod metadata_cache_retest;
+// T081: relationPrediction/fromRelationMetadata.ts + relationMetadata contract gap fill.
+mod relation_prediction_ports;
 
 // Independent re-audit of merged T0-07 menu base.
 mod menus_merge_reaudit;
@@ -269,11 +271,20 @@ mod schema_diff_audit;
 
 mod connection_advanced_settings;
 mod connection_advanced_audit;
+// T059: the ConnectionAiNotes port (load/save, UTF-8 byte limit, timed feedback, geometry).
+mod connection_ai_notes;
 // T016: the batch-export dialog port.
 mod batch_export_dialog;
 mod batch_export_audit;
 // T016 fix retest: independent D1/D2 verification.
 mod batch_export_retest;
+
+// T067: the React ConnectionNavigatorTree port (groups, rows, keys, keyboard,
+// reveal and two-size two-theme geometry).
+mod connection_navigator_tree;
+// Independent T067 audit: isolated keyboard branches, active-descendant
+// mounted-row contract, filter trim/case, key preservation and object geometry.
+mod connection_navigator_tree_audit;
 
 // T068: MigrationJobFailureNotice (fail-closed refusal notice).
 mod migration_failure_notice;
@@ -419,3 +430,7 @@ mod temporal_math;
 mod timestamp_format;
 // T230: valuePresentation timestamp options validation (pathed problems).
 mod timestamp_config;
+// T056: the expanded filter condition editor port.
+mod filter_condition_editor;
+// T056 independent audit: ported contracts, dispatch paths, i18n, token events.
+mod filter_condition_editor_audit;

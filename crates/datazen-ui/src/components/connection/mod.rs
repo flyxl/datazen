@@ -6,3 +6,4 @@
 pub(crate) mod batch_export_dialog;
 pub(crate) mod batch_export_parts;
 pub(crate) mod connection_advanced_settings;
+pub(crate) mod connection_ai_notes;

@@ -72,10 +72,10 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [x] T053 · shell.ts · 0.90d · shell.ts
 - [x] T054 · components/ui · 0.30d · components/ui/Spinner.tsx
 - [ ] T055 · components/DataTable · 1.30d · components/DataTable/ColumnPresentationDialog.tsx · split
-- [ ] T056 · components/filter · 0.90d · components/filter/FilterConditionEditor.tsx
+- [x] T056 · components/filter · 0.90d · components/filter/FilterConditionEditor.tsx
 - [x] T057 · components/history · 1.00d · components/history/HistoryEntryCard.tsx components/history/HistoryFilterBar.tsx
 - [ ] T058 · components/query · 0.90d · components/query/QueryArtifactExport.tsx
-- [ ] T059 · components/connection · 0.90d · components/connection/ConnectionAiNotes.tsx
+- [x] T059 · components/connection · 0.90d · components/connection/ConnectionAiNotes.tsx
 - [ ] T060 · components/chart · 0.80d · components/chart/ChartEmptyState.tsx components/chart/ChartToolbar.tsx
 - [ ] T061 · components/ai · 0.80d · components/ai/AiCodeBlock.tsx
 - [x] T062 · components/migration · 0.50d · components/migration/MigrationJobFailureNotice.tsx
@@ -83,7 +83,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T064 · components · 0.90d · components/DbTypeBadge.tsx components/ErrorBoundary.tsx components/export/ExportColumnPicker.tsx
 - [ ] T065 · components/admin · 0.60d · components/admin/AdminSchemaFields.tsx components/admin/PrivilegeSelector.tsx
 - [ ] T066 · windows/settings · 0.30d · windows/settings/ai/ModelProfileDialog.tsx
-- [ ] T067 · windows/connection · 1.30d · windows/connection/ConnectionNavigatorTree.tsx · split
+- [x] T067 · windows/connection · 1.30d · windows/connection/ConnectionNavigatorTree.tsx · split
 - [ ] T068 · windows/workspace · 0.90d · windows/workspace/WappPageShell.tsx
 - [ ] T069 · windows/dashboard · 0.80d · windows/dashboard/ChartWidgetTile.tsx
 - [ ] T070 · windows/workflow · 1.30d · windows/workflow/WorkflowForm.tsx · split
@@ -97,7 +97,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [x] T078 · lib · 0.80d · lib/cellTypes.ts
 - [ ] T079 · lib/chart · 0.60d · lib/chart/fieldInference.ts lib/chart/format.ts
 - [ ] T080 · lib/metadata · 0.90d · lib/metadata/identity.ts
-- [ ] T081 · lib/relationMetadata · 0.90d · lib/relationMetadata/sessionConfig.ts lib/relationMetadata/types.ts lib/relationPrediction/fromRelationMetadata.ts
+- [x] T081 · lib/relationMetadata · 0.90d · lib/relationMetadata/sessionConfig.ts lib/relationMetadata/types.ts lib/relationPrediction/fromRelationMetadata.ts
 - [ ] T082 · lib/relationPrediction · 2.00d · lib/relationPrediction/predictRelations.ts · split
 - [ ] T083 · lib/session · 2.00d · lib/session/EditorSessionController.ts · split
 - [ ] T084 · lib/sqlDialects · 0.80d · lib/sqlDialects/identifierQuoting.ts lib/sqlDialects/index.ts
