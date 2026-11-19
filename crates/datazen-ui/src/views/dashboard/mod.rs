@@ -15,3 +15,7 @@ pub(crate) mod monitor_schedule_authorization;
 // T175: the run-history drawer (the right-anchored overlay with the run
 // index list and the loaded run's chart/table states).
 pub(crate) mod run_history_drawer;
+// T201: the widget editor drawer (the right-anchored form over the widget
+// config — title, source, refresh, the T146 monitor card, view mode, chart
+// axes, the alert rule — with the save guards and the dirty comparison).
+pub(crate) mod widget_editor_drawer;

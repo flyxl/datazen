@@ -722,3 +722,8 @@ mod monitor_schedule_authorization_audit;
 mod run_history_drawer_audit;
 // [check-only] new-module declaration
 mod dashboard_panel_audit;
+// T201: the widget editor drawer port (the form over the widget config —
+// every field's edit journey, the save guards and the normalized payload,
+// the chart-vs-table conditionals, the refresh-interval rules, the dirty
+// comparison, and the right-anchored max-w-md geometry).
+mod widget_editor_drawer_audit;
