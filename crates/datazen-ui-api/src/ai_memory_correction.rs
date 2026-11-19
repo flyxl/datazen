@@ -505,4 +505,140 @@ mod tests {
             }]
         );
     }
+
+    // [tester T179-audit] React `aiMemoryCorrection.ts:25` — the sameness
+    // arm is strict `===`: case-sensitive on the trimmed locals. Every
+    // other pin uses SQL that differs beyond case, so a case-insensitive
+    // port (`eq_ignore_ascii_case`, lowercase-compare) survived the round;
+    // both directions of a case-only difference must submit — and the
+    // wire input must forward each side's original casing. The content
+    // assertion's `connection_id`/`database` cells are also the only
+    // content-checked `None` scope in this suite (the M4 `unwrap_or_default`
+    // mutant survived without it): React's `connectionId: undefined` lands
+    // as `None`, never as `Some("")`.
+
+    #[test]
+    fn the_sameness_guard_is_case_sensitive() {
+        let commands = RecordingCommands::default();
+        commands.script_correction(Ok(Some(entry("m1"))));
+        commands.script_correction(Ok(Some(entry("m1"))));
+        for (original, current) in [("select 1", "SELECT 1"), ("SELECT 1", "select 1")] {
+            let outcome = submit_memory_correction_if_needed(
+                &commands,
+                &correction_submission(original, current),
+            );
+            assert_eq!(outcome, Some(entry("m1")), "({original:?}, {current:?})");
+        }
+        // Both directions submitted — each side's own casing on the wire.
+        assert_eq!(
+            commands.corrections(),
+            vec![
+                AiMemoryCorrectionInput {
+                    original_sql: "select 1".to_owned(),
+                    new_sql: "SELECT 1".to_owned(),
+                    connection_id: None,
+                    database: None,
+                },
+                AiMemoryCorrectionInput {
+                    original_sql: "SELECT 1".to_owned(),
+                    new_sql: "select 1".to_owned(),
+                    connection_id: None,
+                    database: None,
+                },
+            ]
+        );
+    }
+
+    // [tester T179-audit] React `aiMemoryCorrection.ts:23-24` — JS
+    // `.trim()` strips the whole Unicode White_Space set (NBSP U+00A0,
+    // ideographic space U+3000), and `str::trim` agrees. All prior fixtures
+    // pad with ASCII only, so an ASCII-only trim (`trim_ascii`) survived
+    // the round; these three arms kill it on the guard's blank arm, its
+    // sameness arm, and the wire input alike.
+
+    #[test]
+    fn the_trim_vocabulary_covers_unicode_whitespace() {
+        let commands = RecordingCommands::default();
+        commands.script_correction(Ok(Some(entry("m1"))));
+        // U+3000 padding only — equal after trim, so no submission.
+        let outcome = submit_memory_correction_if_needed(
+            &commands,
+            &correction_submission("\u{3000}SELECT 1\u{3000}", "SELECT 1"),
+        );
+        assert_eq!(outcome, None);
+        assert!(commands.corrections().is_empty());
+        // NBSP padding reaches the host trimmed.
+        let outcome = submit_memory_correction_if_needed(
+            &commands,
+            &correction_submission("\u{00A0}SELECT 1\u{00A0}", "SELECT 2"),
+        );
+        assert_eq!(outcome, Some(entry("m1")));
+        // A NBSP-only original is a blank half, not a submission.
+        let outcome = submit_memory_correction_if_needed(
+            &commands,
+            &correction_submission("\u{00A0}", "SELECT 2"),
+        );
+        assert_eq!(outcome, None);
+        assert_eq!(
+            commands.corrections(),
+            vec![AiMemoryCorrectionInput {
+                original_sql: "SELECT 1".to_owned(),
+                new_sql: "SELECT 2".to_owned(),
+                connection_id: None,
+                database: None,
+            }]
+        );
+    }
+
+    // [tester T179-audit] React `aiMemoryCorrection.ts:51-57` — the stale
+    // path's `connectionId: submission.connectionId, database:
+    // submission.database` are verbatim per target, and every prior stale
+    // pin used a trimmed `Some` scope: a scope-trimming port survived (M2),
+    // as did a `None → Some("")` default (M3). Both invocations below
+    // forward what the editor handed in — padded or absent.
+
+    #[test]
+    fn the_stale_scope_is_forwarded_verbatim_padded_or_absent() {
+        let commands = RecordingCommands::default();
+        commands.script_stale(Ok(Vec::new()));
+        commands.script_stale(Ok(Vec::new()));
+        // Padded scope reaches the host untrimmed.
+        mark_stale_for_schema_drops(
+            &commands,
+            &SchemaStaleSubmission {
+                sql: "DROP TABLE sales.orders;".to_owned(),
+                connection_id: Some(" conn-1 ".to_owned()),
+                database: Some(" sales ".to_owned()),
+            },
+        );
+        // Absent scope reaches the host as `None` — with the ALTER column
+        // arm still filled.
+        mark_stale_for_schema_drops(
+            &commands,
+            &SchemaStaleSubmission {
+                sql: "ALTER TABLE sales.orders DROP COLUMN IF EXISTS legacy_id;".to_owned(),
+                connection_id: None,
+                database: None,
+            },
+        );
+        assert_eq!(
+            commands.stales(),
+            vec![
+                AiMemoryStaleInput {
+                    connection_id: Some(" conn-1 ".to_owned()),
+                    database: Some(" sales ".to_owned()),
+                    schema: Some("sales".to_owned()),
+                    table: Some("orders".to_owned()),
+                    column: None,
+                },
+                AiMemoryStaleInput {
+                    connection_id: None,
+                    database: None,
+                    schema: Some("sales".to_owned()),
+                    table: Some("orders".to_owned()),
+                    column: Some("legacy_id".to_owned()),
+                },
+            ]
+        );
+    }
 }
