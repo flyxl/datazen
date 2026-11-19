@@ -234,6 +234,8 @@ mod table_data_connection_state;
 // T041 independent audit (tester): parity re-derived from the React source,
 // plus dependency-mirror completeness (keyset/grid/change enums, plan types).
 mod table_data_connection_state_audit;
+// T089: stores/tableData/countStrategy.ts — catalog prior + count mode.
+mod table_data_count_strategy;
 // T032: relationMetadata/metadataCache.ts port — standard wiring so the
 // `metadata_cache` test filter really runs these tests (tests::metadata_cache::*).
 mod metadata_cache;
