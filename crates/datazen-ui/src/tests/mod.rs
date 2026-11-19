@@ -237,6 +237,9 @@ mod chart_canvas_audit;
 // T059: the chart toolbar + empty-state ports (type switch, display toggles,
 // split/expand buttons and the export dropdown seam).
 mod chart_toolbar;
+// T102: the ChartView container port (config derivation, row cap, split
+// tiles, the expanded overlay and the lib/chart pipeline seam).
+mod chart_view;
 
 // T019: the workflow editor action bar port.
 mod workflow_action_bar;
