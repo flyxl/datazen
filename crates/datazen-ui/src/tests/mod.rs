@@ -330,3 +330,9 @@ mod migration_job_verdict;
 // T106 independent audit: i18n key resolution, boundary tone/gap polarity,
 // resume gating and adversarial two-size two-theme rect geometry.
 mod migration_job_verdict_audit;
+
+// T137: ConnectionShareDialog (export validation, import titles/actions, geometry).
+mod connection_share_dialog;
+// T137 independent audit: full error table, stale epochs, footer disable,
+// React-faithful field/error placement and adversarial geometry.
+mod connection_share_audit;
