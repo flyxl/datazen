@@ -239,3 +239,73 @@ fn the_connection_page_keeps_the_object_slot() {
     rt.frame(0.0);
     assert!(has_key(&rt, "db-object-host"), "the object view composition slot is stable");
 }
+
+#[test]
+fn connection_page_must_compose_the_real_DatabaseObjectView_not_just_a_zero_sized_slot() {
+    use std::cell::RefCell;
+    use crate::views::connection_content_with_vm;
+    use crate::views::content_view::ContentViewVm;
+    use crate::views::database_object_view::DatabaseObjectVm;
+
+    thread_local! {
+        static OBJECT_VM: RefCell<Option<ContentViewVm>> = RefCell::new(None);
+    }
+
+    fn composed_view(state: &crate::state_def::AppState, _cx: &mut Cx<crate::state_def::AppState>) -> El {
+        let vm = OBJECT_VM.with(|f| f.borrow().clone()).unwrap_or_default();
+        connection_content_with_vm(state, rune::tok::theme(true), true, &vm)
+    }
+
+    let identity = ObjectIdentity {
+        db_session_id: "sess-1".to_owned(),
+        database_type: Some("postgresql".to_owned()),
+        database: "app".to_owned(),
+        kind: ObjectKind::Function,
+        name: "users_by_status".to_owned(),
+        object_schema: Some("public".to_owned()),
+        object_signature: None,
+        object_target_schema: None,
+        object_target_name: None,
+    };
+    let vm = ContentViewVm {
+        object_vm: Some(DatabaseObjectVm {
+            identity,
+            state: ObjectViewState {
+                ddl: "SELECT 1;".to_owned(),
+                ..Default::default()
+            },
+        }),
+        ..Default::default()
+    };
+    OBJECT_VM.with(|f| *f.borrow_mut() = Some(vm));
+    let mut rt = Runtime::new(
+        crate::state_def::AppState::default(),
+        composed_view,
+        DESIGN,
+        Env { system_dark: true, scale: 1.0 },
+    );
+    rt.frame(0.0);
+    assert!(has_key(&rt, "db-object-host"), "the slot key is preserved");
+    assert!(has_key(&rt, "db-object-view"), "connection_page must compose the real DatabaseObjectView, not just a zero-sized slot");
+    assert!(has_key(&rt, "db-object-ddl"), "the composed view shows the object DDL");
+}
+
+#[test]
+fn long_message_text_wraps_inside_both_windows_and_palettes() {
+    let mut scene = Scene::new(ObjectKind::Function, None);
+    scene.state.loading = false;
+    scene.state.message = "x".repeat(320);
+    for size in [MIN, DESIGN] {
+        for dark in [true, false] {
+            let rt = runtime(Scene { dark, ..scene.clone() }, size);
+            let rect = element(&rt, "db-object-message-text").rect;
+            assert!(
+                rect[0] >= -0.5 && rect[2] <= size.0 + 0.5,
+                "db-object-message-text {:?} crosses window {:?} dark={dark}",
+                rect,
+                size
+            );
+            assert_inside(&rt, size, &format!("message wrap {size:?} dark={dark}"));
+        }
+    }
+}

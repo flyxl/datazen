@@ -69,7 +69,7 @@ pub(crate) struct ObjectIdentity {
 
 /// The three `useState` values plus the loaded DDL.
 #[allow(dead_code)] // VM surface; owned by the host until the panel store lands.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct ObjectViewState {
     pub ddl: String,
     pub loading: bool,
@@ -95,12 +95,14 @@ pub(crate) enum ObjectEvent {
 
 impl ObjectViewState {
     /// React `loadDdl` prologue: clear the prior message and show the spinner.
+    #[allow(dead_code)] // consumer: the object-detail host result feed (not landed); remove when wired.
     pub(crate) fn begin_load(&mut self) {
         self.loading = true;
         self.message.clear();
     }
 
     /// React's DDL answer: a failure is shown as a SQL comment, not an error bar.
+    #[allow(dead_code)] // consumer: the object-detail host result feed (not landed); remove when wired.
     pub(crate) fn apply_ddl(&mut self, result: Result<String, String>) {
         self.loading = false;
         match result {
@@ -110,6 +112,7 @@ impl ObjectViewState {
     }
 
     /// React `handleExecute` guard + payload readiness.
+    #[allow(dead_code)] // consumer: the object-detail host (not landed); remove when wired.
     pub(crate) fn begin_execute(&mut self) -> bool {
         if self.ddl.trim().is_empty() || self.loading || self.running {
             return false;
@@ -120,6 +123,7 @@ impl ObjectViewState {
     }
 
     /// React's execute answer: success shows the localized `objects.executeOk`.
+    #[allow(dead_code)] // consumer: the object-detail host result feed (not landed); remove when wired.
     pub(crate) fn apply_execute(&mut self, result: Result<(), String>) {
         self.running = false;
         self.message = match result {
@@ -132,6 +136,15 @@ impl ObjectViewState {
     pub(crate) fn execute_disabled(&self) -> bool {
         self.running || self.ddl.trim().is_empty() || self.loading
     }
+}
+
+/// The snapshot a host supplies when an object is selected; carried by
+/// `ContentViewVm` so `connection_page` can compose this view.
+#[allow(dead_code)] // composition VM; remove when the panel/object store lands.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct DatabaseObjectVm {
+    pub identity: ObjectIdentity,
+    pub state: ObjectViewState,
 }
 
 type ActionFn<S> = Rc<dyn Fn(&mut S, ObjectAction) + 'static>;
@@ -243,7 +256,14 @@ pub(crate) fn build<S: 'static>(
             row()
                 .key("db-object-message")
                 .w_full()
-                .child(text(state.message.clone()).key("db-object-message-text").wrap()),
+                .min_w(0.0)
+                .child(
+                    text(state.message.clone())
+                        .key("db-object-message-text")
+                        .w_full()
+                        .min_w(0.0)
+                        .wrap_anywhere(),
+                ),
         );
     }
     layer.push(root);

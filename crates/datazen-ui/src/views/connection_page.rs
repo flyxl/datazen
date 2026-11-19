@@ -138,6 +138,32 @@ pub(crate) fn connection_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
 /// `page_body`'s per-section keys) do not move.
 fn connection_content(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let vm = crate::views::content_view::ContentViewVm::from_host(state);
+    connection_content_with_vm(state, theme, dark, &vm)
+}
+
+/// The same content column with an explicit view model, so a host that owns an
+/// object selection can compose the real `DatabaseObjectView` into the slot.
+#[allow(dead_code)] // composition entry point; remove when the host owns object selection.
+pub(crate) fn connection_content_with_vm(
+    state: &AppState,
+    theme: tok::Theme,
+    dark: bool,
+    vm: &crate::views::content_view::ContentViewVm,
+) -> El {
+    let mut slot = row().key("db-object-host").w_full().min_w(0.0);
+    if let Some(object) = vm.object_vm.as_ref() {
+        let mut layer = Vec::new();
+        crate::views::database_object_view::build::<AppState>(
+            &object.identity,
+            &object.state,
+            None,
+            dark,
+            &mut layer,
+        );
+        slot = slot.grow(1.0).min_h(0.0).children(layer);
+    } else {
+        slot = slot.size(0.0, 0.0);
+    }
     col()
         .key("datazen-page")
         .grow(1.0)
@@ -147,11 +173,8 @@ fn connection_content(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .py(24.0)
         .gap(16.0)
         .fill(theme.bg)
-        .child(crate::views::content_view::build(state, theme, dark, &vm))
-        // T305: the database object detail view is composed here when the host
-        // owns an object selection. Until that panel/object store slice lands,
-        // keep a zero-sized keyed slot so the composition point is stable.
-        .child(row().key("db-object-host").size(0.0, 0.0))
+        .child(crate::views::content_view::build(state, theme, dark, vm))
+        .child(slot)
 }
 
 /// The title band: React's `titleBarLeft` (back + menu bar), the centred title,
