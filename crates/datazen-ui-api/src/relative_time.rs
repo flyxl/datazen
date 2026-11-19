@@ -288,6 +288,18 @@ mod tests {
     }
 
     #[test]
+    fn formats_the_final_hour_before_the_day_boundary() {
+        // [tester] The hour bucket's upper boundary was unpinned: the React
+        // suite's largest formatted hour is 5. 23 hours is still the hour
+        // bucket; the day cut is a full 24.
+        assert_eq!(format_relative_time(NOW - 23.0 * HOUR_MS, Some(NOW)), "23 hours ago");
+        assert_eq!(
+            get_relative_time_parts(NOW - 23.0 * HOUR_MS, Some(NOW)),
+            Some(RelativeTimeParts { value: -23, unit: RelativeTimeUnit::Hour })
+        );
+    }
+
+    #[test]
     fn formats_days_up_to_the_7_day_cutoff() {
         // Intl.RelativeTimeFormat with numeric:'auto' renders -1 day as
         // "yesterday" — the mirror keeps that exact string.
@@ -305,6 +317,33 @@ mod tests {
         assert_eq!(formatted, "May 4, 2026");
         assert!(!formatted.contains("day"));
         assert!(!formatted.is_empty());
+    }
+
+    #[test]
+    fn falls_back_to_a_short_date_just_beyond_the_window() {
+        // [tester] The beyond-side of the cutoff was unpinned: nothing
+        // stopped the window from quietly widening to 8 days. One
+        // millisecond past the exported `RELATIVE_WINDOW_MS` —
+        // 2026-09-04T11:59:59.999Z, UTC day Sep 4 — must already be a date.
+        assert_eq!(
+            format_relative_time(NOW - RELATIVE_WINDOW_MS - 1.0, Some(NOW)),
+            "Sep 4, 2026"
+        );
+        // The first whole day past the window.
+        assert_eq!(format_relative_time(NOW - 8.0 * DAY_MS, Some(NOW)), "Sep 3, 2026");
+    }
+
+    #[test]
+    fn short_date_pins_the_leap_day_and_the_epoch_day_zero() {
+        // [tester] `civil_from_days`'s leap term was unpinned: every pinned
+        // date (May/Sep 2026) is non-leap, where dropping the term changes
+        // nothing. 2024-02-29T00:00:00Z is a leap day.
+        assert_eq!(format_relative_time(1_709_164_800_000.0, Some(NOW)), "Feb 29, 2024");
+        // Day zero — the earliest civil day a valid timestamp can hit.
+        // (`timestamp <= 0` returns "" first, so negative day counts are
+        // unreachable by contract; `format_relative_time(-86_400_000.0)`
+        // pins that side already.)
+        assert_eq!(format_relative_time(1.0, Some(NOW)), "Jan 1, 1970");
     }
 
     #[test]
@@ -373,5 +412,16 @@ mod tests {
         let ts = real_clock_ms() - 2.0 * HOUR_MS;
         let formatted = format_relative_time(ts, Some(f64::NAN));
         assert!(formatted.contains("hour"), "formatted: {formatted}");
+    }
+
+    #[test]
+    fn unit_as_str_pins_the_react_literals() {
+        // [tester] React's `unit: 'minute' | 'hour' | 'day'` union crosses
+        // to an Intl consumer as these literals (`RelativeTimeUnit::as_str`);
+        // no other test in the crate exercises them, so the mirror table
+        // was unpinned.
+        assert_eq!(RelativeTimeUnit::Minute.as_str(), "minute");
+        assert_eq!(RelativeTimeUnit::Hour.as_str(), "hour");
+        assert_eq!(RelativeTimeUnit::Day.as_str(), "day");
     }
 }

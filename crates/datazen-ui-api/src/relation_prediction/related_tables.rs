@@ -361,6 +361,80 @@ mod tests {
     }
 
     #[test]
+    fn sorts_equal_boost_hints_by_name_ascending() {
+        // [tester] The comparator's name tiebreak was unpinned: every React
+        // it() that sorts has distinct boosts. Two declared targets at the
+        // same boost, with the alphabetically-later one loaded (and pushed)
+        // first — only `name asc` can produce this order.
+        let w = PredictionTable {
+            id: "w".to_string(),
+            name: "w".to_string(),
+            columns: vec![col("id"), col("zeta_id")],
+            declared_foreign_keys: vec![declared_fk(&["zeta_id"], "zeta", &["id"])],
+            ..base_orders()
+        };
+        let zeta = PredictionTable {
+            id: "zeta".to_string(),
+            name: "zeta".to_string(),
+            columns: vec![col("id")],
+            ..base_orders()
+        };
+        let m = PredictionTable {
+            id: "m".to_string(),
+            name: "m".to_string(),
+            columns: vec![col("id"), col("beta_id")],
+            declared_foreign_keys: vec![declared_fk(&["beta_id"], "beta", &["id"])],
+            ..base_orders()
+        };
+        let beta = PredictionTable {
+            id: "beta".to_string(),
+            name: "beta".to_string(),
+            columns: vec![col("id")],
+            ..base_orders()
+        };
+        assert_eq!(
+            related_table_hints(&[w, zeta, m, beta]),
+            vec![
+                hint("beta", RelatedTableOrigin::Declared, DECLARED_RELATION_BOOST, "m"),
+                hint("zeta", RelatedTableOrigin::Declared, DECLARED_RELATION_BOOST, "w"),
+            ]
+        );
+    }
+
+    #[test]
+    fn keeps_the_first_hint_when_an_equal_boost_hint_arrives_second() {
+        // [tester] `push`'s `>=` was unpinned: within `related_table_hints`
+        // declared (20) always precedes predicted (12), so no React it()
+        // exercises an equal-boost collision. Two loaded tables declare the
+        // same target at the same boost — React's `existing.boost >=
+        // hint.boost` keeps the first `via` (`w`), not the last.
+        let w = PredictionTable {
+            id: "w".to_string(),
+            name: "w".to_string(),
+            columns: vec![col("id"), col("x_id")],
+            declared_foreign_keys: vec![declared_fk(&["x_id"], "x", &["id"])],
+            ..base_orders()
+        };
+        let m = PredictionTable {
+            id: "m".to_string(),
+            name: "m".to_string(),
+            columns: vec![col("id"), col("x_id")],
+            declared_foreign_keys: vec![declared_fk(&["x_id"], "x", &["id"])],
+            ..base_orders()
+        };
+        let x = PredictionTable {
+            id: "x".to_string(),
+            name: "x".to_string(),
+            columns: vec![col("id")],
+            ..base_orders()
+        };
+        assert_eq!(
+            related_table_hints(&[w, m, x]),
+            vec![hint("x", RelatedTableOrigin::Declared, DECLARED_RELATION_BOOST, "w")]
+        );
+    }
+
+    #[test]
     fn folds_names_so_quoting_differences_resolve_to_one_entry() {
         // React's fold argument: `(name) => name.toLowerCase()`.
         let map = related_table_boost_map(
@@ -389,5 +463,15 @@ mod tests {
             Some(&hint("users", RelatedTableOrigin::Declared, 20, "b"))
         );
         assert_eq!(map.len(), 1);
+    }
+
+    #[test]
+    fn origin_as_str_pins_the_react_literals() {
+        // [tester] The `origin: 'declared' | 'predicted'` union crosses to
+        // consumers as these literals (`RelatedTableOrigin::as_str`); no
+        // other test in the crate exercises them, so the mirror table was
+        // unpinned.
+        assert_eq!(RelatedTableOrigin::Declared.as_str(), "declared");
+        assert_eq!(RelatedTableOrigin::Predicted.as_str(), "predicted");
     }
 }
