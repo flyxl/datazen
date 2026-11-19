@@ -84,30 +84,8 @@ use super::filter_operators::{
     convert_filter_value, normalize_operator_for_column, operators_for_column, static_operator,
     value_input_for, FilterValueInputKind,
 };
+use super::filter_types::FilterColumn;
 use super::filter_values::{to_pair, to_tokens};
-
-/// A column the filter editor can filter on.
-///
-/// React `components/filter/types.ts` (`FilterColumn`), owned by T216. It lives
-/// here until T216 lands because T056 owns `components/filter/`; T216 moves it
-/// and deletes this copy. `data_type` is React's `type` — the driver's type
-/// string (`int4`, `varchar(64)`, …); `None` falls back to the text operators.
-#[allow(dead_code)] // T216 owns this type; delete this local copy when its module lands.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct FilterColumn {
-    pub name: String,
-    pub data_type: Option<String>,
-}
-
-#[allow(dead_code)] // T216 owns this type; delete this local copy when its module lands.
-impl FilterColumn {
-    pub(crate) fn new(name: impl Into<String>, data_type: Option<&str>) -> Self {
-        FilterColumn {
-            name: name.into(),
-            data_type: data_type.map(str::to_owned),
-        }
-    }
-}
 
 /// Which of the editor's two select listboxes is open.
 ///
