@@ -172,7 +172,8 @@ fn read_job_counter_accepts_numbers_and_text() {
         read_job_counter(Some(&JobCounter::Text("007".to_string()))),
         Some(7)
     );
-    // The largest safe integer survives; one past it does not.
+    // The largest safe integer survives as a string; one past it does not
+    // (the string branch keeps React's `Number.isSafeInteger` gate).
     assert_eq!(
         read_job_counter(Some(&JobCounter::Text("9007199254740991".to_string()))),
         Some(9_007_199_254_740_991)
@@ -180,6 +181,17 @@ fn read_job_counter_accepts_numbers_and_text() {
     assert_eq!(
         read_job_counter(Some(&JobCounter::Number(9_007_199_254_740_991.0))),
         Some(9_007_199_254_740_991)
+    );
+    // The number branch has NO safe-integer gate (React: only
+    // `Number.isFinite(value) && value >= 0`, then `Math.trunc`), so 2^53
+    // — and 10^16 — read as themselves.
+    assert_eq!(
+        read_job_counter(Some(&JobCounter::Number(9_007_199_254_740_992.0))),
+        Some(9_007_199_254_740_992)
+    );
+    assert_eq!(
+        read_job_counter(Some(&JobCounter::Number(10_000_000_000_000_000.0))),
+        Some(10_000_000_000_000_000)
     );
 }
 
@@ -205,11 +217,7 @@ fn read_job_counter_rejects_what_react_rejects() {
         read_job_counter(Some(&JobCounter::Number(f64::INFINITY))),
         None
     );
-    // One past the safe-integer gate.
-    assert_eq!(
-        read_job_counter(Some(&JobCounter::Number(9_007_199_254_740_992.0))),
-        None
-    );
+    // The safe-integer gate lives on the string branch only.
     assert_eq!(
         read_job_counter(Some(&JobCounter::Text("9007199254740993".to_string()))),
         None

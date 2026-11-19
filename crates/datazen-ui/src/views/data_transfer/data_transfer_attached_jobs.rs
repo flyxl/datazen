@@ -70,8 +70,10 @@ use rune_kit::{Button, ButtonVariant, ControlSize, Kit};
 use crate::i18n::t;
 use crate::ui::kit::kit;
 
-/// JS `Number.MAX_SAFE_INTEGER` (`2^53 - 1`): the largest integer
-/// [`read_job_counter`] trusts, exactly as React's `Number.isSafeInteger`.
+/// JS `Number.MAX_SAFE_INTEGER` (`2^53 - 1`): the largest integer the
+/// string branch of [`read_job_counter`] trusts, exactly as React's
+/// `Number.isSafeInteger` on the string branch. The number branch has no
+/// safe-integer gate.
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
 /// React `JobState` (`backend-client/types/jobs.ts:55`):
@@ -143,10 +145,16 @@ pub(crate) struct JobProgress {
 }
 
 /// `readJobCounter` (`lib/migrationJobVerdict.ts:124-141`): read a progress
-/// counter, or `None` when it cannot be trusted. Numbers must be finite,
-/// non-negative and safe integers (fractional parts truncate, as
-/// `Math.trunc` does); strings are trimmed first and must then be one or
-/// more ASCII digits that parse to a safe integer.
+/// counter, or `None` when it cannot be trusted. Numbers must be finite and
+/// non-negative (fractional parts truncate, as `Math.trunc` does); there is
+/// no safe-integer gate on the number branch — React only checks
+/// `Number.isFinite(value) && value >= 0`. Strings are trimmed first and must
+/// then be one or more ASCII digits that parse to a safe integer.
+/// Out of model: a JSON number above `u64::MAX` saturates to `u64::MAX` on
+/// the `as u64` cast, where JS would print it in exponent form (e.g. `1e+30`)
+/// in the counts line; `u64` cannot express it. The real wire form is a
+/// decimal string, so this only bites on a JSON number input, never on a
+/// real backend counter.
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
 pub(crate) fn read_job_counter(value: Option<&JobCounter>) -> Option<u64> {
     match value {
@@ -156,9 +164,10 @@ pub(crate) fn read_job_counter(value: Option<&JobCounter>) -> Option<u64> {
                 return None;
             }
             let truncated = value.trunc();
-            if truncated > MAX_SAFE_INTEGER as f64 {
-                return None;
-            }
+            // No safe-integer gate here: React's number branch is only
+            // `Number.isFinite(value) && value >= 0 ? Math.trunc(value) : null`
+            // (`lib/migrationJobVerdict.ts:124-131`). The safe-integer gate
+            // lives only on the string branch below.
             Some(truncated as u64)
         }
         Some(JobCounter::Text(value)) => {
