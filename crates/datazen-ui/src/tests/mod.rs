@@ -283,6 +283,9 @@ mod ai_code_block_audit;
 // cancel disposition + state machine, mounted strip).
 mod data_transfer_attached_jobs;
 
+// T073 audit: number-branch safe-integer gate (React has none on numbers).
+mod data_transfer_attached_jobs_audit;
+
 // T027: SchemaDiffPanel port and its independent audit.
 mod schema_diff_panel;
 mod schema_diff_audit;
