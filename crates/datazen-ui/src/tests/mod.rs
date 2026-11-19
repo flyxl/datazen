@@ -586,6 +586,11 @@ mod install_wapp_dialog;
 // T078: chart field inference and number/axis formatting.
 mod chart_field_inference;
 mod chart_format;
+// T117: the post-query table-vs-chart decision.
+mod chart_post_query_view;
+// T117 independent audit: fresh vectors (float8/numeric/timestamptz
+// columns, rowless corners, the four-way fallback grid).
+mod chart_post_query_view_audit;
 // T078 independent audit: type-name substrings, Number/Date.parse
 // deviations, Intl fraction rounding, the 1e4 compact cutoff.
 mod chart_field_inference_audit;
