@@ -220,6 +220,9 @@ mod page_unload;
 mod page_unload_audit;
 // T208: lib/session/queryPanelSessionRoot.ts port (root singleton + identity).
 mod query_panel_session_root;
+// T208 independent audit: ambient exports, independent namespace defaults,
+// exact fail-loud messages.
+mod query_panel_session_root_audit;
 
 // Independent re-audit of merged T0-07 menu base.
 mod menus_merge_reaudit;
