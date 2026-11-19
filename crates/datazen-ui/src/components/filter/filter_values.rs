@@ -6,24 +6,26 @@
 //! a string. The panel reads both forms, so the parsing lives in **one** place:
 //! the editor and the summary must never disagree about what a value says.
 //!
-//! ## Home and removal stage
+//! ## Home
 //!
-//! The React file is `components/filter/filterValues.ts`, owned by T216
-//! (`components/filter/types.ts` + value shapes). It lives next to the editor
-//! until then because T056 owns `components/filter/` and
-//! [`super::filter_condition_editor::FilterConditionEditor`] is its only
-//! consumer. T216 moves the two functions into its own module and deletes this
-//! copy.
-
-// Dead-code lint is silenced per item below: T216 owns this file's permanent
-// home and deletes these two local copies when its module lands.
+//! This is T216's permanent home for the React `filterValues.ts` contract. The
+//! typed [`FilterValue`] mirror maps onto React's `Value` forms as follows:
+//!
+//! | React `Value`            | Rune `FilterValue`     |
+//! |--------------------------|------------------------|
+//! | `null` / `undefined`     | `None`                 |
+//! | scalar (`string`/number)  | `Single(text)`         |
+//! | array                     | `Tokens(..)` / `Pair(..)` |
+//!
+//! The two functions below preserve React's exact boundary behaviour: an array
+//! keeps every entry (including empty strings), a comma string is split,
+//! trimmed and has its empty parts dropped, and `null` is always empty.
 
 use super::filter_condition_chip::FilterValue;
 
 use super::filter_operators::split_tokens;
 
 /// The value of a set operator (`in` / `notIn`) as a list of strings.
-#[allow(dead_code)] // T216 owns this helper; delete this copy when its module lands.
 pub(crate) fn to_tokens(value: &FilterValue) -> Vec<String> {
     match value {
         FilterValue::Tokens(tokens) => tokens.clone(),
@@ -35,7 +37,6 @@ pub(crate) fn to_tokens(value: &FilterValue) -> Vec<String> {
 }
 
 /// The value of a range operator (`between` / `notBetween`) as its two bounds.
-#[allow(dead_code)] // T216 owns this helper; delete this copy when its module lands.
 pub(crate) fn to_pair(value: &FilterValue) -> (String, String) {
     match value {
         FilterValue::Pair(lower, upper) => (lower.clone(), upper.clone()),
