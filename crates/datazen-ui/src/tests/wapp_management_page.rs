@@ -98,24 +98,38 @@ fn escape(rt: &mut Runtime<AppState>) {
 
 /// Search text lands in the page's box the way React's `fireEvent.change`
 /// does — through the state the field binds, observed through the cards the
-/// next frame renders (the field-kit precedent for driving a bound field).
+/// next frame renders (the field-kit precedent for driving a bound field:
+/// the write itself, then `invalidate`, so the next frame re-runs the view
+/// and the cards answer the needle it reads).
 fn search(rt: &mut Runtime<AppState>, needle: &str) {
     rt.state.wapp_search = rune::TextEdit::new(needle.to_owned());
+    rt.invalidate();
     rt.frame(0.0);
     rt.frame(0.0);
 }
 
-/// The laid-out cards' keys — each card's own element (its sub-parts carry
-/// compound keys off the card key, one dash-part deeper).
+/// The laid-out cards' keys — each card's own element. A card's sub-parts
+/// carry compound keys off the card key, one dash-part deeper, and wapp ids
+/// carry dashes of their own (`acme.bill-audit`), so a dash-part count
+/// cannot tell a sub-part from a container: the containers are the
+/// `extension-card-*` keys that no other laid-out key extends across a dash.
 fn cards(rt: &Runtime<AppState>) -> Vec<String> {
-    rt.elements()
+    let keys: Vec<String> = rt
+        .elements()
         .iter()
-        .filter(|e| {
-            e.key.as_deref().is_some_and(|k| {
-                k.starts_with("extension-card-") && k.split('-').count() == 4 && !e.exiting
+        .filter(|e| !e.exiting)
+        .filter_map(|e| e.key.clone())
+        .filter(|k| k.starts_with("extension-card-"))
+        .collect();
+    keys.iter()
+        .filter(|k| {
+            !keys.iter().any(|parent| {
+                parent.len() < k.len()
+                    && k.starts_with(parent.as_str())
+                    && k.as_bytes().get(parent.len()) == Some(&b'-')
             })
         })
-        .map(|e| e.key.clone().unwrap_or_default())
+        .cloned()
         .collect()
 }
 
@@ -199,6 +213,11 @@ fn the_filter_defaults_to_workspace_and_switches_through_all_and_theme_chips() {
 
     // Theme: the theme-only wapp, and only it.
     click(&mut rt, "extension-filter-theme");
+    // React's `transition-colors`: the selected chip's fill rides a color
+    // track that starts at the old value — a zero-delta frame holds it
+    // there, so the selection reads once the transition settles.
+    rt.settle_all();
+    rt.frame(0.0);
     assert_eq!(cards(&rt).len(), 1, "the theme view lists the theme-only wapp");
     assert!(
         has_key(&rt, "extension-card-acme.midnight-name"),
@@ -341,6 +360,11 @@ fn the_uninstall_confirm_asks_by_name_and_the_answers_route() {
 
     click(&mut rt, "extension-card-acme.bill-audit-uninstall");
     assert!(has_key(&rt, "wapp-remove-dialog"), "the ask opened the confirm");
+    // The dialog's mount reveal has to land before a press reaches it, as
+    // the live window's frames would (the rail-modals suite settles the
+    // same way before pressing inside a dialog).
+    rt.settle_all();
+    rt.frame(0.0);
     assert_eq!(
         element(&rt, "wapp-remove-dialog-message").text.as_deref(),
         Some(t("extensions.page.uninstallMessage").replace("{name}", "Bill Audit").as_str()),
@@ -366,6 +390,8 @@ fn the_uninstall_confirm_asks_by_name_and_the_answers_route() {
     // Confirm runs the store's remove — the seam's honest failure branch,
     // the error React's catch lands in the page's action slot.
     click(&mut rt, "extension-card-acme.bill-audit-uninstall");
+    rt.settle_all();
+    rt.frame(0.0);
     click(&mut rt, "extension-remove-confirm");
     assert!(!has_key(&rt, "wapp-remove-dialog"), "the confirm settled the ask");
     assert_eq!(
@@ -554,7 +580,11 @@ fn the_page_fits_both_window_sizes_and_both_themes() {
     // centered content column caps at React's max-w-5xl (1024).
     for (w, h) in [(960.0, 640.0), (1440.0, 816.0)] {
         for dark in [true, false] {
-            let rt = page_runtime(vec![wapp(), theme_wapp()], (w, h), dark);
+            let mut rt = page_runtime(vec![wapp(), theme_wapp()], (w, h), dark);
+            // The geometry contract walks both kinds of card, and the default
+            // Workspace filter hides the theme-only wapp (the filter contract
+            // above pins that), so the "all" view is what lays both out.
+            click(&mut rt, "extension-filter-all");
             let content = element(&rt, "extension-page-content");
             assert!(
                 content.rect[0] >= -0.5 && content.rect[0] + content.rect[2] <= w + 0.5,

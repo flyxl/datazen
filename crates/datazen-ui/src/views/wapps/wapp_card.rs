@@ -199,8 +199,12 @@ pub(crate) fn wapp_card(wapp: &WappSummaryVm, dark: bool) -> El {
     card = card.child(card_footer(wapp, &k, &card_key, api_mismatch));
 
     // React: `dimmed && 'opacity-60'` — the whole card composites at 60%.
+    // The element's own opacity is the one the a11y tree's opacity channel
+    // reads (a `layer_opacity` paints the same dim but never reports), and
+    // only a fully transparent element stops taking presses — the dimmed
+    // card's uninstall stays live, as React's un-disabled button does.
     if dimmed {
-        card = card.layer_opacity(0.6);
+        card = card.opacity(0.6);
     }
     card
 }
