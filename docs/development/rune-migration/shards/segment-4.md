@@ -43,7 +43,7 @@
 - [ ] T132 · commands · 0.90d · commands/artifact.ts
 - [ ] T141 · components/sql-editor · 3.40d · components/sql-editor/editorExtensions.ts · split
 - [x] T143 · windows/settings · 0.50d · windows/settings/ai/ModelProfileListItem.tsx
-- [ ] T145 · windows/workspace · 0.90d · windows/workspace/WorkspaceNavigator.tsx
+- [x] T145 · windows/workspace · 0.90d · windows/workspace/WorkspaceNavigator.tsx
 - [ ] T146 · windows/dashboard · 0.90d · windows/dashboard/MonitorScheduleAuthorization.tsx
 - [ ] T148 · windows/onboarding · 0.90d · windows/onboarding/steps/AiProviderStep.tsx
 - [ ] T151 · windows/schema-diff · 0.30d · windows/schema-diff/SchemaDiffObjectsStep.tsx
