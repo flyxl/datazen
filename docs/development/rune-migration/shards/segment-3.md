@@ -16,7 +16,7 @@
 - [x] T026 · windows/backup · 1.30d · windows/backup/BackupWindow.tsx · split
 - [x] T028 · lib/chart · 0.90d · lib/chart/export.ts
 - [x] T039 · stores · 0.90d · stores/activeConnectionStore.ts
-- [ ] T041 · stores/tableData · 0.30d · stores/tableData/connectionState.ts
+- [~] T041 · stores/tableData · 0.30d · stores/tableData/connectionState.ts
 - [ ] T043 · platform · 2.00d · platform/blobTablesExporter.ts · split
 - [ ] T049 · app.ts · 0.30d · app.ts
 - [x] T053 · components/ui · 0.30d · components/ui/Spinner.tsx
