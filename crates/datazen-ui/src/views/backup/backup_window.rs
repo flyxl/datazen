@@ -161,7 +161,6 @@ use crate::icons::{
     ICON_ALERT_TRIANGLE, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT, ICON_CONNECTIONS, ICON_COPY,
     ICON_HARD_DRIVE,
 };
-use crate::ui::badge::BadgeTone;
 use crate::ui::dialog::Dialog;
 use crate::ui::field::TextField;
 use crate::ui::kit::kit;
@@ -240,59 +239,25 @@ pub(crate) struct RestoreConfirm {
     pub epoch: u64,
 }
 
-/// React `getDbIcon` (`lib/databaseTypes.ts`): the driver's short
-/// label and `iconBg` tone, from the shipped driver metas
-/// (`crates/drivers/*/ui/meta.ts`); an unknown type falls back to
-/// `DB` on the neutral tone.
-pub(crate) fn db_badge_meta(db_type: &str) -> (&'static str, BadgeTone) {
-    match db_type {
-        "mysql" => ("My", BadgeTone::Warning),
-        "mariadb" => ("Ma", BadgeTone::Warning),
-        "doris" => ("Do", BadgeTone::Warning),
-        "starrocks" => ("Sr", BadgeTone::Warning),
-        "manticore" => ("Mc", BadgeTone::Warning),
-        "ob_oracle" => ("Ob", BadgeTone::Warning),
-        "postgresql" => ("Pg", BadgeTone::Accent),
-        "questdb" => ("Qd", BadgeTone::Accent),
-        "cloudberry" => ("Cb", BadgeTone::Accent),
-        "sqlite" => ("Lt", BadgeTone::Success),
-        "rqlite" => ("Rq", BadgeTone::Accent),
-        "turso" => ("Tu", BadgeTone::Success),
-        "sqlserver" => ("Ss", BadgeTone::Danger),
-        "clickhouse" => ("Ch", BadgeTone::Warning),
-        "duckdb" => ("Dk", BadgeTone::Accent),
-        "redis" => ("Rd", BadgeTone::Danger),
-        "mongodb" => ("Mb", BadgeTone::Success),
-        "elasticsearch" => ("Es", BadgeTone::Warning),
-        "hbase" => ("Hb", BadgeTone::Warning),
-        "influxdb" => ("If", BadgeTone::Warning),
-        "vector" => ("Vc", BadgeTone::Success),
-        "victoriametrics" => ("Vm", BadgeTone::Accent),
-        _ => ("DB", BadgeTone::Neutral),
-    }
-}
+// T063 moved the driver-meta table and the tone-fill projection to
+// their canonical home, `components::db_type_badge`; re-exported here
+// so the Backup window's existing `views::backup::db_badge_meta` path
+// keeps working.
+pub(crate) use crate::components::db_type_badge::{badge_tone_fill, db_badge_meta};
 
 /// React `DbTypeBadge`'s letter-tile fallback (`components/
 /// DbTypeBadge.tsx`): a `size` square, `rounded-lg`, the short label
 /// in bold white on the tone fill. The font is 9pt at size 20
 /// (`badgeFontSize`), matching the window's `size={20}` use.
 pub(crate) fn db_type_badge(key: impl Into<String>, db_type: &str, size: f32, dark: bool) -> El {
-    let k = kit(dark);
     let (label, tone) = db_badge_meta(db_type);
-    let fill = match tone {
-        BadgeTone::Neutral => k.c.text_faint,
-        BadgeTone::Success => k.c.success.fg,
-        BadgeTone::Warning => k.c.warning.fg,
-        BadgeTone::Danger => k.c.danger.fg,
-        BadgeTone::Accent => k.c.bg_accent,
-    };
     row()
         .key(key.into())
         .w(size)
         .h(size)
         .center()
         .radius(8.0)
-        .fill(fill)
+        .fill(badge_tone_fill(tone, dark))
         .child(
             text(label.to_owned())
                 .font(TextStyle::new(9.0, 700.0).lh(11.0))

@@ -11,6 +11,8 @@ pub(crate) mod ai;
 pub(crate) mod connection;
 pub(crate) mod data_table;
 pub(crate) mod chart;
+pub(crate) mod db_type_badge;
+pub(crate) mod error_boundary;
 pub(crate) mod export;
 pub(crate) mod filter;
 pub(crate) mod filter_bar;

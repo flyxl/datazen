@@ -249,6 +249,13 @@ mod explain_plan_tree;
 // key collisions, clipped+scrollable overflow, light-theme window fit.
 mod explain_plan_audit;
 
+// T063: DbTypeBadge port (meta table, parent map, sizing, mounted tile).
+mod db_type_badge;
+// T063: ErrorBoundary port (state machine, fallbacks, mounted fallback).
+mod error_boundary;
+// T063: ExportColumnPicker port (order, selection, toggles, bulk actions).
+mod export_column_picker;
+
 // T057: QueryArtifactExport port (dedup, visibility, labels, state machine,
 // mounted bar with the in-flight guard and status lines).
 mod query_artifact_export;
