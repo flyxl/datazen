@@ -1,6 +1,7 @@
 //! View modules.
 
 mod chrome;
+mod connection_page;
 mod connections;
 mod connections_home;
 mod dashboards_workflows;
@@ -13,6 +14,7 @@ mod tools_sync;
 mod workspace;
 
 pub(crate) use chrome::*;
+pub(crate) use connection_page::*;
 pub(crate) use connections::*;
 pub(crate) use connections_home::*;
 pub(crate) use dashboards_workflows::*;
