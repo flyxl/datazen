@@ -318,3 +318,6 @@ mod migration_job_verdict_audit;
 
 // T156: structureEditor/types.ts contract verification and gap-fill.
 mod structure_editor_types;
+// T156 independent audit: full 20-field capability surface, nested UiConfig
+// defaults, duplicate-definition and bare-panic source guards.
+mod structure_editor_types_audit;
