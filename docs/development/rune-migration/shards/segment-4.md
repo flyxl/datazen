@@ -64,7 +64,7 @@
 - [ ] T198 · windows/settings · 0.90d · windows/settings/AiToolBridgeSection.tsx
 - [x] T200 · windows/workspace · 0.90d · windows/workspace/WorkspaceView.tsx
 - [x] T201 · windows/dashboard · 1.30d · windows/dashboard/WidgetEditorDrawer.tsx · split
-- [ ] T203 · windows/onboarding · 0.90d · windows/onboarding/steps/ManualConnectionStep.tsx
+- [x] T203 · windows/onboarding · 0.90d · windows/onboarding/steps/ManualConnectionStep.tsx
 - [ ] T206 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffRightPanel.tsx
 - [x] T209 · lib/valuePresentation · 0.80d · lib/valuePresentation/temporalMath.ts
 - [ ] T210 · hooks · 0.90d · hooks/useColumnStats.ts
