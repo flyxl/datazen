@@ -171,6 +171,10 @@ mod global_query_history_audit;
 mod copy_button;
 // T253-T256: the .ts support layer semantics.
 mod support_layer_audit;
+// T036: lib/structureEditor .ts helper parity (pure value logic).
+mod structure_editor_helpers;
+// T036 independent audit: extra edge cases on the ported helpers.
+mod structure_editor_audit;
 // T034: React lib/session/counters.ts parity (counter + handle value logic).
 mod counters;
 // T034 independent audit: 2^53 gate, branch order, regex-vs-BigInt faithfulness.
