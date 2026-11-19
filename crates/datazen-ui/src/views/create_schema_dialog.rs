@@ -22,7 +22,7 @@
 use rune::El;
 
 use crate::views::create_database_dialog::{
-    build, AdminCreateAction, AdminCreateSpec, AdminCreateState, CreateDialogKind,
+    build, build_snapshot, AdminCreateAction, AdminCreateSpec, AdminCreateState, CreateDialogKind,
 };
 
 /// The exact wrapper values from React `CreateSchemaDialog`.
@@ -46,4 +46,16 @@ pub(crate) fn build_schema<S: 'static>(
     layer: &mut Vec<El>,
 ) {
     build::<S>(state, SPEC, state_edit, on_action, dark, layer);
+}
+
+/// Snapshot variant for the T223 dialog slot (no host form state there).
+#[allow(dead_code)] // consumer: content_view_dialogs slot; remove when the host wires real form state.
+pub(crate) fn build_schema_snapshot<S: 'static>(
+    state: &AdminCreateState,
+    context: Option<&str>,
+    on_action: Option<std::rc::Rc<dyn Fn(&mut S, AdminCreateAction) + 'static>>,
+    dark: bool,
+    layer: &mut Vec<El>,
+) {
+    build_snapshot::<S>(state, SPEC, context, on_action, dark, layer);
 }

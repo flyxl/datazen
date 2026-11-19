@@ -238,3 +238,72 @@ fn both_dialogs_fit_both_window_sizes_and_both_palettes() {
         }
     }
 }
+
+#[test]
+fn real_create_dialogs_are_composed_into_the_content_view_slot() {
+    use crate::views::content_view_dialogs::{
+        build as build_slot, DialogAction, DialogConnectionCtx, DialogsVm,
+    };
+
+    #[derive(Clone)]
+    struct SlotProbe {
+        vm: DialogsVm,
+        dark: bool,
+        actions: Rc<RefCell<Vec<DialogAction>>>,
+    }
+
+    fn slot_view(s: &SlotProbe, _cx: &mut Cx<SlotProbe>) -> El {
+        let mut layer = Vec::new();
+        let callback: Rc<dyn Fn(&mut SlotProbe, DialogAction)> =
+            Rc::new(move |state: &mut SlotProbe, action: DialogAction| {
+                state.actions.borrow_mut().push(action);
+            });
+        build_slot::<SlotProbe>(&s.vm, s.dark, &mut layer, &callback);
+        col().w_full().h_full().children(layer)
+    }
+
+    let mut vm = DialogsVm {
+        conn_ctx: Some(DialogConnectionCtx {
+            db_session_id: "sess-1".to_owned(),
+            connection_id: "cfg-1".to_owned(),
+            connection_name: "Local".to_owned(),
+            database_type: "postgres".to_owned(),
+        }),
+        ..Default::default()
+    };
+    vm.create_db_open = true;
+    let mut rt = Runtime::new(
+        SlotProbe { vm, dark: true, actions: Rc::new(RefCell::new(Vec::new())) },
+        slot_view,
+        DESIGN,
+        Env { system_dark: true, scale: 1.0 },
+    );
+    rt.frame(0.0);
+    assert!(has_key(&rt, "content-view-create-database-dialog-name"), "the real dialog's name field mounts in the slot");
+    assert!(has_key(&rt, "content-view-create-database-dialog-confirm"));
+    click(&mut rt, "content-view-create-database-dialog-confirm");
+    assert!(
+        rt.state.actions.borrow().contains(&DialogAction::DbCreated),
+        "the composed dialog routes its confirm to T223's callback"
+    );
+
+    let mut rt = Runtime::new(
+        SlotProbe {
+            vm: {
+                let mut vm = DialogsVm {
+                    conn_ctx: Some(DialogConnectionCtx::default()),
+                    ..Default::default()
+                };
+                vm.create_schema_open = true;
+                vm
+            },
+            dark: false,
+            actions: Rc::new(RefCell::new(Vec::new())),
+        },
+        slot_view,
+        MIN,
+        Env { system_dark: false, scale: 1.0 },
+    );
+    rt.frame(0.0);
+    assert!(has_key(&rt, "content-view-create-schema-dialog-name"), "the schema dialog's name field mounts in the slot");
+}

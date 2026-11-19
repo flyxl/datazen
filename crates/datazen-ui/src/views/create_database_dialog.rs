@@ -61,6 +61,7 @@ pub(crate) struct AdminCreateState {
 
 impl AdminCreateState {
     /// React `resetForm`.
+    #[allow(dead_code)] // consumer: the dialog host result feed (not landed); remove when it wires.
     pub(crate) fn reset(&mut self) {
         self.name = TextEdit::new(String::new());
         self.error.clear();
@@ -79,6 +80,7 @@ impl AdminCreateState {
 
     /// Resolve a host answer. Success resets the form and emits the post-success
     /// side effect plus close, in React's order; failure only sets the error.
+    #[allow(dead_code)] // consumer: the dialog host result feed (not landed); remove when it wires.
     pub(crate) fn apply_result(
         &mut self,
         result: Result<(), String>,
@@ -102,6 +104,16 @@ impl AdminCreateState {
     }
 }
 
+/// The exact wrapper values from React `CreateDatabaseDialog`.
+#[allow(dead_code)] // wrapper config; consumed by the slot composition.
+pub(crate) const DB_SPEC: AdminCreateSpec = AdminCreateSpec {
+    key: "content-view-create-database-dialog",
+    title_key: "common.createDatabase",
+    name_label_key: "createDb.name",
+    placeholder: "my_database",
+    kind: CreateDialogKind::Database,
+};
+
 /// The wrapper's configuration — the only difference between the two dialogs.
 #[allow(dead_code)] // shared config; remove when the admin component lands.
 #[derive(Clone, Copy, Debug)]
@@ -114,37 +126,21 @@ pub(crate) struct AdminCreateSpec {
 }
 
 type ActionFn<S> = Rc<dyn Fn(&mut S, AdminCreateAction) + 'static>;
+type SubmitFn<S> = Rc<dyn Fn(&mut S) + 'static>;
 
-/// Render one create dialog into `layer`. A closed React `Dialog` mounts
-/// nothing; the caller applies the open gate.
-#[allow(dead_code)] // consumer: content_view_dialogs slot (wired by T266).
-pub(crate) fn build<S: 'static>(
+/// Render the shared dialog shell. Both the editable (host-state) and snapshot
+/// (composition) entry points converge here, so keys and callbacks stay 1:1.
+fn render<S: 'static>(
     state: &AdminCreateState,
     spec: AdminCreateSpec,
-    state_edit: impl Fn(&mut S) -> &mut AdminCreateState + 'static,
+    field_el: El,
+    context: Option<&str>,
+    submit: SubmitFn<S>,
     on_action: Option<ActionFn<S>>,
     dark: bool,
     layer: &mut Vec<El>,
 ) {
     let k = kit(dark);
-    let state_edit: Rc<dyn Fn(&mut S) -> &mut AdminCreateState> = Rc::new(state_edit);
-    let submit = {
-        let state_edit = state_edit.clone();
-        let on_action = on_action.clone();
-        let kind = spec.kind;
-        move |s: &mut S| {
-            let name = {
-                let form = state_edit(s);
-                form.begin()
-            };
-            if let Some(name) = name {
-                if let Some(callback) = &on_action {
-                    callback(s, AdminCreateAction::Execute { kind, name });
-                }
-            }
-        }
-    };
-
     let close = {
         let on_action = on_action.clone();
         move |s: &mut S| {
@@ -153,19 +149,6 @@ pub(crate) fn build<S: 'static>(
             }
         }
     };
-
-    let mut field = TextField::new(format!("{}-name", spec.key), &state.name)
-        .height(36.0)
-        .placeholder(t(spec.placeholder))
-        .label(t(spec.name_label_key));
-    let field_edit: Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit> = {
-        let state_edit = state_edit.clone();
-        Rc::new(move |s: &mut S| &mut state_edit(s).name)
-    };
-    field = field.on_edit(rune::edit_access(move |s: &mut S| field_edit(s)));
-    let enter = submit.clone();
-    field = field.on_submit(move |s: &mut S, _tx: &mut rune::Tx| enter(s));
-    let field_el = field.build(dark);
 
     let mut dialog = Dialog::new(spec.key, t(spec.title_key))
         .open(true)
@@ -184,7 +167,7 @@ pub(crate) fn build<S: 'static>(
                 )
                 .child(field_el)
                 .child(
-                    text(t(spec.title_key))
+                    text(context.unwrap_or_else(|| t(spec.title_key)))
                         .key(format!("{}-context", spec.key))
                         .wrap(),
                 ),
@@ -202,18 +185,89 @@ pub(crate) fn build<S: 'static>(
             .build(k)
             .key(format!("{}-cancel", spec.key)),
     );
-    let confirm = {
-        let submit = submit.clone();
-        move |s: &mut S| submit(s)
-    };
     dialog = dialog.footer(
         Button::new(t(spec.title_key))
             .variant(ButtonVariant::Contrast)
             .control_size(ControlSize::ExtraLarge)
             .disabled(state.name.text.trim().is_empty() || state.running)
-            .on_press(confirm)
+            .on_press(move |s: &mut S| submit(s))
             .build(k)
             .key(format!("{}-confirm", spec.key)),
     );
     dialog.on_close::<S>(close).build(k, layer);
+}
+
+/// Editable entry point: the host owns the form state in `S`.
+#[allow(dead_code)] // consumer: standalone dialog tests and the eventual host wiring.
+pub(crate) fn build<S: 'static>(
+    state: &AdminCreateState,
+    spec: AdminCreateSpec,
+    state_edit: impl Fn(&mut S) -> &mut AdminCreateState + 'static,
+    on_action: Option<ActionFn<S>>,
+    dark: bool,
+    layer: &mut Vec<El>,
+) {
+    let state_edit: Rc<dyn Fn(&mut S) -> &mut AdminCreateState> = Rc::new(state_edit);
+    let submit = {
+        let state_edit = state_edit.clone();
+        let on_action = on_action.clone();
+        let kind = spec.kind;
+        move |s: &mut S| {
+            let name = {
+                let form = state_edit(s);
+                form.begin()
+            };
+            if let Some(name) = name {
+                if let Some(callback) = &on_action {
+                    callback(s, AdminCreateAction::Execute { kind, name });
+                }
+            }
+        }
+    };
+    let field_edit: Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit> = {
+        let state_edit = state_edit.clone();
+        Rc::new(move |s: &mut S| &mut state_edit(s).name)
+    };
+    let mut field = TextField::new(format!("{}-name", spec.key), &state.name)
+        .height(36.0)
+        .placeholder(t(spec.placeholder))
+        .label(t(spec.name_label_key))
+        .on_edit(rune::edit_access(move |s: &mut S| field_edit(s)));
+    let enter = submit.clone();
+    field = field.on_submit(move |s: &mut S, _tx: &mut rune::Tx| enter(s));
+    let field_el = field.build(dark);
+    render::<S>(state, spec, field_el, None, Rc::new(submit), on_action, dark, layer);
+}
+
+/// Snapshot entry point for the T223 dialog slot: the host there has no form
+/// state slice, so the field is a bound display of the supplied snapshot and
+/// confirm still routes to the same action. Remove when the host owns the form.
+#[allow(dead_code)] // consumer: content_view_dialogs slot; remove when the host wires real form state.
+pub(crate) fn build_snapshot<S: 'static>(
+    state: &AdminCreateState,
+    spec: AdminCreateSpec,
+    context: Option<&str>,
+    on_action: Option<ActionFn<S>>,
+    dark: bool,
+    layer: &mut Vec<El>,
+) {
+    let submit = {
+        let on_action = on_action.clone();
+        let kind = spec.kind;
+        let name = state.name.text.trim().to_owned();
+        move |s: &mut S| {
+            if let Some(callback) = &on_action {
+                callback(s, AdminCreateAction::Execute { kind, name: name.clone() });
+            }
+        }
+    };
+    // Without an edit accessor the base renders a selectable, unfocusable field
+    // showing the host's current value — honest for a slot that owns no state.
+    let field_el = TextField::new(format!("{}-name", spec.key), &state.name)
+        .height(36.0)
+        .placeholder(t(spec.placeholder))
+        .label(t(spec.name_label_key))
+        .disabled(true)
+        .build(dark);
+    render::<S>(state, spec, field_el, context, Rc::new(submit), on_action, dark, layer);
 }
