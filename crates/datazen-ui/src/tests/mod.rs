@@ -238,6 +238,11 @@ mod run_editor_query;
 // T252 independent audit: disconnect exhaustion, statement chunk kinds and
 // envelope limit gating.
 mod run_editor_query_audit;
+// T273: lib/session/sessionPrompts.ts port (prompt keys + typed errors).
+mod session_prompts;
+// T273 independent audit: literal React key strings, disconnect regex branches
+// and unknown-code fallbacks.
+mod session_prompts_audit;
 
 
 // Independent re-audit of merged T0-07 menu base.
