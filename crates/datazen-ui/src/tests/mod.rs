@@ -208,6 +208,8 @@ mod active_connection_store;
 // T039 independent audit: markConnected spread semantics, timeout re-arm
 // and per-entry isolation, disconnect finally ordering, reset interplay.
 mod active_connection_store_audit;
+// T087-S1: stores/aiStore.ts config/profile/provider slice.
+mod ai_store_config;
 // T041: React stores/tableData/connectionState.ts parity (row records, cell
 // values, error messages, the empty panel state, the load target).
 mod table_data_connection_state;
