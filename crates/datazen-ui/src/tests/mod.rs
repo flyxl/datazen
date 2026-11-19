@@ -175,6 +175,8 @@ mod support_layer_audit;
 mod structure_editor_helpers;
 // T124: isControlEnabled / resolveCreateTableSchema / schemaToDraft parity.
 mod structure_editor_create_schema;
+// T124 independent audit: no-meta fallback/empty-string and branch-order gaps.
+mod structure_editor_create_schema_audit;
 // T036 independent audit: extra edge cases on the ported helpers.
 mod structure_editor_audit;
 // T085: draft IDs/defaults + DDL apply warnings (pure value logic).
