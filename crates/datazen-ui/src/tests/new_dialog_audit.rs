@@ -109,6 +109,22 @@ fn store_groups_reach_the_form_group_select() {
     );
 }
 
+/// Stronger D1 guard: the REAL advanced-settings group select (kit trigger
+/// `<key>-trigger`) must be laid out — not just the observability marker that
+/// carries the bare `new-conn-group-field` key.
+#[test]
+fn group_wiring_renders_the_real_select_trigger() {
+    let mut vm = NewConnectionDialogVm::default();
+    vm.open(None, None);
+    vm.groups = vec!["preset:development".to_owned()];
+    vm.form.advanced.show_advanced = true;
+    let rt = runtime(vm, true, (1440.0, 816.0));
+    assert!(
+        has(&rt, "new-conn-group-field-trigger"),
+        "the real advanced group select trigger must exist, not only the marker"
+    );
+}
+
 /// The group option labels must go through React's `formatGroupLabel`, which
 /// maps preset keys to their translated labels.
 #[test]
