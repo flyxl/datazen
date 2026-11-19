@@ -28,3 +28,4 @@ pub(crate) mod contracts;
 pub(crate) mod registry;
 pub(crate) mod timestamp_contribution; // T251: the datazen.timestamp contribution
 pub(crate) mod presentation_plan; // T155: column plans, override keys, cache keys
+pub(crate) mod column_presentation; // T085: the column panel's pure logic

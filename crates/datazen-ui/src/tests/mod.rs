@@ -95,3 +95,5 @@ mod counters_audit;
 
 // T155: presentation plans — override keys, routing, cache keys, rules.
 mod presentation_plan;
+// T085: the column presentation panel's pure logic (validate/read/preview).
+mod column_presentation;
