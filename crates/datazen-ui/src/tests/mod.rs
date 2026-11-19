@@ -261,6 +261,8 @@ mod connection_ai_notes;
 mod connection_form_parts;
 // T103 independent audit: observable behaviour, structural parity and coverage gaps.
 mod connection_form_audit;
+// T193: FileConnectionFields port (path field, ADB flow, keys, geometry).
+mod file_connection_fields;
 // T016: the batch-export dialog port.
 mod batch_export_dialog;
 mod batch_export_audit;
