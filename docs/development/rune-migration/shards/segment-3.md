@@ -28,7 +28,7 @@
 - [x] T073 · windows/data-transfer · 0.90d · windows/data-transfer/DataTransferAttachedJobs.tsx
 - [x] T074 · windows/data-sync · 0.30d · windows/data-sync/DataSyncDialogs.tsx
 - [x] T076 · windows/backup · 2.00d · windows/backup/ProgressLog.tsx · split
-- [ ] T078 · lib/chart · 0.60d · lib/chart/fieldInference.ts lib/chart/format.ts
+- [x] T078 · lib/chart · 0.60d · lib/chart/fieldInference.ts lib/chart/format.ts
 - [ ] T087 · stores · 1.30d · stores/aiStore.ts · split
 - [ ] T089 · stores/tableData · 0.90d · stores/tableData/countStrategy.ts
 - [ ] T091 · platform · 0.30d · platform/capabilities.ts
