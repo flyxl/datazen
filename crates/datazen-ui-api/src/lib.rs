@@ -19,6 +19,7 @@ mod context_menu_position;
 // else re-exports at the root (see `dashboard_types`' docs).
 pub mod dashboard_types;
 mod filter_types;
+mod keyset_types;
 mod metadata;
 mod platform_shared;
 mod relation_prediction;
@@ -107,6 +108,12 @@ pub use dashboard_types::{
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
     FilterOperator, SHARED_FILTER_OPERATORS,
+};
+// The T234 keyset paging vocabulary: the aggregate (`types/index`)
+// re-exports everything `types/keyset.ts` declares, so the crate root
+// carries the same names.
+pub use keyset_types::{
+    CursorValue, KeysetUnavailableReason, OrderColumn, PagePagingInfo, PagingMode,
 };
 pub use metadata::{
     BatchFlush, CurrentCallContext, CurrentProvenanceContext, ExecutionTarget,
