@@ -261,6 +261,10 @@ mod backup_window_state_audit;
 // (progress formatting, log pump, run-state machine, chrome,
 // columns, options, backup/restore journeys, N4 host contract).
 mod backup_window;
+// T026-S2 independent audit: multi-byte log truncation, format-custom
+// extension, restore None-payload, re-arm, badge tones, confirm
+// dialog, log-copy visibility.
+mod backup_window_audit;
 
 // T008: ChartCanvas dispatcher, measured viewport and honest placeholders.
 mod chart_canvas;
