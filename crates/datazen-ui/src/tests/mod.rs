@@ -359,6 +359,10 @@ mod backup_window_audit;
 // decision, copy text and copy-feedback state (coder tests).
 mod progress_log_s1;
 
+// T076-S1 independent audit: TanStack cross-check (independent
+// re-implementation + sweep) and copy-feedback ordering.
+mod progress_log_s1_audit;
+
 // T008: ChartCanvas dispatcher, measured viewport and honest placeholders.
 mod chart_canvas;
 // T008 independent audit: marker honesty, factory seam, geometry, source guards.
