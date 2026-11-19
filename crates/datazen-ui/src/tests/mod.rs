@@ -210,6 +210,9 @@ mod active_connection_store;
 mod active_connection_store_audit;
 // T087-S1: stores/aiStore.ts config/profile/provider slice.
 mod ai_store_config;
+// T087-S1 independent audit: isConfigured formula, delete-active fallback,
+// save does not write settings until the reload, listener retry.
+mod ai_store_config_audit;
 // T041: React stores/tableData/connectionState.ts parity (row records, cell
 // values, error messages, the empty panel state, the load target).
 mod table_data_connection_state;
