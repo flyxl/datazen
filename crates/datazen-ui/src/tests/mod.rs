@@ -255,6 +255,10 @@ mod db_type_badge;
 mod error_boundary;
 // T063: ExportColumnPicker port (order, selection, toggles, bulk actions).
 mod export_column_picker;
+// T064: AdminSchemaFields port (commandSchema parse, visibility, labels, mounted list).
+mod admin_schema_fields;
+// T064: PrivilegeSelector port (x-datazen parse, flattening, grid, toggles).
+mod privilege_selector;
 // T063 audit: backup re-export path, light-theme fills, half-up rounding,
 // capture-over-capture, PK-chip/type-label no-toggle.
 mod t063_audit;
