@@ -700,3 +700,9 @@ mod workspace_default_cards_audit;
 // activate/close slots, the hover-revealed close and the nothing-rendered
 // gate.
 mod workspace_tab_bar_audit;
+// T200 audit: the workspace capstone — the navigator/handle/right-column
+// geometry, the default-cards-versus-stacked-shells branches with the
+// preserved inactive shell, the resize handle's React identity over a
+// host splitter handle, the press fan-out, and the three effect bodies
+// (initial load, diff-close, deep link) against recorded slots.
+mod workspace_view_audit;

@@ -41,6 +41,11 @@ pub(crate) mod workspace_navigator;
 // truncated title, hover-revealed close) with the active tab's accent
 // underline; renders nothing while no tab is open.
 pub(crate) mod workspace_tab_bar;
+// T200: the workspace mode's capstone layout — the navigator rail, the
+// resize seam, the tab strip over the default card grid or the stacked
+// preserved shells, plus the three host effects (the initial wapp load,
+// the external-refresh diff-close, the `wapps:open-page` deep link).
+pub(crate) mod workspace_view;
 
 pub(crate) fn page_body(
     state: &AppState,

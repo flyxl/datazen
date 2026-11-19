@@ -29,6 +29,18 @@ pub(crate) const AI_SIDEBAR_WIDTH_DEFAULT: u32 = 320;
 pub(crate) const AI_SIDEBAR_WIDTH_MIN: u32 = 240;
 pub(crate) const AI_SIDEBAR_WIDTH_MAX: u32 = 600;
 
+/// The workspace mode's navigator rail (T200): React's `useResizable` in
+/// `WorkspaceView.tsx` (`initialSize: 200, minSize: 150, maxSize: 480`,
+/// stored as `resize:workspace-sidebar-width`). Rune persists it through
+/// `Setting::Layout` like every other split; the key drops React's
+/// `resize:` prefix (the layout store's own namespace, the AI-sidebar
+/// precedent).
+#[allow(dead_code)] // the host's splitter seam; wired by the workspace host track
+pub(crate) const WORKSPACE_SIDEBAR_WIDTH_KEY: &str = "workspace-sidebar-width";
+pub(crate) const WORKSPACE_SIDEBAR_WIDTH_DEFAULT: u32 = 200;
+pub(crate) const WORKSPACE_SIDEBAR_WIDTH_MIN: u32 = 150;
+pub(crate) const WORKSPACE_SIDEBAR_WIDTH_MAX: u32 = 480;
+
 /// The app's font pool (H8): rune's own Inter faces keep the UI's Latin look
 /// and the web's sans fallback, IBM Plex Mono keeps the editor's mono slot,
 /// and Noto Sans SC covers Chinese in the interface and the grid — the sans
