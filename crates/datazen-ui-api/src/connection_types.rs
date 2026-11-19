@@ -1576,7 +1576,8 @@ mod tests {
             error_message: None,
         };
         let wire = encode(&entry);
-        // Past `u32` width: the ms clock needs the full u64.
+        // 4_000_000_000 is still *inside* `u32`'s range — the true
+        // past-`u32` boundary is pinned in the widths test below.
         let wide_ms = 4_000_000_000u64;
         assert_eq!(
             wire,
@@ -1636,5 +1637,345 @@ mod tests {
         assert!(wire["children"][0].get("children").is_none());
         let back: ContextEntry = decode(wire);
         assert_eq!(back, entry);
+    }
+
+    // ------------------------------------------------------------------
+    // Audit pins (T128-audit). The coder's 26 pins were probed with 16
+    // mutants: the literal tables, the null/absent two-state and the
+    // recursion held (every shuffle/camelCase/serde-rename mutant on a
+    // *tested* shape went red), but eleven mutants survived — the closed
+    // unions were open, `WebSocketTunnelConfig` was never serialized,
+    // `SavedTunnel`'s multi-word leg keys never appeared, required keys
+    // could silently grow serde defaults, the documented widths were
+    // unpinned, the HttpProxy `?:` skips were unobserved, and the crate-root
+    // re-export surface had no consumer to notice a shrink. Each pin below
+    // replays one surviving mutant's condition.
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn the_literal_unions_stay_closed() {
+        // TS's closed string-literal unions are compile-time contracts; the
+        // runtime mirror is serde refusing a non-member literal. The
+        // near-misses below are spellings a widened enum would gladly
+        // accept — the audit's surviving mutants were a sixth `TableType`
+        // variant and a `none` `SavedTunnelKind`, both invisible to the
+        // positive literal tables above.
+        fn rejects<T: serde::de::DeserializeOwned>(literal: &str) {
+            assert!(
+                serde_json::from_value::<T>(serde_json::json!(literal)).is_err(),
+                "`{literal}` must not decode into the closed React union"
+            );
+        }
+        rejects::<TableType>("materialized_view");
+        rejects::<TableType>("foreignTable");
+        rejects::<TableType>("matview");
+        rejects::<SslMode>("verify-ca");
+        rejects::<SslMode>("verify_full");
+        // `table`/`view` are the ObjectKind *superset's* members — this
+        // facade's five literals are the non-relation kinds only.
+        rejects::<DatabaseObjectKind>("table");
+        rejects::<DatabaseObjectKind>("view");
+        rejects::<SshAuthMethod>("privateKey");
+        rejects::<SshAuthMethod>("private-key");
+        // `webSocket` is what camelCase rename would spell — the React
+        // literal is flat `websocket`.
+        rejects::<TunnelKind>("webSocket");
+        rejects::<TunnelKind>("http_proxy");
+        rejects::<HttpProxyScheme>("ws");
+        rejects::<WebSocketMode>("datazen-v1");
+        rejects::<WebSocketMode>("rawBinary");
+        // `Exclude<TunnelKind, 'none'>`: a stored tunnel is never `none`.
+        rejects::<SavedTunnelKind>("none");
+        rejects::<ForeignKeyDeferrability>("deferrable");
+        rejects::<ForeignKeyDeferrability>("not_deferrable");
+    }
+
+    #[test]
+    fn websocket_tunnels_round_trip_their_camel_case_wire() {
+        // The one struct of the file the coder's tests never serialized —
+        // a mutant that dropped this struct's camelCase rename (or its
+        // `?:` skips) survived the whole round untouched.
+        let mut headers = BTreeMap::new();
+        headers.insert("X-Datazen".to_owned(), "1".to_owned());
+        let tunnel = WebSocketTunnelConfig {
+            enabled: true,
+            url: "wss://relay.example.com/v1/tunnel".to_owned(),
+            auth_token: Some("tok".to_owned()),
+            headers: Some(headers),
+            connect_timeout_secs: Some(30),
+            ping_interval_secs: Some(15),
+            mode: Some(WebSocketMode::DatazenV1),
+        };
+        let wire = encode(&tunnel);
+        assert_eq!(wire["url"], "wss://relay.example.com/v1/tunnel");
+        assert_eq!(wire["authToken"], "tok");
+        assert_eq!(wire["headers"]["X-Datazen"], "1");
+        assert_eq!(wire["connectTimeoutSecs"], 30);
+        assert_eq!(wire["pingIntervalSecs"], 15);
+        assert_eq!(wire["mode"], "datazen_v1");
+        let back: WebSocketTunnelConfig = decode(wire);
+        assert_eq!(back, tunnel);
+        // Bare relay: exactly the two required keys — the `?:` legs absent.
+        let bare = WebSocketTunnelConfig {
+            enabled: true,
+            url: "wss://relay.example.com/v1/tunnel".to_owned(),
+            auth_token: None,
+            headers: None,
+            connect_timeout_secs: None,
+            ping_interval_secs: None,
+            mode: None,
+        };
+        assert_eq!(
+            encode(&bare),
+            serde_json::json!({
+                "enabled": true,
+                "url": "wss://relay.example.com/v1/tunnel",
+            })
+        );
+    }
+
+    #[test]
+    fn saved_tunnels_carry_their_tunnel_legs_under_the_facade_keys() {
+        // The coder's saved-tunnel pin kept every leg `None`, so a dropped
+        // camelCase rename on the struct survived — the single-word keys
+        // don't show it; `httpProxy` and the websocket leg's fields do.
+        let http = SavedTunnel {
+            id: "t2".into(),
+            name: "Prod Proxy".into(),
+            kind: SavedTunnelKind::HttpProxy,
+            ssh: None,
+            http_proxy: Some(HttpProxyTunnelConfig {
+                enabled: true,
+                host: "proxy.example.com".into(),
+                port: 3128,
+                scheme: HttpProxyScheme::Http,
+                username: None,
+                password: None,
+                headers: None,
+                connect_timeout_secs: None,
+            }),
+            websocket: None,
+        };
+        let wire = encode(&http);
+        assert_eq!(wire["kind"], "httpProxy");
+        assert_eq!(wire["httpProxy"]["scheme"], "http");
+        assert_eq!(wire["httpProxy"]["port"], 3128);
+        assert!(wire.get("ssh").is_none());
+        assert!(wire.get("websocket").is_none());
+        let back: SavedTunnel = decode(wire);
+        assert_eq!(back, http);
+
+        let relay = SavedTunnel {
+            id: "t3".into(),
+            name: "Relay".into(),
+            kind: SavedTunnelKind::WebSocket,
+            ssh: None,
+            http_proxy: None,
+            websocket: Some(WebSocketTunnelConfig {
+                enabled: true,
+                url: "wss://relay.example.com/v1/tunnel".into(),
+                auth_token: None,
+                headers: None,
+                connect_timeout_secs: None,
+                ping_interval_secs: None,
+                mode: Some(WebSocketMode::RawBinary),
+            }),
+        };
+        let wire = encode(&relay);
+        assert_eq!(wire["kind"], "websocket");
+        assert_eq!(wire["websocket"]["url"], "wss://relay.example.com/v1/tunnel");
+        assert_eq!(wire["websocket"]["mode"], "raw_binary");
+        let back: SavedTunnel = decode(wire);
+        assert_eq!(back, relay);
+    }
+
+    #[test]
+    fn a_bare_http_proxy_tunnel_serializes_to_exactly_its_four_required_keys() {
+        // The coder's full-connection pin only asserted specific keys, so
+        // dropping the `?:` skips on username/password/headers survived —
+        // `None` would have ridden the wire as explicit nulls unnoticed.
+        let bare = HttpProxyTunnelConfig {
+            enabled: true,
+            host: "proxy.example.com".into(),
+            port: 3128,
+            scheme: HttpProxyScheme::Http,
+            username: None,
+            password: None,
+            headers: None,
+            connect_timeout_secs: None,
+        };
+        assert_eq!(
+            encode(&bare),
+            serde_json::json!({
+                "enabled": true,
+                "host": "proxy.example.com",
+                "port": 3128,
+                "scheme": "http",
+            })
+        );
+        let back: HttpProxyTunnelConfig = decode(encode(&bare));
+        assert_eq!(back, bare);
+    }
+
+    #[test]
+    fn required_keys_stay_required_on_the_wire() {
+        // A field React declares without `?` must not grow a serde default:
+        // the audit's surviving mutant defaulted `sslMode` (with a Default
+        // impl on the enum) and every test stayed green. TS's required
+        // marker is a wire contract, not a suggestion.
+        let missing_ssl = serde_json::json!({
+            "id": "c1",
+            "name": "n",
+            "databaseType": "postgresql",
+        });
+        assert!(serde_json::from_value::<ConnectionConfig>(missing_ssl).is_err());
+        let missing_type = serde_json::json!({
+            "name": "users",
+            "schema": null,
+            "rowCount": null,
+        });
+        assert!(serde_json::from_value::<TableInfo>(missing_type).is_err());
+        // `children` is required (an empty plan node still carries `[]`) —
+        // the recursion's termination is part of the shape.
+        let missing_children = serde_json::json!({
+            "id": "1",
+            "label": "Aggregate",
+            "details": [],
+        });
+        assert!(serde_json::from_value::<ExplainPlanNode>(missing_children).is_err());
+        let missing_ms = serde_json::json!({
+            "id": "q1",
+            "connectionId": "c1",
+            "database": "app",
+            "schema": null,
+            "sql": "SELECT 1",
+            "executedAt": "2026-01-02T03:04:05Z",
+            "success": true,
+        });
+        assert!(serde_json::from_value::<QueryHistoryEntry>(missing_ms).is_err());
+    }
+
+    #[test]
+    fn the_documented_widths_are_pinned_at_their_boundaries() {
+        // Every width below is the module's documented mirror rule, not the
+        // TS `number` (which is unbounded): mutating any of them slipped
+        // through the coder's pins, which never left the narrowed range.
+
+        // Ports are the u16 driver-api twin width: one past the TCP range
+        // must be rejected — on the connection, the SSH leg and the proxy.
+        let over = serde_json::json!({
+            "id": "c1",
+            "name": "n",
+            "databaseType": "postgresql",
+            "sslMode": "disable",
+            "port": 65536,
+        });
+        assert!(serde_json::from_value::<ConnectionConfig>(over).is_err());
+        let over = serde_json::json!({
+            "enabled": true,
+            "host": "bastion.example.com",
+            "port": 65536,
+            "username": "deploy",
+            "authMethod": "password",
+        });
+        assert!(serde_json::from_value::<SshTunnelConfig>(over).is_err());
+        let over = serde_json::json!({
+            "enabled": true,
+            "host": "proxy.example.com",
+            "port": 65536,
+            "scheme": "http",
+        });
+        assert!(serde_json::from_value::<HttpProxyTunnelConfig>(over).is_err());
+
+        // Catalog row counts are i64 because estimates go negative
+        // (PG `reltuples` is -1 until ANALYZE); u64 would reject the
+        // backend's own payload.
+        let info: TableInfo = decode(serde_json::json!({
+            "name": "users",
+            "schema": null,
+            "tableType": "table",
+            "rowCount": -1,
+        }));
+        assert_eq!(info.row_count, Some(-1));
+        assert_eq!(encode(&info)["rowCount"], -1);
+
+        // The ms clock is u64: `u32::MAX + 1` is a real 49-day elapsed
+        // window — and 4_000_000_000, the coder's pin, is not past u32
+        // at all.
+        let entry: QueryHistoryEntry = decode(serde_json::json!({
+            "id": "q1",
+            "connectionId": "c1",
+            "database": "app",
+            "schema": null,
+            "sql": "SELECT 1",
+            "executedAt": "2026-01-02T03:04:05Z",
+            "executionTimeMs": 4_294_967_296u64,
+            "success": true,
+        }));
+        assert_eq!(entry.execution_time_ms, 4_294_967_296);
+        assert_eq!(encode(&entry)["executionTimeMs"], 4_294_967_296u64);
+
+        // File sizes are u64: a 5 GB context file overflows u32.
+        let file = ContextEntry {
+            name: "big.sql".into(),
+            path: "/p/big.sql".into(),
+            is_dir: false,
+            size: Some(5_000_000_000),
+            children: None,
+        };
+        assert_eq!(encode(&file)["size"], 5_000_000_000u64);
+        let back: ContextEntry = decode(encode(&file));
+        assert_eq!(back, file);
+    }
+
+    #[test]
+    fn the_connection_vocabulary_is_reexported_at_the_crate_root() {
+        // `crate::` paths only — a dropped root re-export stops this file
+        // from compiling instead of silently shrinking the facade (the
+        // same pin style as `chart_types`'). The audit's surviving mutant
+        // removed two names from `pub use connection_types::{…}` and the
+        // whole suite stayed green, because nothing consumes the names
+        // through the root yet.
+        fn resolves<T>() {}
+        resolves::<crate::ConnectionConfig>();
+        resolves::<crate::ContextEntry>();
+        resolves::<crate::DatabaseObject>();
+        resolves::<crate::DatabaseObjectKind>();
+        resolves::<crate::DatabaseType>();
+        resolves::<crate::DriverCapabilities>();
+        resolves::<crate::ExplainPlanDetail>();
+        resolves::<crate::ExplainPlanNode>();
+        resolves::<crate::ExplainResult>();
+        resolves::<crate::ForeignKeyDeferrability>();
+        resolves::<crate::ForeignKeyInfo>();
+        resolves::<crate::ForeignKeyTargetRef>();
+        resolves::<crate::ForeignKeyTargetResolution>();
+        resolves::<crate::HttpProxyScheme>();
+        resolves::<crate::HttpProxyTunnelConfig>();
+        resolves::<crate::IndexInfo>();
+        resolves::<crate::PrivilegeGrant>();
+        resolves::<crate::QueryHistoryEntry>();
+        resolves::<crate::ResolveForeignKeyTargetsRequest>();
+        resolves::<crate::SavedTunnel>();
+        resolves::<crate::SavedTunnelKind>();
+        resolves::<crate::ServerInfo>();
+        resolves::<crate::SshAuthMethod>();
+        resolves::<crate::SshTunnelConfig>();
+        resolves::<crate::SslMode>();
+        resolves::<crate::TableInfo>();
+        resolves::<crate::TableSchema>();
+        resolves::<crate::TableType>();
+        resolves::<crate::TunnelKind>();
+        resolves::<crate::Value>();
+        resolves::<crate::WebSocketMode>();
+        resolves::<crate::WebSocketTunnelConfig>();
+        // …and one live decode through the root path keeps the pin honest.
+        let info: crate::TableInfo = decode(serde_json::json!({
+            "name": "users",
+            "schema": null,
+            "tableType": "view",
+            "rowCount": null,
+        }));
+        assert_eq!(info.table_type, crate::TableType::View);
     }
 }
