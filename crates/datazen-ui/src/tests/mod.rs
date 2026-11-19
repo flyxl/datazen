@@ -801,3 +801,7 @@ mod data_sync_endpoint_step_audit;
 // T125: the persisted-connections store (display helpers over the T403
 // placeholder subset, load/refetch chains, group edits, per-connection moves).
 mod connection_store;
+
+// T125 independent audit: fresh vectors (the registry label branch, the
+// rank ladder, duplicate ids, invalid timestamps, collapse renames).
+mod connection_store_audit;
