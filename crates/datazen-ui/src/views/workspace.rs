@@ -46,6 +46,11 @@ pub(crate) mod workspace_tab_bar;
 // preserved shells, plus the three host effects (the initial wapp load,
 // the external-refresh diff-close, the `wapps:open-page` deep link).
 pub(crate) mod workspace_view;
+// T224: the workspace pages derivation — the flattened enabled-wapp ×
+// contributed-page rows (install order, per-page title fallback) plus the
+// `wapps:open-page` event name/payload, the tab key builder and the
+// resolve-then-open `openWappPage` the navigator, cards and deep link share.
+pub(crate) mod workspace_pages;
 
 pub(crate) fn page_body(
     state: &AppState,

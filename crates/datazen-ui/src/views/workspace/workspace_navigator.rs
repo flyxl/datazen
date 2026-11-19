@@ -13,7 +13,7 @@
 //!
 //! | React | Rune |
 //! |---|---|
-//! | `useWorkspacePages()` (the derived enabled-wapp × page list) | the `pages` parameter — [`WorkspacePageEntry`], this port's mirror of React's `WorkspacePageEntry` (`windows/workspace/workspacePages.ts`; that file's own port, T224, is ahead and will feed this view through it) |
+//! | `useWorkspacePages()` (the derived enabled-wapp × page list) | the `pages` parameter — [`WorkspacePageEntry`], this port's mirror of React's `WorkspacePageEntry` (`windows/workspace/workspacePages.ts`; that file's own port, T224, is the [`derive_workspace_pages`](crate::views::workspace_pages::derive_workspace_pages) derivation that feeds this view) |
 //! | `useWorkspaceTabsStore((s) => s.activeKey)` | the `active_key` parameter (`page.key === activeKey` picks the tint) |
 //! | `onOpenExtensions` prop | [`WorkspaceNavigator::on_open_extensions`] — the empty-state button's host slot; `None` renders no button, exactly as React's `{onOpenExtensions ? … : null}` |
 //! | the item press `openWappPage(page.wappId, page.pageId)` | [`WorkspaceNavigator::on_open_page`] — the per-item host slot with the wapp and page ids; the resolve-then-open store flow is the workspace-tabs seam (the T143/T172/T224 area) |
@@ -78,8 +78,9 @@ pub(crate) const DEFAULT_WIDTH_PT: f32 = 180.0;
 /// React's `WorkspacePageEntry` (`windows/workspace/workspacePages.ts`): the
 /// flattened enabled-wapp × contributed-page row the navigator lists. The
 /// derivation (`deriveWorkspacePages`: enabled wapps with pages, in install
-/// order, `title: page.title || wapp.name`) is that file's own port (T224,
-/// ahead); the host feeds the rows through this mirror. `version` and
+/// order, `title: page.title || wapp.name`) is that file's own port — T224,
+/// [`crate::views::workspace_pages::derive_workspace_pages`]; the host feeds
+/// the rows through this mirror. `version` and
 /// `author` ride the entry for the future tab payload — this rail renders
 /// neither.
 #[derive(Clone, Debug, PartialEq, Eq)]

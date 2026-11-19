@@ -108,6 +108,7 @@ fn wapp(id: &str, enabled: bool, pages: &[&str]) -> WappSummaryVm {
             .map(|id| WappPageSummaryVm {
                 id: (*id).to_owned(),
                 title: (*id).to_owned(),
+                icon: None,
             })
             .collect(),
         themes: Vec::new(),

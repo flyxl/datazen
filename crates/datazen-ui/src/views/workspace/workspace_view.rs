@@ -18,13 +18,13 @@
 //!
 //! | React | Rune |
 //! |---|---|
-//! | `useWorkspacePages()` (the derived enabled-wapp × page list) | the `pages` parameter — the T145 [`WorkspacePageEntry`]; `workspacePages.ts`'s own port (T224) feeds it |
+//! | `useWorkspacePages()` (the derived enabled-wapp × page list) | the `pages` parameter — the T145 [`WorkspacePageEntry`]; the T224 port (`workspace_pages.rs`) feeds it |
 //! | `useWorkspaceTabsStore((s) => s.tabs)` / `((s) => s.activeKey)` | the `tabs` + `active_key` parameters (the T067 [`WorkspaceTabVm`]; the store's own port, T143/T172, feeds them) |
 //! | `useWappStore((s) => s.wapps)` / `((s) => s.loaded)` | the `wapps` / `wapps_loaded` arguments of the three effect functions below (the host's store projection — the fields `AppState` already carries) |
 //! | `useResizable({ initialSize: 200, minSize: 150, maxSize: 480, storageKey: 'workspace-sidebar-width' })` | the host's splitter seam: the [`WORKSPACE_SIDEBAR_WIDTH_*`](crate::constants) constants + `splitter::splitter_size` / `splitter::splitter_handle`; the view takes the measured size and the built handle through [`WorkspaceView::sidebar_width`] / [`WorkspaceView::resize_handle`] |
 //! | the mount effect `if (!loaded) void fetch()` | [`WorkspaceView::initial_wapp_load`] — the host calls it once per mount (the `[]` deps are its discipline) |
 //! | the `[wapps, wappsLoaded]` diff-close effect | [`WorkspaceView::resync_wapps`] — the host calls it on every wapp-list change; the visited-set semantics and the not-before-load gate are the ported body |
-//! | the `wapps:open-page` listener (the EventChannel port) | [`WorkspaceView::open_page_deep_link`] — the subscription itself is the host's edge (Rune has no cross-window event bus; the `ai_write_proposal_host` precedent), and the event name (`'wapps:open-page'`, mirroring `src-tauri/src/wapps/protocol.rs`) belongs to `workspacePages.ts`'s own port (T224) |
+//! | the `wapps:open-page` listener (the EventChannel port) | [`WorkspaceView::open_page_deep_link`] — the subscription itself is the host's edge (Rune has no cross-window event bus; the `ai_write_proposal_host` precedent), and the event name and payload belong to the T224 `workspace_pages.rs` port (`WAPPS_OPEN_PAGE_EVENT` / the re-exported [`OpenPageEventPayload`]) |
 //! | `onOpenExtensions` prop | [`WorkspaceView::on_open_extensions`] — one [`OpenExtensionsSlot`] fanned out to the navigator's and the cards' empty states, exactly React's two `<X onOpenExtensions={onOpenExtensions}>` sites |
 //! | `openWappPage` (the cards' `onOpen`, the navigator's item press, the deep link's resolve) | [`WorkspaceView::on_open_page`] — one [`OpenWappPageSlot`] fanned to all three sites, as React's three call sites share the one module function; the resolve-then-open body is T224's port |
 //! | the tab bar's `activate(tab.key)` / `close(tab.key)` | [`WorkspaceView::on_activate_tab`] / [`WorkspaceView::on_close_tab`] fanned into the strip |
@@ -120,15 +120,10 @@ pub(crate) type CloseByWappSlot<S> = Rc<dyn Fn(&mut S, &str)>;
 pub(crate) type WorkspaceShellLens<S> =
     Rc<dyn for<'host> Fn(&'host mut S, &str) -> &'host mut WappPageShellState>;
 
-/// React's `OpenPageEventPayload` (`windows/workspace/workspacePages.ts`):
-/// the raw `wapps:open-page` deep-link event — no Tauri envelope, the
-/// EventChannel rail delivers the bare object. `params` rides the F6
-/// bridge consumer and is deliberately not carried.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct OpenPageEventPayload {
-    pub(crate) wapp_id: Option<String>,
-    pub(crate) page_id: Option<String>,
-}
+// The deep-link payload lives in its 1:1 home since the T224
+// `workspace_pages.rs` port; re-exported so this module's own surface
+// (`open_page_deep_link`) and its audit keep their import paths.
+pub(crate) use super::workspace_pages::OpenPageEventPayload;
 
 /// The `WorkspaceView` React props plus the Rune seams: the derived page
 /// list, the store projections, the sidebar's measured size and built

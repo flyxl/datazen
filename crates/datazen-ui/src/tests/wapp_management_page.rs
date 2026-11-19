@@ -28,7 +28,11 @@ fn wapp() -> WappSummaryVm {
         icon: None,
         enabled: true,
         permissions: vec!["context:connections".into()],
-        pages: vec![WappPageSummaryVm { id: "quota-check".into(), title: "Quota Check".into() }],
+        pages: vec![WappPageSummaryVm {
+            id: "quota-check".into(),
+            title: "Quota Check".into(),
+            icon: None,
+        }],
         themes: Vec::new(),
     }
 }

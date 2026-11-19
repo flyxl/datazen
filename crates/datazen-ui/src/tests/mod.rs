@@ -706,3 +706,7 @@ mod workspace_tab_bar_audit;
 // host splitter handle, the press fan-out, and the three effect bodies
 // (initial load, diff-close, deep link) against recorded slots.
 mod workspace_view_audit;
+// T224: the workspace pages derivation port — the enabled-wapp × page
+// flattening in install order, the per-page field mapping with its title
+// fallback, the tab payload, and the openWappPage resolve gates.
+mod workspace_pages;

@@ -53,12 +53,15 @@ impl WappFilter {
 }
 
 /// One page contribution of an installed wapp — the fields the page's Open
-/// resolve and the future workspace-tab payload read (`types/wapp.ts`'s
-/// `WappPageSummary`: id and title; the icon rides the tab seam below).
+/// resolve and the workspace-tab payload read (`types/wapp.ts`'s
+/// `WappPageSummary`: id, title and the optional page icon the workspace
+/// pages derivation carries onto the entry).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct WappPageSummaryVm {
     pub(crate) id: String,
     pub(crate) title: String,
+    /// The page contribution's optional icon path (`toEntry`'s `page.icon`).
+    pub(crate) icon: Option<String>,
 }
 
 /// One installed workspace app — the honest projection of the host's
