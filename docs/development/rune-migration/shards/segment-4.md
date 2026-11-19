@@ -28,7 +28,7 @@
 - [ ] T072 · windows/onboarding · 0.90d · windows/onboarding/OnboardingWindow.tsx
 - [ ] T076 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffExecutionPanels.tsx
 - [ ] T084 · lib/sqlDialects · 0.80d · lib/sqlDialects/identifierQuoting.ts lib/sqlDialects/index.ts
-- [ ] T086 · lib/valuePresentation · 0.80d · lib/valuePresentation/columnPresentation.ts
+- [x] T086 · lib/valuePresentation · 0.80d · lib/valuePresentation/columnPresentation.ts
 - [ ] T087 · hooks · 0.90d · hooks/useAiEditorGrant.ts
 - [ ] T093 · platform/shared · 0.80d · platform/shared/mcpClient.ts
 - [ ] T096 · commands · 1.30d · commands/ai.ts · split
