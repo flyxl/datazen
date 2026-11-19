@@ -6,7 +6,9 @@
 //! covers both `null` and `undefined`. All types derive `Eq` so snapshots can be
 //! compared by value — the Rust stand-in for React's frozen referential equality.
 
-use super::identity::{EditorRelationKey, EditorRelationKind, QualifiedRelationId};
+use super::identity::{
+    EditorRelationKey, EditorRelationKind, EditorRelationSourceKind, QualifiedRelationId,
+};
 
 /// Immutable metadata entry for one loaded relation.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -66,12 +68,12 @@ pub(crate) struct EditorMetadataContext {
 pub(crate) struct EditorRelationRequest {
     pub identity: QualifiedRelationId,
     /// `table`/`view` load; `cte`/`subquery` are skipped. `None` defaults to table.
-    pub kind: Option<super::identity::SqlRelationSourceKind>,
+    pub kind: Option<EditorRelationSourceKind>,
 }
 
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
 impl EditorRelationRequest {
-    pub fn new(identity: QualifiedRelationId, kind: super::identity::SqlRelationSourceKind) -> Self {
+    pub fn new(identity: QualifiedRelationId, kind: EditorRelationSourceKind) -> Self {
         Self {
             identity,
             kind: Some(kind),

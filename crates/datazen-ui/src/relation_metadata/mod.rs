@@ -11,20 +11,26 @@
 //! * [`invalidation`] — the explicit schema/DDL invalidation callback list.
 //! * [`ordered_map`] — insertion-ordered working map (JS `Map` semantics).
 //! * [`metadata_cache`] — the cache itself (debounce, dedup, TTL, epochs).
+//! * [`relation_prediction_types`] — prediction contracts (T081).
+//! * [`from_relation_metadata`] — the metadata → prediction input bridge (T081).
 //!
 //! Everything is pure logic: no Rune tree, no `oklch`, no i18n, no IPC. See
 //! `metadata_cache`'s module docs for the immediate-mode adaptations.
 #![allow(dead_code)] // consumers: the SQL editor / VQB completion layer (not landed yet)
 
+pub(crate) mod from_relation_metadata;
 pub(crate) mod identity;
 pub(crate) mod invalidation;
 pub(crate) mod metadata_cache;
 pub(crate) mod ordered_map;
+pub(crate) mod relation_prediction_types;
 pub(crate) mod schema;
 pub(crate) mod session_config;
 
+pub(crate) use from_relation_metadata::*;
 pub(crate) use identity::*;
 pub(crate) use invalidation::*;
 pub(crate) use metadata_cache::*;
+pub(crate) use relation_prediction_types::*;
 pub(crate) use schema::*;
 pub(crate) use session_config::*;
