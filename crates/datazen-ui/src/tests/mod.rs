@@ -40,6 +40,9 @@ mod column_presentation_dialog_audit;
 // T054-S2: ColumnPresentationDialog dialog component + state + save/enable
 // wiring (coder tests: plan/preview/rules, state machine, render).
 mod column_presentation_dialog_s2;
+// T054-S2 audit: independent checks (U+FEFF, plan order a-e, preview,
+// regex bytes semantics, save/enable outbox, render).
+mod column_presentation_dialog_s2_audit;
 pub(crate) use support::*;
 
 pub(crate) fn runtime() -> Runtime<AppState> {
