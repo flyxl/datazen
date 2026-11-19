@@ -315,3 +315,6 @@ mod migration_job_verdict;
 // T106 independent audit: i18n key resolution, boundary tone/gap polarity,
 // resume gating and adversarial two-size two-theme rect geometry.
 mod migration_job_verdict_audit;
+
+// T156: structureEditor/types.ts contract verification and gap-fill.
+mod structure_editor_types;
