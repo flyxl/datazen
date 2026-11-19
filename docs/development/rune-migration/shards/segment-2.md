@@ -22,7 +22,6 @@
 - [ ] T089 · stores/ai · 2.00d · stores/ai/streaming.ts · split
 - [ ] T095 · extensions · 0.80d · extensions/generated.ts
 - [ ] T104 · components/chart · 0.80d · components/chart/ChartView.tsx
-- [ ] T113 · windows/workflow · 0.50d · windows/workflow/WorkflowHistorySection.tsx
 - [x] T118 · lib · 0.80d · lib/cellEditorKind.ts
 - [ ] T120 · lib/metadata · 2.00d · lib/metadata/temporaryResults.ts · split
 - [ ] T121 · lib/relationPrediction · 0.90d · lib/relationPrediction/relatedTables.ts lib/relationPrediction/types.ts lib/relativeTime.ts
@@ -172,3 +171,4 @@
 - [x] T072 · windows/wapps · 1.30d · windows/wapps/WappManagementPage.tsx · split
 - [x] T081 · lib/relationPrediction · 2.00d · lib/relationPrediction/predictRelations.ts · split
 - [x] T090 · types · 0.30d · types/chart.ts
+- [x] T111 · windows/workflow · 0.50d · windows/workflow/WorkflowHistorySection.tsx
