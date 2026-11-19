@@ -247,6 +247,8 @@ mod migration_failure_audit;
 mod grant_state;
 // T049 independent audit: receipt-id races, exact timing boundaries, observers.
 mod grant_state_audit;
+// T097: the AI session-cancel state machine port, its branches and its real 8s wake.
+mod session_cancel;
 // T010: the controlled source/target endpoint bar port.
 mod migration_endpoints_bar;
 // T010 independent audit: label-vs-id display, close-on-choice, geometry.
