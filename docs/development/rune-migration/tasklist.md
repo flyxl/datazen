@@ -199,7 +199,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T180 · windows/schema-diff · 1.30d · windows/schema-diff/SchemaDiffPlanPanel.tsx · split
 - [ ] T181 · lib · 0.90d · lib/aiMemoryCorrection.ts
 - [ ] T182 · lib/chart · 1.00d · lib/chart/transform.ts lib/columnStats.ts
-- [ ] T183 · lib/session · 0.90d · lib/session/QueryPanelSession.ts
+- [x] T183 · lib/session · 0.90d · lib/session/QueryPanelSession.ts
 - [ ] T184 · lib/valuePresentation · 0.80d · lib/valuePresentation/registerBundledContributions.ts lib/valuePresentation/settings.ts
 - [ ] T185 · hooks · 0.50d · hooks/useColumnResize.ts
 - [ ] T186 · stores · 0.90d · stores/dashboardStore.ts

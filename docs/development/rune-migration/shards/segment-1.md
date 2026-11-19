@@ -41,7 +41,7 @@
 - [x] T166 · components/filter · 0.80d · components/filter/FilterTokenInput.tsx components/filter/FilterValueInput.tsx
 - [x] T167 · components/connection · 0.90d · components/connection/ConnectionShareDialogHost.tsx
 - [x] T173 · windows/connection · 0.80d · windows/connection/ContentStatusBar.tsx windows/connection/ContentToolbar.tsx
-- [ ] T183 · lib/session · 0.90d · lib/session/QueryPanelSession.ts
+- [x] T183 · lib/session · 0.90d · lib/session/QueryPanelSession.ts
 - [ ] T192 · components/filter · 0.80d · components/filter/NamedViewMenu.tsx
 - [x] T193 · components/connection · 0.90d · components/connection/FileConnectionFields.tsx
 - [x] T199 · windows/connection · 1.30d · windows/connection/ContentView.tsx · split
