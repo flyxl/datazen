@@ -16,7 +16,7 @@
 - [x] T049 · ai · 0.80d · ai/grantState.ts
 - [x] T053 · shell.ts · 0.90d · shell.ts
 - [ ] T056 · components/filter · 0.90d · components/filter/FilterConditionEditor.tsx
-- [ ] T059 · components/connection · 0.90d · components/connection/ConnectionAiNotes.tsx
+- [x] T059 · components/connection · 0.90d · components/connection/ConnectionAiNotes.tsx
 - [x] T062 · components/migration · 0.50d · components/migration/MigrationJobFailureNotice.tsx
 - [ ] T067 · windows/connection · 1.30d · windows/connection/ConnectionNavigatorTree.tsx · split
 - [x] T081 · lib/relationMetadata · 0.90d · lib/relationMetadata/sessionConfig.ts lib/relationMetadata/types.ts lib/relationPrediction/fromRelationMetadata.ts

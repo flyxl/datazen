@@ -75,7 +75,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T056 · components/filter · 0.90d · components/filter/FilterConditionEditor.tsx
 - [x] T057 · components/history · 1.00d · components/history/HistoryEntryCard.tsx components/history/HistoryFilterBar.tsx
 - [ ] T058 · components/query · 0.90d · components/query/QueryArtifactExport.tsx
-- [ ] T059 · components/connection · 0.90d · components/connection/ConnectionAiNotes.tsx
+- [x] T059 · components/connection · 0.90d · components/connection/ConnectionAiNotes.tsx
 - [ ] T060 · components/chart · 0.80d · components/chart/ChartEmptyState.tsx components/chart/ChartToolbar.tsx
 - [ ] T061 · components/ai · 0.80d · components/ai/AiCodeBlock.tsx
 - [x] T062 · components/migration · 0.50d · components/migration/MigrationJobFailureNotice.tsx
