@@ -40,7 +40,7 @@
 - [ ] T114 · windows/onboarding · 0.90d · windows/onboarding/OnboardingWizard.tsx
 - [ ] T117 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffJobStatusPanel.tsx
 - [ ] T123 · lib/sqlDialects · 0.90d · lib/sqlDialects/mysql.ts lib/sqlDialects/postgresql.ts lib/sqlDialects/rowLimit.ts
-- [ ] T125 · lib/valuePresentation · 1.00d · lib/valuePresentation/columnPresentationSession.ts lib/valuePresentation/index.ts
+- [x] T125 · lib/valuePresentation · 1.00d · lib/valuePresentation/columnPresentationSession.ts lib/valuePresentation/index.ts
 - [ ] T126 · hooks · 0.90d · hooks/useAiKeyboard.ts hooks/useAutoScroll.ts hooks/useClipboardCopyFeedback.ts
 - [ ] T132 · commands · 0.90d · commands/artifact.ts
 - [ ] T141 · components/sql-editor · 3.40d · components/sql-editor/editorExtensions.ts · split
