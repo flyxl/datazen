@@ -9,16 +9,24 @@
 //! ## Layout
 //!
 //! Mirrors the `metadata` module's convention: a directory module per
-//! multi-file React family, one Rust file per React file, so later siblings
-//! land beside their sources instead of at the crate root. Landed so far
-//! (tasklist T033):
+//! multi-file React family, one Rust entry per React file, so later siblings
+//! land beside their sources instead of at the crate root. Landed so far:
 //!
-//! - `normalize.rs` — the identifier/type folding the engine compares with;
-//! - `from_table_schema.rs` — the ER diagram's schema adapter.
+//! - `normalize.rs` — the identifier/type folding the engine compares with
+//!   (tasklist T033);
+//! - `from_table_schema.rs` — the ER diagram's schema adapter (tasklist
+//!   T033);
+//! - `predict_relations/` — the engine (React `predictRelations.ts`,
+//!   tasklist T082; this segment's tracker assigned the port as T081 — the
+//!   tasklist's own T081 is the `relationMetadata` family): the reverse-index
+//!   search, the composite fold and the ambiguity abstention, plus the
+//!   output half of `types.ts` (evidence/candidates/options). The suite is
+//!   split into `predict_relations/tests.rs` to respect the single-file
+//!   size discipline.
 //!
-//! Still to land: `fromRelationMetadata.ts` (T081, with the
-//! `relationMetadata/sessionConfig` + `types` pair), `predictRelations.ts`
-//! (T082, split), `relatedTables.ts` + `types.ts` (T121). React's consumers
+//! Still to land: `fromRelationMetadata.ts` (the metadata adapter, with
+//! `relationMetadata/sessionConfig.ts` + `types.ts`), `relatedTables.ts` +
+//! the rest of `types.ts` (tasklist T121). React's consumers
 //! (`windows/connection/ErDiagramView.tsx:174`,
 //! `windows/connection/query/QueryBuilderHostAdapter.tsx:126`) both call
 //! `predictRelations(toPredictionTablesFromSchemas(...))`, so the view ports
@@ -26,6 +34,7 @@
 
 mod from_table_schema;
 mod normalize;
+mod predict_relations;
 
 pub use from_table_schema::{
     ColumnSchema, DeclaredForeignKey, ForeignKeyInfo, IndexInfo, PredictionColumn, PredictionTable,
@@ -34,4 +43,9 @@ pub use from_table_schema::{
 pub use normalize::{
     TypeFamily, is_generic_key_name, normalize_data_type, normalize_identifier, singularize,
     split_identifier_words, type_family,
+};
+pub use predict_relations::{
+    ColumnPair, EvidenceWeights, PredictionEvidence, PredictionEvidenceCode, PredictionOptions,
+    PredictionTier, RelationCandidate, predict_relations, DEFAULT_AMBIGUITY_MARGIN,
+    DEFAULT_HIGH_THRESHOLD, DEFAULT_MEDIUM_THRESHOLD, EVIDENCE_WEIGHTS,
 };
