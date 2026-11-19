@@ -710,3 +710,6 @@ mod workspace_view_audit;
 // flattening in install order, the per-page field mapping with its title
 // fallback, the tab payload, and the openWappPage resolve gates.
 mod workspace_pages;
+// T069: the chart widget tile port (header switches, the eight body states,
+// the expand overlay, the transform/axis seams).
+mod chart_widget_tile_audit;

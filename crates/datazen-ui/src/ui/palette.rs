@@ -260,6 +260,23 @@ pub(crate) fn danger_text(dark: bool) -> Color {
     c.danger.fg
 }
 
+/// Dashboard tile alert glyph (T069, `ChartWidgetTile.tsx`'s
+/// `text-amber-500` on the fired-alert triangle). Tailwind amber-500
+/// (oklch 0.769 0.164 70.08) verbatim — the same hue `ai_amber_border`
+/// carries at 30%.
+pub(crate) fn alert_amber(_dark: bool) -> Color {
+    // kit 无对应 token: dashboard alert amber
+    rune::oklch(0.769, 0.164, 70.08)
+}
+
+/// Dashboard tile run-timeout ink (T069, `ChartWidgetTile.tsx`'s
+/// `text-amber-400` on the timeout line). Tailwind amber-400
+/// (oklch 0.828 0.189 84.429) verbatim.
+pub(crate) fn timeout_amber(_dark: bool) -> Color {
+    // kit 无对应 token: dashboard timeout amber
+    rune::oklch(0.828, 0.189, 84.429)
+}
+
 /// AI profile shield tint per safety preset (T009-S3, `AiChatPanel.tsx`:
 /// `text-emerald-400` / `text-amber-400` / `text-blue-400`). Exact Tailwind
 /// sRGB values, so the laid-out shield reports the same hue React paints.
