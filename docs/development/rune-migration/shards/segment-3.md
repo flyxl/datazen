@@ -52,7 +52,7 @@
 - [ ] T151 · lib/chart · 0.60d · lib/chart/recommend.ts lib/chart/seriesOverlap.ts
 - [ ] T157 · stores · 0.90d · stores/contextMenuStore.ts
 - [ ] T158 · stores/tableData · 0.80d · stores/tableData/draftInserts.ts stores/tableData/enumCandidates.ts
-- [ ] T160 · platform · 0.30d · platform/env.ts
+- [x] T160 · platform · 0.30d · platform/env.ts
 - [ ] T163 · components/DataTable · 4.50d · components/DataTable/DataTable.tsx · split
 - [ ] T167 · components/ai · 2.00d · components/ai/AiMessageContent.tsx · split
 - [ ] T169 · components · 0.90d · components/McpApprovalHost.tsx
