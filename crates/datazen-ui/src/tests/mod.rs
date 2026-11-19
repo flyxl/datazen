@@ -339,3 +339,6 @@ mod connection_share_audit;
 
 // T173: ContentStatusBar + ContentToolbar controlled ports.
 mod content_bar_ports;
+// T173 independent audit: preserved inner ER testid, React detail/AI titles,
+// KV slot branches and adversarial two-size two-theme geometry.
+mod content_bar_audit;
