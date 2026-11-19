@@ -401,3 +401,6 @@ mod content_view_audit;
 // T245: ContentViewDrawers port (drawer keys, split-pane source, auto-context,
 // result-readonly verdicts, KV slot and geometry).
 mod content_view_drawers;
+// T245 independent audit: reason parsing, width bounds, auto-context fallback,
+// object cells, table detail row, resolving banner and visible-rect geometry.
+mod content_view_drawers_audit;
