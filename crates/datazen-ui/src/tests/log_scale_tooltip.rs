@@ -176,6 +176,58 @@ fn a_string_number_orig_is_not_a_number_and_falls_back() {
     );
 }
 
+/// React L24: `orig <= 0 ? '0' : formatCompact(orig)` — the zero literal is
+/// for 0, -0 and the negatives only; every positive orig, fractional ones
+/// included, reaches formatCompact (the boundary is `<= 0`, not `< 1`).
+#[test]
+fn positive_fractional_origs_cross_the_zero_boundary_to_the_seam() {
+    for orig in [0.5, 0.001, 1e-9] {
+        let seen = RefCell::new(Vec::new());
+        let compact = recording_compact(&seen);
+        let point = ChartDataPoint::new().with("__orig__count", ChartValue::Number(orig));
+        let formatted = format_entry(
+            &ChartValue::Number(2.0),
+            &ChartValue::Text("count".into()),
+            &chart_payload(&point),
+            &compact,
+        );
+        assert_eq!(
+            formatted.value,
+            format!("<{orig}>"),
+            "orig {orig}: a positive fraction is the seam's, not the literal '0'"
+        );
+        assert!(
+            (seen.borrow()[0] - orig).abs() < 1e-12,
+            "orig {orig}: reached the seam unchanged"
+        );
+    }
+}
+
+/// React L22-23: `props.payload?.[`__orig__${nameStr}`]` then
+/// `if (typeof orig === 'number')` — a null slot is not `typeof 'number'`,
+/// so the formatter takes the fallback arm even though the key exists (the
+/// payload view must answer None for a Null slot, not Some(0)).
+#[test]
+fn a_null_orig_slot_is_not_a_number_and_falls_back() {
+    let seen = RefCell::new(Vec::new());
+    let compact = recording_compact(&seen);
+    let point = ChartDataPoint::new().with("__orig__count", ChartValue::Null);
+    let formatted = format_entry(
+        &ChartValue::Number(2.0),
+        &ChartValue::Text("count".into()),
+        &chart_payload(&point),
+        &compact,
+    );
+    assert_eq!(
+        formatted.value, "<100>",
+        "typeof null !== 'number': 10^logValue, not a null-as-0 literal"
+    );
+    assert!(
+        (seen.borrow()[0] - 100.0).abs() < 1e-9,
+        "the fallback handed the seam 10^logValue"
+    );
+}
+
 // ---- The formatter: the fallback arm --------------------------------------------
 
 #[test]
@@ -231,6 +283,99 @@ fn a_nonnumeric_value_is_nan_all_the_way_through() {
         );
         assert_eq!(formatted.value, "<NaN>");
         assert!(seen.borrow()[0].is_nan(), "10^NaN = NaN reached the seam");
+    }
+}
+
+/// React L26: `Math.pow(10, logValue)` — the exponent is whatever the value
+/// coerced to, fractional and negative included: 10^0.5 ≈ 3.162 (not 10^0
+/// from a truncated exponent) and 10^-2 = 0.01 (not 10^2 from an absed one).
+#[test]
+fn fractional_and_negative_log_values_untransform_exactly() {
+    let cases = [
+        (&ChartValue::Number(0.5), 3.162_277_660_168_379_5), // 10^0.5
+        (&ChartValue::Text("0.5".into()), 3.162_277_660_168_379_5),
+        (&ChartValue::Number(-2.0), 0.01),                   // 10^-2
+        (&ChartValue::Number(-0.5), 0.316_227_766_016_837_94), // 10^-0.5
+    ];
+    for (value, expected) in cases {
+        let seen = RefCell::new(Vec::new());
+        let compact = recording_compact(&seen);
+        // No __orig__ slot: a payload the transform never touched.
+        let point = ChartDataPoint::new().with("label", ChartValue::Text("a".into()));
+        let formatted = format_entry(
+            value,
+            &ChartValue::Text("count".into()),
+            &chart_payload(&point),
+            &compact,
+        );
+        assert!(
+            (seen.borrow()[0] - expected).abs() < 1e-9,
+            "value {value:?}: the seam received 10^{expected}, untruncated and unabsed"
+        );
+        assert_eq!(
+            formatted.value,
+            format!("<{}>", seen.borrow()[0]),
+            "the display is the seam's echo of the number it received"
+        );
+    }
+}
+
+/// React L20: `Number(value ?? 0)` — the nullish coalescing keeps `''` (an
+/// empty string is not nullish), and `Number('') === Number('   ') ===
+/// Number('\t\n ') === 0`: the fallback shows 10^0 = 1, not 10^NaN.
+#[test]
+fn empty_and_all_space_string_values_coerce_to_zero() {
+    for value in ["", "   ", "\t\n "] {
+        let seen = RefCell::new(Vec::new());
+        let compact = recording_compact(&seen);
+        let point = ChartDataPoint::new();
+        let formatted = format_entry(
+            &ChartValue::Text(value.into()),
+            &ChartValue::Text("count".into()),
+            &chart_payload(&point),
+            &compact,
+        );
+        assert_eq!(
+            formatted.value, "<1>",
+            "value {value:?}: Number trims to '' and parses 0 → 10^0"
+        );
+        assert!(
+            (seen.borrow()[0] - 1.0).abs() < 1e-9,
+            "value {value:?}: the seam received 10^0, not 10^NaN"
+        );
+    }
+}
+
+/// React L20: `Number(value)` parses the whole decimal grammar — e-notation
+/// included: `Number('1e2') === 100` (the seam sees 10^100) and
+/// `Number('2e-1') === 0.2` (the seam sees 10^0.2 ≈ 1.585), not the NaN a
+/// digits-only parser would yield.
+#[test]
+fn exponent_notation_strings_parse_the_way_number_does() {
+    let cases = [
+        ("1e2", 1e100),                 // Number('1e2') === 100 → 10^100
+        ("2e-1", 1.584_893_192_461_113_6), // Number('2e-1') === 0.2 → 10^0.2
+    ];
+    for (value, expected) in cases {
+        let seen = RefCell::new(Vec::new());
+        let compact = recording_compact(&seen);
+        let point = ChartDataPoint::new();
+        let formatted = format_entry(
+            &ChartValue::Text(value.into()),
+            &ChartValue::Text("count".into()),
+            &chart_payload(&point),
+            &compact,
+        );
+        let received = seen.borrow()[0];
+        assert!(
+            (received - expected).abs() <= expected.abs() * 1e-9,
+            "value {value:?}: the seam received 10^Number({value:?})"
+        );
+        assert_eq!(
+            formatted.value,
+            format!("<{received}>"),
+            "the display is the seam's echo of the number it received"
+        );
     }
 }
 
