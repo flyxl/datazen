@@ -81,6 +81,8 @@ fn view(s: &AuditState, _cx: &mut Cx<AuditState>) -> El {
             s.begins_new += 1;
             s.dialog.begin_create_new();
         })
+        .on_toggle_picker(|s: &mut AuditState| s.dialog.toggle_picker())
+        .on_close_picker(|s: &mut AuditState| s.dialog.close_picker())
         .on_back_existing(|s: &mut AuditState| {
             s.backs += 1;
             s.dialog.back_to_existing();
@@ -127,10 +129,15 @@ fn press(rt: &mut Runtime<AuditState>, key: &str) {
     let point = rt
         .find(key)
         .unwrap_or_else(|| panic!("{key} is laid out and pressable"));
+    // Move onto the control first and let the clock run: a control mounted by
+    // this runtime's first frame is pressable only after its enter motion.
+    rt.pointer_move(point.0, point.1);
+    rt.frame(1.0 / 60.0);
     rt.pointer_down(point.0, point.1);
     rt.pointer_up(point.0, point.1);
-    rt.frame(0.0);
-    rt.frame(0.0);
+    for _ in 0..8 {
+        rt.frame(1.0 / 60.0);
+    }
 }
 
 // ---- the state machine (React's useState + the open effect) --------------
@@ -295,7 +302,7 @@ fn the_picker_lists_dashboards_and_confirms_the_first() {
     // React test 2: the list renders and the confirm fires with 'd1'.
     let mut rt = rt(AuditState::with_list());
     assert!(has(&rt, "add-to-dashboard-dialog"), "the body root");
-    assert!(has(&rt, "dashboard-target-select"), "the picker trigger");
+    assert!(has(&rt, "dashboard-target-select-trigger"), "the picker trigger (the kit Select keys it -trigger)");
     assert!(has(&rt, "dashboard-target-new"), "the create-new link");
 
     press(&mut rt, "add-to-dashboard-confirm");
@@ -317,7 +324,7 @@ fn the_create_branch_confirms_a_new_panel_by_name() {
 
     assert!(has(&rt, "dashboard-new-panel-name"), "the name field");
     assert!(has(&rt, "add-to-dashboard-select-existing"), "the back link (list non-empty)");
-    assert!(!has(&rt, "dashboard-target-select"), "the picker is gone");
+    assert!(!has(&rt, "dashboard-target-select-trigger"), "the picker is gone");
 
     press(&mut rt, "add-to-dashboard-confirm");
     assert_eq!(

@@ -450,7 +450,12 @@ impl<'a, S: 'static> SchemaDiffDeployPanel<'a, S> {
                     .key(format!("{}-summary-target", self.key))
                     .gap(4.0)
                     .child(text(format!("{}:", t("schemaDiff.reviewTarget"))).font(type_xs()).color(k.c.text_muted))
-                    .child(text(self.target_label.to_owned()).font(type_xs().mono()).color(k.c.text_base)),
+                    .child(
+                        text(self.target_label.to_owned())
+                            .key(format!("{}-summary-target-value", self.key))
+                            .font(type_xs().mono())
+                            .color(k.c.text_base),
+                    ),
             )
             .child(
                 row()
@@ -459,6 +464,7 @@ impl<'a, S: 'static> SchemaDiffDeployPanel<'a, S> {
                     .child(text(format!("{}:", t("schemaDiff.reviewTables"))).font(type_xs()).color(k.c.text_muted))
                     .child(
                         text(self.plan.tables.join(", "))
+                            .key(format!("{}-summary-tables-value", self.key))
                             .font(type_xs().mono())
                             .color(k.c.text_base),
                     ),
@@ -469,6 +475,7 @@ impl<'a, S: 'static> SchemaDiffDeployPanel<'a, S> {
                     .gap(4.0)
                     .child(
                         text(format!("{}: {}", t("schemaDiff.statements"), self.plan.statements.len()))
+                            .key(format!("{}-summary-statements-value", self.key))
                             .font(type_xs())
                             .color(k.c.text_muted),
                     ),

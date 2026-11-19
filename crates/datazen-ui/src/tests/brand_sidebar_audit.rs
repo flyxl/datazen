@@ -17,7 +17,9 @@
 
 use rune::{Cx, El, Env, Runtime};
 
-use crate::views::onboarding::brand_sidebar::{ASIDE_WIDTH, FOOTER_HEIGHT, BrandSidebar, version_label};
+use crate::views::onboarding::brand_sidebar::{
+    ASIDE_PAD_X, ASIDE_WIDTH, FOOTER_HEIGHT, BrandSidebar, version_label,
+};
 
 #[derive(Clone)]
 struct Scene {
@@ -110,7 +112,10 @@ fn the_three_feature_rows_render_in_react_order() {
     for (index, title, desc) in expected {
         let row = maybe(&rt, &format!("onboarding-sidebar-feature-{index}"))
             .unwrap_or_else(|| panic!("feature row {index} is keyed"));
-        assert_eq!(row.role, "row", "a feature row");
+        // Rune's plain `row()` carries no special role (a `group`); the flex
+        // layout itself is what React's `<div className="flex gap-3">` gives,
+        // pinned by the icon/title geometry below.
+        let [rx, ry, _, _] = row.rect;
         assert_eq!(
             text_of(&rt, &format!("onboarding-sidebar-feature-{index}-title")),
             title
@@ -123,7 +128,13 @@ fn the_three_feature_rows_render_in_react_order() {
             .unwrap_or_else(|| panic!("feature {index}'s icon well is keyed"));
         let [ix, iy, iw, ih] = icon.rect;
         assert_eq!((iw, ih), (22.5, 22.5), "React h-[30px] w-[30px] = 22.5pt");
-        assert!(ix >= 0.0 && iy >= 0.0);
+        assert!(ix >= rx && iy >= ry, "the icon sits inside its row");
+        let title_el = maybe(&rt, &format!("onboarding-sidebar-feature-{index}-title"))
+            .unwrap_or_else(|| panic!("feature {index}'s title is keyed"));
+        assert!(
+            title_el.rect[0] > ix + iw,
+            "the title follows the icon in the flex row"
+        );
     }
     assert!(
         !has(&rt, "onboarding-sidebar-feature-3"),
@@ -145,7 +156,10 @@ fn the_version_footer_sits_on_the_bottom_line_with_its_height() {
         (fy + fh - ah).abs() < 0.5,
         "the footer ends on the sidebar's bottom line ({fy}+{fh} vs {ah})"
     );
-    assert_eq!(fx, 0.0, "still inside the padded column flow");
+    assert_eq!(
+        fx, ASIDE_PAD_X,
+        "inside the padded column flow (React's px-[34px] aside padding)"
+    );
     let _ = fw;
     // The em-dash placeholder while the host never delivers.
     assert_eq!(text_of(&rt, "onboarding-version-label"), "v…");

@@ -278,13 +278,29 @@ fn deploy_enabled(rt: &Runtime<Scene>) -> bool {
     maybe(rt, "schema-diff-deploy").map(|e| e.focusable).unwrap_or(false)
 }
 
+/// A kit Button's label is its keyed `label` child (the button container's
+/// `ElementInfo::text` is None), resolved by path prefix.
+fn button_label(rt: &Runtime<Scene>, key: &str) -> String {
+    let Some(button) = maybe(rt, key) else {
+        return String::new();
+    };
+    let prefix = button.path;
+    rt.elements()
+        .into_iter()
+        .find(|e| !e.exiting && e.key.as_deref() == Some("label") && e.path.starts_with(&prefix))
+        .and_then(|e| e.text)
+        .unwrap_or_default()
+}
+
 #[test]
 fn the_summary_box_shows_target_tables_and_count() {
     let rt = rt(Scene::base());
     assert!(maybe(&rt, "schema-diff-deploy-panel-summary").is_some());
-    assert!(text_of(&rt, "schema-diff-deploy-panel-summary-target").contains("demo_db"));
-    assert!(text_of(&rt, "schema-diff-deploy-panel-summary-tables").contains("users"));
-    assert!(text_of(&rt, "schema-diff-deploy-panel-summary-statements").contains("1"));
+    // The three summary rows are `group` containers (no `ElementInfo::text`);
+    // their value texts are keyed.
+    assert!(text_of(&rt, "schema-diff-deploy-panel-summary-target-value").contains("demo_db"));
+    assert!(text_of(&rt, "schema-diff-deploy-panel-summary-tables-value").contains("users"));
+    assert!(text_of(&rt, "schema-diff-deploy-panel-summary-statements-value").contains("1"));
 }
 
 #[test]
@@ -312,7 +328,13 @@ fn a_failed_result_lists_its_errors() {
     assert!(text_of(&rt, "schema-diff-deploy-status").contains("failed"));
     assert!(text_of(&rt, "schema-diff-deploy-count").contains("1/4"));
     let errors = maybe(&rt, "schema-diff-deploy-errors").expect("the errors list");
-    assert!(errors.text.unwrap_or_default().contains("Multiple primary key defined"));
+    assert!(!errors.exiting);
+    // The list is a `group`; each entry is a CopyableError whose text carries
+    // the `-text` suffix key.
+    assert!(
+        text_of(&rt, "schema-diff-deploy-panel-error-0-text").contains("Multiple primary key defined"),
+        "the error text renders verbatim"
+    );
 }
 
 #[test]
@@ -413,8 +435,12 @@ fn the_incomplete_rollback_banner_only_while_required_and_incomplete() {
         missing: vec!["DROP COLUMN email".to_owned()],
     };
     let required = rt(scene.clone());
-    let banner = maybe(&required, "schema-diff-deploy-panel-rollback-incomplete").expect("the banner");
-    assert!(banner.text.unwrap_or_default().contains("DROP COLUMN email"));
+    maybe(&required, "schema-diff-deploy-panel-rollback-incomplete").expect("the banner");
+    // The banner is a `group`; its message text carries the `-text` suffix key.
+    assert!(
+        text_of(&required, "schema-diff-deploy-panel-rollback-incomplete-text").contains("DROP COLUMN email"),
+        "the banner lists the missing statements"
+    );
     assert!(!deploy_enabled(&required), "incomplete rollback blocks");
 
     // Not required: the banner is gone (and the gate no longer blocks).
@@ -428,7 +454,7 @@ fn the_deploying_state_relabels_and_blocks_the_button() {
     let mut scene = Scene::base();
     scene.deploying = true;
     let rt = rt(scene);
-    let label = text_of(&rt, "schema-diff-deploy");
+    let label = button_label(&rt, "schema-diff-deploy");
     assert!(label.contains("正在部署"), "t('schemaDiff.deploying'): {label}");
     assert!(!deploy_enabled(&rt), "deploying blocks the button");
 }

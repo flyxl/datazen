@@ -19,7 +19,17 @@ fn env(dark: bool) -> Env {
 }
 
 fn has_key<S>(rt: &Runtime<S>, key: &str) -> bool {
-    rt.elements().iter().any(|e| e.key.as_deref() == Some(key))
+    rt.elements()
+        .iter()
+        .any(|e| !e.exiting && e.key.as_deref() == Some(key))
+}
+
+/// Run the clock past the kit's exit motion (~0.4s) so a dismissed element is
+/// fully gone rather than mid-exit.
+fn settle<S>(rt: &mut Runtime<S>) {
+    for _ in 0..24 {
+        rt.frame(1.0 / 60.0);
+    }
 }
 
 fn rect_of<S>(rt: &Runtime<S>, key: &str) -> [f32; 4] {
@@ -47,14 +57,23 @@ fn press<S>(rt: &mut Runtime<S>, key: &str) {
 fn assert_in_window<S>(rt: &Runtime<S>, w: f32, h: f32, label: &str) {
     let mut outside = Vec::new();
     for e in rt.elements() {
-        let r = e.rect;
-        if r[0] < -0.5 || r[1] < -0.5 || r[0] + r[2] > w + 0.5 || r[1] + r[3] > h + 0.5 {
+        if e.exiting {
+            continue;
+        }
+        // The scrollable doc column is CodeMirror's fixed-width unwrapped
+        // content: its layout rect runs past the window exactly as
+        // cm-content's does in React, and the scroller clips it. Judge what
+        // the clips leave visible, not the unclipped layout rect.
+        let r = e.visible;
+        if r[0] < -0.5 || r[1] < -0.5 || r[2] <= 0.0 || r[3] <= 0.0
+            || r[0] + r[2] > w + 0.5 || r[1] + r[3] > h + 0.5
+        {
             outside.push(format!("{} {:?}", e.key.unwrap_or(e.path), r));
         }
     }
     assert!(
         outside.is_empty(),
-        "{label}: {} node(s) out of window {w}x{h}: {outside:?}",
+        "{label}: {} node(s) visible outside the window {w}x{h}: {outside:?}",
         outside.len()
     );
 }
@@ -153,7 +172,7 @@ fn placeholder_only_on_empty_document() {
     assert!(has_key(&rt, "sql-editor-placeholder"), "the empty doc shows the placeholder");
     // React's cmPlaceholder disappears as soon as the doc has any content.
     rt.update(|s, _| s.state.set_value("S"));
-    rt.frame(1.0 / 60.0);
+    settle(&mut rt);
     assert!(!has_key(&rt, "sql-editor-placeholder"), "one character clears the placeholder");
 }
 
@@ -171,7 +190,7 @@ fn executing_badge_appears_only_while_running() {
         s.executing = false;
         s.state.set_execution(ExecutionStatus::Idle, None);
     });
-    rt.frame(1.0 / 60.0);
+    settle(&mut rt);
     assert!(!has_key(&rt, "sql-editor-executing"), "the badge leaves with the status");
 }
 

@@ -112,6 +112,10 @@ pub(crate) struct AddToDashboardState {
     pub(crate) selection: String,
     pub(crate) creating_new: bool,
     pub(crate) new_name: TextEdit,
+    /// The picker listbox's open flag. React's `Select` keeps this inside the
+    /// component; the kit's `Select` is host-driven, so the dialog state owns
+    /// it and the host wires `on_toggle_picker` / `on_close_picker`.
+    pub(crate) picker_open: bool,
 }
 
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
@@ -127,7 +131,19 @@ impl AddToDashboardState {
         self.request_epoch = self.open_epoch;
         self.loading = true;
         self.creating_new = false;
+        self.picker_open = false;
         self.new_name = TextEdit::new(t("dashboard.defaultName").to_owned());
+    }
+
+    /// The picker trigger's press (React's `Select` opens its listbox).
+    pub(crate) fn toggle_picker(&mut self) {
+        self.picker_open = !self.picker_open;
+    }
+
+    /// Outside press / Escape while the listbox is open (React's `Select`
+    /// closes itself); choosing an option closes it too.
+    pub(crate) fn close_picker(&mut self) {
+        self.picker_open = false;
     }
 
     /// The async half: the fetched list lands (React's `.then`) and the
@@ -154,17 +170,20 @@ impl AddToDashboardState {
     /// The `open` prop turning false (header close, Escape, scrim, cancel).
     pub(crate) fn close(&mut self) {
         self.open = false;
+        self.picker_open = false;
     }
 
     /// The select's `onChange`.
     pub(crate) fn select(&mut self, id: &str) {
         self.selection = id.to_owned();
+        self.picker_open = false;
     }
 
     /// The create-new link (`setCreatingNew(true)`); the name keeps whatever
     /// it holds (React does not reset it here either).
     pub(crate) fn begin_create_new(&mut self) {
         self.creating_new = true;
+        self.picker_open = false;
     }
 
     /// The select-existing link: back to the picker, selection back to the
@@ -217,6 +236,8 @@ pub(crate) struct AddToDashboardDialog<'a, S: 'static> {
     on_select: Option<ChooseFn<S>>,
     on_begin_new: Option<ModeFn<S>>,
     on_back_existing: Option<ModeFn<S>>,
+    on_toggle_picker: Option<ModeFn<S>>,
+    on_close_picker: Option<ModeFn<S>>,
     on_confirm: Option<ConfirmFn<S>>,
     name_edit: Option<Box<dyn FnOnce(TextField<'a>) -> TextField<'a>>>,
 }
@@ -228,6 +249,8 @@ impl<'a, S: 'static> AddToDashboardDialog<'a, S> {
             key,
             state,
             on_close: None,
+            on_toggle_picker: None,
+            on_close_picker: None,
             on_select: None,
             on_begin_new: None,
             on_back_existing: None,
@@ -255,6 +278,20 @@ impl<'a, S: 'static> AddToDashboardDialog<'a, S> {
     }
 
     /// The select-existing link.
+    /// The picker trigger's press: flip the host's `picker_open`. The kit
+    /// `Select` contract requires an enabled select to open; React's `Select`
+    /// owns the flag inside the component, the host owns it here.
+    pub(crate) fn on_toggle_picker(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+        self.on_toggle_picker = Some(Rc::new(f));
+        self
+    }
+
+    /// Outside press / Escape closing the listbox.
+    pub(crate) fn on_close_picker(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+        self.on_close_picker = Some(Rc::new(f));
+        self
+    }
+
     pub(crate) fn on_back_existing(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_back_existing = Some(Rc::new(f));
         self
@@ -365,7 +402,25 @@ impl<'a, S: 'static> AddToDashboardDialog<'a, S> {
             .values(&values)
             .current(current)
             .placeholder(t("dashboard.selectPanel"))
-            .width(288.0);
+            .width(288.0)
+            .open(self.state.picker_open);
+        // The kit's contract: an enabled select must be able to open. The
+        // host owns the flag; a host that wires no callback simply keeps the
+        // flag where it is (the listbox opens and closes within one frame).
+        {
+            let toggle = self.on_toggle_picker.clone();
+            select = select.on_toggle(move |s: &mut S| {
+                if let Some(f) = &toggle {
+                    f(s);
+                }
+            });
+            let close = self.on_close_picker.clone();
+            select = select.on_close(move |s: &mut S| {
+                if let Some(f) = &close {
+                    f(s);
+                }
+            });
+        }
         if let Some(select_cb) = &self.on_select {
             let select_cb = Rc::clone(select_cb);
             select = select.on_choose(move |s: &mut S, value: &str, _tx: &mut Tx| {

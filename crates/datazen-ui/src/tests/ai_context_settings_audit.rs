@@ -120,7 +120,11 @@ fn view(s: &AuditState, _cx: &mut Cx<AuditState>) -> El {
         .build(s.dark, &mut layer);
     col()
         .key("audit-page")
-        .w(640.0)
+        // Rune's `w()` does not constrain a column's cross size (the element
+        // stretches to the window); `max_w` is what pins the page at 640 so
+        // the section's `w_full` children resolve against 640, as React's
+        // `w-full` does inside a 640px parent.
+        .max_w(640.0)
         .h_full()
         .child(section)
         .children(layer)
@@ -154,14 +158,42 @@ fn text_of(rt: &Runtime<AuditState>, key: &str) -> String {
     maybe(rt, key).and_then(|e| e.text).unwrap_or_default()
 }
 
+/// A kit Button's label is the keyed `label` child inside the button's
+/// subtree (`ElementInfo::text` is only filled for text nodes), so the
+/// button's own key reads as None: resolve its label by path prefix.
+fn button_label(rt: &Runtime<AuditState>, key: &str) -> String {
+    let Some(button) = maybe(rt, key) else {
+        return String::new();
+    };
+    let prefix = button.path;
+    rt.elements()
+        .into_iter()
+        .find(|e| !e.exiting && e.key.as_deref() == Some("label") && e.path.starts_with(&prefix))
+        .and_then(|e| e.text)
+        .unwrap_or_default()
+}
+
+/// Advance the clock past the kit's enter/hover motion (~0.4s) so elements
+/// mounted by a press settle and hit-tests reach them: `frame(0.0)` freezes
+/// animations at their start (opacity 0), where a fresh button is not
+/// pressable.
+fn settle(rt: &mut Runtime<AuditState>) {
+    for _ in 0..24 {
+        rt.frame(1.0 / 60.0);
+    }
+}
+
 fn press(rt: &mut Runtime<AuditState>, key: &str) {
     let point = rt
         .find(key)
         .unwrap_or_else(|| panic!("{key} is laid out and pressable"));
+    // A real hand moves onto the control before pressing; hover is also what
+    // makes a freshly-mounted button pressable.
+    rt.pointer_move(point.0, point.1);
+    rt.frame(1.0 / 60.0);
     rt.pointer_down(point.0, point.1);
     rt.pointer_up(point.0, point.1);
-    rt.frame(0.0);
-    rt.frame(0.0);
+    settle(rt);
 }
 
 // ---- byte counting and parsing (React byteLength / parseTypes) -----------
@@ -206,8 +238,12 @@ fn mount_shows_both_counters_and_rows() {
     // Empty-list copy stays hidden while rows exist.
     assert!(!has(&rt, "ai-templates-empty"));
     // The types sub-line: empty list reads "all database types", the other joins.
-    let sub_a = text_of(&rt, "ai-template-row-a-sub");
-    assert!(sub_a.contains("9 / 8192 bytes"));
+    // The row is a `group` (its `ElementInfo::text` is None), so the sub-line's
+    // byte counter is read from its own keyed text node; the joined types text
+    // stays an unkeyed child of the group.
+    assert_eq!(text_of(&rt, "ai-template-row-a-sub"), "");
+    assert_eq!(text_of(&rt, "ai-template-row-a-count"), "9 / 8192 bytes");
+    assert_eq!(text_of(&rt, "ai-template-row-b-count"), "9 / 8192 bytes");
 }
 
 #[test]
@@ -265,18 +301,46 @@ fn apply_editor_rejects_in_react_order() {
 
 #[test]
 fn editor_error_text_renders_the_named_rejections() {
-    let mut ai = AiContextState::from_config("", &[]);
-    ai.begin_create("n1");
-    if let Some(editor) = ai.editing.as_mut() {
-        editor.name = TextEdit::new(String::new());
+    // React clears the error when the editor opens and shows it only after a
+    // rejected apply (setEditorError lives in applyEditor's three guards),
+    // so each rejection is driven by a real confirm press.
+    for (kind, name, content, expected) in [
+        ("blank name", "", "SELECT 1;", "settings.ai.templateNameRequired"),
+        ("blank content", "N", "  ", "settings.ai.templateContentRequired"),
+        (
+            "over budget",
+            "N",
+            "x",
+            "settings.ai.templateTooLarge",
+        ),
+    ] {
+        let mut rt = rt(AuditState::with("", &[]));
+        press(&mut rt, "ai-context-add-template");
+        if let Some(editor) = rt.state.ai.editing.as_mut() {
+            editor.name = TextEdit::new(name.to_owned());
+            editor.content = TextEdit::new(
+                if kind == "over budget" {
+                    "x".repeat(MAX_TEMPLATE_BYTES + 1)
+                } else {
+                    content.to_owned()
+                },
+            );
+        }
+        rt.frame(0.0);
+        press(&mut rt, "ai-context-confirm");
+        let expected = match kind {
+            "over budget" => crate::i18n::t("settings.ai.templateTooLarge")
+                .replace("{max}", &MAX_TEMPLATE_BYTES.to_string()),
+            "blank name" => crate::i18n::t("settings.ai.templateNameRequired").to_owned(),
+            _ => crate::i18n::t("settings.ai.templateContentRequired").to_owned(),
+        };
+        let error = text_of(&rt, "ai-context-editor-error");
+        assert_eq!(
+            error, expected,
+            "the {kind} rejection names itself"
+        );
+        assert!(has(&rt, "ai-template-editor"), "the {kind} rejection keeps the editor open");
     }
-    let scene = AuditState {
-        ai,
-        ..AuditState::with("", &[])
-    };
-    let rt = rt(scene);
-    let error = text_of(&rt, "ai-context-editor-error");
-    assert_eq!(error, crate::i18n::t("settings.ai.templateNameRequired"));
 }
 
 // ---- begin_edit replaces in place; remove drops the row -------------------
@@ -429,16 +493,21 @@ fn save_press_records_the_deadline_only_within_budget() {
     assert_eq!(run.state.saves, 1);
     assert!(run.state.ai.saved_until.is_some(), "a valid save arms the deadline");
 
-    // Over the global budget the press fires but arms nothing, and React
-    // disables the button besides (the disabled press path below).
+    // Over the global budget React disables the button, and a disabled
+    // button never dispatches onClick: the press attempt is not reported.
     let global_over = "x".repeat(MAX_GLOBAL_BYTES + 1);
     let over = AiContextState::from_config(&global_over, &[]);
     let mut run = rt(AuditState {
         ai: over,
         ..AuditState::with("", &[])
     });
+    assert!(
+        maybe(&run, "ai-context-save").is_some_and(|e| !e.focusable),
+        "over the budget the save button is disabled (a kit Button unmounts \
+         its press handler and drops out of the focus order)"
+    );
     press(&mut run, "ai-context-save");
-    assert_eq!(run.state.saves, 1, "the disabled button still reports the press attempt");
+    assert_eq!(run.state.saves, 0, "a disabled button reports no press");
     assert!(run.state.ai.saved_until.is_none(), "no payload, no deadline");
 }
 
@@ -446,16 +515,16 @@ fn save_press_records_the_deadline_only_within_budget() {
 fn save_button_label_follows_saving_then_saved() {
     let mut scene = AuditState::with("ok", &[]);
     let idle = rt(scene.clone());
-    assert_eq!(text_of(&idle, "ai-context-save"), crate::i18n::t("settings.ai.saveContext"));
+    assert_eq!(button_label(&idle, "ai-context-save"), crate::i18n::t("settings.ai.saveContext"));
 
     scene.saving = true;
     let saving = rt(scene.clone());
-    assert_eq!(text_of(&saving, "ai-context-save"), crate::i18n::t("settings.ai.saving"));
+    assert_eq!(button_label(&saving, "ai-context-save"), crate::i18n::t("settings.ai.saving"));
 
     scene.saving = false;
     scene.saved_flag = true;
     let saved = rt(scene);
-    assert_eq!(text_of(&saved, "ai-context-save"), crate::i18n::t("common.success"));
+    assert_eq!(button_label(&saved, "ai-context-save"), crate::i18n::t("common.success"));
 }
 
 // ---- real presses drive the callbacks --------------------------------------

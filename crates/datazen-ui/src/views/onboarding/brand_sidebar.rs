@@ -241,10 +241,10 @@ fn feature_item(
     }
     item.child(
         // The 30px icon well (rounded-lg, bg-accent/12, border-accent/16).
+        // React `shrink-0`: the well never yields its 30px to the text.
         rune::el()
             .key(format!("onboarding-sidebar-feature-{index}-icon"))
             .size(22.5, 22.5)
-            .shrink()
             .center()
             .radius(6.0)
             .fill(k.c.bg_accent.alpha(0.12))
@@ -252,8 +252,11 @@ fn feature_item(
             .child(icon(icon_id, 11.25).color(k.c.text_accent)),
     )
     .child(
+        // React's plain `<div>` in a flex row: the default flex-shrink:1, so
+        // the text column (not the icon well) absorbs a narrow sidebar.
         col()
             .key(format!("onboarding-sidebar-feature-{index}-text"))
+            .shrink()
             .child(
                 text(t(title_key).to_owned())
                     .key(format!("onboarding-sidebar-feature-{index}-title"))

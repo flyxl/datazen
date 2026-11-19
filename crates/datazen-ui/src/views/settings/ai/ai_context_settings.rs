@@ -778,6 +778,10 @@ fn template_row<S: 'static>(
         .child(text("·").font(TEXT_10).color(k.c.text_muted))
         .child(
             text(format!("{bytes} / {MAX_TEMPLATE_BYTES} bytes"))
+                // React's `{bytes} / {MAX_TEMPLATE_BYTES} bytes` span: keyed so
+                // the runtime row's counter is observable (the sub-line group
+                // itself carries no text).
+                .key(format!("ai-template-row-{id}-count"))
                 .font(TEXT_10)
                 .color(if bytes > MAX_TEMPLATE_BYTES {
                     k.c.danger.fg

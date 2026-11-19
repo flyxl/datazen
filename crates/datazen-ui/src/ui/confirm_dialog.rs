@@ -218,7 +218,12 @@ impl<'a, S: 'static> ConfirmDialog<'a, S> {
             );
         }
         message_row = message_row.child(
-            text(self.message.to_owned()).font(type_sm()).color(k.c.text_muted),
+            text(self.message.to_owned())
+                // React's `<p>{message}</p>`: keyed so the message is observable
+                // (the surrounding `-message` column is a group without text).
+                .key(format!("{}-message-text", self.key))
+                .font(type_sm())
+                .color(k.c.text_muted),
         );
         if let Some(badge) = self.badge {
             message_row = message_row.child(
@@ -235,7 +240,11 @@ impl<'a, S: 'static> ConfirmDialog<'a, S> {
         text_col = text_col.child(message_row);
         if let Some(description) = self.description {
             text_col = text_col.child(
-                text(description.to_owned()).font(type_xs()).color(k.c.text_muted),
+                text(description.to_owned())
+                    // React's `{description && <p>{description}</p>}`.
+                    .key(format!("{}-description", self.key))
+                    .font(type_xs())
+                    .color(k.c.text_muted),
             );
         }
         body = body.child(
@@ -266,6 +275,8 @@ impl<'a, S: 'static> ConfirmDialog<'a, S> {
             header = header.child(
                 text(t("query.editor.executionConfirm.previewTruncated")
                     .replace("{lines}", &CODE_PREVIEW_MAX_LINES.to_string()))
+                    // React's truncation `<span>`: keyed for the same reason.
+                    .key(format!("{}-preview-note", self.key))
                     .font(type_10())
                     .color(k.c.text_muted),
             );

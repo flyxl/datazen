@@ -224,7 +224,8 @@ fn the_request_options_reach_the_dialog() {
     assert!(maybe(&rt, "confirm-dialog").is_some());
     let title = maybe(&rt, "confirm-dialog-title").and_then(|e| e.text).unwrap_or_default();
     assert!(title.contains("Test Title"), "title: {title}");
-    assert!(text_of(&rt, "confirm-dialog-message").contains("Test Message"));
+    // The message `<p>` is a keyed text (its `-message` column is a group).
+    assert!(text_of(&rt, "confirm-dialog-message-text").contains("Test Message"));
 }
 
 #[test]
@@ -264,7 +265,8 @@ fn the_advanced_options_render_their_parts() {
         "the preview renders the SQL"
     );
     assert!(maybe(&rt, "confirm-dialog-copy-sql").is_some(), "the copy affordance");
-    assert!(text_of(&rt, "confirm-dialog-body").contains("This will affect all rows."));
+    // The description `<p>` is a keyed text (the `-body` column is a group).
+    assert!(text_of(&rt, "confirm-dialog-description").contains("This will affect all rows."));
 }
 
 #[test]
@@ -280,10 +282,7 @@ fn a_truncated_preview_shows_the_note_and_ellipsis() {
     assert!(text.contains("…"), "the ellipsis marks the cut: {text}");
     assert!(!text.contains("SELECT 13"), "past the 12-line cut");
     assert!(
-        maybe(&rt, "confirm-dialog-preview-head")
-            .and_then(|e| e.text)
-            .unwrap_or_default()
-            .contains("12"),
+        text_of(&rt, "confirm-dialog-preview-note").contains("12"),
         "the truncation note names the line count"
     );
 }
