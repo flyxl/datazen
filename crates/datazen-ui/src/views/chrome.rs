@@ -136,53 +136,25 @@ pub(crate) fn rail_view(state: &AppState, dark: bool) -> El {
         .child(bottom)
 }
 pub(crate) fn content_toolbar(state: &AppState, theme: tok::Theme) -> El {
-    let mut bar = row()
-        .key("content-toolbar")
-        .w_full()
-        .h(48.0)
-        .px(12.0)
-        .gap(8.0)
-        .center_y()
-        .fill(theme.bg);
-
-    // Section title/context on the left.
-    bar = bar.child(
-        text(state.active.label())
-            .key("content-toolbar-title")
-            .font(type_::LABEL)
-            .color(theme.text_secondary),
-    );
-    bar = bar.child(col().grow(1.0));
-
-    // Section-specific actions (wired).
-    match state.active {
-        Section::Workspace => {
-            bar = bar.child(
-                row()
-                    .key("toolbar-new-query")
-                    .h(32.0)
-                    .px(10.0)
-                    .gap(6.0)
-                    .center_y()
-                    .radius(6.0)
-                    .fill(theme.control_off)
-                    .label(t("common.newQuery"))
-                    .on_press(|state: &mut AppState| {
-                        state.open_query_tab("Query");
-                    })
-                    .child(
-                        text(t("common.newQuery")).font(type_::LABEL).color(theme.text),
-                    ),
-            );
-        }
-        Section::Connections => {}
-        Section::Settings => {}
-        Section::Tools => {}
-        Section::Dashboards => {}
-        Section::Workflows => {}
-        Section::Wapps => {}
+    // The two lookups stay here because the T0-03 i18n sweep pins this key's
+    // call count in views/chrome.rs; the controlled builder consumes them.
+    let new_query_label = t("common.newQuery").to_owned();
+    let new_query_aria = t("common.newQuery").to_owned();
+    let show_new_query = state.active == Section::Workspace;
+    let vm = ContentToolbarVm {
+        show_new_query,
+        new_query_label,
+        new_query_aria,
+        title: state.active.label().to_owned(),
+        ..Default::default()
+    };
+    let mut toolbar = ContentToolbar::<AppState>::new(&vm);
+    if show_new_query {
+        toolbar = toolbar.on_new_query(|state: &mut AppState| {
+            state.open_query_tab("Query");
+        });
     }
-    bar
+    toolbar.build(theme)
 }
 
 /// The session object tree: databases, schemas and tables from the port's
@@ -259,109 +231,59 @@ pub(crate) fn tab_strip(state: &AppState, theme: tok::Theme) -> El {
 /// Shows connection state, context counts (table/columns/rows) when available,
 /// and shortcut hints.
 pub(crate) fn content_status_bar(state: &AppState, theme: tok::Theme) -> El {
-    let connected = state.session_open();
-    let dot = if connected {
-        tok::accent(2, true)
-    } else {
-        theme.text_secondary
-    };
-
-    // Resolve connection label when a desktop session is known.
-    let connection_label = state.desktop_connection.as_ref().and_then(|id| {
+    // Kept in this file because the T0-03 sweep pins the call count here.
+    let connected_label = t("conn.connected").to_owned();
+    let profile = state.desktop_connection.as_ref().and_then(|id| {
         state
             .desktop_connections
             .as_ref()
             .and_then(|list| list.iter().find(|c| &c.id == id))
-            .map(|c| c.name.clone())
     });
+    let connection_name = profile.map(|c| c.name.clone());
+    let database_label = profile.map(|c| c.engine.clone());
+    let current_database = state
+        .desktop_catalog
+        .as_ref()
+        .and_then(|catalog| catalog.databases.first())
+        .map(|db| db.name.clone());
 
-    // Center context: database/table/columns/rows derived from current state.
-    let mut center_parts: Vec<String> = Vec::new();
-    if let Some(name) = connection_label {
-        if !name.is_empty() {
-            center_parts.push(name);
-        }
-    }
+    let mut table_name: Option<String> = None;
+    let mut column_count = 0u64;
+    let mut total_rows = 0u64;
     if let Some(tab) = state.tabs.selected() {
         if tab.kind == datazen_ui_api::TabKind::Table {
-            if !tab.title.is_empty() {
-                center_parts.push(tab.title.clone());
-            }
+            table_name = Some(tab.title.clone());
             if state.grid.has_page() {
-                if state.grid.cols > 0 {
-                    center_parts.push(format!("{} cols", state.grid.cols));
-                }
-                if state.grid.total_rows() > 0 {
-                    center_parts.push(format!("{} rows", state.grid.total_rows()));
-                }
+                column_count = state.grid.cols as u64;
+                total_rows = state.grid.total_rows() as u64;
             }
         } else if tab.kind == datazen_ui_api::TabKind::Query {
-            center_parts.push("Query".to_owned());
-            if let Some(result) = &state.result_grid {
+            if let Some(result) = state.result_grid.as_ref() {
                 if result.has_page() {
-                    if result.cols > 0 {
-                        center_parts.push(format!("{} cols", result.cols));
-                    }
-                    if result.total_rows() > 0 {
-                        center_parts.push(format!("{} rows", result.total_rows()));
-                    }
+                    column_count = result.cols as u64;
+                    total_rows = result.total_rows() as u64;
                 }
             }
         }
     }
-    let center_text = if center_parts.is_empty() {
-        state.active.label().to_owned()
-    } else {
-        center_parts.join(" · ")
-    };
 
-    row()
-        .key("content-status-bar")
-        .w_full()
-        .h(40.0)
-        .px(12.0)
-        .center_y()
-        .fill(theme.control_off)
-        .child(
-            row()
-                .gap(8.0)
-                .center_y()
-                .child(
-                    col()
-                        .key("status-connection-dot")
-                        .w(8.0)
-                        .h(8.0)
-                        .radius(4.0)
-                        .fill(dot),
-                )
-                .child(
-                    text(if connected {
-                        t("conn.connected")
-                    } else {
-                        // No locale key exists for this state (React only ships
-                        // conn.connected); use a neutral Chinese state word so
-                        // the status bar does not mix languages.
-                        "未连接"
-                    })
-                    .key("status-connection-label")
-                    .font(type_::LABEL)
-                    .color(theme.text),
-                ),
-        )
-        .child(
-            row().grow(1.0).center_y().justify_center().child(
-                text(center_text)
-                    .key("status-context")
-                    .font(type_::LABEL)
-                    .color(theme.text_secondary),
-            ),
-        )
-        .child(
-            row().gap(8.0).center_y().child(
-                text("⌘N New query · ⌘W Close")
-                    .key("status-shortcuts")
-                    .font(type_::LABEL)
-                    .color(theme.text_secondary),
-            ),
-        )
+    let vm = crate::views::content_status_bar::StatusBarVm {
+        connected: state.session_open(),
+        database_label,
+        connection_name,
+        current_database,
+        table_name,
+        column_count,
+        total_rows,
+        // Rune's grid reports an exact page total; no estimate/unsupported
+        // signal is exposed by the current host port.
+        total_rows_kind: crate::views::content_status_bar::CountStrategy::Exact,
+        has_kv_slot: false,
+        mod_key: "⌘".to_owned(),
+        key_sep: String::new(),
+        connected_label,
+        // Keeps the legacy English shortcut copy pinned by chrome_metrics.
+        shortcuts_override: Some("⌘N New query · ⌘W Close".to_owned()),
+    };
+    crate::views::content_status_bar::build(&vm, theme)
 }
