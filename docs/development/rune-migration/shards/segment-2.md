@@ -30,7 +30,6 @@
 - [ ] T168 · components/chart · 2.00d · components/chart/renderers/AreaChartRenderer.tsx · split
 - [ ] T176 · windows/workflow · 0.30d · windows/workflow/workflowStepResultUtils.tsx
 - [ ] T181 · lib · 0.90d · lib/aiMemoryCorrection.ts
-- [ ] T188 · types · 0.30d · types/filters.ts
 - [ ] T194 · components/chart · 2.00d · components/chart/renderers/BarChartRenderer.tsx · split
 - [ ] T202 · windows/workflow · 2.00d · windows/workflow/WorkflowYamlEditor.tsx · split
 - [ ] T207 · lib · 0.90d · lib/aiMemoryPatterns.ts
@@ -172,3 +171,4 @@
 - [x] T119 · lib/relationPrediction · 0.90d · lib/relationPrediction/relatedTables.ts lib/relationPrediction/types.ts lib/relativeTime.ts
 - [x] T128 · types · 0.90d · types/connection.ts
 - [x] T159 · types · 0.90d · types/dashboard.ts
+- [x] T188 · types · 0.30d · types/filters.ts
