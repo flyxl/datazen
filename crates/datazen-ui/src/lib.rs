@@ -50,6 +50,8 @@ pub(crate) mod ai_store_chat;
 pub(crate) mod ai_store_rest;
 pub(crate) mod table_data_connection_state;
 pub(crate) mod table_data_count_strategy;
+// T127: the dirty-state index of one table panel (dirtyIndex.ts).
+pub(crate) mod table_data_dirty_index;
 pub(crate) mod table_data_filter_utils;
 // T210: the grid-selection geometry and state transitions (gridSelection.ts).
 pub(crate) mod table_data_grid_selection;

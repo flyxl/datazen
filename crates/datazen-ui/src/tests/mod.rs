@@ -805,3 +805,7 @@ mod connection_store;
 // T125 independent audit: fresh vectors (the registry label branch, the
 // rank ladder, duplicate ids, invalid timestamps, collapse renames).
 mod connection_store_audit;
+
+// T127: the dirty-state index (identity subset, anchor priority, the
+// ambiguity guard, counts, off-page keys, structural sharing).
+mod table_data_dirty_index;
