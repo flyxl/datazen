@@ -249,6 +249,10 @@ mod explain_plan_tree;
 // key collisions, clipped+scrollable overflow, light-theme window fit.
 mod explain_plan_audit;
 
+// T057: QueryArtifactExport port (dedup, visibility, labels, state machine,
+// mounted bar with the in-flight guard and status lines).
+mod query_artifact_export;
+
 // T027: SchemaDiffPanel port and its independent audit.
 mod schema_diff_panel;
 mod schema_diff_audit;
