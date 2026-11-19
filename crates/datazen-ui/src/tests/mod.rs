@@ -264,6 +264,9 @@ mod chart_canvas_audit;
 mod platform_web;
 // T045 independent audit: source-guard the barrel ruling + prove adapter injection.
 mod platform_web_audit;
+// T094: platform/web/stub.ts is web assembly code; pin the per-method parity
+// mapping (browser APIs live in the web shell, Rune has one cross-platform app).
+mod platform_web_stub;
 
 // T056: the expanded filter condition editor port.
 mod filter_condition_editor;
