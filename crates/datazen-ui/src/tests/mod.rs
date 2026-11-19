@@ -353,3 +353,7 @@ mod filter_bar_audit;
 // T049: the `@datazen/frontend/app` barrel — crate-root launch surface,
 // host-entry construction, first-frame adapter consult.
 mod app_entry;
+// T049 audit: the host half — a host-built adapter's list (and the
+// unwired adapter's error) through the assign + sync the launch closure
+// performs, which the coder's demo-path test does not exercise.
+mod app_entry_audit;
