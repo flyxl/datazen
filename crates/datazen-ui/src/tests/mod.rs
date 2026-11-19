@@ -817,3 +817,7 @@ mod table_data_dirty_index_audit;
 // T129: the platform port contracts (updater wire types, window routing,
 // the exporter port, the §7.4 binding registry).
 mod platform_contracts;
+
+// T129 independent audit: fresh vectors (a web capability table, an
+// exporter offering the optional arms, the registry's reader isolation).
+mod platform_contracts_audit;
