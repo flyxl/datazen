@@ -804,3 +804,9 @@ mod window_chrome_fallback;
 // T301 independent audit: fresh vectors (a 64pt chrome fixture, the
 // narrow window, the no-bar centering, the ring/label channels).
 mod window_chrome_fallback_audit;
+// T242: sql-editor metadata — findRelation's snapshot tiers and the
+// editor-schema-tree synthesis.
+mod sql_editor_metadata;
+// T123: per-dialect strategies (postgresql/mysql/sqlite), the carried
+// BaseTableSqlGenerator, and rowLimit weaving.
+mod sql_dialect_strategies;
