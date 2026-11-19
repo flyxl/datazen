@@ -143,6 +143,14 @@ pub(crate) fn content_toolbar(state: &AppState, theme: tok::Theme) -> El {
     let show_new_query = state.active == Section::Workspace;
     let vm = ContentToolbarVm {
         show_new_query,
+        // T009-S7's workspace AI toggle: React's `ContentToolbar` shows it on
+        // a relational panel (there is no KV relay in this build), so it lives
+        // in the same workspace-only action cluster as New Query. The open
+        // flag is part of the VM so the button paints its active style while
+        // the aside is mounted. The T173 port left both fields at their
+        // defaults, which silently dropped the toggle the AI panel tests pin.
+        show_ai: show_new_query,
+        ai_chat_open: state.ai_chat_open,
         new_query_label,
         new_query_aria,
         title: state.active.label().to_owned(),
@@ -153,6 +161,7 @@ pub(crate) fn content_toolbar(state: &AppState, theme: tok::Theme) -> El {
         toolbar = toolbar.on_new_query(|state: &mut AppState| {
             state.open_query_tab("Query");
         });
+        toolbar = toolbar.on_ai_chat(|state: &mut AppState| state.toggle_ai_chat());
     }
     toolbar.build(theme)
 }
