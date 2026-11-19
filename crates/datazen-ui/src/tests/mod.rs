@@ -377,3 +377,9 @@ mod content_bar_ports;
 // T173 independent audit: preserved inner ER testid, React detail/AI titles,
 // KV slot branches and adversarial two-size two-theme geometry.
 mod content_bar_audit;
+
+// T199: ContentView composition (gates, drawers, split panes, geometry).
+mod content_view;
+// T199 independent audit: no-panel React gates, AI drawer independence,
+// host pinned keys and the 800-line / no-bare-panic source contract.
+mod content_view_audit;
