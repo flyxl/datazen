@@ -17,6 +17,7 @@ pub(crate) mod error_boundary;
 pub(crate) mod export;
 pub(crate) mod filter;
 pub(crate) mod filter_bar;
+pub(crate) mod filter_editor;
 pub(crate) mod history;
 pub(crate) mod query;
 pub(crate) mod schema;

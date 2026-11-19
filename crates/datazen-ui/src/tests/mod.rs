@@ -635,6 +635,9 @@ mod export_success_panel;
 mod export_success_panel_audit;
 // T014: FilterBar (label, one pill per condition, clear-all; loading disables).
 mod filter_bar;
+// T106: the FilterEditor shell (summary row, mode row, Any Column / Raw SQL
+// panes, logic row, chip list; dirty/incomplete/badge/summary model).
+mod filter_editor;
 // T014 independent audit: fresh vectors for the filter bar.
 mod filter_bar_audit;
 // T207: valuePresentation temporal math — parsers, DST refusal, LMT offsets.
