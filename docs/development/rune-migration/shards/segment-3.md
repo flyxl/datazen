@@ -68,7 +68,7 @@
 - [ ] T202 · windows/data-transfer · 0.90d · windows/data-transfer/SourceFilterEditor.tsx
 - [ ] T203 · windows/data-sync · 0.90d · windows/data-sync/DataSyncOptionsStep.tsx
 - [x] T209 · stores · 0.90d · stores/editorSelectionStore.ts
-- [ ] T210 · stores/tableData · 0.80d · stores/tableData/gridSelection.ts
+- [x] T210 · stores/tableData · 0.80d · stores/tableData/gridSelection.ts
 - [x] T213 · components/DataTable · 0.30d · components/DataTable/DefaultOrderSelect.tsx
 - [ ] T217 · components/ai · 1.30d · components/ai/ContextPicker.tsx · split
 - [ ] T219 · components · 2.00d · components/SqlCodeBlock.tsx · split
