@@ -39,7 +39,7 @@
 - [x] T106 · components · 2.60d · components/FilterEditor.tsx · split
 - [ ] T113 · windows/data-transfer · 0.90d · windows/data-transfer/DataTransferTerminalResults.tsx
 - [ ] T114 · windows/data-sync · 0.90d · windows/data-sync/DataSyncEndpointStep.tsx
-- [ ] T117 · lib/chart · 0.90d · lib/chart/postQueryView.ts
+- [x] T117 · lib/chart · 0.90d · lib/chart/postQueryView.ts
 - [ ] T125 · stores · 0.90d · stores/connectionStore.ts
 - [ ] T127 · stores/tableData · 2.00d · stores/tableData/dirtyIndex.ts · split
 - [ ] T129 · platform · 1.30d · platform/contracts.ts · split
