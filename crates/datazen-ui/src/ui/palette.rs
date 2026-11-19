@@ -296,6 +296,22 @@ pub(crate) fn ai_amber_text(_dark: bool) -> Color {
     rune::oklch(0.924, 0.12, 95.08)
 }
 
+/// AI preset-button borders (T107, `ModelProfileForm.tsx`'s safety-preset
+/// buttons: `border-blue-500` / `border-amber-500` / `border-emerald-500`).
+/// Exact Tailwind sRGB values so the active preset reports the hue React
+/// paints; the `-400` label inks are the `ai_shield_*` helpers above.
+pub(crate) fn ai_preset_blue_border(_dark: bool) -> Color {
+    rune::color::hex("#3b82f6").unwrap_or(Color::WHITE)
+}
+
+pub(crate) fn ai_preset_amber_border(_dark: bool) -> Color {
+    rune::color::hex("#f59e0b").unwrap_or(Color::WHITE)
+}
+
+pub(crate) fn ai_preset_emerald_border(_dark: bool) -> Color {
+    rune::color::hex("#10b981").unwrap_or(Color::WHITE)
+}
+
 /// ER diagram box background.
 pub(crate) fn er_box_fill(dark: bool) -> Color {
     if dark {

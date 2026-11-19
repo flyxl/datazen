@@ -672,3 +672,7 @@ mod sql_dialect_strategies;
 // T479: the model-profile draft state machine — presets, providers, reseed,
 // validate/save payloads and the high-risk egress gate.
 mod use_model_profile_draft;
+// T107 audit: the model profile form — tab switcher, provider/CLI/custom
+// branches, fetch-models row, safety presets/sliders/policies, the validate
+// label's four states and the high-risk egress confirmation.
+mod model_profile_form_audit;
