@@ -20,7 +20,6 @@
 - [x] T078 · lib · 0.80d · lib/cellTypes.ts
 - [ ] T080 · lib/metadata · 0.90d · lib/metadata/identity.ts
 - [ ] T095 · extensions · 0.80d · extensions/generated.ts
-- [ ] T104 · components/chart · 0.80d · components/chart/ChartView.tsx
 - [x] T118 · lib · 0.80d · lib/cellEditorKind.ts
 - [ ] T128 · stores/ai · 0.80d · stores/ai/types.ts
 - [ ] T138 · components/chart · 2.00d · components/chart/LogScaleTooltip.tsx · split
@@ -173,3 +172,4 @@
 - [x] T234 · types · 0.30d · types/keyset.ts
 
 - [x] T088 · stores/ai · 2.00d · stores/ai/streaming.ts · split
+- [x] T102 · components/chart · 0.80d · components/chart/ChartView.tsx
