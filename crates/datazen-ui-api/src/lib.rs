@@ -5,6 +5,7 @@
 
 mod ai_sessions;
 mod ai_types;
+mod chart_types;
 mod connection_views;
 mod context_items;
 mod context_menu_position;
@@ -46,6 +47,10 @@ pub use ai_types::{
     AiWriteStatement, Bottleneck, BottleneckSeverity, DiagnosisResult, ExplainAnalysis,
     ExplainSuggestion, ModelInfo, PromptTemplate, ProviderListItem, StreamChunkPayload,
     StreamChunkUsage, StreamErrorPayload, DEFAULT_AI_MEMORY_SETTINGS, DEFAULT_AI_SKILLS_SETTINGS,
+};
+pub use chart_types::{
+    AggregationType, ChartConfig, ChartDataPoint, ChartDataPointValue, ChartField,
+    ChartRecommendation, ChartSortBy, ChartType, InferredFieldType,
 };
 pub use connection_views::{
     ConnectionOpenTarget, ConnectionViewActions, ConnectionViewProps, NewQueryContext,
