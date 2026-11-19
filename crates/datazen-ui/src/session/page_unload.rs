@@ -91,13 +91,16 @@ pub(crate) struct PageUnloadRegistry {
 }
 
 impl PageUnloadRegistry {
+    // Each item below names its consumer and removal stage individually: the
+    // struct-level allowance does not propagate to associated items.
+    #[allow(dead_code)] // consumer: host page-lifecycle wiring (not landed); remove when the host calls it.
     pub(crate) fn new() -> Self {
         Self::default()
     }
 
     /// Install once. Returns `true` only on the first call, so the host attaches
     /// [`Self::listener_events`] exactly once (React's `installed` flag).
-    #[allow(dead_code)] // host startup hook; remove when the host teardown wires it.
+    #[allow(dead_code)] // consumer: host startup listener hook; remove when the host calls it.
     pub(crate) fn install(&mut self) -> bool {
         if self.installed {
             return false;
@@ -106,11 +109,13 @@ impl PageUnloadRegistry {
         true
     }
 
+    #[allow(dead_code)] // consumer: host page-lifecycle wiring (not landed); remove when the host calls it.
     pub(crate) fn is_installed(&self) -> bool {
         self.installed
     }
 
     /// The fixed pair of events that both dispatch to release.
+    #[allow(dead_code)] // consumer: host listener registration; remove when the host installs them.
     pub(crate) fn listener_events(&self) -> &'static [UnloadEvent] {
         const EVENTS: [UnloadEvent; 2] = [UnloadEvent::PageHide, UnloadEvent::BeforeUnload];
         &EVENTS
@@ -118,6 +123,7 @@ impl PageUnloadRegistry {
 
     /// React `registerPageUnloadCloser`: install (idempotently), remember the
     /// closer, and return the handle that unregisters it.
+    #[allow(dead_code)] // consumer: host closer registration; remove when the host calls it.
     pub(crate) fn register(&mut self, closer: PageUnloadCloser) -> PageUnloadToken {
         let _ = self.install();
         self.next_id += 1;
@@ -128,6 +134,7 @@ impl PageUnloadRegistry {
 
     /// React's returned unregister closure. `false` means the closer was no
     /// longer registered (e.g. a release already cleared it).
+    #[allow(dead_code)] // consumer: host controller disarm path; remove when the host calls it.
     pub(crate) fn unregister(&mut self, token: PageUnloadToken) -> bool {
         let before = self.closers.len();
         self.closers.retain(|(id, _)| *id != token.id);
@@ -137,6 +144,7 @@ impl PageUnloadRegistry {
     /// React `releaseOwnedSessions`: clear first, then fire each snapshotted
     /// closer once, swallowing failures so one broken closer cannot stop the
     /// rest. Never panics and never returns an error.
+    #[allow(dead_code)] // consumer: app teardown hook (not landed); remove when the host calls it.
     pub(crate) fn release_owned_sessions(&mut self) -> ReleaseReport {
         let pending = std::mem::take(&mut self.closers);
         self.release_count += 1;
@@ -151,18 +159,22 @@ impl PageUnloadRegistry {
         ReleaseReport { fired, errors: self.last_errors.clone() }
     }
 
+    #[allow(dead_code)] // consumer: host teardown diagnostics; remove when the host calls it.
     pub(crate) fn len(&self) -> usize {
         self.closers.len()
     }
 
+    #[allow(dead_code)] // consumer: host teardown diagnostics; remove when the host calls it.
     pub(crate) fn is_empty(&self) -> bool {
         self.closers.is_empty()
     }
 
+    #[allow(dead_code)] // consumer: host teardown observability; remove when the host calls it.
     pub(crate) fn release_count(&self) -> u64 {
         self.release_count
     }
 
+    #[allow(dead_code)] // consumer: host error logging; remove when the host calls it.
     pub(crate) fn last_errors(&self) -> &[CloserError] {
         &self.last_errors
     }
