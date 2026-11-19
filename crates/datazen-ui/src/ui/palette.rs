@@ -312,6 +312,20 @@ pub(crate) fn ai_preset_emerald_border(_dark: bool) -> Color {
     rune::color::hex("#10b981").unwrap_or(Color::WHITE)
 }
 
+/// AI preset-badge purple (T141, `ModelProfileListItem.tsx`'s custom-preset
+/// badge: `bg-purple-500/10` — the 500-hue fill the other three presets
+/// take from the `ai_preset_*_border` helpers above, at 10% via `Kit::alpha`).
+pub(crate) fn ai_preset_purple_border(_dark: bool) -> Color {
+    rune::color::hex("#a855f7").unwrap_or(Color::WHITE)
+}
+
+/// The custom-preset badge's purple-400 ink (T141, `text-purple-400`), the
+/// `ai_shield_*` naming of the T009-S3/T107 400-hue label inks.
+pub(crate) fn ai_shield_custom(_dark: bool) -> Color {
+    rune::color::hex("#c084fc").unwrap_or(Color::WHITE)
+}
+
+
 /// ER diagram box background.
 pub(crate) fn er_box_fill(dark: bool) -> Color {
     if dark {

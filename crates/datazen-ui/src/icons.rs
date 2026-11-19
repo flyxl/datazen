@@ -251,6 +251,14 @@ pub(crate) static ICON_STAR: rune::Icon = rune::Icon {
     view: 24.0,
     body: "<polygon stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2\"/>",
 };
+/// T141: lucide `star` with `fill-current` — the model-profile list item's
+/// default badge renders `<Star className="h-2.5 w-2.5 fill-current" />`, the
+/// same 24-view outline with its polygon filled by the ink.
+pub(crate) static ICON_STAR_FILLED: rune::Icon = rune::Icon {
+    name: "star-filled",
+    view: 24.0,
+    body: "<polygon stroke=\"currentColor\" stroke-width=\"2\" fill=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2\"/>",
+};
 pub(crate) static ICON_EXTERNAL_LINK: rune::Icon = rune::Icon {
     name: "external-link",
     view: 24.0,

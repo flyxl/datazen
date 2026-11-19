@@ -680,3 +680,7 @@ mod model_profile_form_audit;
 // title, Esc/header-close/cancel, and the performSave wiring (save + close
 // on success, the high-risk confirm path).
 mod model_profile_dialog_audit;
+// T141 audit: the model-profile list item row — identity/meta mount, the
+// badge and action gating rules, the four action slots, preset tints and
+// the truncation-cap geometry.
+mod model_profile_list_item_audit;
