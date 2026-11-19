@@ -70,15 +70,15 @@ fn text_of(result: Result<String, TemporalFormatError>) -> String {
 }
 
 fn shanghai() -> TimeZoneSpec {
-    TimeZoneSpec::Iana("Asia/Shanghai".to_string())
+    TimeZoneSpec::Iana { name: "Asia/Shanghai".to_string() }
 }
 
 fn new_york() -> TimeZoneSpec {
-    TimeZoneSpec::Iana("America/New_York".to_string())
+    TimeZoneSpec::Iana { name: "America/New_York".to_string() }
 }
 
 fn kathmandu() -> TimeZoneSpec {
-    TimeZoneSpec::Iana("Asia/Kathmandu".to_string())
+    TimeZoneSpec::Iana { name: "Asia/Kathmandu".to_string() }
 }
 
 const UTC_SPEC: TimeZoneSpec = TimeZoneSpec::Utc;
@@ -276,7 +276,7 @@ fn iso_tz_resolves_local_spec_against_machine_zone() {
     let via_iana = text_of(fmt(
         &anchor,
         TimestampOutputFormat::IsoTz,
-        &TimeZoneSpec::Iana(local_name.clone()),
+        &TimeZoneSpec::Iana { name: local_name.clone() },
     ));
     assert_eq!(via_local, via_iana, "local spec must resolve to {local_name}");
 }
@@ -386,7 +386,7 @@ fn locale_resolves_local_spec_against_machine_zone() {
     let via_iana = text_of(fmt_locale(
         &anchor,
         TimestampOutputFormat::Locale,
-        &TimeZoneSpec::Iana(local_name.clone()),
+        &TimeZoneSpec::Iana { name: local_name.clone() },
         "en-US",
     ));
     assert_eq!(via_local, via_iana, "local spec must resolve to {local_name}");
@@ -415,7 +415,7 @@ fn locale_falls_back_to_default_language_for_data_less_tags() {
 #[test]
 fn errors_fail_every_format_for_invalid_iana_zone() {
     let anchor = instant_of("2026-01-15T14:30:00Z");
-    let bogus = TimeZoneSpec::Iana("Mars/Olympus".to_string());
+    let bogus = TimeZoneSpec::Iana { name: "Mars/Olympus".to_string() };
     for format in [
         TimestampOutputFormat::Iso,
         TimestampOutputFormat::IsoTz,
@@ -432,7 +432,7 @@ fn errors_fail_every_format_for_invalid_iana_zone() {
 #[test]
 fn errors_fail_for_zone_name_with_whitespace() {
     let anchor = instant_of("2026-01-15T14:30:00Z");
-    let padded = TimeZoneSpec::Iana("Asia/Shanghai ".to_string());
+    let padded = TimeZoneSpec::Iana { name: "Asia/Shanghai ".to_string() };
     assert_eq!(
         fmt(&anchor, TimestampOutputFormat::IsoTz, &padded),
         Err(TemporalFormatError::InvalidTimeZone)
@@ -481,13 +481,13 @@ fn resolve_maps_local_to_machine_zone() {
 #[test]
 fn resolve_passes_syntactically_valid_iana_names_through() {
     assert_eq!(
-        resolve_time_zone_name(&TimeZoneSpec::Iana("Asia/Shanghai".to_string())),
+        resolve_time_zone_name(&TimeZoneSpec::Iana { name: "Asia/Shanghai".to_string() }),
         Ok("Asia/Shanghai".to_string())
     );
     // Format-only stage: a syntactically valid but non-existent zone still
     // resolves here; full validation happens at format time.
     assert_eq!(
-        resolve_time_zone_name(&TimeZoneSpec::Iana("Mars/Olympus".to_string())),
+        resolve_time_zone_name(&TimeZoneSpec::Iana { name: "Mars/Olympus".to_string() }),
         Ok("Mars/Olympus".to_string())
     );
 }
@@ -495,11 +495,11 @@ fn resolve_passes_syntactically_valid_iana_names_through() {
 #[test]
 fn resolve_rejects_malformed_iana_names() {
     assert_eq!(
-        resolve_time_zone_name(&TimeZoneSpec::Iana(String::new())),
+        resolve_time_zone_name(&TimeZoneSpec::Iana { name: String::new() }),
         Err(TemporalFormatError::InvalidTimeZone)
     );
     assert_eq!(
-        resolve_time_zone_name(&TimeZoneSpec::Iana("Foo Bar".to_string())),
+        resolve_time_zone_name(&TimeZoneSpec::Iana { name: "Foo Bar".to_string() }),
         Err(TemporalFormatError::InvalidTimeZone)
     );
 }

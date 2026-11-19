@@ -20,3 +20,4 @@
 
 pub(crate) mod temporal_math;
 pub(crate) mod timestamp_format; // T272: the three output formats
+pub(crate) mod timestamp_config; // T230: persisted options + full validation

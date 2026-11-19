@@ -254,3 +254,5 @@ mod chart_canvas_audit;
 mod temporal_math;
 // T272: valuePresentation timestamp output formats (iso / iso-tz / locale).
 mod timestamp_format;
+// T230: valuePresentation timestamp options validation (pathed problems).
+mod timestamp_config;

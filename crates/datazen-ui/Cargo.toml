@@ -17,6 +17,9 @@ datazen-ui-api = { workspace = true }
 rune = { workspace = true }
 rune-kit = { workspace = true }
 serde_json = { workspace = true }
+# valuePresentation persisted shapes (TimestampOptions and friends) serialize
+# with React's exact JSON field names.
+serde = { workspace = true }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # lib/valuePresentation (issue-32 T02): the temporal core needs the full IANA
 # zone table with historical offsets (1850 Asia/Shanghai LMT +08:05:43) — the

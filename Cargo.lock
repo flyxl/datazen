@@ -2773,6 +2773,7 @@ dependencies = [
  "parley",
  "rune",
  "rune-kit",
+ "serde",
  "serde_json",
  "wasm-bindgen",
 ]

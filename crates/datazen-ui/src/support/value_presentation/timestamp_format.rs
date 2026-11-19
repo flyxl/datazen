@@ -64,12 +64,14 @@ pub(crate) enum TimestampOutputFormat {
     Locale,
 }
 
-/// Display zone selection (React `TimeZoneSpec`).
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// Display zone selection (React `TimeZoneSpec`). The serde shape is
+/// React's persisted one (`{"kind":"iana","name":"Asia/Shanghai"}`).
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
 pub(crate) enum TimeZoneSpec {
     Utc,
     Local,
-    Iana(String),
+    Iana { name: String },
 }
 
 /// `formatTimestampOutput` options (React `TimestampFormatOptions`).
@@ -116,7 +118,7 @@ pub(crate) fn resolve_time_zone_name(spec: &TimeZoneSpec) -> Result<String, Temp
     match spec {
         TimeZoneSpec::Utc => Ok("UTC".to_string()),
         TimeZoneSpec::Local => Ok(local_time_zone_name()),
-        TimeZoneSpec::Iana(name) => {
+        TimeZoneSpec::Iana { name } => {
             if is_valid_iana_time_zone_name(name) {
                 Ok(name.clone())
             } else {
