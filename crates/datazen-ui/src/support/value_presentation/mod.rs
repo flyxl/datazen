@@ -27,3 +27,4 @@ pub(crate) mod value_presentation_rules; // T291: rules, restricted regex, match
 pub(crate) mod contracts;
 pub(crate) mod registry;
 pub(crate) mod timestamp_contribution; // T251: the datazen.timestamp contribution
+pub(crate) mod presentation_plan; // T155: column plans, override keys, cache keys
