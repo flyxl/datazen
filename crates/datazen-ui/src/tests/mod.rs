@@ -215,6 +215,9 @@ mod ai_store_config;
 mod ai_store_config_audit;
 // T087-S2: NL2SQL, diagnosis, EXPLAIN analysis, smart filter.
 mod ai_store_assist;
+// T087-S2 independent audit: blank generate leaves an in-flight request,
+// clearNl2Sql does not touch diagnosis, blank parseFilter keeps filters.
+mod ai_store_assist_audit;
 // T041: React stores/tableData/connectionState.ts parity (row records, cell
 // values, error messages, the empty panel state, the load target).
 mod table_data_connection_state;
