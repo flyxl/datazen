@@ -26,6 +26,7 @@ fn quiet(id: &str) -> ChatSession {
         agent_mode: None,
         memory_mode: None,
         memory_scope: None,
+        injection: None,
     }
 }
 

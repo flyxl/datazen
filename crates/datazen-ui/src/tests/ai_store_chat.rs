@@ -19,11 +19,14 @@ fn session(id: &str, messages: Vec<ChatMessage>) -> ChatSession {
         loaded_skills: vec![LoadedSkill {
             id: String::new(),
             name: "sql".into(),
+            source: None,
+            loaded_at: String::new(),
         }],
         template_id: Some("tmpl".into()),
         agent_mode: None,
         memory_mode: None,
         memory_scope: None,
+        injection: None,
     }
 }
 
@@ -177,10 +180,14 @@ fn send_uses_a_tool_result_only_for_ask_questions_and_clear_keeps_the_template()
         LoadedSkill {
             id: String::new(),
             name: "sql".into(),
+            source: None,
+            loaded_at: String::new(),
         },
         LoadedSkill {
             id: String::new(),
             name: String::new(),
+            source: None,
+            loaded_at: String::new(),
         },
     ];
     let _ = store.begin_init_chat(open);

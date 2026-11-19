@@ -39,6 +39,8 @@ pub(crate) struct ChatMessage {
 pub(crate) struct LoadedSkill {
     pub id: String,
     pub name: String,
+    pub source: Option<String>,
+    pub loaded_at: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -56,6 +58,9 @@ pub(crate) struct ChatSession {
     pub agent_mode: Option<String>,
     pub memory_mode: Option<String>,
     pub memory_scope: Option<String>,
+    /// Set by `ai:chat-injection` for the live request. `sendChatMessage`
+    /// clears it; `clearChat` keeps it (the spread does not touch it).
+    pub injection: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -197,6 +202,7 @@ impl AiStore {
             agent_mode: None,
             memory_mode: None,
             memory_scope: None,
+            injection: None,
         };
         self.chat_init_token += 1;
         self.chat_session = Some(session);
@@ -291,6 +297,7 @@ impl AiStore {
             set_meta(&mut session.agent_mode, agent_mode);
             set_meta(&mut session.memory_mode, memory_mode);
             set_meta(&mut session.memory_scope, memory_scope);
+            session.injection = None;
         }
         self.memory_candidate_notice = None;
         Some(SendChat {

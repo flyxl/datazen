@@ -223,6 +223,8 @@ mod ai_store_chat;
 // T087-S3 independent audit: streaming blocks restore, select invalidates
 // the previous init token, delete of another id keeps the open session.
 mod ai_store_chat_audit;
+// T087-S4: workflow chat, spinner, insights, MCP, injection/skill guards.
+mod ai_store_rest;
 // T041: React stores/tableData/connectionState.ts parity (row records, cell
 // values, error messages, the empty panel state, the load target).
 mod table_data_connection_state;
