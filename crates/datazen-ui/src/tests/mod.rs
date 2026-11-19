@@ -424,3 +424,10 @@ mod content_view_dialogs;
 // T223 independent audit: cancel/header routing, database fallback, slot
 // integration geometry and the source-contract guard.
 mod content_view_dialogs_audit;
+// T245: ContentViewDrawers port (drawer keys, split-pane source, auto-context,
+// result-readonly verdicts, KV slot and geometry).
+mod content_view_drawers;
+// T245 independent audit: reason parsing, width bounds, auto-context fallback,
+// object cells, table detail row, resolving banner and visible-rect geometry.
+mod content_view_drawers_audit;
+

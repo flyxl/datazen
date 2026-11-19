@@ -7,6 +7,8 @@ mod connection_page;
 mod connection_workspace_home;
 pub(crate) mod content_view;
 pub(crate) mod content_view_dialogs;
+pub(crate) mod content_view_drawers;
+
 mod connections;
 mod connections_home;
 mod dashboards_workflows;
