@@ -126,12 +126,19 @@ impl FileFieldsState {
             .collect()
     }
 
-    /// React's pull-button guard.
+    /// React's pull-button *visibility*: `selectedPackage && selectedDbPath`.
+    /// `pulling` must not unmount the button — it only disables it (D1).
+    pub(crate) fn has_selection(&self) -> bool {
+        !self.selected_package.is_empty() && !self.selected_db_path.is_empty()
+    }
+
+    /// Whether a pull press should be staged (in-flight pulls are ignored).
     pub(crate) fn can_pull(&self) -> bool {
-        !self.selected_package.is_empty() && !self.selected_db_path.is_empty() && !self.pulling
+        self.has_selection() && !self.pulling
     }
 
     /// Translate a press into state changes plus a host-port call.
+    #[allow(dead_code)] // consumer: connection form host wiring (not landed); remove when wired.
     pub(crate) fn handle_action(&mut self, action: FileFieldsAction, port: &mut dyn FileFieldsPort) {
         match action {
             FileFieldsAction::PickPath => port.pick_path(),
@@ -174,6 +181,7 @@ impl FileFieldsState {
     }
 
     /// Apply one host answer and return the change the form must make.
+    #[allow(dead_code)] // consumer: adb command layer / form host (not landed); remove when wired.
     pub(crate) fn apply(&mut self, event: FileFieldsEvent) -> Vec<FileFieldsOutput> {
         match event {
             FileFieldsEvent::PackagesLoaded(result) => {
@@ -343,7 +351,7 @@ impl<'a, S: 'static> FileConnectionFields<'a, S> {
                 .child(build_package_section(state, filter_edit.as_ref(), &on_action, dark, layer))
                 .child(build_database_section(state, &on_action, dark, layer)),
         );
-        if state.can_pull() {
+        if state.has_selection() {
             let label = if state.pulling {
                 t("newConn.adbPulling")
             } else {
