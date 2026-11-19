@@ -201,6 +201,9 @@ mod execution_projection;
 // T122 independent audit: terminal truth table, stream reset resubscribe,
 // error projection, count-0/exclusive fan-out, source & binding guards.
 mod execution_projection_audit;
+// T122 independent re-audit (D1 retest): reconnect flow, permanent binding
+// invalidation, null-handle guards and dispose (previously uncovered branches).
+mod execution_projection_retest;
 
 // Independent re-audit of merged T0-07 menu base.
 mod menus_merge_reaudit;
