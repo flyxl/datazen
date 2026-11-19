@@ -172,7 +172,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T153 · lib/chart · 0.60d · lib/chart/recommend.ts lib/chart/seriesOverlap.ts
 - [ ] T154 · lib/session · 0.30d · lib/session/pageUnload.ts
 - [ ] T155 · lib/sqlDialects · 0.90d · lib/sqlDialects/sqlite.ts lib/sqlDialects/sqlParameterPolicy.ts lib/sqlEditorContextMenu.ts
-- [ ] T156 · lib/structureEditor · 0.30d · lib/structureEditor/types.ts
+- [x] T156 · lib/structureEditor · 0.30d · lib/structureEditor/types.ts
 - [ ] T157 · lib/valuePresentation · 0.80d · lib/valuePresentation/presentationPlan.ts
 - [ ] T158 · hooks · 0.90d · hooks/useColumnPresentationSession.ts
 - [ ] T159 · stores · 0.90d · stores/contextMenuStore.ts

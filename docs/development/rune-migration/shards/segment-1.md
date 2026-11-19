@@ -36,7 +36,7 @@
 - [ ] T140 · components/migration · 0.90d · components/migration/MigrationRunHistoryDialog.tsx
 - [ ] T144 · windows/connection · 1.30d · windows/connection/ConnectionWorkspaceHome.tsx · split
 - [ ] T154 · lib/session · 0.30d · lib/session/pageUnload.ts
-- [ ] T156 · lib/structureEditor · 0.30d · lib/structureEditor/types.ts
+- [x] T156 · lib/structureEditor · 0.30d · lib/structureEditor/types.ts
 - [ ] T164 · ai · 2.00d · ai/targetClaim.ts · split
 - [ ] T166 · components/filter · 0.80d · components/filter/FilterTokenInput.tsx components/filter/FilterValueInput.tsx
 - [ ] T167 · components/connection · 0.90d · components/connection/ConnectionShareDialogHost.tsx
