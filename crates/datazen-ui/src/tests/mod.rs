@@ -181,6 +181,9 @@ mod active_connection_store;
 // T039 independent audit: markConnected spread semantics, timeout re-arm
 // and per-entry isolation, disconnect finally ordering, reset interplay.
 mod active_connection_store_audit;
+// T041: React stores/tableData/connectionState.ts parity (row records, cell
+// values, error messages, the empty panel state, the load target).
+mod table_data_connection_state;
 // T032: relationMetadata/metadataCache.ts port — standard wiring so the
 // `metadata_cache` test filter really runs these tests (tests::metadata_cache::*).
 mod metadata_cache;
