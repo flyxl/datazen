@@ -22,7 +22,7 @@
 - [x] T053 · components/ui · 0.30d · components/ui/Spinner.tsx
 - [x] T054 · components/DataTable · 1.30d · components/DataTable/ColumnPresentationDialog.tsx · split
 - [x] T057 · components/query · 0.90d · components/query/QueryArtifactExport.tsx
-- [ ] T060 · components/ai · 0.80d · components/ai/AiCodeBlock.tsx
+- [~] T060 · components/ai · 0.80d · components/ai/AiCodeBlock.tsx
 - [ ] T063 · components · 0.90d · components/DbTypeBadge.tsx components/ErrorBoundary.tsx components/export/ExportColumnPicker.tsx
 - [ ] T064 · components/admin · 0.60d · components/admin/AdminSchemaFields.tsx components/admin/PrivilegeSelector.tsx
 - [ ] T073 · windows/data-transfer · 0.90d · windows/data-transfer/DataTransferAttachedJobs.tsx
