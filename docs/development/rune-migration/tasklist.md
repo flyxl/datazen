@@ -160,7 +160,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T141 · components/sql-editor · 3.40d · components/sql-editor/editorExtensions.ts · split
 - [ ] T142 · components · 0.30d · components/LocaleDomainLoading.tsx
 - [ ] T143 · windows/settings · 0.50d · windows/settings/ai/ModelProfileListItem.tsx
-- [ ] T144 · windows/connection · 1.30d · windows/connection/ConnectionWorkspaceHome.tsx · split
+- [x] T144 · windows/connection · 1.30d · windows/connection/ConnectionWorkspaceHome.tsx · split
 - [ ] T145 · windows/workspace · 0.90d · windows/workspace/WorkspaceNavigator.tsx
 - [ ] T146 · windows/dashboard · 0.90d · windows/dashboard/MonitorScheduleAuthorization.tsx
 - [ ] T147 · windows/workflow · 1.30d · windows/workflow/WorkflowPage.tsx · split
