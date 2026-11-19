@@ -727,3 +727,5 @@ mod dashboard_panel_audit;
 // the chart-vs-table conditionals, the refresh-interval rules, the dirty
 // comparison, and the right-anchored max-w-md geometry).
 mod widget_editor_drawer_audit;
+// T072: the onboarding window shell port (root row, sidebar, wizard slot).
+mod onboarding_window_audit;
