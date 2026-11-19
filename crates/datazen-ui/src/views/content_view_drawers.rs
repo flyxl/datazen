@@ -211,7 +211,11 @@ pub(crate) fn build<S: 'static>(
     dark: bool,
     layer: &mut Vec<El>,
 ) {
-    if !state.show_detail() && !state.show_ai() {
+    // React mounts the keyed KV sidebar wrapper whenever the slot is
+    // applicable, even while the drawer is collapsed (`detailOpen` controls the
+    // inner content, not the wrapper).
+    let show_kv_slot = state.key_props_slot && state.detail_panel_applicable;
+    if !state.show_detail() && !state.show_ai() && !show_kv_slot {
         return;
     }
     let facts = state.facts();
@@ -223,12 +227,10 @@ pub(crate) fn build<S: 'static>(
         .gap(8.0)
         .label(if dark { "dark" } else { "light" });
 
-    if state.show_detail() {
-        if state.key_props_slot {
-            root = root.child(key_props_sidebar(state, &on_action));
-        } else {
-            root = root.child(detail_drawer(state, &facts, &on_action));
-        }
+    if show_kv_slot {
+        root = root.child(key_props_sidebar(state, &on_action));
+    } else if state.show_detail() {
+        root = root.child(detail_drawer(state, &facts, &on_action));
     }
     if state.show_ai() {
         root = root.child(ai_handle()).child(ai_drawer(state, &facts, &on_action));

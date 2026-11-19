@@ -75,7 +75,9 @@ impl QueryExec {
 /// Which panel kind is active — the drawer's derivations branch on this.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PanelKind {
+    #[allow(dead_code)] // consumer: panel-store wiring (not landed); remove when the real active panel feeds the drawer.
     Table,
+    #[allow(dead_code)] // consumer: panel-store wiring (not landed); remove when the real active panel feeds the drawer.
     View,
     Query,
     /// KV panel or anything else: no row-detail derivation.
@@ -83,6 +85,7 @@ pub(crate) enum PanelKind {
 }
 
 /// Why a result cannot be written back (`GridReadOnlyReason`).
+#[allow(dead_code)] // every variant is a backend wire case; consumer: the panel-store/verdict wiring (not landed).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ReadOnlyReason {
     UnknownOrigin,
@@ -131,6 +134,7 @@ impl ReadOnlyReason {
 /// Parse one reason from the backend's snake/camel wire word. Unknown words
 /// fall back to `unknownOrigin`, exactly the default the drawer uses while a
 /// verdict is still unresolved.
+#[allow(dead_code)] // consumer: the verdict host port (not landed); remove when the backend reason is fed in.
 pub(crate) fn parse_reason(raw: Option<&str>) -> Option<ReadOnlyReason> {
     let raw = raw?;
     let reason = match raw {
@@ -168,6 +172,7 @@ pub(crate) fn unjudged() -> ServerEditability {
 pub(crate) struct ServerEditability {
     pub writable: bool,
     pub identity_columns: Vec<String>,
+    #[allow(dead_code)] // consumer: the origin-channel column guard (not landed); remove when that channel opens.
     pub editable_columns: Vec<String>,
     pub reason: Option<ReadOnlyReason>,
 }
@@ -205,8 +210,14 @@ pub(crate) fn resolve_row_addressability(
     let row = &rows[row_index];
     let mut values: Vec<&Value> = Vec::with_capacity(identity_columns.len());
     for identity in identity_columns {
-        let index = columns.iter().position(|column| column.name == *identity)?;
-        let value = row.get(index)?;
+        // React returns 'rowNotFound' when the identity column is not in the
+        // result, and 'keyValueNull' when the row's value is missing/null.
+        let Some(index) = columns.iter().position(|column| column.name == *identity) else {
+            return Some(ReadOnlyReason::RowNotFound);
+        };
+        let Some(value) = row.get(index) else {
+            return Some(ReadOnlyReason::KeyValueNull);
+        };
         if value.is_null() {
             return Some(ReadOnlyReason::KeyValueNull);
         }
@@ -359,16 +370,16 @@ pub(crate) fn build_auto_context(
     if context.is_empty() { None } else { Some(context) }
 }
 
-/// Resolve the exec the drawer must judge: the focused pane, falling back to
-/// the panel's default pane entry. This is the split-pane source rule — reading
-/// the default pane instead made the drawer judge a different result set.
+/// Resolve the exec the drawer must judge: exactly the focused pane's entry.
+/// React reads only `paneKey(activePanel.id, resolveFocusedPaneId(...))` — a
+/// missing entry means no row, never the default pane's row.
 pub(crate) fn resolve_active_exec<'a>(
     panel_id: &str,
     focused_pane: Option<&str>,
     panes: &'a HashMap<String, QueryExec>,
 ) -> Option<&'a QueryExec> {
     let key = pane_key(panel_id, resolve_focused_pane_id(focused_pane));
-    panes.get(&key).or_else(|| panes.get(panel_id))
+    panes.get(&key)
 }
 
 /// React `useResizable` bounds for the AI sidebar.

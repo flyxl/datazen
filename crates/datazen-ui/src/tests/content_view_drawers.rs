@@ -369,3 +369,48 @@ fn drawers_fit_both_window_sizes_and_both_palettes() {
         }
     }
 }
+
+// --- D2/D3/D4 regression cases ----------------------------------------------
+
+#[test]
+fn react_mounts_the_sidebar_wrapper_even_while_the_drawer_is_closed() {
+    let state = DrawerState {
+        detail_open: false,
+        detail_panel_applicable: true,
+        key_props_slot: true,
+        ..query_state()
+    };
+    let rt = runtime(state, true, DESIGN);
+    assert!(has_key(&rt, "conn-kv-key-props-sidebar"), "React mounts the sidebar wrapper even while the drawer is closed");
+    assert!(!has_key(&rt, "conn-detail"), "the collapsed drawer shows no row-detail table");
+}
+
+#[test]
+fn a_missing_exec_must_show_no_row() {
+    let mut panes: HashMap<String, logic::QueryExec> = HashMap::new();
+    // Only the default pane has an exec; the focused secondary pane does not.
+    panes.insert("panel-query-1".to_owned(), logic::QueryExec {
+        results: vec![result("SELECT id FROM default_pane", 1)],
+        active_result_idx: 0,
+        result_detail_row_index: Some(0),
+        ..Default::default()
+    });
+    assert!(logic::resolve_active_exec("panel-query-1", Some("b"), &panes).is_none());
+    let mut state = query_state();
+    state.detail_open = true;
+    state.focused_pane = Some("b".to_owned());
+    state.panes = panes;
+    let rt = runtime(state, true, DESIGN);
+    assert!(!has_key(&rt, "conn-detail-row-0-value"), "a missing exec must show no row");
+}
+
+#[test]
+fn a_missing_identity_column_is_row_not_found() {
+    let columns = vec![logic::ColumnMeta { name: "other".to_owned(), data_type: "INTEGER".to_owned() }];
+    let identities = vec!["id".to_owned()];
+    let rows = [vec![json!(1)]];
+    assert_eq!(
+        logic::resolve_row_addressability(&identities, &rows, &columns, 0),
+        Some(logic::ReadOnlyReason::RowNotFound)
+    );
+}
