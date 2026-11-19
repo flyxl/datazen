@@ -141,6 +141,7 @@ fn disabled_structure_editor_is_rejected_even_with_sql_support() {
     let meta = DatabaseTypeMeta {
         structure_editor: Some(StructureEditorUiConfig {
             enabled: Some(false),
+            ..Default::default()
         }),
         ..sql_meta()
     };
@@ -167,6 +168,7 @@ fn enabled_true_without_sql_support_is_still_rejected() {
     let meta = DatabaseTypeMeta {
         structure_editor: Some(StructureEditorUiConfig {
             enabled: Some(true),
+            ..Default::default()
         }),
         supports_sql: false,
         ..sql_meta()
