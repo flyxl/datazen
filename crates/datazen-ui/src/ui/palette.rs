@@ -260,6 +260,23 @@ pub(crate) fn danger_text(dark: bool) -> Color {
     c.danger.fg
 }
 
+/// Dashboard tile alert glyph (T069, `ChartWidgetTile.tsx`'s
+/// `text-amber-500` on the fired-alert triangle). Tailwind amber-500
+/// (oklch 0.769 0.164 70.08) verbatim — the same hue `ai_amber_border`
+/// carries at 30%.
+pub(crate) fn alert_amber(_dark: bool) -> Color {
+    // kit 无对应 token: dashboard alert amber
+    rune::oklch(0.769, 0.164, 70.08)
+}
+
+/// Dashboard tile run-timeout ink (T069, `ChartWidgetTile.tsx`'s
+/// `text-amber-400` on the timeout line). Tailwind amber-400
+/// (oklch 0.828 0.189 84.429) verbatim.
+pub(crate) fn timeout_amber(_dark: bool) -> Color {
+    // kit 无对应 token: dashboard timeout amber
+    rune::oklch(0.828, 0.189, 84.429)
+}
+
 /// AI profile shield tint per safety preset (T009-S3, `AiChatPanel.tsx`:
 /// `text-emerald-400` / `text-amber-400` / `text-blue-400`). Exact Tailwind
 /// sRGB values, so the laid-out shield reports the same hue React paints.
@@ -295,6 +312,36 @@ pub(crate) fn ai_amber_text(_dark: bool) -> Color {
     // Tailwind amber-200 (oklch 0.924 0.12 95.08).
     rune::oklch(0.924, 0.12, 95.08)
 }
+
+/// AI preset-button borders (T107, `ModelProfileForm.tsx`'s safety-preset
+/// buttons: `border-blue-500` / `border-amber-500` / `border-emerald-500`).
+/// Exact Tailwind sRGB values so the active preset reports the hue React
+/// paints; the `-400` label inks are the `ai_shield_*` helpers above.
+pub(crate) fn ai_preset_blue_border(_dark: bool) -> Color {
+    rune::color::hex("#3b82f6").unwrap_or(Color::WHITE)
+}
+
+pub(crate) fn ai_preset_amber_border(_dark: bool) -> Color {
+    rune::color::hex("#f59e0b").unwrap_or(Color::WHITE)
+}
+
+pub(crate) fn ai_preset_emerald_border(_dark: bool) -> Color {
+    rune::color::hex("#10b981").unwrap_or(Color::WHITE)
+}
+
+/// AI preset-badge purple (T141, `ModelProfileListItem.tsx`'s custom-preset
+/// badge: `bg-purple-500/10` — the 500-hue fill the other three presets
+/// take from the `ai_preset_*_border` helpers above, at 10% via `Kit::alpha`).
+pub(crate) fn ai_preset_purple_border(_dark: bool) -> Color {
+    rune::color::hex("#a855f7").unwrap_or(Color::WHITE)
+}
+
+/// The custom-preset badge's purple-400 ink (T141, `text-purple-400`), the
+/// `ai_shield_*` naming of the T009-S3/T107 400-hue label inks.
+pub(crate) fn ai_shield_custom(_dark: bool) -> Color {
+    rune::color::hex("#c084fc").unwrap_or(Color::WHITE)
+}
+
 
 /// ER diagram box background.
 pub(crate) fn er_box_fill(dark: bool) -> Color {

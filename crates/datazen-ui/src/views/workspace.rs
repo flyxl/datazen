@@ -25,6 +25,32 @@ use rune::{FileDialogOptions, TextEdit, Tx};
 // first port — the manifest-icon-or-puzzle glyph the wapp page shell,
 // default cards, navigator and tab bar reuse).
 pub(crate) mod wapp_icon;
+// T067: the host-side shell around a sandboxed wapp page — the lazy entry
+// resolve with its per-wapp cache, the 10s load watchdog, the reload/retry
+// recovery and the loading/missing/ready body branches.
+pub(crate) mod wapp_page_shell;
+// T111: the workspace mode's default right-hand view — the wapp-page card
+// grid (icon well, title, description, version byline) and the empty
+// state's jump-to-extensions shortcut.
+pub(crate) mod workspace_default_cards;
+// T145: the workspace mode's left rail — one item per page contributed by
+// an enabled wapp (icon, title, description) with the active tab tinted,
+// and the empty state's jump-to-extensions escape hatch.
+pub(crate) mod workspace_navigator;
+// T174: the workspace tab strip — one entry per open wapp page tab (icon,
+// truncated title, hover-revealed close) with the active tab's accent
+// underline; renders nothing while no tab is open.
+pub(crate) mod workspace_tab_bar;
+// T200: the workspace mode's capstone layout — the navigator rail, the
+// resize seam, the tab strip over the default card grid or the stacked
+// preserved shells, plus the three host effects (the initial wapp load,
+// the external-refresh diff-close, the `wapps:open-page` deep link).
+pub(crate) mod workspace_view;
+// T224: the workspace pages derivation — the flattened enabled-wapp ×
+// contributed-page rows (install order, per-page title fallback) plus the
+// `wapps:open-page` event name/payload, the tab key builder and the
+// resolve-then-open `openWappPage` the navigator, cards and deep link share.
+pub(crate) mod workspace_pages;
 
 pub(crate) fn page_body(
     state: &AppState,

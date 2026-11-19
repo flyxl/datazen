@@ -114,8 +114,10 @@ pub(crate) fn build_icon_src(target_id: &str, icon: &str) -> String {
 }
 
 /// React `stripLeadingDotSlash`: `path.replace(/^\.\//, '')` — one leading
-/// `./`, not repeated ones.
-fn strip_leading_dot_slash(path: &str) -> &str {
+/// `./`, not repeated ones. Shared with the page-entry src (T067's
+/// `wapp_page_shell.rs`): both are the desktop resolver's forms, so the two
+/// ports strip through this one function.
+pub(crate) fn strip_leading_dot_slash(path: &str) -> &str {
     path.strip_prefix("./").unwrap_or(path)
 }
 

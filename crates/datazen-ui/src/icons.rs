@@ -115,6 +115,14 @@ pub(crate) static ICON_REFRESH: rune::Icon = rune::Icon {
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 3v5h-5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M8 16H3v5\"/>",
 };
+/// T067: lucide `rotate-cw`, the reload/retry glyph in `WappPageShell`'s
+/// failure rows (`WappPageShell.tsx` uses `RotateCw`; the registry forbids a
+/// second copy). Body verified against lucide-react 0.487.0's `rotate-cw`.
+pub(crate) static ICON_ROTATE_CW: rune::Icon = rune::Icon {
+    name: "rotate-cw",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 3v5h-5\"/>",
+};
 pub(crate) static ICON_LAYOUT: rune::Icon = rune::Icon {
     name: "layout",
     view: 24.0,
@@ -257,6 +265,14 @@ pub(crate) static ICON_STAR: rune::Icon = rune::Icon {
     view: 24.0,
     body: "<polygon stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2\"/>",
 };
+/// T141: lucide `star` with `fill-current` — the model-profile list item's
+/// default badge renders `<Star className="h-2.5 w-2.5 fill-current" />`, the
+/// same 24-view outline with its polygon filled by the ink.
+pub(crate) static ICON_STAR_FILLED: rune::Icon = rune::Icon {
+    name: "star-filled",
+    view: 24.0,
+    body: "<polygon stroke=\"currentColor\" stroke-width=\"2\" fill=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2\"/>",
+};
 pub(crate) static ICON_EXTERNAL_LINK: rune::Icon = rune::Icon {
     name: "external-link",
     view: 24.0,
@@ -273,6 +289,31 @@ pub(crate) static ICON_PENCIL: rune::Icon = rune::Icon {
     name: "pencil",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m15 5 4 4\"/>",
+};
+/// T107: lucide `settings-2`, the basic-tab glyph in `ModelProfileForm`
+/// (`ModelProfileForm.tsx` uses `Settings2`). Body from the pinned
+/// lucide-react@0.487.0 icon set.
+pub(crate) static ICON_SETTINGS_2: rune::Icon = rune::Icon {
+    name: "settings-2",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 7h-9\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M14 17H5\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"17\" cy=\"17\" r=\"3\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"7\" cy=\"7\" r=\"3\"/>",
+};
+/// T107: lucide `layers`, the enterprise-balanced preset glyph in
+/// `ModelProfileForm` (`ModelProfileForm.tsx` uses `Layers`). Body from the
+/// pinned lucide-react@0.487.0 icon set.
+pub(crate) static ICON_LAYERS: rune::Icon = rune::Icon {
+    name: "layers",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65\"/>",
+};
+/// T107: lucide `circle-check-big` (the icon React 0.487 exports as
+/// `CheckCircle2`), the validated badge in `ModelProfileForm` and the
+/// active mark in `ModelProfileListItem` (T141). Body from the pinned
+/// lucide-react@0.487.0 icon set.
+pub(crate) static ICON_CIRCLE_CHECK: rune::Icon = rune::Icon {
+    name: "circle-check-big",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21.801 10A10 10 0 1 1 17 3.335\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m9 11 3 3L22 4\"/>",
 };
 
 pub(crate) static ICON_LOADER2: rune::Icon = rune::Icon {

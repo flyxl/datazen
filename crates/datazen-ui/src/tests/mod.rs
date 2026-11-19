@@ -970,3 +970,50 @@ mod data_transfer_window;
 // note, rail/body geometry, destructive arm, DDL key suffixes, sql-file
 // mode swap, execute gate, 40-row fit).
 mod data_transfer_window_audit;
+// T479: the model-profile draft state machine — presets, providers, reseed,
+// validate/save payloads and the high-risk egress gate.
+mod use_model_profile_draft;
+// T107 audit: the model profile form — tab switcher, provider/CLI/custom
+// branches, fetch-models row, safety presets/sliders/policies, the validate
+// label's four states and the high-risk egress confirmation.
+mod model_profile_form_audit;
+// T065 audit: the model profile dialog shell — open/close gate, add vs edit
+// title, Esc/header-close/cancel, and the performSave wiring (save + close
+// on success, the high-risk confirm path).
+mod model_profile_dialog_audit;
+// T141 audit: the model-profile list item row — identity/meta mount, the
+// badge and action gating rules, the four action slots, preset tints and
+// the truncation-cap geometry.
+mod model_profile_list_item_audit;
+// T067: the WappPageShell port (entry phases, the manifest-entry cache, the
+// 10s load watchdog, reload/retry, geometry and fill).
+mod wapp_page_shell_audit;
+// T145 audit: the workspace navigator rail — per-page items with their
+// keys/order/geometry/tooltips, the active accent tint, the two press
+// slots, the empty state and the width prop.
+mod workspace_navigator_audit;
+// T111 audit: the workspace default cards — per-page cards with their
+// keys/texts/geometry/byline pinning, the two press slots, the empty
+// state and the 240pt grid basis.
+mod workspace_default_cards_audit;
+// T174 audit: the workspace tab strip — per-tab entries with their
+// keys/tooltips/geometry, the active tint and accent underline, the
+// activate/close slots, the hover-revealed close and the nothing-rendered
+// gate.
+mod workspace_tab_bar_audit;
+// T200 audit: the workspace capstone — the navigator/handle/right-column
+// geometry, the default-cards-versus-stacked-shells branches with the
+// preserved inactive shell, the resize handle's React identity over a
+// host splitter handle, the press fan-out, and the three effect bodies
+// (initial load, diff-close, deep link) against recorded slots.
+mod workspace_view_audit;
+// T224: the workspace pages derivation port — the enabled-wapp × page
+// flattening in install order, the per-page field mapping with its title
+// fallback, the tab payload, and the openWappPage resolve gates.
+mod workspace_pages;
+// T069: the chart widget tile port (header switches, the eight body states,
+// the expand overlay, the transform/axis seams).
+mod chart_widget_tile_audit;
+// T146: the monitor schedule authorization card port (grant load guards,
+// the authorized-until status line, the authorize/revoke buttons).
+mod monitor_schedule_authorization_audit;
