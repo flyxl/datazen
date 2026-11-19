@@ -8,3 +8,4 @@
 
 #[allow(dead_code)] // T049; no host caller until the AI chat panel lands. Delete when it does.
 pub(crate) mod grant_state;
+pub(crate) mod session_cancel;

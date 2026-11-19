@@ -248,6 +248,10 @@ mod chart_export;
 // T028 independent audit: fresh fixtures, boundary inputs, and the two
 // places the port is stricter than atob / decodeURIComponent.
 mod chart_export_audit;
+// T085: draft IDs/defaults + DDL apply warnings (pure value logic).
+mod structure_editor_defaults;
+// T085 independent audit: extra truth-table / de-dup / boundary coverage.
+mod structure_editor_t085_audit;
 // T034: React lib/session/counters.ts parity (counter + handle value logic).
 // T034 independent audit: 2^53 gate, branch order, regex-vs-BigInt faithfulness.
 // T043-S1: platform/blobTablesExporter.ts slice 1 — types, capability
@@ -284,6 +288,20 @@ mod metadata_cache;
 mod metadata_cache_retest;
 // T081: relationPrediction/fromRelationMetadata.ts + relationMetadata contract gap fill.
 mod relation_prediction_ports;
+
+// T083: lib/session/EditorSessionController.ts port (state machine + effects).
+mod editor_session_controller;
+// T083 independent audit: refresh, detach/attach feeds, open-failure queue
+// isolation, close-awaiting-open, cancel resolution and observer publishing.
+mod editor_session_controller_audit;
+// T122: lib/session/ExecutionProjection.ts port (state machine + effects).
+mod execution_projection;
+// T122 independent audit: terminal truth table, stream reset resubscribe,
+// error projection, count-0/exclusive fan-out, source & binding guards.
+mod execution_projection_audit;
+// T122 independent re-audit (D1 retest): reconnect flow, permanent binding
+// invalidation, null-handle guards and dispose (previously uncovered branches).
+mod execution_projection_retest;
 
 // Independent re-audit of merged T0-07 menu base.
 mod menus_merge_reaudit;
@@ -352,12 +370,23 @@ mod connection_advanced_settings;
 mod connection_advanced_audit;
 // T059: the ConnectionAiNotes port (load/save, UTF-8 byte limit, timed feedback, geometry).
 mod connection_ai_notes;
+// T103: ConnectionFormBody + ConnectionImportFields ports (keys, validation,
+// disabled states, exact i18n and two-window/two-theme geometry).
+mod connection_form_parts;
+// T103 independent audit: observable behaviour, structural parity and coverage gaps.
+mod connection_form_audit;
 // T016: the batch-export dialog port.
 mod batch_export_dialog;
 mod batch_export_audit;
 // T016 fix retest: independent D1/D2 verification.
 mod batch_export_retest;
 
+// T110: the React windows/connection/ConnectionPage.tsx container port
+// (composed shell, section reachability, tabs/toolbar, two-size two-theme fit).
+mod connection_page;
+// T110 independent audit: contract key families, root paste glue and a
+// stronger drawn-right geometry probe.
+mod connection_page_audit;
 // T067: the React ConnectionNavigatorTree port (groups, rows, keys, keyboard,
 // reveal and two-size two-theme geometry).
 mod connection_navigator_tree;
@@ -374,6 +403,11 @@ mod migration_failure_audit;
 mod grant_state;
 // T049 independent audit: receipt-id races, exact timing boundaries, observers.
 mod grant_state_audit;
+// T097: the AI session-cancel state machine port, its branches and its real 8s wake.
+mod session_cancel;
+// T097 independent audit: mark gate, literal 8000ms, settled-only listener,
+// per-request deadlines, disposed no-ops, vanished entry, real 8s runtime wake.
+mod session_cancel_audit;
 // T010: the controlled source/target endpoint bar port.
 mod migration_endpoints_bar;
 // T010 independent audit: label-vs-id display, close-on-choice, geometry.
@@ -449,6 +483,12 @@ mod chart_canvas_audit;
 mod platform_web;
 // T045 independent audit: source-guard the barrel ruling + prove adapter injection.
 mod platform_web_audit;
+// T094: platform/web/stub.ts is web assembly code; pin the per-method parity
+// mapping (browser APIs live in the web shell, Rune has one cross-platform app).
+mod platform_web_stub;
+// T094 independent audit: measure the mapping claim against the real React
+// source, prove Rune has no browser ports, and guard the mapping table rows.
+mod platform_web_stub_audit;
 
 // T059: the chart toolbar + empty-state ports (type switch, display toggles,
 // split/expand buttons and the export dropdown seam).
@@ -562,3 +602,8 @@ mod timestamp_contribution;
 mod bootstrap;
 // T047: the ADB driver-command wrappers (unified execute entry).
 mod commands_adb;
+// T106: MigrationJobVerdictPanel (verdict states, counters, copy feedback, geometry).
+mod migration_job_verdict;
+// T106 independent audit: i18n key resolution, boundary tone/gap polarity,
+// resume gating and adversarial two-size two-theme rect geometry.
+mod migration_job_verdict_audit;

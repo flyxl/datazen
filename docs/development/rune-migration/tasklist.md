@@ -99,9 +99,9 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T080 · lib/metadata · 0.90d · lib/metadata/identity.ts
 - [x] T081 · lib/relationMetadata · 0.90d · lib/relationMetadata/sessionConfig.ts lib/relationMetadata/types.ts lib/relationPrediction/fromRelationMetadata.ts
 - [ ] T082 · lib/relationPrediction · 2.00d · lib/relationPrediction/predictRelations.ts · split
-- [ ] T083 · lib/session · 2.00d · lib/session/EditorSessionController.ts · split
+- [x] T083 · lib/session · 2.00d · lib/session/EditorSessionController.ts · split
 - [ ] T084 · lib/sqlDialects · 0.80d · lib/sqlDialects/identifierQuoting.ts lib/sqlDialects/index.ts
-- [ ] T085 · lib/structureEditor · 0.90d · lib/structureEditor/ddlApplyWarnings.ts lib/structureEditor/draftDefaults.ts lib/structureEditor/draftIds.ts
+- [x] T085 · lib/structureEditor · 0.90d · lib/structureEditor/ddlApplyWarnings.ts lib/structureEditor/draftDefaults.ts lib/structureEditor/draftIds.ts
 - [ ] T086 · lib/valuePresentation · 0.80d · lib/valuePresentation/columnPresentation.ts
 - [ ] T087 · hooks · 0.90d · hooks/useAiEditorGrant.ts
 - [ ] T088 · stores · 1.30d · stores/aiStore.ts · split
@@ -110,23 +110,23 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T091 · types · 0.30d · types/chart.ts
 - [ ] T092 · platform · 0.30d · platform/capabilities.ts
 - [ ] T093 · platform/shared · 0.80d · platform/shared/mcpClient.ts
-- [ ] T094 · platform/web · 0.90d · platform/web/stub.ts
+- [x] T094 · platform/web · 0.90d · platform/web/stub.ts
 - [ ] T095 · extensions · 0.80d · extensions/generated.ts
 - [ ] T096 · commands · 1.30d · commands/ai.ts · split
-- [ ] T097 · ai · 2.00d · ai/sessionCancel.ts · split
+- [x] T097 · ai · 2.00d · ai/sessionCancel.ts · split
 - [ ] T098 · components/ui · 0.90d · components/ui/WebContextMenu.tsx
 - [x] T099 · components/DataTable · 0.30d · components/DataTable/ColumnStatsDialog.tsx
 - [x] T100 · components/filter · 0.30d · components/filter/FilterConnectorToggle.tsx
 - [ ] T101 · components/history · 0.50d · components/history/historyQuery.ts
 - [ ] T102 · components/query · 1.00d · components/query/QueryContextSelectors.tsx components/query/QueryErrorPanel.tsx
-- [ ] T103 · components/connection · 1.00d · components/connection/ConnectionFormBody.tsx components/connection/ConnectionImportFields.tsx
+- [x] T103 · components/connection · 1.00d · components/connection/ConnectionFormBody.tsx components/connection/ConnectionImportFields.tsx
 - [ ] T104 · components/chart · 0.80d · components/chart/ChartView.tsx
 - [ ] T105 · components/ai · 0.90d · components/ai/AiEgressNotice.tsx
-- [ ] T106 · components/migration · 1.30d · components/migration/MigrationJobVerdictPanel.tsx · split
+- [x] T106 · components/migration · 1.30d · components/migration/MigrationJobVerdictPanel.tsx · split
 - [ ] T107 · components/sql-editor · 2.00d · components/sql-editor/contracts.ts · split
 - [ ] T108 · components · 2.60d · components/FilterEditor.tsx · split
 - [ ] T109 · windows/settings · 0.80d · windows/settings/ai/ModelProfileForm.tsx
-- [ ] T110 · windows/connection · 1.30d · windows/connection/ConnectionPage.tsx · split
+- [x] T110 · windows/connection · 1.30d · windows/connection/ConnectionPage.tsx · split
 - [ ] T111 · windows/workspace · 0.30d · windows/workspace/WorkspaceDefaultCards.tsx
 - [ ] T112 · windows/dashboard · 1.30d · windows/dashboard/DashboardPanel.tsx · split
 - [ ] T113 · windows/workflow · 0.50d · windows/workflow/WorkflowHistorySection.tsx
@@ -138,7 +138,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T119 · lib/chart · 0.90d · lib/chart/postQueryView.ts
 - [ ] T120 · lib/metadata · 2.00d · lib/metadata/temporaryResults.ts · split
 - [ ] T121 · lib/relationPrediction · 0.90d · lib/relationPrediction/relatedTables.ts lib/relationPrediction/types.ts lib/relativeTime.ts
-- [ ] T122 · lib/session · 0.90d · lib/session/ExecutionProjection.ts
+- [x] T122 · lib/session · 0.90d · lib/session/ExecutionProjection.ts
 - [ ] T123 · lib/sqlDialects · 0.90d · lib/sqlDialects/mysql.ts lib/sqlDialects/postgresql.ts lib/sqlDialects/rowLimit.ts
 - [ ] T124 · lib/structureEditor · 0.90d · lib/structureEditor/isControlEnabled.ts lib/structureEditor/resolveCreateTableSchema.ts lib/structureEditor/schemaToDraft.ts
 - [ ] T125 · lib/valuePresentation · 1.00d · lib/valuePresentation/columnPresentationSession.ts lib/valuePresentation/index.ts

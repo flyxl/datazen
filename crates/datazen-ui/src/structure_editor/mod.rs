@@ -14,6 +14,10 @@
 pub(crate) mod build_structure_change_request;
 pub(crate) mod can_open_structure_editor;
 pub(crate) mod control_hints;
+// T085: the remaining pure `.ts` helpers (draft IDs/defaults + DDL warnings).
+pub(crate) mod ddl_apply_warnings;
+pub(crate) mod draft_defaults;
+pub(crate) mod draft_ids;
 
 /// Mirror of `StructureChangeMode` (`'create' | 'alter'`).
 // consumers: the future structure-editor view; delete this allow when it lands.
@@ -83,13 +87,66 @@ pub(crate) enum ConnectionView {
     Document,
 }
 
-/// The subset of `StructureEditorUiConfig` the open predicate inspects.
+/// The subset of `StructureEditorUiConfig` the ported helpers inspect.
 /// `enabled` is optional in React (`enabled?: boolean`); absent stays `None`.
+/// `default_column_type` is required in React (`defaultColumnType: string`) and
+/// is what `draftDefaults.defaultCreateColumns` seeds both drafts with.
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct StructureEditorUiConfig {
     pub(crate) enabled: Option<bool>,
+    pub(crate) default_column_type: String,
+}
+
+/// Mirror of `StatementRisk` (`'additive' | 'destructive' | 'rewrite'`).
+// consumers: the future structure-editor view; delete this allow when it lands.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StatementRisk {
+    Additive,
+    Destructive,
+    Rewrite,
+}
+
+impl StatementRisk {
+    /// The exact React string literal for this risk, used when the DDL warning
+    /// joins the de-duplicated risky statement labels.
+    // consumers: the future structure-editor view; delete this allow when it lands.
+    #[allow(dead_code)]
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            StatementRisk::Additive => "additive",
+            StatementRisk::Destructive => "destructive",
+            StatementRisk::Rewrite => "rewrite",
+        }
+    }
+
+    /// The two risks `ddlApplyWarnings` treats as requiring confirmation.
+    // consumers: the future structure-editor view; delete this allow when it lands.
+    #[allow(dead_code)]
+    pub(crate) fn is_risky(self) -> bool {
+        matches!(self, StatementRisk::Destructive | StatementRisk::Rewrite)
+    }
+}
+
+/// Mirror of `PlanStatement` (`{ sql, summary, risk }`).
+// consumers: the future structure-editor view; delete this allow when it lands.
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PlanStatement {
+    pub(crate) sql: String,
+    pub(crate) summary: String,
+    pub(crate) risk: StatementRisk,
+}
+
+/// Mirror of `StructureChangePlan` (`{ statements, warnings? }`).
+// consumers: the future structure-editor view; delete this allow when it lands.
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StructureChangePlan {
+    pub(crate) statements: Vec<PlanStatement>,
+    pub(crate) warnings: Option<Vec<String>>,
 }
 
 /// The subset of `DatabaseTypeMeta` read by `canOpenStructureEditor`.

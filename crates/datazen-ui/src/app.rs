@@ -34,21 +34,19 @@ use crate::constants::{APP_FONTS, APP_FONT_FAMILIES};
 use crate::state_def::AppState;
 use crate::types::Section;
 use crate::sql_editor;
-use crate::views::{self, query_selected};
+use crate::views::query_selected;
 
-use datazen_ui_api::UnimplementedAdapter;
 #[cfg(not(target_arch = "wasm32"))]
 use datazen_ui_api::UseCaseAdapter;
 use datazen_ui_api::DesktopAdapter;
 use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, Titlebar, Tx};
 
-/// The app's single view entry: the root component (T051, React `App.tsx`) —
-/// the window router the host's one window is handed through. The router
-/// composes the main window's root (T020) directly; the layers React wraps
-/// it in (lazy/Suspense, the error boundary, the global hosts) are the
-/// documented seams in `views/app_root.rs`.
+/// The root view is the `ConnectionPage` port (React
+/// `windows/connection/ConnectionPage.tsx`): the title bar, rail, navigator,
+/// content workspace and dialog hosts are all composed in that one views-layer
+/// module, which owns the React page's glue.
 pub(crate) fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
-    views::app_root(state, cx)
+    crate::views::connection_page(state, cx)
 }
 
 
