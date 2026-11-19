@@ -205,11 +205,18 @@ pub(crate) fn build(
             &no_op,
         );
     }
-    root.child(
-        row()
-            .key("content-view-dialogs")
-            .children(dialog_layer),
-    )
+    // Dialog scrim/layer elements are `absolute(0,0).w_full().h_full()`, so the
+    // host slot must itself be a full-window overlay or they anchor to the page
+    // bottom (y=640 in the minimum window) and render off-screen. Keep the
+    // empty slot zero-sized so the host layout is untouched when no dialog is
+    // mounted.
+    let slot = row().key("content-view-dialogs");
+    let slot = if dialog_layer.is_empty() {
+        slot.size(0.0, 0.0)
+    } else {
+        slot.absolute(0.0, 0.0).w_full().h_full()
+    };
+    root.child(slot.children(dialog_layer))
 }
 
 fn drawer(key: &str, close_key: &str, title: &str, theme: tok::Theme) -> El {
