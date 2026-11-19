@@ -297,7 +297,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T278 · types · 0.90d · types/theme.ts
 - [ ] T279 · commands · 0.30d · commands/driver.ts
 - [ ] T280 · components/DataTable · 0.90d · components/DataTable/EditableCell.tsx components/DataTable/editors/BinaryCellEditor.tsx components/DataTable/editors/BooleanCellEditor.tsx
-- [ ] T281 · components/connection · 0.80d · components/connection/SshTunnelFields.tsx components/connection/StandardConnectionFields.tsx
+- [x] T281 · components/connection · 0.80d · components/connection/SshTunnelFields.tsx components/connection/StandardConnectionFields.tsx
 - [ ] T282 · components/ai · 0.90d · components/ai/Nl2SqlPanel.tsx
 - [ ] T283 · components/sql-editor · 2.00d · components/sql-editor/paste/multiCursorEscape.ts · split
 - [ ] T284 · components · 0.90d · components/ThemeToggle.tsx
