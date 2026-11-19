@@ -256,6 +256,9 @@ mod batch_export_retest;
 // T144: the React ConnectionWorkspaceHome port (hero counts, card keys,
 // filter, MCP copy feedback with a real wake, KV-slot takeover, geometry).
 mod connection_workspace_home;
+// T144 independent audit: React testid clicks, filter engine/id, pinned pill
+// text, copy deadline retargeting and rect containment.
+mod connection_home_audit;
 // T110: the React windows/connection/ConnectionPage.tsx container port
 // (composed shell, section reachability, tabs/toolbar, two-size two-theme fit).
 mod connection_page;
