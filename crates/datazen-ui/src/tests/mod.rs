@@ -166,6 +166,9 @@ mod global_query_history_audit;
 mod copy_button;
 // T253-T256: the .ts support layer semantics.
 mod support_layer_audit;
+// T028: lib/chart/export.ts port — PNG/SVG export options, data-URL
+// splitting/decoding, save requests and dialog options.
+mod chart_export;
 // T034: React lib/session/counters.ts parity (counter + handle value logic).
 mod counters;
 // T034 independent audit: 2^53 gate, branch order, regex-vs-BigInt faithfulness.
