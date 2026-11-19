@@ -9,6 +9,7 @@ pub(crate) mod ai_store_chat;
 pub(crate) mod ai_store_rest;
 pub(crate) mod table_data_connection_state;
 pub(crate) mod table_data_count_strategy;
+pub(crate) mod table_data_filter_utils;
 pub(crate) mod components;
 pub mod data_grid;
 pub mod splitter;

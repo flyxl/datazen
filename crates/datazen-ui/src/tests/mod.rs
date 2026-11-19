@@ -485,3 +485,7 @@ mod query_context_and_error_audit;
 mod ai_egress_notice;
 // T103 independent audit: fresh vectors for the egress notice.
 mod ai_egress_notice_audit;
+// T185: the filter-draft helpers (filterUtils).
+mod table_data_filter_utils;
+// T185 independent audit: fresh vectors for the filter-draft helpers.
+mod table_data_filter_utils_audit;
