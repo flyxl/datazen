@@ -37,7 +37,7 @@
 - [x] T100 · components/query · 1.00d · components/query/QueryContextSelectors.tsx components/query/QueryErrorPanel.tsx
 - [x] T103 · components/ai · 0.90d · components/ai/AiEgressNotice.tsx
 - [x] T106 · components · 2.60d · components/FilterEditor.tsx · split
-- [ ] T113 · windows/data-transfer · 0.90d · windows/data-transfer/DataTransferTerminalResults.tsx
+- [x] T113 · windows/data-transfer · 0.90d · windows/data-transfer/DataTransferTerminalResults.tsx
 - [ ] T114 · windows/data-sync · 0.90d · windows/data-sync/DataSyncEndpointStep.tsx
 - [x] T117 · lib/chart · 0.90d · lib/chart/postQueryView.ts
 - [ ] T125 · stores · 0.90d · stores/connectionStore.ts
