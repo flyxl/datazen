@@ -74,6 +74,8 @@ mod shell_grid;
 // T053: React shell.ts is a pure re-export barrel; Rune's root view covers its
 // four shell-facing concerns (i18n, platform, UI store, surface colour).
 mod shell_parity;
+// T053 independent audit: vary Cx's window-control inset and watch the titlebar.
+mod shell_parity_audit;
 // Query editing/results, undo/redo/copy/cancel, generation guards.
 mod query_results;
 // ER diagram, foreign-key views, column drafts.
