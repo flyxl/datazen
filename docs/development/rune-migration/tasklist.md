@@ -247,7 +247,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T228 · windows/data-sync · 0.90d · windows/data-sync/DataSyncPreviewStep.tsx
 - [ ] T229 · windows/schema-diff · 0.30d · windows/schema-diff/SchemaDiffSavedSetupDialogs.tsx
 - [ ] T230 · lib · 0.60d · lib/aiMemorySettings.ts lib/aiMessageBlocks.ts
-- [ ] T231 · lib/session · 0.30d · lib/session/runEditorExplain.ts
+- [x] T231 · lib/session · 0.30d · lib/session/runEditorExplain.ts
 - [ ] T232 · lib/valuePresentation · 0.50d · lib/valuePresentation/timestampConfig.ts
 - [ ] T233 · hooks · 0.30d · hooks/useCompactToolbar.ts
 - [ ] T234 · stores · 0.50d · stores/fkNavigationStore.ts
