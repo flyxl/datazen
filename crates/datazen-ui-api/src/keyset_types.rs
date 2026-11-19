@@ -56,8 +56,11 @@
 //! - React has no dedicated test for this file
 //!   (`lib/__tests__/keysetPaging.test.ts` tests `lib/keysetPaging.ts`,
 //!   another task), so the pins below are the port's own: every
-//!   literal table, every Option's two states, and the payload widths
-//!   the legs claim.
+//!   literal table, every Option's two states, the payload widths
+//!   the legs claim — and, from the T234 audit round, the three
+//!   unions' closures, the crate-root facade, the required-vs-
+//!   optional split, and the float leg's f64 width, each pinned after
+//!   its surviving mutant.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -202,7 +205,14 @@ mod tests {
     // No React test suite backs this file — these tests are the port's
     // own pins: every literal table, the tagged union's exact legs, the
     // payload widths, and the Option two-states the mirror rules
-    // promise.
+    // promise. The audit round's own additions close the gaps its
+    // surviving mutants found (the closure/root/required/float-width
+    // tests below); two of its mutants died as documented equivalents
+    // instead: dropping `default` from an `Option` field changes nothing
+    // (serde decodes a missing field of `Option` type as `None`, pinned
+    // by the last block of the required-fields test), and dropping
+    // `OrderColumn`'s `rename_all` changes nothing (both fields are
+    // single words whose camelCase spelling is the field name).
 
     fn decode<T: serde::de::DeserializeOwned>(wire: serde_json::Value) -> T {
         serde_json::from_value(wire)
@@ -424,5 +434,212 @@ mod tests {
         assert_eq!(serde_json::to_value(&offset).ok(), Some(offset_wire.clone()));
         let offset_back: PagePagingInfo = decode(offset_wire);
         assert_eq!(offset_back, offset);
+    }
+
+    // ---- T234 audit pins ------------------------------------------------
+    //
+    // Everything below was added by the audit round: each test closes a
+    // gap a surviving mutant walked through (the mutations never landed
+    // — the file was restored after each red/green verdict).
+
+    #[test]
+    fn cursor_values_pin_the_float_legs_f64_width() {
+        // `0.1` is exact in neither f32 nor f64, but the f32 round trip
+        // visibly widens it (0.100000001490116…), so a leg narrowed to
+        // `f32` fails both comparisons below while the f64 leg rides
+        // clean. The surviving `f64 → f32` mutant died here — the
+        // existing width pins only exercised 0.5/2.0, both exact in f32.
+        let value = CursorValue::Float { value: 0.1 };
+        let wire = serde_json::json!({ "kind": "float", "value": 0.1 });
+        assert_eq!(serde_json::to_value(&value).ok(), Some(wire.clone()));
+        let back: CursorValue = decode(wire.clone());
+        assert_eq!(serde_json::to_value(&back).ok(), Some(wire));
+    }
+
+    #[test]
+    fn the_three_unions_are_closed_exactly_as_react_declares_them() {
+        // Compile-time closure witnesses (the `filter_types` pin form):
+        // each match carries one arm per declared variant and no
+        // wildcard, so widening any of the three unions with a
+        // React-unknown member stops this file from compiling instead of
+        // silently widening a vocabulary the tables above would happily
+        // spell too. The surviving widening mutants (a third
+        // `PagingMode`, a ninth reason, a `uuid` leg) died here.
+        fn mode_index(mode: PagingMode) -> usize {
+            match mode {
+                PagingMode::Offset => 0,
+                PagingMode::Keyset => 1,
+            }
+        }
+        fn reason_index(reason: KeysetUnavailableReason) -> usize {
+            match reason {
+                KeysetUnavailableReason::DriverUnsupported => 0,
+                KeysetUnavailableReason::NoStableOrder => 1,
+                KeysetUnavailableReason::NullableKeyColumn => 2,
+                KeysetUnavailableReason::NullBoundary => 3,
+                KeysetUnavailableReason::PredicateUnavailable => 4,
+                KeysetUnavailableReason::NoPaginationClause => 5,
+                KeysetUnavailableReason::StaleCursor => 6,
+                KeysetUnavailableReason::NotAdjacent => 7,
+            }
+        }
+        // The CursorValue witness doubles as the tag table: the arm's
+        // literal *is* the wire tag of the leg.
+        fn cursor_tag(cursor: &CursorValue) -> &'static str {
+            match cursor {
+                CursorValue::Null => "null",
+                CursorValue::Bool { .. } => "bool",
+                CursorValue::Integer { .. } => "integer",
+                CursorValue::Float { .. } => "float",
+                CursorValue::String { .. } => "string",
+                CursorValue::Bytes { .. } => "bytes",
+                CursorValue::Timestamp { .. } => "timestamp",
+                CursorValue::Json { .. } => "json",
+            }
+        }
+        // The witnesses agree index for index with the wire order the
+        // coverage tables use…
+        for (index, mode) in [PagingMode::Offset, PagingMode::Keyset].into_iter().enumerate() {
+            assert_eq!(mode_index(mode), index);
+        }
+        for (index, reason) in [
+            KeysetUnavailableReason::DriverUnsupported,
+            KeysetUnavailableReason::NoStableOrder,
+            KeysetUnavailableReason::NullableKeyColumn,
+            KeysetUnavailableReason::NullBoundary,
+            KeysetUnavailableReason::PredicateUnavailable,
+            KeysetUnavailableReason::NoPaginationClause,
+            KeysetUnavailableReason::StaleCursor,
+            KeysetUnavailableReason::NotAdjacent,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            assert_eq!(reason_index(reason), index);
+        }
+        // …and the cursor witness's tag is the tag on the wire, every leg.
+        for (value, tag) in [
+            (CursorValue::Null, "null"),
+            (CursorValue::Bool { value: false }, "bool"),
+            (CursorValue::Integer { value: 0 }, "integer"),
+            (CursorValue::Float { value: 0.0 }, "float"),
+            (CursorValue::String { value: String::new() }, "string"),
+            (CursorValue::Bytes { value: Vec::new() }, "bytes"),
+            (CursorValue::Timestamp { value: String::new() }, "timestamp"),
+            (CursorValue::Json { value: serde_json::json!(null) }, "json"),
+        ] {
+            assert_eq!(cursor_tag(&value), tag);
+            assert_eq!(
+                serde_json::to_value(&value)
+                    .ok()
+                    .and_then(|wire| wire.get("kind").cloned()),
+                Some(serde_json::json!(tag))
+            );
+        }
+        // The runtime half of the closure: the spellings a widened
+        // vocabulary would accept reject. `cursor`/`hostGone`/`uuid`
+        // are the audit's surviving widening mutants' own literals;
+        // the rest are the near-miss spellings each union's camelCase
+        // rule forbids.
+        for near_miss in ["seek", "cursor", "Offset", "KEYSET"] {
+            assert!(
+                serde_json::from_value::<PagingMode>(serde_json::json!(near_miss)).is_err(),
+                "near-miss paging literal {near_miss:?} must not parse"
+            );
+        }
+        for near_miss in [
+            "hostGone",
+            "driver-unsupported",
+            "DriverUnsupported",
+            "stalecursor",
+            "no_stable_order",
+        ] {
+            assert!(
+                serde_json::from_value::<KeysetUnavailableReason>(serde_json::json!(near_miss))
+                    .is_err(),
+                "near-miss reason literal {near_miss:?} must not parse"
+            );
+        }
+        for near_miss in ["uuid", "int", "Null", "Integer", "boolean", "number"] {
+            assert!(
+                serde_json::from_value::<CursorValue>(serde_json::json!({ "kind": near_miss }))
+                    .is_err(),
+                "near-miss cursor tag {near_miss:?} must not parse"
+            );
+        }
+        // The tag key itself: a renamed tag key must not decode either
+        // (a `tag = "type"` mutant would take `{"type": "null"}`).
+        let renamed_tag_key = serde_json::from_value::<CursorValue>(serde_json::json!({
+            "type": "null"
+        }));
+        assert!(renamed_tag_key.is_err());
+    }
+
+    #[test]
+    fn the_keyset_vocabulary_is_reexported_at_the_crate_root() {
+        // `crate::` paths only (the `chart_types`/`filter_types` pin
+        // form): a dropped root re-export stops this file from compiling
+        // instead of silently shrinking the facade `types/index.ts`
+        // promises — the surviving root-shrink mutant (which dropped
+        // `OrderColumn`) died here. Every test above speaks `super::`,
+        // so nothing else would have noticed.
+        fn resolves<T>() {}
+        resolves::<crate::PagingMode>();
+        resolves::<crate::KeysetUnavailableReason>();
+        resolves::<crate::CursorValue>();
+        resolves::<crate::OrderColumn>();
+        resolves::<crate::PagePagingInfo>();
+        // One live decode through the root paths keeps the pin honest.
+        let page: crate::PagePagingInfo = decode(serde_json::json!({
+            "mode": "keyset",
+            "orderColumns": [{ "column": "id", "descending": true }],
+            "nextAfterKey": [{ "kind": "null" }],
+            "driftSuspected": false
+        }));
+        assert_eq!(page.mode, crate::PagingMode::Keyset);
+        assert_eq!(page.order_columns[0].column, "id");
+        assert!(page.order_columns[0].descending);
+        assert_eq!(page.next_after_key, Some(vec![crate::CursorValue::Null]));
+        assert_eq!(page.unavailable_reason, None);
+    }
+
+    #[test]
+    fn required_fields_stay_required_and_optional_keys_stay_optional() {
+        // The mirror rule the `?:` split encodes: `mode`,
+        // `orderColumns`, and `driftSuspected` have no default — a wire
+        // without any one of them is not a page report. Relaxing any of
+        // them to `#[serde(default)]` (the surviving relaxation mutants)
+        // lets these minimal wires parse.
+        for wire in [
+            serde_json::json!({ "orderColumns": [], "driftSuspected": false }),
+            serde_json::json!({ "mode": "offset", "driftSuspected": false }),
+            serde_json::json!({ "mode": "offset", "orderColumns": [] }),
+        ] {
+            assert!(
+                serde_json::from_value::<PagePagingInfo>(wire).is_err(),
+                "a PagePagingInfo without a required field must not decode"
+            );
+        }
+        // The same rule for `OrderColumn`'s two fields.
+        for wire in [
+            serde_json::json!({ "column": "id" }),
+            serde_json::json!({ "descending": true }),
+        ] {
+            assert!(
+                serde_json::from_value::<OrderColumn>(wire).is_err(),
+                "an OrderColumn without both fields must not decode"
+            );
+        }
+        // The `?:` half of the rule: the two optional keys absent decode
+        // as `None` (serde decodes a missing field of `Option` type as
+        // `None` — which is why `#[serde(default)]` on an `Option` field
+        // is belt-and-braces, not behavior).
+        let page: PagePagingInfo = decode(serde_json::json!({
+            "mode": "offset",
+            "orderColumns": [],
+            "driftSuspected": false
+        }));
+        assert_eq!(page.next_after_key, None);
+        assert_eq!(page.unavailable_reason, None);
     }
 }
