@@ -228,6 +228,12 @@ mod query_panel_session_root;
 // T208 independent audit: ambient exports, independent namespace defaults,
 // exact fail-loud messages.
 mod query_panel_session_root_audit;
+// T231: lib/session/runEditorExplain.ts port (effect flow + plan extraction).
+mod run_editor_explain;
+// T231 independent audit: missing-plan failure, DTO string views, envelope
+// field filters and typed execute-error mapping.
+mod run_editor_explain_audit;
+
 
 // Independent re-audit of merged T0-07 menu base.
 mod menus_merge_reaudit;
