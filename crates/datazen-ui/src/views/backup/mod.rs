@@ -4,7 +4,7 @@
 //! |---|---|---|
 //! | `BackupWindow.tsx` (state model + selection logic) | `backup_window_state` + `backup_db_meta` + `backup_grouping` | T026-S1 |
 //! | `BackupWindow.tsx` (three columns, chrome, start button, backup/restore runs) | `backup_window` + `backup_progress` + `backup_run` | T026-S2 |
-//! | `ProgressLog.tsx` | — | own task |
+//! | `ProgressLog.tsx` (model + virtual window + copy feedback) | `progress_log_state` (S1: model only; component is S2) | T076-S1 |
 
 pub(crate) mod backup_db_meta;
 pub(crate) mod backup_grouping;
@@ -12,6 +12,7 @@ pub(crate) mod backup_progress;
 pub(crate) mod backup_run;
 pub(crate) mod backup_window;
 pub(crate) mod backup_window_state;
+pub(crate) mod progress_log_state;
 
 #[allow(unused_imports)] // the Backup window host is the production consumer
 pub(crate) use backup_progress::{
@@ -39,4 +40,9 @@ pub(crate) use backup_grouping::{
 pub(crate) use backup_window_state::{
     progress_log_mount, BackupConnection, BackupProgress, BackupProgressPhase, BackupWindowVm,
     DatabaseInfo, PrefillTarget, SelectConnectionOutcome, SessionConnected,
+};
+#[allow(unused_imports)] // the ProgressLog component (T076-S2) is the production consumer
+pub(crate) use progress_log_state::{
+    copy_text, is_near_bottom, row_offset, should_auto_scroll, total_size, visible_range,
+    ProgressLogState, COPIED_FEEDBACK_MS, OVERSCAN, ROW_HEIGHT,
 };

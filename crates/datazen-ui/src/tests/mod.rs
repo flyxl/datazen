@@ -355,6 +355,10 @@ mod backup_window;
 // dialog, log-copy visibility.
 mod backup_window_audit;
 
+// T076-S1: ProgressLog model — virtual-window math, auto-scroll
+// decision, copy text and copy-feedback state (coder tests).
+mod progress_log_s1;
+
 // T008: ChartCanvas dispatcher, measured viewport and honest placeholders.
 mod chart_canvas;
 // T008 independent audit: marker honesty, factory seam, geometry, source guards.
