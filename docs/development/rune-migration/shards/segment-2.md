@@ -20,7 +20,6 @@
 - [x] T078 · lib · 0.80d · lib/cellTypes.ts
 - [ ] T080 · lib/metadata · 0.90d · lib/metadata/identity.ts
 - [ ] T089 · stores/ai · 2.00d · stores/ai/streaming.ts · split
-- [ ] T091 · types · 0.30d · types/chart.ts
 - [ ] T095 · extensions · 0.80d · extensions/generated.ts
 - [ ] T104 · components/chart · 0.80d · components/chart/ChartView.tsx
 - [ ] T113 · windows/workflow · 0.50d · windows/workflow/WorkflowHistorySection.tsx
@@ -172,3 +171,4 @@
 - [x] T070 · windows/main · 0.90d · windows/main/RunningExecutionCloseHost.tsx
 - [x] T072 · windows/wapps · 1.30d · windows/wapps/WappManagementPage.tsx · split
 - [x] T081 · lib/relationPrediction · 2.00d · lib/relationPrediction/predictRelations.ts · split
+- [x] T090 · types · 0.30d · types/chart.ts
