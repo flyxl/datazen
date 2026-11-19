@@ -223,6 +223,8 @@ mod migration_failure_notice;
 // T068 independent audit: i18n no-echo, key stability, two-theme geometry.
 mod migration_failure_audit;
 
+// T049: the AI grant lifecycle state machine port and its branch coverage.
+mod grant_state;
 // T010: the controlled source/target endpoint bar port.
 mod migration_endpoints_bar;
 // T010 independent audit: label-vs-id display, close-on-choice, geometry.
