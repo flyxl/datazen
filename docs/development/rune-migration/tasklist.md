@@ -289,7 +289,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T270 · windows/data-sync · 1.30d · windows/data-sync/DataSyncWindow.tsx · split
 - [ ] T271 · windows/schema-diff · 0.30d · windows/schema-diff/SchemaDiffTableListPanel.tsx
 - [ ] T272 · lib · 0.80d · lib/aiQueryActions.ts
-- [ ] T273 · lib/session · 0.90d · lib/session/sessionPrompts.ts
+- [x] T273 · lib/session · 0.90d · lib/session/sessionPrompts.ts
 - [ ] T274 · lib/valuePresentation · 0.80d · lib/valuePresentation/timestampFormat.ts
 - [ ] T275 · hooks · 0.30d · hooks/useFkNavigationShortcuts.ts
 - [ ] T276 · stores · 0.90d · stores/metadataIdentityBinding.ts stores/paneFocus.ts stores/paneKeys.ts

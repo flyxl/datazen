@@ -55,7 +55,7 @@
 - [x] T252 · lib/session · 0.90d · lib/session/runEditorQuery.ts
 - [x] T260 · components/connection · 0.90d · components/connection/ObjectFilterDialog.tsx components/connection/SaveTunnelDialog.tsx components/connection/shared.tsx
 - [x] T266 · windows/connection · 0.60d · windows/connection/CreateDatabaseDialog.tsx windows/connection/CreateSchemaDialog.tsx
-- [ ] T273 · lib/session · 0.90d · lib/session/sessionPrompts.ts
+- [x] T273 · lib/session · 0.90d · lib/session/sessionPrompts.ts
 - [ ] T281 · components/connection · 0.80d · components/connection/SshTunnelFields.tsx components/connection/StandardConnectionFields.tsx
 - [ ] T286 · windows/connection · 0.90d · windows/connection/CreateUserDialog.tsx
 - [ ] T292 · lib/session · 0.90d · lib/session/tableSession.ts
