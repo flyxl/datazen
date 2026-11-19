@@ -193,6 +193,9 @@ mod relation_prediction_ports;
 
 // T135: components/filter/FilterSqlPreviewDialog.tsx port.
 mod filter_sql_preview;
+// T135 independent audit: no-count copy text, kind labels, closed mount rule,
+// falsy empty error, and long-SQL rect containment at both sizes/palettes.
+mod filter_sql_preview_audit;
 // T083: lib/session/EditorSessionController.ts port (state machine + effects).
 mod editor_session_controller;
 // T083 independent audit: refresh, detach/attach feeds, open-failure queue
