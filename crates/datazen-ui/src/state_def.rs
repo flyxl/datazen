@@ -1,6 +1,7 @@
 //! Application state definitions.
 
 use crate::data_grid::DataGrid;
+use crate::components::ai::{AiChatPanelState, AiPendingDraft, AiWriteProposalHostState};
 use crate::sql_editor::SqlEditor;
 use crate::types::{QuerySidebarPanel, ResultView, Section, TableView, Tool};
 use crate::views::{InstallWappStep, RunningExecutionCloseRequest, WappPackagePreview};
@@ -363,6 +364,60 @@ pub struct AppState {
     /// T071: whether the prompt's copy control has copied the SQL (the
     /// dialog's copied mark; the next ask resets it).
     pub(crate) running_close_sql_copied: bool,
+    /// T009-S7: the AI assistant aside's open state. React's
+    /// `ContentView` holds `aiChatOpen` in `useState(false)`; the Rune
+    /// copy lives here so the toggle, the mount and the host sync all
+    /// read one flag. It survives section switches (unlike React, where
+    /// leaving the connection view unmounts `ContentView` and drops it)
+    /// — the panel re-mounts when the workspace returns, and the
+    /// unmount cancel still fires on the transition (see
+    /// `ai_chat_mounted`).
+    pub(crate) ai_chat_open: bool,
+    /// T009-S7: the assistant panel's owned state (S6's
+    /// `AiChatPanelState`). Constructed with an empty db session id:
+    /// the session key falls back to `'default'` exactly as React's
+    /// `computeSessionKey` does when `connectionId` and `dbSessionId`
+    /// are both empty, and the live connection id re-keys it through
+    /// `ensure_session` once a connection opens.
+    pub(crate) ai_chat_panel: AiChatPanelState,
+    /// T009-S7: the host-owned stand-in for
+    /// `settingsConfig.memory.enabled` (React `lib/aiMemorySettings.ts`:
+    /// memory is opt-in, `defaultAiMemorySettings.enabled: false`, so an
+    /// unset config sends `'off'`). The host sync seeds the panel from
+    /// this field on every poll — never the panel VM's own `true`
+    /// default, which would read `'auto'` with no settings behind it
+    /// (tester S6 non-blocking #3). T088 replaces this field with the
+    /// real settings config.
+    pub(crate) ai_memory_enabled: bool,
+    /// T009-S7: the pending AI draft request the host holds (React
+    /// `ContentView`'s `pendingDraftRequest`); cleared when the panel's
+    /// consumed-draft outbox acks it.
+    pub(crate) ai_pending_draft: Option<AiPendingDraft>,
+    /// T009-S7: how many consumed-draft acks the host has applied, so
+    /// the outbox (which only grows) is read incrementally.
+    pub(crate) ai_draft_acks_applied: usize,
+    /// T009-S7: the last draft the host issued to the panel, as
+    /// (request id, input-was-empty, was-configured). The host
+    /// re-issues `handle_draft_request` when the id changes, when the
+    /// input's emptiness flips, or when the configured flag flips —
+    /// mirroring React's draft effect, which re-runs on
+    /// `[draftRequest, isConfigured, isStreaming, input]` (streaming is
+    /// excluded: a re-issue after a stream ends is a no-op in the VM —
+    /// the processed mark blocks it — exactly as React's does).
+    pub(crate) ai_draft_last_issue: Option<(String, bool, bool)>,
+    /// T009-S7: whether the panel was mounted on the last poll, so the
+    /// unmount cancel (`cancel_in_flight`, React's unmount effect)
+    /// fires once on the mounted → unmounted transition instead of on
+    /// every poll while the panel stays hidden.
+    pub(crate) ai_chat_mounted: bool,
+    /// T012: the write-proposal host's owned state (React
+    /// `AiWriteProposalHost`'s `queue` / `remainingMs` / `responding` /
+    /// `error` / `receipt` / `auditError`, mounted at the app root in
+    /// `App.tsx:104`, next to the AI panel). The cross-window event edge
+    /// and the `ai_apply_write` / `ai_deny_write` drain have no Rune
+    /// source yet — see the component module's docs — so this state only
+    /// moves through its own methods and the poll tick below.
+    pub(crate) ai_write_proposal: AiWriteProposalHostState,
     /// The system appearance preference, updated by the root view so helpers
     /// like `dark_theme()` can fall back consistently when no theme is saved.
     pub(crate) system_dark: Cell<bool>,
@@ -525,6 +580,14 @@ impl Default for AppState {
             running_close_epoch: 0,
             running_close_outcome: None,
             running_close_sql_copied: false,
+            ai_chat_open: false,
+            ai_chat_panel: AiChatPanelState::new(String::new()),
+            ai_memory_enabled: false,
+            ai_pending_draft: None,
+            ai_draft_acks_applied: 0,
+            ai_draft_last_issue: None,
+            ai_chat_mounted: false,
+            ai_write_proposal: AiWriteProposalHostState::new(),
             system_dark: Cell::new(true),
         }
     }

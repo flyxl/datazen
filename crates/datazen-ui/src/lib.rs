@@ -3,6 +3,8 @@
 //! The page shell is deliberately independent of DataZen's transport and storage
 //! implementations. Platform adapters will be added behind typed UI ports.
 
+pub(crate) mod active_connection_store;
+pub(crate) mod table_data_connection_state;
 pub(crate) mod components;
 pub(crate) mod ai;
 pub mod data_grid;
@@ -17,6 +19,8 @@ pub(crate) mod i18n;
 mod icons;
 mod types;
 mod state_def;
+mod ai_chat_state;
+mod ai_write_proposal_state;
 mod session_state;
 mod settings_state;
 mod snippets_state;

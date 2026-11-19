@@ -94,6 +94,33 @@ pub(crate) fn splitter_handle(
     max: u32,
     default: u32,
 ) -> El {
+    splitter_handle_inner(state, key, axis, min, max, default, false)
+}
+
+/// The drag handle for a panel on the right edge (T009-S7: the AI
+/// aside). Dragging left grows it — React's `useResizable({ reverse:
+/// true })` on the AI sidebar — so the travel sign flips, and the
+/// keyboard step flips with it.
+pub(crate) fn splitter_handle_reversed(
+    state: &AppState,
+    key: &'static str,
+    axis: SplitAxis,
+    min: u32,
+    max: u32,
+    default: u32,
+) -> El {
+    splitter_handle_inner(state, key, axis, min, max, default, true)
+}
+
+fn splitter_handle_inner(
+    state: &AppState,
+    key: &'static str,
+    axis: SplitAxis,
+    min: u32,
+    max: u32,
+    default: u32,
+    reverse: bool,
+) -> El {
     let size = splitter_size(state, key, default);
     let label = match axis {
         SplitAxis::Vertical => "Resize sidebar",
@@ -112,9 +139,11 @@ pub(crate) fn splitter_handle(
     };
 
     // Drag resizes: Down seeds the start, Move previews, Up persists (or the
-    // cancel path discards the preview).
+    // cancel path discards the preview). A reversed handle (right-edge
+    // panel) grows when the pointer travels left, so the travel flips.
     handle = handle.on_drag(move |s: &mut AppState, drag: &mut Drag, _: &mut Tx| {
         let travel = drag_travel(axis, drag);
+        let travel = if reverse { -travel } else { travel };
         let start = drag.data.round().max(0.0) as u32;
         match drag.phase {
             Phase::Down => {
@@ -143,11 +172,10 @@ pub(crate) fn splitter_handle(
         .on_step(move |s: &mut AppState, delta: i32, _: &mut Tx| {
             let current = splitter_size(s, key, default);
             // For a horizontal bar, "down" (rune: -1) should grow the pane below,
-            // so flip the sign to keep arrow direction intuitive.
-            let delta = match axis {
-                SplitAxis::Vertical => delta,
-                SplitAxis::Horizontal => -delta,
-            };
+            // so flip the sign to keep arrow direction intuitive. A reversed
+            // vertical bar (right-edge panel) flips the same way: Left grows it.
+            let flip = matches!(axis, SplitAxis::Horizontal) != reverse;
+            let delta = if flip { -delta } else { delta };
             let value = size_after_step(current, delta, min, max);
             let _ = s.set_layout_size(key, value);
         })

@@ -162,3 +162,4 @@ bash scripts/rune-segment-sync.sh refresh-segments
 - **T 编号对不上**：源码变动会重排编号；状态按 React 文件集识别，不会丢。以 `--shard N` 实测为准。
 - **segment 落后父分支 / 合回冲突**：按 §4.5 先 `sync-from-parent`；协调者用 `merge-to-parent`，冲突就地解决。父分支永远不与子分支强推覆盖。
 - **跨段依赖**：segment 按 area 切分，同 area 上游在本段内；若确实需要别的段的未完成件，先做本段其它任务并在 push 时说明，由协调者在汇总时处理。
+- **完整 UI 测试链接 OOM（本机确定性）**：不要直接跑全量 `cargo test -p datazen-ui --lib`（GNU ld / lld 均已验证 OOM，9 次证据）。用测试树裁剪探针 `scripts/rune-test-probe.sh <模块>...`，见 `docs/development/rune-migration/test-probe.md`；结论只认日志里的 `test result:` 行和退出码。

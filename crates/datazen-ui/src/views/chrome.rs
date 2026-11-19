@@ -174,6 +174,30 @@ pub(crate) fn content_toolbar(state: &AppState, theme: tok::Theme) -> El {
                         text(t("common.newQuery")).font(type_::LABEL).color(theme.text),
                     ),
             );
+            // T009-S7: the AI assistant toggle (React `ContentToolbar`'s
+            // `conn-toolbar-ai`, label `AI`, secondary variant while
+            // open). React shows it unless on a KV panel without AI
+            // facts; the Rune workspace has no KV panels, so it shows
+            // on every workspace.
+            bar = bar.child(
+                row()
+                    .key("conn-toolbar-ai")
+                    .h(32.0)
+                    .px(10.0)
+                    .gap(6.0)
+                    .center_y()
+                    .radius(6.0)
+                    .fill(if state.ai_chat_open {
+                        theme.card
+                    } else {
+                        theme.control_off
+                    })
+                    .label("AI")
+                    .on_press(|state: &mut AppState| {
+                        state.toggle_ai_chat();
+                    })
+                    .child(text("AI").font(type_::LABEL).color(theme.text)),
+            );
         }
         Section::Connections => {}
         Section::Settings => {}

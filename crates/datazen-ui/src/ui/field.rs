@@ -189,7 +189,8 @@ impl<'a> TextField<'a> {
 
     /// Refuse input and focus (React's `disabled`): the box is neither a
     /// tab stop nor editable and dims. T070's workflow form disables the id
-    /// field while editing a saved workflow.
+    /// field while editing a saved workflow. T023-S1's column-mapping rows
+    /// also honour it; the kit renders the disabled state and takes no caret.
     pub(crate) fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
@@ -275,10 +276,8 @@ impl<'a> TextField<'a> {
         let mut ti = rune_kit::TextInput::new(self.edit)
             .text_style(self.style)
             .height(self.height)
-            .width(self.width);
-        if self.disabled {
-            ti = ti.disabled(true);
-        }
+            .width(self.width)
+            .disabled(self.disabled);
         if embedded {
             ti = ti.plain();
         }
@@ -342,6 +341,7 @@ impl<'a> TextField<'a> {
             .grow(1.0)
             .shrink()
             .min_w(0.0)
+            .disabled(self.disabled)
             .single_line();
         if let Some(text) = self.placeholder {
             // No caller-specified placeholder colour in the kit-delegated

@@ -257,6 +257,11 @@ fn main_shell_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         NAVIGATOR_WIDTH_DEFAULT,
     );
 
+    // Window-level overlay layer: dialogs and select listboxes mount here so
+    // they paint above the page (page_body takes the same vec). Appended after
+    // the body as a sibling, matching the app_root composition.
+    let mut layer = modal_layer(state, theme, dark);
+
     let page = col()
         .key("datazen-page")
         .grow(1.0)
@@ -272,7 +277,7 @@ fn main_shell_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         } else {
             row().key("tab-strip-absent").h(0.0)
         })
-        .child(page_body(state, theme, dark))
+        .child(page_body(state, theme, dark, &mut layer))
         .child(content_status_bar(state, theme));
 
     row()
@@ -285,4 +290,5 @@ fn main_shell_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .child(navigator)
         .child(nav_splitter)
         .child(page)
+        .children(layer)
 }

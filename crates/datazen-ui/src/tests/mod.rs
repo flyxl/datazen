@@ -175,10 +175,27 @@ mod support_layer_audit;
 mod structure_editor_helpers;
 // T036 independent audit: extra edge cases on the ported helpers.
 mod structure_editor_audit;
+// T028: lib/chart/export.ts port — PNG/SVG export options, data-URL
+// splitting/decoding, save requests and dialog options.
+mod chart_export;
+// T028 independent audit: fresh fixtures, boundary inputs, and the two
+// places the port is stricter than atob / decodeURIComponent.
+mod chart_export_audit;
 // T034: React lib/session/counters.ts parity (counter + handle value logic).
 mod counters;
 // T034 independent audit: 2^53 gate, branch order, regex-vs-BigInt faithfulness.
 mod counters_audit;
+// T039: React stores/activeConnectionStore.ts parity (active-connection store).
+mod active_connection_store;
+// T039 independent audit: markConnected spread semantics, timeout re-arm
+// and per-entry isolation, disconnect finally ordering, reset interplay.
+mod active_connection_store_audit;
+// T041: React stores/tableData/connectionState.ts parity (row records, cell
+// values, error messages, the empty panel state, the load target).
+mod table_data_connection_state;
+// T041 independent audit (tester): parity re-derived from the React source,
+// plus dependency-mirror completeness (keyset/grid/change enums, plan types).
+mod table_data_connection_state_audit;
 // T032: relationMetadata/metadataCache.ts port — standard wiring so the
 // `metadata_cache` test filter really runs these tests (tests::metadata_cache::*).
 mod metadata_cache;
@@ -243,6 +260,42 @@ mod migration_endpoints_audit;
 // T010 independent retest of the D1/D2 fix: label resolution, selection, fallback, value on_choose.
 mod migration_endpoints_retest;
 
+// T023-S1: ColumnMappingRow leaf (row model, target options, skip/select/text commits, disabled).
+mod column_mapping_row;
+// T023-S1 independent audit: fresh vectors (target_options boundaries, patch/skip interaction, disabled, key scope, placeholder label).
+mod column_mapping_row_audit;
+// T023-S2: ColumnMappingEditor shell (target table + create-new toggle, auto-match/clear, warning, header, row assembly).
+mod column_mapping_editor;
+// T023-S2 independent audit: fresh vectors against React + transferMappingView.ts.
+mod column_mapping_editor_audit;
+// T023-S3: RecordsetEditor (enable switch, single-bound + limit, tuple editor).
+mod recordset_editor;
+// T023-S3 independent audit (tester).
+mod recordset_editor_audit;
+
+// T024: DataSyncCompareStep (comparing / compared / prompt branches, cancel,
+// page-key/cursor derivations, empty child mounts for T288/T308/T383).
+mod data_sync_compare_step;
+// T024 independent audit: full branch matrix, NUL key, cursor semantics,
+// empty child mounts, light theme.
+mod data_sync_compare_step_audit;
+
+// T026-S1: BackupWindow state model + selection logic (option tables,
+// select/session journey, grouping + search ranking, prefill, close
+// listener, empty ProgressLog mount).
+mod backup_window_state;
+// T026-S1 independent audit: full label table, dialect aliases,
+// untouched-field journey, React grouping quirks, timestamp edges.
+mod backup_window_state_audit;
+// T026-S2: BackupWindow execution actions + three-column rendering
+// (progress formatting, log pump, run-state machine, chrome,
+// columns, options, backup/restore journeys, N4 host contract).
+mod backup_window;
+// T026-S2 independent audit: multi-byte log truncation, format-custom
+// extension, restore None-payload, re-arm, badge tones, confirm
+// dialog, log-copy visibility.
+mod backup_window_audit;
+
 // T008: ChartCanvas dispatcher, measured viewport and honest placeholders.
 mod chart_canvas;
 // T008 independent audit: marker honesty, factory seam, geometry, source guards.
@@ -282,3 +335,49 @@ mod running_execution_close_host;
 // T022: the install-wapp dialog port (two-step pick/review flow, the
 // native pickers, the honest host seams and the close/reset path).
 mod install_wapp_dialog;
+// T009-S1: AiChatPanel leaf subcomponents (format/hasSnapshotContent/chip/QuestionBlock).
+mod ai_chat_panel;
+// T009-S1 independent audit: fresh vectors, dual-channel selection, geometry, source guards.
+mod ai_chat_panel_audit;
+// T009-S2: AiChatPanel ChatBubble (tool/reasoning/content/memory/remember/streaming/cancelled/questions).
+mod ai_chat_panel_bubble;
+// T009-S2 independent audit: fresh vectors, dual-channel geometry, settle_all reproduction.
+mod ai_chat_panel_bubble_audit;
+// T009-S3: AiChatPanel header (tabs, migration banners, agent-mode row + template select, profile row, share-editor row).
+mod ai_chat_panel_header;
+// T009-S3 independent audit: fresh vectors against the React source and zh-CN packs.
+mod ai_chat_panel_header_audit;
+// T009-S4: AiChatPanel message list (memory toasts, messages, streaming placeholder, jump-to-bottom).
+mod ai_chat_panel_message_list;
+// T009-S4 independent audit: fresh vectors against the React source and zh-CN packs.
+mod ai_chat_panel_message_list_audit;
+// T009-S5: AiChatPanel input area (egress notice, skills, auto-context / injection / KV chips, conflict bar, AiInput wiring).
+mod ai_chat_panel_input_area;
+// T009-S5: `AiChatInputAreaState` pure logic (send gate, submit, conflict, snapshot removal, show gates).
+mod ai_chat_panel_input_area_state;
+// T009-S5 independent audit: fresh vectors against the React source and zh-CN packs.
+mod ai_chat_panel_input_area_audit;
+// T009-S6: AiChatPanel shell + session wiring (state machine + S3/S4/S5 assembly).
+mod ai_chat_panel_shell;
+// T009-S6 independent audit: fresh vectors against the React source and zh-CN packs.
+mod ai_chat_panel_shell_audit;
+// T009-S7: AiChatPanel Section wiring (mount, toolbar toggle, host sync, geometry).
+mod ai_chat_panel_section;
+// T009-S7 independent audit: fresh vectors against the React source and zh-CN packs.
+mod ai_chat_panel_section_audit;
+// T012: AiWriteProposalHost (state machine + dialog / receipt / audit-error render).
+mod ai_write_proposal_host;
+// T012 independent audit: fresh vectors against the React source and zh-CN packs.
+mod ai_write_proposal_host_audit;
+// T013: AdminCreateDialog (state machine + dialog / name field / schema fields / error render).
+mod admin_create_dialog;
+// T013 independent audit: fresh vectors against the React source and zh-CN packs.
+mod admin_create_dialog_audit;
+// T014: ExportSuccessPanel (centred green check over the caller's message).
+mod export_success_panel;
+// T014 independent audit: fresh vectors for the export success panel.
+mod export_success_panel_audit;
+// T014: FilterBar (label, one pill per condition, clear-all; loading disables).
+mod filter_bar;
+// T014 independent audit: fresh vectors for the filter bar.
+mod filter_bar_audit;

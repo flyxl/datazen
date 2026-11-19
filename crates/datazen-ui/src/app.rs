@@ -21,6 +21,7 @@ pub(crate) fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
     views::app_root(state, cx)
 }
 
+
 /// The app's window chrome (L3): self-drawn 40pt titlebar and a minimum size
 /// aligned with the React/Tauri main window.
 const TITLEBAR_HEIGHT: f32 = 40.0;
@@ -126,7 +127,7 @@ pub(crate) fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool 
     false
 }
 
-pub(crate) fn app_poll(state: &mut AppState, _: f64, _: &mut Tx) -> bool {
+pub(crate) fn app_poll(state: &mut AppState, _: f64, tx: &mut Tx) -> bool {
     // N1: the host's finished jobs land first, whatever section is showing;
     // a delivery redraws (it wrote state or cleared its marker), and stale
     // generations were dropped inside `deliver_host_job`.
@@ -135,6 +136,13 @@ pub(crate) fn app_poll(state: &mut AppState, _: f64, _: &mut Tx) -> bool {
         state.deliver_host_job(delivery);
         dirty = true;
     }
+    // T009-S7: the AI panel's host sync runs on every section — its
+    // mount tracking has to see the workspace being left, so the
+    // unmount cancel fires on the transition.
+    dirty = state.sync_ai_chat_panel(tx) || dirty;
+    // T012: the write-proposal host's expiry tick runs on every section —
+    // the dialog is mounted at the app root, not inside a section.
+    dirty = state.sync_ai_write_proposals() || dirty;
     if state.active != Section::Workspace {
         return dirty;
     }
