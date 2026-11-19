@@ -33,7 +33,7 @@
 - [x] T133 · ai · 2.00d · ai/streamRegistry.ts · split
 - [x] T135 · components/filter · 0.90d · components/filter/FilterSqlPreviewDialog.tsx
 - [x] T137 · components/connection · 0.90d · components/connection/ConnectionShareDialog.tsx
-- [ ] T140 · components/migration · 0.90d · components/migration/MigrationRunHistoryDialog.tsx
+- [x] T140 · components/migration · 0.90d · components/migration/MigrationRunHistoryDialog.tsx
 - [ ] T144 · windows/connection · 1.30d · windows/connection/ConnectionWorkspaceHome.tsx · split
 - [ ] T154 · lib/session · 0.30d · lib/session/pageUnload.ts
 - [x] T156 · lib/structureEditor · 0.30d · lib/structureEditor/types.ts

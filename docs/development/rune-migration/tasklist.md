@@ -156,7 +156,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [x] T137 · components/connection · 0.90d · components/connection/ConnectionShareDialog.tsx
 - [ ] T138 · components/chart · 2.00d · components/chart/LogScaleTooltip.tsx · split
 - [ ] T139 · components/ai · 0.80d · components/ai/AiInput.tsx
-- [ ] T140 · components/migration · 0.90d · components/migration/MigrationRunHistoryDialog.tsx
+- [x] T140 · components/migration · 0.90d · components/migration/MigrationRunHistoryDialog.tsx
 - [ ] T141 · components/sql-editor · 3.40d · components/sql-editor/editorExtensions.ts · split
 - [ ] T142 · components · 0.30d · components/LocaleDomainLoading.tsx
 - [ ] T143 · windows/settings · 0.50d · windows/settings/ai/ModelProfileListItem.tsx
