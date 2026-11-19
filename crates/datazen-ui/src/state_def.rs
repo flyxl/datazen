@@ -3,7 +3,7 @@
 use crate::data_grid::DataGrid;
 use crate::sql_editor::SqlEditor;
 use crate::types::{QuerySidebarPanel, ResultView, Section, TableView, Tool};
-use crate::views::{InstallWappStep, RunningExecutionCloseRequest, WappPackagePreview};
+use crate::views::{InstallWappStep, RunningExecutionCloseRequest, WappFilter, WappPackagePreview, WappRemoveRequest, WappSummaryVm};
 use crate::views::WorkflowExecutionResult;
 use crate::views::{
     WorkflowCommandDefinition, WorkflowConnectionOption, WorkflowDraft, WorkflowFormSelect,
@@ -158,11 +158,11 @@ pub struct AppState {
     pub(crate) install_wapp_epoch: u64,
     /// T022: the dialog's step (React's `InstallStep`): the pick step, then
     /// the review of the inspected package. The host inspect seam that
-    /// advances it is the wapps management page wiring (T073).
+    /// advances it is the wapps management page wiring (T072).
     pub(crate) install_wapp_step: InstallWappStep,
     /// T022: the picked package's preview — the pick token, the package label
     /// and the inspected manifest (React's three `useState`s, set and cleared
-    /// together). The inspect use case is a host seam (T073).
+    /// together). The inspect use case is a host seam (T072).
     pub(crate) install_wapp_preview: Option<WappPackagePreview>,
     /// T022: the pick→inspect pass is in flight (React's `inspecting`).
     pub(crate) install_wapp_inspecting: bool,
@@ -170,6 +170,35 @@ pub struct AppState {
     pub(crate) install_wapp_installing: bool,
     /// T022: the install flow's last error (the dialog's error branch).
     pub(crate) install_wapp_error: Option<String>,
+    /// T072: the wapp store's installed list (React `wappStore.wapps`),
+    /// filled by the `wapps_loaded` seam transition (`wapps_state.rs`); the
+    /// fetch's own failure branch is the honest answer until the adapter
+    /// carries the wapp list use case.
+    pub(crate) wapps: Vec<WappSummaryVm>,
+    /// T072: the store's `loaded` flag — the page's mount-time fetch gate
+    /// (React: `if (!loaded) void fetch()`).
+    pub(crate) wapps_loaded: bool,
+    /// T072: the store's `error` slot (a failed fetch, or the store-side
+    /// error of a failed toggle/uninstall command — React's store writes
+    /// only the error on failure and keeps the list).
+    pub(crate) wapps_error: Option<String>,
+    /// T072: the page's search box (React's `search`, restored from the
+    /// workspace panel snapshot on mount — the state simply persists, so
+    /// the snapshot round-trip is a no-op of the same observable behaviour).
+    pub(crate) wapp_search: TextEdit,
+    /// T072: the page's filter chip (React's `filter`, defaulting to
+    /// Workspace the way the snapshot fallback does).
+    pub(crate) wapp_filter: WappFilter,
+    /// T072: the page's action error (React's `actionError` — a failed
+    /// toggle or uninstall the page caught).
+    pub(crate) wapp_action_error: Option<String>,
+    /// T072: the uninstall confirmation's pending ask (React's
+    /// `useConfirmDialog` `{options, resolve}` state; the root modal layer
+    /// mounts the dialog while one is pending).
+    pub(crate) wapp_remove_request: Option<WappRemoveRequest>,
+    /// T072: the generation of a remove-confirm open (`Dialog::open_epoch`);
+    /// see [`Self::connection_dialog_epoch`].
+    pub(crate) wapp_remove_epoch: u64,
     pub(crate) connection_name: TextEdit,
     pub(crate) connection_engine: TextEdit,
     pub(crate) connection_address: TextEdit,
@@ -430,6 +459,14 @@ impl Default for AppState {
             install_wapp_inspecting: false,
             install_wapp_installing: false,
             install_wapp_error: None,
+            wapps: Vec::new(),
+            wapps_loaded: false,
+            wapps_error: None,
+            wapp_search: TextEdit::new(String::new()),
+            wapp_filter: WappFilter::Workspace,
+            wapp_action_error: None,
+            wapp_remove_request: None,
+            wapp_remove_epoch: 0,
             connection_name: TextEdit::new(String::new()),
             connection_engine: TextEdit::new(String::new()),
             connection_address: TextEdit::new(String::new()),

@@ -262,3 +262,8 @@ mod running_execution_close_host;
 // T022: the install-wapp dialog port (two-step pick/review flow, the
 // native pickers, the honest host seams and the close/reset path).
 mod install_wapp_dialog;
+
+// T072: the wapps management page port (header/counts, the search/filter
+// chips and derivations, the grouped all view, the cards and their gates,
+// the toggle/uninstall/open seams, and the geometry at both sizes).
+mod wapp_management_page;

@@ -28,7 +28,7 @@ pub(crate) fn page_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         Section::Tools => tools_page(state, theme, dark),
         Section::Dashboards => dashboards_page(state, theme, dark),
         Section::Workflows => workflows_page(state, theme, dark),
-        Section::Wapps => wapps_page(theme),
+        Section::Wapps => wapp_management_page(state, theme, dark),
     }
 }
 

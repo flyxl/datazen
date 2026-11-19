@@ -111,10 +111,24 @@ mod tests {
         }
     }
 
-    /// The keys in every `t("…")` call in `source`.
+    /// The keys in every `t("…")` call in `source`'s code lines. A `//` line —
+    /// `//!` and `///` doc comments included — is prose: a quoted example like
+    /// `t("...")` in a doc comment describes the call sites the guard checks,
+    /// and is not a key the packs must define.
     fn translation_keys(source: &str) -> Vec<&str> {
-        let bytes = source.as_bytes();
         let mut keys = Vec::new();
+        for line in source.lines() {
+            if line.trim_start().starts_with("//") {
+                continue;
+            }
+            translation_keys_in_line(line, &mut keys);
+        }
+        keys
+    }
+
+    /// The `t("…")` keys in one code line.
+    fn translation_keys_in_line<'a>(line: &'a str, keys: &mut Vec<&'a str>) {
+        let bytes = line.as_bytes();
         let mut i = 0;
         while i + 2 < bytes.len() {
             let call = bytes[i] == b't'
@@ -133,12 +147,11 @@ mod tests {
             if end >= bytes.len() {
                 break;
             }
-            if let Some(key) = source.get(start..end) {
+            if let Some(key) = line.get(start..end) {
                 keys.push(key);
             }
             i = end + 1;
         }
-        keys
     }
 
     fn is_ident(byte: u8) -> bool {
