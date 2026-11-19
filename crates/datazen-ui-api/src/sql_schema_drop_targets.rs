@@ -839,4 +839,222 @@ mod tests {
             vec![target(None, "Orders", None)]
         );
     }
+
+    // [tester] Audit round — the identifier charset. `$` is an identifier
+    // character (`[A-Za-z0-9_$]*`), while a DIGIT is not a start: in `9abc`
+    // no identifier begins at `9`, so the leftmost QUALIFIED starts at `a`
+    // and the digits are lost — React's `match` skips the position too.
+
+    #[test]
+    fn pins_the_identifier_charset_and_the_digit_start_rule() {
+        assert_eq!(
+            parse_schema_drop_targets("DROP TABLE order$s"),
+            vec![target(None, "order$s", None)]
+        );
+        assert_eq!(
+            parse_schema_drop_targets("DROP TABLE 9abc"),
+            vec![target(None, "abc", None)]
+        );
+    }
+
+    // [tester] Audit round — the noise passes run in React's replace
+    // order (line comments, then block comments, then string literals),
+    // and the order is observable: a `--` inside a string literal is a
+    // line comment that swallows the rest of the LINE — including a later
+    // DROP TABLE — before the string pass ever sees the literal; and a
+    // `--` inside a block comment swallows the `*/`, leaving the comment
+    // unclosed so the DROP after it is comment text.
+
+    #[test]
+    fn pins_the_noise_pass_order() {
+        assert_eq!(parse_schema_drop_targets("SELECT 'x--y'; DROP TABLE b"), Vec::new());
+        assert_eq!(parse_schema_drop_targets("/* -- */ DROP TABLE x"), Vec::new());
+    }
+
+    // [tester] Audit round — `matchAll` resumes at each match's END. The
+    // DROP capture `[^;]+` is greedy, so an unsemicoloned second DROP in
+    // the same body is swallowed by the first capture and never
+    // re-scanned; a quoted ALTER column can literally contain a whole
+    // second ALTER statement, and resuming past the match end skips it.
+
+    #[test]
+    fn pins_matchall_resumption_at_each_match_end() {
+        assert_eq!(
+            parse_schema_drop_targets("DROP TABLE a DROP TABLE b"),
+            vec![target(None, "a", None)]
+        );
+        assert_eq!(
+            parse_schema_drop_targets("ALTER TABLE t DROP COLUMN \"ALTER TABLE y DROP COLUMN z\""),
+            vec![target(None, "t", Some("ALTER TABLE y DROP COLUMN z"))]
+        );
+    }
+
+    // [tester] Audit round — unquote's doubled-quote escape applies to
+    // the backtick form too (React's `replace(/``/g, '`')`), and the
+    // QUALIFIED part cap `{0,2}` holds in the DROP body scan as well: a
+    // three-part name keeps the last two parts.
+
+    #[test]
+    fn pins_backtick_escapes_and_the_drop_body_part_cap() {
+        assert_eq!(
+            parse_schema_drop_targets("ALTER TABLE t DROP COLUMN `note``x`"),
+            vec![target(None, "t", Some("note`x"))]
+        );
+        assert_eq!(
+            parse_schema_drop_targets("DROP TABLE cat.sch.tbl"),
+            vec![target(Some("sch"), "tbl", None)]
+        );
+    }
+
+    // [tester] Audit round — the `\b` AFTER the cut words
+    // (`split(/\bCASCADE\b|\bRESTRICT\b/i)`): `RESTRICTED` is not the
+    // whole word RESTRICT, so the body survives with the identifier as
+    // the table; and the dedupe key is LOWERCASED while the pushed target
+    // keeps the first occurrence's original casing.
+
+    #[test]
+    fn pins_the_cut_word_boundaries_and_the_lowercase_dedupe_key() {
+        assert_eq!(
+            parse_schema_drop_targets("DROP TABLE RESTRICTED t;"),
+            vec![target(None, "RESTRICTED", None)]
+        );
+        assert_eq!(
+            parse_schema_drop_targets("DROP TABLE A; drop table a"),
+            vec![target(None, "A", None)]
+        );
+    }
+
+    // [tester] Audit round — stripLeadingNoise's `\s+` → ` ` collapse
+    // runs before unquoting, so a bracketed identifier's inner double
+    // space becomes one; and the bracketed form closes at the FIRST `]`
+    // (`\[[^\]]+\]`), so `[a]b]` unquotes to `a` and the `b]` tail is
+    // noise.
+
+    #[test]
+    fn pins_the_whitespace_collapse_and_the_first_bracket_close() {
+        assert_eq!(
+            parse_schema_drop_targets("DROP TABLE [a  b]"),
+            vec![target(None, "a b", None)]
+        );
+        assert_eq!(
+            parse_schema_drop_targets("DROP TABLE [a]b]"),
+            vec![target(None, "a", None)]
+        );
+    }
+
+    // [tester] Audit round — the ALTER leading `(?:IF\s+EXISTS\s+)?` is
+    // consumed by the group (with ONLY behind it), not read as the table;
+    // and the quoted identifier's end-inside-literal backtrack: `"a b""`
+    // (text ends inside the literal) closes at the first quote of the
+    // last doubled-quote pair — the engine's only productive backtrack —
+    // so it unquotes to `a b`.
+
+    #[test]
+    fn pins_the_alter_leading_if_exists_and_the_unterminated_quote_backtrack() {
+        assert_eq!(
+            parse_schema_drop_targets("ALTER TABLE IF EXISTS ONLY t DROP COLUMN c"),
+            vec![target(None, "t", Some("c"))]
+        );
+        assert_eq!(
+            parse_schema_drop_targets("DROP TABLE \"a b\"\""),
+            vec![target(None, "a b", None)]
+        );
+    }
+
+    // [tester] Audit round 2 — the CASCADE/RESTRICT cut happens at the
+    // FIRST whole word in the whole DROP body, BEFORE the comma-split: a
+    // mid-list `a CASCADE, b` yields only `a` — `b` sits past the cut.
+
+    #[test]
+    fn cuts_the_body_at_a_mid_list_cascade_keyword() {
+        assert_eq!(
+            parse_schema_drop_targets("DROP TABLE a CASCADE, b"),
+            vec![target(None, "a", None)]
+        );
+    }
+
+    // [tester] Audit round 2 — the string-literal noise pass replaces each
+    // CLOSED literal with one space, not nothing: `x'y'z` stays two words
+    // (an empty replacement would weld them into `xz`). An UNTERMINATED
+    // literal is not noise at all — `'(?:''|[^'])*'` needs its closing
+    // quote — so `'unterminated` stays and the body scan reads the bare
+    // identifier behind the quote.
+
+    #[test]
+    fn string_literals_strip_to_a_separator_and_unterminated_ones_stay() {
+        assert_eq!(
+            parse_schema_drop_targets("DROP TABLE x'y'z"),
+            vec![target(None, "x", None)]
+        );
+        assert_eq!(
+            parse_schema_drop_targets("DROP TABLE 'unterminated"),
+            vec![target(None, "unterminated", None)]
+        );
+    }
+
+    // [tester] Audit round 2 — a line comment starts at exactly `--`: a
+    // single `-` is an ordinary character, so the statement behind it
+    // survives; and `--[^\n]*` stops BEFORE the newline, which the
+    // replacement keeps — the next line's statement is still scanned once
+    // the first body closed at its `;`.
+
+    #[test]
+    fn a_single_dash_is_not_a_comment_and_a_comment_stops_before_the_newline() {
+        assert_eq!(
+            parse_schema_drop_targets("DROP TABLE a; - DROP TABLE b"),
+            vec![target(None, "a", None), target(None, "b", None)]
+        );
+        assert_eq!(
+            parse_schema_drop_targets("DROP TABLE x; --c\nDROP TABLE y"),
+            vec![target(None, "x", None), target(None, "y", None)]
+        );
+    }
+
+    // [tester] Audit round 2 — an unclosed `/*` is ordinary text: the
+    // non-greedy `[\s\S]*?\*/` needs its `*/`, so `DROP TABLE /*x` keeps
+    // its body and the scan skips past `/*` to the bare identifier `x`.
+
+    #[test]
+    fn an_unclosed_block_comment_is_ordinary_text() {
+        assert_eq!(
+            parse_schema_drop_targets("DROP TABLE /*x"),
+            vec![target(None, "x", None)]
+        );
+    }
+
+    // [tester] Audit round 2 — the block pass runs BEFORE the string pass
+    // (React's replace order): `/* ' */ … ' */` closes the block comment
+    // first, leaving one lone quote the string pass cannot pair, so the
+    // DROP survives — string-first would weld `/* ' … ' */` into one noise
+    // span and swallow it.
+
+    #[test]
+    fn block_comments_strip_before_string_literals() {
+        assert_eq!(
+            parse_schema_drop_targets("/* ' */ DROP TABLE t ; ' */"),
+            vec![target(None, "t", None)]
+        );
+    }
+
+    // [tester] Audit round 2 — `(?:COLUMN\s+)?` is optional: `DROP c`
+    // without the keyword still names the column; and the bare identifier
+    // HEAD is `[A-Za-z_]` — `_t` is a whole identifier (a letter-only head
+    // would read it as `t`), and `_s`/`_c` ride the same rule through the
+    // qualified ALTER path.
+
+    #[test]
+    fn accepts_a_drop_without_the_column_keyword_and_underscore_heads() {
+        assert_eq!(
+            parse_schema_drop_targets("ALTER TABLE t DROP c"),
+            vec![target(None, "t", Some("c"))]
+        );
+        assert_eq!(
+            parse_schema_drop_targets("DROP TABLE _t"),
+            vec![target(None, "_t", None)]
+        );
+        assert_eq!(
+            parse_schema_drop_targets("ALTER TABLE _s.t DROP COLUMN _c"),
+            vec![target(Some("_s"), "t", Some("_c"))]
+        );
+    }
 }

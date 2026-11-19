@@ -395,4 +395,88 @@ mod tests {
         };
         assert_eq!(resolve_ensure_segments(&["app", "snap"], &opts), vec!["app", "snap"]);
     }
+
+    // [tester] Audit round — the identifier charset. React's `IDENT` is
+    // exactly ASCII `[A-Za-z0-9_$]`: `_` and `$` are identifier characters
+    // (a `\w` port would lose `$`, a trimmed set would lose `_`), while a
+    // non-ASCII letter is NOT one — the cursor at the end of `a.é` has no
+    // token character behind it, so no token exists there (React's
+    // `/[A-Za-z0-9_$]/.test('é')` is false).
+
+    #[test]
+    fn pins_the_ascii_ident_charset() {
+        // `_` and `$` extend the token across the dot hop.
+        let token = extract_qualified_token("a$._b", 5);
+        assert_eq!(
+            token,
+            Some(QualifiedToken { value: "a$._b".to_owned(), ends_with_dot: false })
+        );
+        // `é` ends no token: the text ends in a non-identifier character.
+        let sql = "SELECT * FROM a.é";
+        let cursor = sql.chars().count();
+        assert_eq!(parse_qualified_path_parents(sql, cursor), Vec::<String>::new());
+    }
+
+    // [tester] Audit round — the doubled-quote escape straddling the
+    // cursor. React checks `i + 1 < text.length` — the FULL length, not
+    // the clamped scan end — so a `''`/`""` pair that starts before the
+    // cursor keeps the cursor inside the literal even when the pair's
+    // second quote sits past the cursor's clamp. Position 3 — the second
+    // quote of the pair — is the straddling case (the pin above sits at 2
+    // and 5, on either side of it).
+
+    #[test]
+    fn is_inside_quotes_pins_the_straddling_escape_pair() {
+        assert!(is_inside_quotes("'a''b'", 3));
+        assert!(is_inside_quotes("\"a\"\"b\"", 3));
+    }
+
+    // [tester] Audit round — `useCurrentDatabaseRoot` gates the prepend
+    // for NON-EMPTY parents too: with the flag off, unknown first segments
+    // pass through untouched, and with no current database at all nothing
+    // can be prepended (a database is never invented either way).
+
+    #[test]
+    fn resolve_ensure_segments_gates_the_prepend_for_non_empty_parents() {
+        let opts = ResolveEnsureOptions {
+            current_database: Some("app"),
+            known_roots: &["app"],
+            use_current_database_root: false,
+        };
+        assert_eq!(resolve_ensure_segments(&["hive", "snap"], &opts), vec!["hive", "snap"]);
+        let opts = ResolveEnsureOptions {
+            current_database: None,
+            known_roots: &[],
+            use_current_database_root: true,
+        };
+        assert_eq!(resolve_ensure_segments(&["hive"], &opts), vec!["hive"]);
+    }
+
+    // [tester] Audit round — the cursor step-back accepts a preceding DOT
+    // as well as an identifier character: a cursor on the separator right
+    // after `hive.` steps back onto the trailing dot and reads the
+    // `hive.` token (React's `text[cursor - 1] === '.'`).
+
+    #[test]
+    fn extract_qualified_token_steps_back_onto_a_trailing_dot() {
+        assert_eq!(
+            extract_qualified_token("hive. , x", 5),
+            Some(QualifiedToken { value: "hive.".to_owned(), ends_with_dot: true })
+        );
+    }
+
+    // [tester] Audit round 2 — a doubled dot does not extend the token
+    // across both dots. The left extension requires the dot to have an
+    // identifier before IT (`k` moved); `a..b`'s second dot sits behind
+    // the first dot, so the token is just `b` — and one lone segment has
+    // no parents.
+
+    #[test]
+    fn a_double_dot_does_not_join_the_left_segment() {
+        assert_eq!(
+            extract_qualified_token("a..b", 4),
+            Some(QualifiedToken { value: "b".to_owned(), ends_with_dot: false })
+        );
+        assert_eq!(parse_qualified_path_parents("a..b", 4), Vec::<String>::new());
+    }
 }
