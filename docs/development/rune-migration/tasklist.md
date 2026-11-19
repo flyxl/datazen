@@ -99,7 +99,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T080 · lib/metadata · 0.90d · lib/metadata/identity.ts
 - [x] T081 · lib/relationMetadata · 0.90d · lib/relationMetadata/sessionConfig.ts lib/relationMetadata/types.ts lib/relationPrediction/fromRelationMetadata.ts
 - [ ] T082 · lib/relationPrediction · 2.00d · lib/relationPrediction/predictRelations.ts · split
-- [ ] T083 · lib/session · 2.00d · lib/session/EditorSessionController.ts · split
+- [x] T083 · lib/session · 2.00d · lib/session/EditorSessionController.ts · split
 - [ ] T084 · lib/sqlDialects · 0.80d · lib/sqlDialects/identifierQuoting.ts lib/sqlDialects/index.ts
 - [x] T085 · lib/structureEditor · 0.90d · lib/structureEditor/ddlApplyWarnings.ts lib/structureEditor/draftDefaults.ts lib/structureEditor/draftIds.ts
 - [ ] T086 · lib/valuePresentation · 0.80d · lib/valuePresentation/columnPresentation.ts
