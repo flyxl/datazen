@@ -10,3 +10,4 @@ pub(crate) mod editor_session_controller;
 pub(crate) mod execution_projection;
 pub(crate) mod page_unload;
 pub(crate) mod query_panel_session;
+pub(crate) mod run_editor_explain;
