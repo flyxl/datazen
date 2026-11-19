@@ -477,3 +477,5 @@ mod t091_tester;
 mod web_context_menu;
 // T096 independent audit: fresh vectors, id'd separators, Copy command.
 mod web_context_menu_audit;
+// T100: QueryContextSelectors + QueryErrorPanel.
+mod query_context_and_error;

@@ -305,6 +305,30 @@ pub(crate) static ICON_MINIMIZE_2: rune::Icon = rune::Icon {
     view: 24.0,
     body: "<polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"4 14 10 14 10 20\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"20 10 14 10 14 4\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"14\" x2=\"21\" y1=\"10\" y2=\"3\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"3\" x2=\"10\" y1=\"21\" y2=\"14\"/>",
 };
+/// T100: lucide `lightbulb`, the explain-error glyph in `QueryErrorPanel`
+/// (`QueryErrorPanel.tsx` uses `Lightbulb`). Paths verified against
+/// `lucide-static@0.487.0/icons/lightbulb.svg`.
+pub(crate) static ICON_LIGHTBULB: rune::Icon = rune::Icon {
+    name: "lightbulb",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9 18h6\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M10 22h4\"/>",
+};
+/// T100: lucide `rotate-ccw`, the retry glyph in `QueryErrorPanel`
+/// (`QueryErrorPanel.tsx` uses `RotateCcw`). Paths verified against
+/// `lucide-static@0.487.0/icons/rotate-ccw.svg`.
+pub(crate) static ICON_ROTATE_CCW: rune::Icon = rune::Icon {
+    name: "rotate-ccw",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 3v5h5\"/>",
+};
+/// T100: lucide `stethoscope`, the diagnose glyph in `QueryErrorPanel`
+/// (`QueryErrorPanel.tsx` uses `Stethoscope`). Paths verified against
+/// `lucide-static@0.487.0/icons/stethoscope.svg`.
+pub(crate) static ICON_STETHOSCOPE: rune::Icon = rune::Icon {
+    name: "stethoscope",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M11 2v2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5 2v2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5 3H4a2 2 0 0 0-2 2v4a6 6 0 0 0 12 0V5a2 2 0 0 0-2-2h-1\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M8 15a6 6 0 0 0 12 0v-3\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"20\" cy=\"10\" r=\"2\"/>",
+};
 
 pub(crate) fn section_icon(section: Section) -> &'static rune::Icon {
     match section {
