@@ -122,7 +122,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T103 · components/connection · 1.00d · components/connection/ConnectionFormBody.tsx components/connection/ConnectionImportFields.tsx
 - [ ] T104 · components/chart · 0.80d · components/chart/ChartView.tsx
 - [ ] T105 · components/ai · 0.90d · components/ai/AiEgressNotice.tsx
-- [ ] T106 · components/migration · 1.30d · components/migration/MigrationJobVerdictPanel.tsx · split
+- [x] T106 · components/migration · 1.30d · components/migration/MigrationJobVerdictPanel.tsx · split
 - [ ] T107 · components/sql-editor · 2.00d · components/sql-editor/contracts.ts · split
 - [ ] T108 · components · 2.60d · components/FilterEditor.tsx · split
 - [ ] T109 · windows/settings · 0.80d · windows/settings/ai/ModelProfileForm.tsx
