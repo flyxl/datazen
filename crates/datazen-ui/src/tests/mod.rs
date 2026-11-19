@@ -177,6 +177,8 @@ mod structure_editor_helpers;
 mod structure_editor_audit;
 // T085: draft IDs/defaults + DDL apply warnings (pure value logic).
 mod structure_editor_defaults;
+// T085 independent audit: extra truth-table / de-dup / boundary coverage.
+mod structure_editor_t085_audit;
 // T034: React lib/session/counters.ts parity (counter + handle value logic).
 mod counters;
 // T034 independent audit: 2^53 gate, branch order, regex-vs-BigInt faithfulness.
