@@ -33,7 +33,7 @@
 - [ ] T101 · components/history · 0.50d · components/history/historyQuery.ts
 - [ ] T107 · components/sql-editor · 2.00d · components/sql-editor/contracts.ts · split
 - [x] T109 · windows/settings · 0.80d · windows/settings/ai/ModelProfileForm.tsx
-- [ ] T111 · windows/workspace · 0.30d · windows/workspace/WorkspaceDefaultCards.tsx
+- [x] T111 · windows/workspace · 0.30d · windows/workspace/WorkspaceDefaultCards.tsx
 - [ ] T112 · windows/dashboard · 1.30d · windows/dashboard/DashboardPanel.tsx · split
 - [ ] T114 · windows/onboarding · 0.90d · windows/onboarding/OnboardingWizard.tsx
 - [ ] T117 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffJobStatusPanel.tsx
@@ -53,7 +53,7 @@
 - [ ] T163 · commands · 0.90d · commands/backup.ts
 - [ ] T170 · components/sql-editor · 0.60d · components/sql-editor/extensions/executionState.ts components/sql-editor/extensions/types.ts
 - [ ] T172 · windows/settings · 0.90d · windows/settings/AiSettingsSection.tsx
-- [ ] T174 · windows/workspace · 0.90d · windows/workspace/WorkspaceTabBar.tsx
+- [x] T174 · windows/workspace · 0.90d · windows/workspace/WorkspaceTabBar.tsx
 - [ ] T175 · windows/dashboard · 0.90d · windows/dashboard/RunHistoryDrawer.tsx
 - [ ] T177 · windows/onboarding · 1.00d · windows/onboarding/steps/DoneStep.tsx windows/onboarding/steps/ImportStep.tsx
 - [ ] T180 · windows/schema-diff · 1.30d · windows/schema-diff/SchemaDiffPlanPanel.tsx · split

@@ -691,3 +691,12 @@ mod wapp_page_shell_audit;
 // keys/order/geometry/tooltips, the active accent tint, the two press
 // slots, the empty state and the width prop.
 mod workspace_navigator_audit;
+// T111 audit: the workspace default cards — per-page cards with their
+// keys/texts/geometry/byline pinning, the two press slots, the empty
+// state and the 240pt grid basis.
+mod workspace_default_cards_audit;
+// T174 audit: the workspace tab strip — per-tab entries with their
+// keys/tooltips/geometry, the active tint and accent underline, the
+// activate/close slots, the hover-revealed close and the nothing-rendered
+// gate.
+mod workspace_tab_bar_audit;
