@@ -862,3 +862,8 @@ mod transfer_job_run_audit;
 
 // T147-S3: the Data Transfer window's rendering (coder tests).
 mod data_transfer_window;
+
+// T147-S3 independent audit: fresh tree-level vectors (experimental pair
+// note, rail/body geometry, destructive arm, DDL key suffixes, sql-file
+// mode swap, execute gate, 40-row fit).
+mod data_transfer_window_audit;
