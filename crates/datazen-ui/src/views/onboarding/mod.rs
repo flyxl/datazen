@@ -5,6 +5,7 @@
 //! | `BrandSidebar.tsx` | `brand_sidebar` | T021 |
 //! | `OnboardingWindow.tsx` | `onboarding_window` | T072 |
 //! | `OnboardingWizard.tsx` | `onboarding_wizard` | T114 |
+//! | `onboardingGate.ts` | `onboarding_gate` | T268 |
 //! | `onboardingLayout.ts` | `onboarding_layout` | T287 |
 //! | `wizardState.ts` | `wizard_state` | T323 |
 //! | `steps/AiProviderStep.tsx` (+ `WelcomeStep.tsx`'s `StepTag` export) | `steps` | T148 |
@@ -13,6 +14,9 @@
 //! | `useDetectedImportSource.ts` | `use_detected_import_source` | T306 |
 
 pub(crate) mod brand_sidebar;
+// T268: the first-run journey gate (onboardingGate.ts) — the show/hide
+// decision and the versioned exit payload the settings store persists.
+pub(crate) mod onboarding_gate;
 pub(crate) mod onboarding_layout;
 pub(crate) mod onboarding_window;
 pub(crate) mod onboarding_wizard;
@@ -30,6 +34,10 @@ pub(crate) mod wizard_state;
 
 #[allow(unused_imports)] // the wizard host wiring (the step/footer tasks) is the production consumer
 pub(crate) use brand_sidebar::{BrandSidebar, version_label};
+#[allow(unused_imports)] // the onboarding window host (the gate + exit-persistence seams) is the production consumer
+pub(crate) use onboarding_gate::{
+    OnboardingState, ONBOARDING_VERSION, completed_onboarding_state, should_show_onboarding,
+};
 #[allow(unused_imports)] // the wizard host wiring (the step/footer tasks) is the production consumer
 pub(crate) use onboarding_layout::{
     WIZARD_ASIDE_PX, WIZARD_FOOTER_HEIGHT, WIZARD_FOOTER_PX, chrome_text,

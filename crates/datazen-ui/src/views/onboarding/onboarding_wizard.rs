@@ -39,9 +39,10 @@
 //!   `use_detected_import_source.rs` (T306, the import track) and
 //!   re-exported here the same way; [`ImportSource`] stays here until the
 //!   import track's remaining tasks absorb it.
-//! - `onboardingGate.ts` (T268, later): `handleOpen`'s
+//! - `onboardingGate.ts` (T268, landed: `onboarding_gate`): `handleOpen`'s
 //!   `updateSettings({ onboarding: completedOnboardingState() })` — the
-//!   completed-state payload is the host's feed-in at its `on_open` seam.
+//!   completed-state payload (`onboarding_gate::completed_onboarding_state`)
+//!   is the host's feed-in at its `on_open` seam.
 //!   This module contributes the sample-database directive
 //!   ([`OnboardingWizard::post_onboarding_sample`]: the
 //!   `entry === 'sample' && connectionName` gate plus this file's

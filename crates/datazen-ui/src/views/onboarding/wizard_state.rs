@@ -10,7 +10,8 @@
 //! completeness rules; the step-indicator numbering; and the done screen's
 //! connection summary. Q2: skip is reachable at every step except S3. Q5:
 //! the persisted onboarding state is versioned (`{ completed, version }`),
-//! but that payload is `onboardingGate.ts`'s (T268), not this file's.
+//! but that payload is `onboardingGate.ts`'s (T268, landed:
+//! `onboarding_gate`), not this file's.
 //!
 //! ## What maps where
 //!

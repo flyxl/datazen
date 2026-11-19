@@ -776,3 +776,6 @@ mod schema_diff_limitation_keys;
 // useDetectedImportSource port — probe order/hits, the enabled effect and
 // the cancelled-round guard).
 mod use_detected_import_source;
+// T268: bridge to the onboarding gate's inline suite (the onboardingGate
+// port — the show/hide decision and the versioned exit payload).
+mod onboarding_gate;
