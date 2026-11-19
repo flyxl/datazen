@@ -813,3 +813,7 @@ mod table_data_dirty_index;
 // T127 independent audit: fresh vectors (composite keys, nested identity
 // values, anchor under ambiguity, expressions, the delete-mark flip).
 mod table_data_dirty_index_audit;
+
+// T129: the platform port contracts (updater wire types, window routing,
+// the exporter port, the §7.4 binding registry).
+mod platform_contracts;
