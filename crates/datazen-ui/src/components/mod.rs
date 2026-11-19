@@ -18,6 +18,8 @@ pub(crate) mod export;
 pub(crate) mod filter;
 pub(crate) mod filter_bar;
 pub(crate) mod filter_editor;
+// T140: the lazy-i18n-domain loading skeleton (page / section variants).
+pub(crate) mod locale_domain_loading;
 pub(crate) mod history;
 pub(crate) mod query;
 pub(crate) mod schema;

@@ -643,6 +643,12 @@ mod filter_bar;
 // T106: the FilterEditor shell (summary row, mode row, Any Column / Raw SQL
 // panes, logic row, chip list; dirty/incomplete/badge/summary model).
 mod filter_editor;
+// T140: the LocaleDomainLoading skeleton (page/section variants, status
+// role, hardcoded fallback, geometry).
+mod locale_domain_loading;
+// T140 independent audit: fresh vectors (a different testId, the narrow
+// window, channels measured apart).
+mod locale_domain_loading_audit;
 // T106 independent audit: fresh vectors (uuid/unknown columns, no-value
 // operators, verbatim predicates, one-channel badge, geometry).
 mod filter_editor_audit;
