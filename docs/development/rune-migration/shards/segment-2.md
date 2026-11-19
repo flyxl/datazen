@@ -21,7 +21,6 @@
 - [ ] T080 · lib/metadata · 0.90d · lib/metadata/identity.ts
 - [ ] T095 · extensions · 0.80d · extensions/generated.ts
 - [x] T118 · lib · 0.80d · lib/cellEditorKind.ts
-- [ ] T138 · components/chart · 2.00d · components/chart/LogScaleTooltip.tsx · split
 - [ ] T147 · windows/workflow · 1.30d · windows/workflow/WorkflowPage.tsx · split
 - [x] T152 · lib · 0.60d · lib/dataTypeColors.ts components/DataTable/editors/toEditString.ts
 - [ ] T168 · components/chart · 2.00d · components/chart/renderers/AreaChartRenderer.tsx · split
@@ -173,3 +172,4 @@
 - [x] T088 · stores/ai · 2.00d · stores/ai/streaming.ts · split
 - [x] T102 · components/chart · 0.80d · components/chart/ChartView.tsx
 - [x] T126 · stores/ai · 0.80d · stores/ai/types.ts
+- [x] T136 · components/chart · 2.00d · components/chart/LogScaleTooltip.tsx · split
