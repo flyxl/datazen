@@ -13,6 +13,7 @@ pub mod splitter;
 pub mod sql_editor;
 pub(crate) mod support;
 pub(crate) mod session;
+pub(crate) mod platform;
 pub(crate) mod relation_metadata;
 pub(crate) mod structure_editor;
 mod constants;

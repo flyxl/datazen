@@ -19,6 +19,12 @@ rune-kit = { workspace = true }
 serde_json = { workspace = true }
 base64 = { workspace = true }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# T043-S2: `formatRowsAsXlsx`'s minimal mirror builds the workbook in
+# memory with rust_xlsxwriter (the same writer the Rust export kernel
+# uses); the workspace pins 0.102 with `constant_memory` for the kernel,
+# and this crate uses the default in-memory worksheet — provided rows are
+# already loaded, so there is nothing to stream.
+rust_xlsxwriter = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { workspace = true }
@@ -34,6 +40,12 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "wasm
 rune = { workspace = true, features = ["native-file-dialog"] }
 
 [dev-dependencies]
+# T043-S1: `futures::executor::block_on` drives the exporter's async
+# `plan_export` in tests (the UI crate is otherwise synchronous).
+futures = "0.3"
+# T043-S2: the XLSX test reads the emitted workbook back out of its zip
+# container (structural parity, the way React's exportFormat test does).
+zip = { workspace = true }
 # H8's tofu test reads glyph ids out of a shaped layout; the same version and
 # features rune itself uses, so the graph stays one parley.
 parley = { version = "0.12", default-features = false, features = ["std", "complex-scripts"] }
