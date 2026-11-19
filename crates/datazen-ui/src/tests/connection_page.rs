@@ -34,8 +34,12 @@ const SHELL_KEYS: &[&str] = &[
 ];
 
 fn key_set(rt: &Runtime<AppState>) -> std::collections::HashSet<String> {
+    // Rune keeps exiting nodes in `elements()` for animation; they are inert
+    // and stale. A key-presence assertion after a transition must ignore them
+    // or it passes whether or not the new state actually mounted the key.
     rt.elements()
         .into_iter()
+        .filter(|e| !e.exiting)
         .filter_map(|e| e.key)
         .collect()
 }
@@ -116,6 +120,7 @@ fn every_section_stays_reachable_after_the_port() {
         let title = rt
             .elements()
             .into_iter()
+            .filter(|e| !e.exiting)
             .find(|e| e.key.as_deref() == Some("datazen-titlebar-label"))
             .expect("the title band is composed on every section");
         assert_eq!(
@@ -165,6 +170,7 @@ fn tabs_and_toolbar_follow_the_content_workspace_contract() {
     let strip = rt
         .elements()
         .into_iter()
+        .filter(|e| !e.exiting)
         .find(|e| e.key.as_deref() == Some("tab-strip"))
         .expect("tab strip is mounted on Workspace");
     assert_eq!(strip.role, "tablist", "the tab strip keeps its tablist role");
