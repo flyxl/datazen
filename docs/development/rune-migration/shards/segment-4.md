@@ -68,7 +68,7 @@
 - [ ] T201 · windows/dashboard · 1.30d · windows/dashboard/WidgetEditorDrawer.tsx · split
 - [ ] T203 · windows/onboarding · 0.90d · windows/onboarding/steps/ManualConnectionStep.tsx
 - [ ] T206 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffRightPanel.tsx
-- [ ] T209 · lib/valuePresentation · 0.80d · lib/valuePresentation/temporalMath.ts
+- [x] T209 · lib/valuePresentation · 0.80d · lib/valuePresentation/temporalMath.ts
 - [ ] T210 · hooks · 0.90d · hooks/useColumnStats.ts
 - [ ] T214 · commands · 0.90d · commands/context.ts
 - [ ] T220 · components/sql-editor · 2.00d · components/sql-editor/format/formatEditorDocument.ts · split
