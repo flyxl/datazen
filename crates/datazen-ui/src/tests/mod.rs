@@ -475,3 +475,5 @@ mod t089_tester;
 mod t091_tester;
 // T096: WebContextMenu — contract, position math, store, panels, presses.
 mod web_context_menu;
+// T096 independent audit: fresh vectors, id'd separators, Copy command.
+mod web_context_menu_audit;

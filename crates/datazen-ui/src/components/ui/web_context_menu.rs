@@ -660,7 +660,10 @@ fn menu_row<S: 'static>(
     open_sub_id: Option<&str>,
 ) -> El {
     // Separators: `my-1 h-px bg-edge`, keyed by the separator id or the
-    // fallback React list keys.
+    // fallback React list keys. React's separator is a direct child of the
+    // panel (which has no horizontal padding), so it spans the panel's
+    // content width — no negative margins, unlike the kit menus whose list
+    // has horizontal padding to cancel.
     if is_separator(item) {
         let key = match item {
             NativeMenuItemDef::Separator { id: Some(id) } => id.clone(),
@@ -674,8 +677,6 @@ fn menu_row<S: 'static>(
             .h(1.0)
             .mt(4.0)
             .mb(4.0)
-            .ml(-4.0)
-            .mr(-4.0)
             .fill(k.c.border_base)
             .a11y_hidden();
     }
