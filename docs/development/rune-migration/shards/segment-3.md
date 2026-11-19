@@ -50,7 +50,7 @@
 - [ ] T147 · windows/data-transfer · 1.30d · windows/data-transfer/DataTransferWindow.tsx · split
 - [ ] T148 · windows/data-sync · 0.90d · windows/data-sync/DataSyncJobStatusPanel.tsx
 - [ ] T151 · lib/chart · 0.60d · lib/chart/recommend.ts lib/chart/seriesOverlap.ts
-- [ ] T157 · stores · 0.90d · stores/contextMenuStore.ts
+- [x] T157 · stores · 0.90d · stores/contextMenuStore.ts
 - [ ] T158 · stores/tableData · 0.80d · stores/tableData/draftInserts.ts stores/tableData/enumCandidates.ts
 - [x] T160 · platform · 0.30d · platform/env.ts
 - [ ] T163 · components/DataTable · 4.50d · components/DataTable/DataTable.tsx · split
