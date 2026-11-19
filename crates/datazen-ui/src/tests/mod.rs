@@ -169,6 +169,9 @@ mod support_layer_audit;
 // T028: lib/chart/export.ts port — PNG/SVG export options, data-URL
 // splitting/decoding, save requests and dialog options.
 mod chart_export;
+// T028 independent audit: fresh fixtures, boundary inputs, and the two
+// places the port is stricter than atob / decodeURIComponent.
+mod chart_export_audit;
 // T034: React lib/session/counters.ts parity (counter + handle value logic).
 mod counters;
 // T034 independent audit: 2^53 gate, branch order, regex-vs-BigInt faithfulness.
