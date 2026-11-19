@@ -276,6 +276,9 @@ mod session_cancel;
 // T097 independent audit: mark gate, literal 8000ms, settled-only listener,
 // per-request deadlines, disposed no-ops, vanished entry, real 8s runtime wake.
 mod session_cancel_audit;
+// T133: the ai/streamRegistry.ts port (lifecycle, generations, cancel gating,
+// subscriber events and the no-pruning invariant).
+mod stream_registry;
 // T010: the controlled source/target endpoint bar port.
 mod migration_endpoints_bar;
 // T010 independent audit: label-vs-id display, close-on-choice, geometry.
