@@ -47,9 +47,10 @@
 //!   backend result itself is the seam struct [`ImportOutcome`] (the
 //!   three fields of `ConnectionImportResult` this file reads; T346's
 //!   port absorbs it).
-//! - `ImportSummary` (`wizardState.ts:21`) is defined here, the producer's
-//!   side of the seam — T323's state-machine port absorbs it, and
-//!   `DoneStep`'s summary reads it.
+//! - `ImportSummary` (`wizardState.ts:21`) is absorbed into
+//!   `wizard_state.rs` (T323, the state machine's port) and re-exported
+//!   here — the producer's side of the seam; `DoneStep`'s summary reads
+//!   it.
 //! - `initialSource` is the wizard's own `importSource` state (T114's
 //!   [`OnboardingWizard::import_source`], seeded by
 //!   `resync_detected`); `detectedApps` is `useDetectedImportSource`'s
@@ -129,6 +130,10 @@ use crate::i18n::t;
 use crate::icons::{ICON_CIRCLE_CHECK, ICON_FLASK_CONICAL};
 use crate::ui::kit::kit;
 use crate::views::onboarding::onboarding_wizard::{ImportApp, ImportSource};
+// The T323 absorb: the summary the import produces lives in `wizard_state.rs`
+// (the state machine's `IMPORT_SUCCESS` payload); re-exported here so the
+// audits' `import_step::ImportSummary` path stays untouched.
+pub(crate) use crate::views::onboarding::wizard_state::ImportSummary;
 
 use super::step_tag::step_tag;
 use super::welcome_step::import_app_label;
@@ -181,21 +186,6 @@ pub(crate) fn source_label<'a>(source: ImportSource, file_label: &'a str) -> &'a
         ImportSource::File => file_label,
         ImportSource::App(app) => import_app_label(app),
     }
-}
-
-/// React `ImportSummary` (`wizardState.ts:21`): what the import actually
-/// wrote — the payload of the wizard's `IMPORT_SUCCESS` dispatch and the
-/// done screen's connection row. A T323 seam type (the state machine's
-/// port absorbs it).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ImportSummary {
-    /// Brand-new connections the import created.
-    pub(crate) imported: u32,
-    /// Existing connections it replaced (same id).
-    pub(crate) overwritten: u32,
-    /// The human-readable source (the backend's format name, or the
-    /// picker's label).
-    pub(crate) source: String,
 }
 
 /// The half of React's `ConnectionImportResult`

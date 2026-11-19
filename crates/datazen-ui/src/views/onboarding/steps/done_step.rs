@@ -23,9 +23,9 @@
 //!   never read here. `onOpen` is the action slot [`DoneStep::on_open`]
 //!   (the host's handleOpen wiring — T114's `open_action()`).
 //! - `connectionSummary` / `importedCount` (`wizardState.ts:149/186`) are
-//!   the pure halves ported here as [`connection_summary`] /
-//!   [`imported_count`] — T323 seam functions (the state machine's port
-//!   absorbs them, the T021→T287 absorb pattern). [`ImportSummary`] comes
+//!   absorbed into `wizard_state.rs` (T323, the state machine's port —
+//!   the T021→T287 absorb pattern) and re-exported here as
+//!   [`connection_summary`] / [`imported_count`]. [`ImportSummary`] comes
 //!   from the import step's port (the producer's side of the same seam).
 //! - The three summary values are React's nested ternaries, verbatim:
 //!   `connValue` (imported → `importedValue`/`updatedValue` with
@@ -100,6 +100,15 @@ use crate::i18n::t;
 use crate::icons::{ICON_CIRCLE_CHECK, ICON_DONE_CHECK};
 use crate::ui::kit::kit;
 use crate::views::onboarding::onboarding_wizard::Entry;
+// The T323 absorb: the done screen's summary cores live in `wizard_state.rs`
+// (the state machine's own derivations); re-exported here so the audit's
+// `done_step::{…}` import path stays untouched (`imported_count` is the
+// audit's direct entry — the build itself reaches it through
+// `connection_summary`).
+#[allow(unused_imports)]
+pub(crate) use crate::views::onboarding::wizard_state::{
+    ConnectionSummary, connection_summary, imported_count,
+};
 
 use super::import_step::ImportSummary;
 
@@ -114,60 +123,6 @@ const SUBTITLE_MAX_W: f32 = 243.0;
 
 /// React `max-w-[480px]` (480px → 360pt): the summary card's cap.
 const SUMMARY_MAX_W: f32 = 360.0;
-
-/// React `ConnectionSummary` (`wizardState.ts:181`): how the done
-/// screen's connection row is filled in. A T323 seam type (the state
-/// machine's port absorbs it).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ConnectionSummary {
-    /// The import entry wrote connections: the counts and the source.
-    Imported {
-        /// `imported` — brand-new connections.
-        imported: u32,
-        /// `overwritten` — existing ones replaced.
-        overwritten: u32,
-        /// `source` — the import's human-readable source.
-        source: String,
-    },
-    /// A connection was created (the manual / sample entries).
-    Connection {
-        /// `name` — the created connection's name.
-        name: String,
-    },
-    /// Nothing was configured (the skip path).
-    None,
-}
-
-/// React `importedCount` (`wizardState.ts:149`): how many connections
-/// the import actually wrote — brand-new ones plus existing ones it
-/// replaced. Re-importing an export of the same machine only overwrites,
-/// and that still counts as a completed step 1.
-pub(crate) fn imported_count(import_result: Option<&ImportSummary>) -> u32 {
-    import_result.map_or(0, |r| r.imported + r.overwritten)
-}
-
-/// React `connectionSummary` (`wizardState.ts:186`): the import entry
-/// with a non-zero written count reports its counts and source; else a
-/// created connection reports its name; else nothing was configured.
-pub(crate) fn connection_summary(
-    entry: Entry,
-    import_result: Option<&ImportSummary>,
-    connection_name: Option<&str>,
-) -> ConnectionSummary {
-    if entry == Entry::Import && imported_count(import_result) > 0 {
-        // The count gate implies the summary exists; the map_or arms are
-        // React's own `?? 0` / `?? ''` fallbacks, unreachable here.
-        return ConnectionSummary::Imported {
-            imported: import_result.map_or(0, |r| r.imported),
-            overwritten: import_result.map_or(0, |r| r.overwritten),
-            source: import_result.map_or_else(String::new, |r| r.source.clone()),
-        };
-    }
-    if let Some(name) = connection_name {
-        return ConnectionSummary::Connection { name: name.to_owned() };
-    }
-    ConnectionSummary::None
-}
 
 /// The hint's `dangerouslySetInnerHTML` handling: strip every
 /// `<b>…</b>` pair and report the inner byte ranges for the bold

@@ -16,7 +16,8 @@
 //!   `footer_wiring()`, which documents the exact React prop list —
 //!   [`WizardFooter::from_wiring`] reads it directly), and the four action
 //!   props are `Rc` action slots (`onSkip`/`onBack`/`onContinue`/`onFinish`).
-//! - `stepIndexFor` / `stepLabelKey` (`wizardState.ts`, T323's seam) reduce
+//! - `stepIndexFor` / `stepLabelKey` (`wizardState.ts`, absorbed by
+//!   `wizard_state.rs` — T323) reduce
 //!   here to [`visible_step_number`]: `showSteps` is "a visible step number
 //!   exists" (S0 entry and S3 done hide the indicator — React's `invisible`
 //!   keeps it laid out, so the port paints it at `opacity(0.0)` with
@@ -83,20 +84,11 @@ use crate::ui::kit::kit;
 
 use super::onboarding_layout::{chrome_text, WIZARD_FOOTER_HEIGHT, WIZARD_FOOTER_PX};
 use super::onboarding_wizard::{visible_step_number, FooterWiring, Step};
+// The T323 absorb: the label-key helper lives in `wizard_state.rs` now.
+use super::wizard_state::step_label_key;
 
 /// The footer's action slots (`Rc<dyn Fn(&mut S)>`, the crate convention).
 type ActionFn<S> = Rc<dyn Fn(&mut S) + 'static>;
-
-/// React `stepLabelKey` (`wizardState.ts:176`): the step indicator label's
-/// i18n key — S2 reads its own label, every other step step 1's (the label
-/// only renders while the indicator is visible, i.e. on S1/S2).
-fn step_label_key(step: Step) -> &'static str {
-    if step == Step::S2 {
-        "onboarding.s2.stepLabel"
-    } else {
-        "onboarding.s1.stepLabel"
-    }
-}
 
 /// The wizard's global footer: step dots + label left, actions right.
 /// Stateless — every prop arrives per frame (React's are per render).

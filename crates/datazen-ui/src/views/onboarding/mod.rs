@@ -6,6 +6,7 @@
 //! | `OnboardingWindow.tsx` | `onboarding_window` | T072 |
 //! | `OnboardingWizard.tsx` | `onboarding_wizard` | T114 |
 //! | `onboardingLayout.ts` | `onboarding_layout` | T287 |
+//! | `wizardState.ts` | `wizard_state` | T323 |
 //! | `steps/AiProviderStep.tsx` (+ `WelcomeStep.tsx`'s `StepTag` export) | `steps` | T148 |
 //! | `WizardFooter.tsx` | `wizard_footer` | T247 |
 //! | `steps/WelcomeStep.tsx` | `steps::welcome_step` | T247 |
@@ -18,6 +19,9 @@ pub(crate) mod onboarding_wizard;
 // steps/ directory and WizardFooter.tsx).
 pub(crate) mod steps;
 pub(crate) mod wizard_footer;
+// T323: the wizard's state machine (wizardState.ts) — the step/entry seam
+// types and summary cores absorb here.
+pub(crate) mod wizard_state;
 
 #[allow(unused_imports)] // the wizard host wiring (the step/footer tasks) is the production consumer
 pub(crate) use brand_sidebar::{BrandSidebar, version_label};

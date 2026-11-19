@@ -2,3 +2,5 @@
 //! the wizard window's step panels land with their own tasks).
 
 pub(crate) mod schema_diff_deploy_panel;
+// T323: the limitations dialog's key list (schemaDiffLimitationKeys.ts).
+pub(crate) mod schema_diff_limitation_keys;

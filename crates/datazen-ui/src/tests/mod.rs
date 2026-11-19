@@ -767,3 +767,8 @@ mod import_step_audit;
 // ink, the sample-entry hint with its stripped-and-bolded <b> segments,
 // and the open button's exit action).
 mod done_step_audit;
+// T323: bridge to the wizard-state machine's inline suite (pure-logic
+// convention — the tests live inside the module they test).
+mod wizard_state;
+// T323: bridge to the schema-diff limitation keys' inline suite.
+mod schema_diff_limitation_keys;
