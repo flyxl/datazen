@@ -843,3 +843,6 @@ mod ai_input_audit;
 // T151 independent audit: fresh vectors (boundary rows/counts, cascade
 // precedence, overlap cliques, pattern wraparound, JS coercion corners).
 mod chart_recommend_audit;
+
+// T147-S1: the Data Transfer window's wizard state model (coder tests).
+mod data_transfer_window_state;
