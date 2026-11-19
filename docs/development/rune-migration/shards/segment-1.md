@@ -25,7 +25,7 @@
 - [x] T094 · platform/web · 0.90d · platform/web/stub.ts
 - [x] T097 · ai · 2.00d · ai/sessionCancel.ts · split
 - [x] T100 · components/filter · 0.30d · components/filter/FilterConnectorToggle.tsx
-- [ ] T103 · components/connection · 1.00d · components/connection/ConnectionFormBody.tsx components/connection/ConnectionImportFields.tsx
+- [x] T103 · components/connection · 1.00d · components/connection/ConnectionFormBody.tsx components/connection/ConnectionImportFields.tsx
 - [x] T106 · components/migration · 1.30d · components/migration/MigrationJobVerdictPanel.tsx · split
 - [x] T110 · windows/connection · 1.30d · windows/connection/ConnectionPage.tsx · split
 - [x] T122 · lib/session · 0.90d · lib/session/ExecutionProjection.ts

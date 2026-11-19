@@ -119,7 +119,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [x] T100 · components/filter · 0.30d · components/filter/FilterConnectorToggle.tsx
 - [ ] T101 · components/history · 0.50d · components/history/historyQuery.ts
 - [ ] T102 · components/query · 1.00d · components/query/QueryContextSelectors.tsx components/query/QueryErrorPanel.tsx
-- [ ] T103 · components/connection · 1.00d · components/connection/ConnectionFormBody.tsx components/connection/ConnectionImportFields.tsx
+- [x] T103 · components/connection · 1.00d · components/connection/ConnectionFormBody.tsx components/connection/ConnectionImportFields.tsx
 - [ ] T104 · components/chart · 0.80d · components/chart/ChartView.tsx
 - [ ] T105 · components/ai · 0.90d · components/ai/AiEgressNotice.tsx
 - [x] T106 · components/migration · 1.30d · components/migration/MigrationJobVerdictPanel.tsx · split
