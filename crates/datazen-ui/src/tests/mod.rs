@@ -220,6 +220,9 @@ mod page_unload;
 mod page_unload_audit;
 // T183: lib/session/QueryPanelSession.ts port (registry + two-phase switch).
 mod query_panel_session;
+// T183 independent audit: transaction-state matrix, error mapping, conflict
+// refresh fallback and result status strings.
+mod query_panel_session_audit;
 
 // Independent re-audit of merged T0-07 menu base.
 mod menus_merge_reaudit;
