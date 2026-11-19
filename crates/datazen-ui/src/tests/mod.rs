@@ -234,6 +234,9 @@ mod connection_advanced_settings;
 mod connection_advanced_audit;
 // T059: the ConnectionAiNotes port (load/save, UTF-8 byte limit, timed feedback, geometry).
 mod connection_ai_notes;
+// T103: ConnectionFormBody + ConnectionImportFields ports (keys, validation,
+// disabled states, exact i18n and two-window/two-theme geometry).
+mod connection_form_parts;
 // T016: the batch-export dialog port.
 mod batch_export_dialog;
 mod batch_export_audit;

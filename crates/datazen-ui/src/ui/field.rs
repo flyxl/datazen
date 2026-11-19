@@ -60,6 +60,9 @@ pub(crate) struct TextField<'a> {
     secure: bool,
     label: Option<String>,
     bound: bool,
+    /// A disabled field keeps its box and text but cannot take a caret. Used by
+    /// forms that disable an input while an async action is in flight.
+    disabled: bool,
     on_edit_act: Option<Box<dyn FnOnce(rune_kit::TextInput) -> rune_kit::TextInput>>,
     on_submit_act: Option<Box<dyn FnOnce(rune_kit::TextInput) -> rune_kit::TextInput>>,
     on_key_act: Option<Box<dyn FnOnce(rune_kit::TextInput) -> rune_kit::TextInput>>,
@@ -89,6 +92,7 @@ impl<'a> TextField<'a> {
             secure: false,
             label: None,
             bound: false,
+            disabled: false,
             on_edit_act: None,
             on_submit_act: None,
             on_key_act: None,
@@ -187,6 +191,14 @@ impl<'a> TextField<'a> {
         self
     }
 
+    /// Disable the field (a form input blocked by an in-flight action). A
+    /// disabled field keeps its box and value but is not a tab stop and does not
+    /// bind its edit accessor, so it genuinely cannot take a caret.
+    pub(crate) fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
+
     pub(crate) fn on_edit<S: 'static>(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + Clone + 'static,
@@ -224,7 +236,10 @@ impl<'a> TextField<'a> {
         // Rune focuses a text box only when it can reach the `TextEdit` it
         // edits (`can_focus` asks the input for its accessor), and that comes
         // from `on_edit`: a field without it never takes a caret.
-        debug_assert!(self.bound, "a text field without on_edit cannot take focus");
+        debug_assert!(
+            self.bound || self.disabled,
+            "a text field without on_edit cannot take focus"
+        );
 
         // A caller-specified ink colour must reach the editor text; kit's
         // TextInput owns the inner element colour, so use the direct
@@ -260,16 +275,24 @@ impl<'a> TextField<'a> {
         if let Some(label) = self.label {
             ti = ti.label(label);
         }
-        if let Some(act) = self.on_edit_act {
-            ti = act(ti);
-        }
-        if let Some(act) = self.on_submit_act {
-            ti = act(ti);
-        }
-        if let Some(act) = self.on_key_act {
-            ti = act(ti);
+        // A disabled field must not bind `on_edit`: that accessor is what makes
+        // a rune text box focusable, so leaving it on would keep a "disabled"
+        // field editable from the keyboard.
+        if !self.disabled {
+            if let Some(act) = self.on_edit_act {
+                ti = act(ti);
+            }
+            if let Some(act) = self.on_submit_act {
+                ti = act(ti);
+            }
+            if let Some(act) = self.on_key_act {
+                ti = act(ti);
+            }
         }
         let mut e = ti.build(k).key(self.key);
+        if self.disabled {
+            e = e.disabled(true);
+        }
 
         // Kit gives a default shell; callers' explicit chrome wins. For a
         // plain/embedded field there is no shell to fight, so only the
@@ -324,14 +347,16 @@ impl<'a> TextField<'a> {
         if let Some(label) = self.label {
             input = input.label(label);
         }
-        if let Some(act) = self.on_edit_el {
-            input = act(input);
-        }
-        if let Some(act) = self.on_submit_el {
-            input = act(input);
-        }
-        if let Some(act) = self.on_key_el {
-            input = act(input);
+        if !self.disabled {
+            if let Some(act) = self.on_edit_el {
+                input = act(input);
+            }
+            if let Some(act) = self.on_submit_el {
+                input = act(input);
+            }
+            if let Some(act) = self.on_key_el {
+                input = act(input);
+            }
         }
 
         // Wrap in a full-height row that centres the editor line, so the whole
@@ -366,6 +391,9 @@ impl<'a> TextField<'a> {
         }
         if let Some((width, color)) = self.border {
             e = e.border(width, color);
+        }
+        if self.disabled {
+            e = e.disabled(true);
         }
         e
     }
