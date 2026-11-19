@@ -252,6 +252,8 @@ mod explain_plan_audit;
 // T057: QueryArtifactExport port (dedup, visibility, labels, state machine,
 // mounted bar with the in-flight guard and status lines).
 mod query_artifact_export;
+// T057 audit: guard no-ops, outcome marks React only sets, stale-press guard.
+mod query_artifact_export_audit;
 
 // T027: SchemaDiffPanel port and its independent audit.
 mod schema_diff_panel;
