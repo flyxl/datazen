@@ -105,6 +105,33 @@ fn view(s: &AuditScene, _cx: &mut Cx<AuditScene>) -> El {
     col().w_full().h_full().child(fields).children(layer)
 }
 
+fn runtime(scene: AuditScene, size: (f32, f32)) -> Runtime<AuditScene> {
+    let dark = scene.dark;
+    let mut rt = Runtime::new(scene, view, size, Env { system_dark: dark, scale: 1.0 });
+    rt.frame(0.0);
+    rt
+}
+
+// React keeps the pull button mounted but disabled with the `adbPulling`
+// label while a pull is in flight; visibility depends only on the selection.
+#[test]
+fn the_pull_button_stays_mounted_and_disabled_while_a_pull_is_in_flight() {
+    let mut scene = AuditScene::default();
+    scene.fields.adb_mode = true;
+    scene.fields.selected_package = "com.example.One".to_owned();
+    scene.fields.selected_db_path = "/data/app.db".to_owned();
+    scene.fields.pulling = true;
+    let rt = runtime(scene, (1440.0, 816.0));
+
+    let pull = rt
+        .elements()
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some("new-conn-adb-pull"))
+        .unwrap_or_else(|| panic!("React keeps a disabled Pull button visible while pulling"));
+    assert_eq!(pull.label.as_deref(), Some(t("newConn.adbPulling")), "in-flight label");
+    assert!(!pull.focusable, "the in-flight pull button is disabled");
+}
+
 #[test]
 fn long_errors_and_many_packages_stay_inside_the_window_via_visible_rects() {
     let mut scene = AuditScene::default();
@@ -118,11 +145,10 @@ fn long_errors_and_many_packages_stay_inside_the_window_via_visible_rects() {
 
     for size in [(960.0, 640.0), (1440.0, 816.0)] {
         for dark in [true, false] {
-            let rt = Runtime::new(
-                AuditScene { dark, ..scene.clone() },
-                view,
-                size,
-                Env { system_dark: dark, scale: 1.0 },
+            let rt = runtime(AuditScene { dark, ..scene.clone() }, size);
+            assert!(
+                rt.elements().iter().any(|e| e.key.as_deref() == Some("new-conn-file-fields")),
+                "{size:?} dark={dark}: root must actually be laid out (non-vacuous geometry check)"
             );
             for e in rt.elements() {
                 let [x, y, w, h] = e.visible;
