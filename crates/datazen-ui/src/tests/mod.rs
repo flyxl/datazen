@@ -272,3 +272,5 @@ mod timestamp_config;
 mod value_presentation_rules;
 // T251: the datazen.timestamp contribution + contracts/registry slice.
 mod timestamp_contribution;
+// T046: the shared bootstrap chain (adapter + bundled registration + sync).
+mod bootstrap;

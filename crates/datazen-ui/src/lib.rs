@@ -34,6 +34,8 @@ pub(crate) use constants::{APP_FONTS, APP_FONT_FAMILIES, NAVIGATOR_WIDTH_DEFAULT
 pub use state_def::AppState;
 pub(crate) use types::{Section, TableView, Tool};
 pub use app::{app_with_adapter, run, run_with_adapter};
+pub use bootstrap::start_shared_app_state;
+mod bootstrap;
 #[cfg(target_arch = "wasm32")]
 pub use app::start;
 pub(crate) use app::{app_ime, app_key, app_poll, view};
