@@ -111,7 +111,7 @@ fn composed(p: &TableReadPreviewSql) -> String {
     let mut blocks = vec![
         format!("-- {}\n{}", t("filter.previewSqlData"), p.data_sql),
     ];
-    if let Some(sql) = &p.count_sql {
+    if let Some(sql) = p.count_sql.as_deref().filter(|sql| !sql.is_empty()) {
         blocks.push(format!("-- {count_label}\n{sql}"));
     }
     blocks.push(format!("-- {}\n{}", t("filter.previewSqlExactCount"), p.exact_count_sql));
@@ -153,6 +153,36 @@ fn hides_the_count_statement_when_the_driver_would_not_run_one() {
     assert!(!mounted(&rt, "filter-sql-preview-count-label"));
     assert_eq!(text_of(&rt, "filter-sql-preview-exact-count-text"), p.exact_count_sql);
     assert_eq!(text_of(&rt, "filter-sql-preview-data-text"), p.data_sql);
+}
+
+#[test]
+fn an_empty_count_sql_is_falsy_like_react_and_is_not_copied() {
+    let p = preview(Some(""), CountStrategy::Estimated);
+    let rt = runtime(Probe { preview: Some(p.clone()), ..Probe::default() }, DESIGN, true);
+
+    assert!(!mounted(&rt, "filter-sql-preview-count"), "React's `if (preview.countSql)` is falsy for \"\"");
+    assert!(!mounted(&rt, "filter-sql-preview-count-label"));
+    assert!(mounted(&rt, "filter-sql-preview-data"));
+    assert!(mounted(&rt, "filter-sql-preview-exact-count"));
+
+    let clipboard = clipboard::memory();
+    let mut rt = runtime(Probe { preview: Some(p.clone()), ..Probe::default() }, DESIGN, true);
+    rt.use_clipboard(&clipboard);
+    rt.frame(0.0);
+    click(&mut rt, "filter-sql-preview-copy");
+    let expected = format!(
+        "-- {}\n{}\n\n-- {}\n{}",
+        t("filter.previewSqlData"),
+        p.data_sql,
+        t("filter.previewSqlExactCount"),
+        p.exact_count_sql
+    );
+    assert_eq!(
+        clipboard.text().as_deref().map(String::as_str),
+        Some(expected.as_str()),
+        "copy-all must contain only the data and exact-count blocks"
+    );
+    assert_eq!(composed(&p), expected, "the expectation mirrors React's falsy count check");
 }
 
 // --- 2. copy-all payload and 1500ms feedback --------------------------------

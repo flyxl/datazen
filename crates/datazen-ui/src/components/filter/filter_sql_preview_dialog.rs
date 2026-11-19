@@ -177,13 +177,15 @@ impl<'a, S: 'static> FilterSqlPreviewDialog<'a, S> {
             label: t("filter.previewSqlData").to_owned(),
             sql: preview.data_sql.clone(),
         }];
-        if let Some(sql) = &preview.count_sql {
+        // React's `if (preview.countSql)` is falsy for `""` as well as `null`:
+        // an empty string is not a statement and must not render a block.
+        if let Some(sql) = preview.count_sql.as_deref().filter(|sql| !sql.is_empty()) {
             let kind_key = format!("filter.previewSqlKind.{}", preview.count_kind.as_str());
             let kind = t(&kind_key);
             statements.push(Statement {
                 key: "filter-sql-preview-count",
                 label: format!("{} · {}", t("filter.previewSqlCount"), kind),
-                sql: sql.clone(),
+                sql: sql.to_owned(),
             });
         }
         statements.push(Statement {
