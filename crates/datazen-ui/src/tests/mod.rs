@@ -187,6 +187,9 @@ mod metadata_cache_retest;
 // T081: relationPrediction/fromRelationMetadata.ts + relationMetadata contract gap fill.
 mod relation_prediction_ports;
 
+// T083: lib/session/EditorSessionController.ts port (state machine + effects).
+mod editor_session_controller;
+
 // Independent re-audit of merged T0-07 menu base.
 mod menus_merge_reaudit;
 
