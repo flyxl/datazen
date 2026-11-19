@@ -23,7 +23,7 @@
 - [ ] T083 · lib/session · 2.00d · lib/session/EditorSessionController.ts · split
 - [ ] T085 · lib/structureEditor · 0.90d · lib/structureEditor/ddlApplyWarnings.ts lib/structureEditor/draftDefaults.ts lib/structureEditor/draftIds.ts
 - [ ] T094 · platform/web · 0.90d · platform/web/stub.ts
-- [ ] T097 · ai · 2.00d · ai/sessionCancel.ts · split
+- [x] T097 · ai · 2.00d · ai/sessionCancel.ts · split
 - [x] T100 · components/filter · 0.30d · components/filter/FilterConnectorToggle.tsx
 - [ ] T103 · components/connection · 1.00d · components/connection/ConnectionFormBody.tsx components/connection/ConnectionImportFields.tsx
 - [ ] T106 · components/migration · 1.30d · components/migration/MigrationJobVerdictPanel.tsx · split

@@ -113,7 +113,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T094 · platform/web · 0.90d · platform/web/stub.ts
 - [ ] T095 · extensions · 0.80d · extensions/generated.ts
 - [ ] T096 · commands · 1.30d · commands/ai.ts · split
-- [ ] T097 · ai · 2.00d · ai/sessionCancel.ts · split
+- [x] T097 · ai · 2.00d · ai/sessionCancel.ts · split
 - [ ] T098 · components/ui · 0.90d · components/ui/WebContextMenu.tsx
 - [x] T099 · components/DataTable · 0.30d · components/DataTable/ColumnStatsDialog.tsx
 - [x] T100 · components/filter · 0.30d · components/filter/FilterConnectorToggle.tsx
