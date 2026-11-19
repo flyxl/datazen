@@ -483,3 +483,5 @@ mod query_context_and_error;
 mod query_context_and_error_audit;
 // T103: AiEgressNotice — the amber strip above the chat input.
 mod ai_egress_notice;
+// T103 independent audit: fresh vectors for the egress notice.
+mod ai_egress_notice_audit;
