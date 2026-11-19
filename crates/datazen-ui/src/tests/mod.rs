@@ -334,6 +334,10 @@ mod data_sync_compare_step_audit;
 // T074: DataSyncDialogs (error / delete-confirm / explain / execute-confirm
 // dialogs, footer wiring, explain loading/result branches, open epochs).
 mod data_sync_dialogs;
+// T074 independent audit: empty explain text, topmost-dialog click
+// capture when all four are open, non-error epoch restamp, header close
+// label, light theme all-open, 576pt panel width.
+mod data_sync_dialogs_audit;
 
 // T026-S1: BackupWindow state model + selection logic (option tables,
 // select/session journey, grouping + search ranking, prefill, close
