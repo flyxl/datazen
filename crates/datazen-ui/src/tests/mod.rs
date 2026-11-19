@@ -245,6 +245,9 @@ mod workflow_execution_panel;
 // T070: the workflow visual editor form port (draft model, field/variable/
 // step editors, command-input schema editor, both footer variants).
 mod workflow_form;
+// T113: the workflow history section port (the sidebar list, the inline
+// tab's rows and its detail branch over the result panel).
+mod workflow_history_section;
 
 // T051: the App.tsx root port — the window router the host's one window is
 // handed through (first-frame composition, bounds, and the wiring pin).
