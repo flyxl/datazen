@@ -789,3 +789,7 @@ mod data_transfer_terminal_results;
 // T113 independent audit: fresh vectors (mixed kinds, the in-flight latest
 // gate, the fixed uncompleted attribute set, stale identities, copy path).
 mod data_transfer_terminal_results_audit;
+
+// T114: the Data Sync endpoint step (scope reconfirmation, profile
+// controls: name input, profile select, save/load/delete gates).
+mod data_sync_endpoint_step;
