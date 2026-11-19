@@ -782,3 +782,11 @@ mod onboarding_gate;
 // T363: bridge to the schema-diff object identity key's inline suite (the
 // schemaDiffObjectIdentity port — the JSON.stringify identity fold).
 mod schema_diff_object_identity;
+// T351: bridge to the schema-diff object discovery run's inline suite (the
+// schemaDiffObjectDiscovery port — the failure diagnostics, the host seam
+// orchestration and the table-pick pairing).
+mod schema_diff_object_discovery;
+// T351: bridge to the table-pick seam module's inline suite (the
+// schemaDiffTableNames.ts merge the discovery run returns; T374 owns the
+// rest of that React file).
+mod schema_diff_table_names;
