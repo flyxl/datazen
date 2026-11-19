@@ -412,3 +412,106 @@ fn editor_metadata_snapshot_looks_relations_up_by_key() {
     assert!(snapshot.relation("s1::public.orders").is_some());
     assert!(snapshot.relation("s1::public.users").is_none());
 }
+
+// ---------------------------------------------------------------------------
+// Independent audit coverage — branches the delivery tests did not exercise
+// ---------------------------------------------------------------------------
+
+/// React `sessionConfig.test.ts` pins the partition on all three dimensions;
+/// the delivery tests only pinned exact key strings for two concrete configs.
+#[test]
+fn session_partition_separates_revision_connection_and_session_dimensions() {
+    let rev1 = EditorSessionConfig {
+        connection_id: "conn-1".to_owned(),
+        config_revision: 1,
+    };
+    let rev2 = EditorSessionConfig {
+        connection_id: "conn-1".to_owned(),
+        config_revision: 2,
+    };
+    let conn_b = EditorSessionConfig {
+        connection_id: "conn-b".to_owned(),
+        config_revision: 1,
+    };
+    let empty_rev1 = EditorSessionConfig {
+        connection_id: String::new(),
+        config_revision: 1,
+    };
+
+    let k1 = editor_session_cache_key("s1", &rev1);
+    let ku = editor_session_cache_key("s1", &unbound_session_config());
+    assert_ne!(k1, editor_session_cache_key("s1", &rev2), "a revision bump moves the partition");
+    assert_ne!(k1, editor_session_cache_key("s1", &conn_b), "a connection change moves the partition");
+    assert_ne!(ku, k1, "the unbound partition differs from a bound one");
+    assert_ne!(
+        ku,
+        editor_session_cache_key("s1", &empty_rev1),
+        "unbound (empty id, rev 0) is its own address, distinct from an empty-id bound config"
+    );
+    assert_ne!(k1, editor_session_cache_key("s2", &rev1), "two sessions under one config differ");
+}
+
+/// The `primaryKey` branch and the unique-index branch of React's
+/// `uniqueColumnSets` are independent: an empty PK must not suppress indexes.
+#[test]
+fn unique_column_sets_keeps_unique_indexes_when_the_pk_is_absent() {
+    let mut relation = relation();
+    relation.primary_key = vec![];
+    relation.indexes = vec![
+        index("idx_plain", &["total"], false, false),
+        index("uq_code", &["tenant_id", "code"], true, false),
+    ];
+    assert_eq!(
+        unique_column_sets(&relation),
+        vec![vec!["tenant_id".to_owned(), "code".to_owned()]]
+    );
+}
+
+#[test]
+fn to_prediction_tables_on_an_empty_map_yields_no_tables() {
+    let relations = OrderedMap::<String, EditorRelationMetadata>::new();
+    let tables = to_prediction_tables(&relations, None);
+    assert!(tables.is_empty());
+}
+
+#[test]
+fn declared_foreign_keys_preserves_order_and_composite_columns_without_aliasing() {
+    let mut relation = relation();
+    relation.foreign_keys = vec![
+        foreign_key("fk_a", &["a", "b"], "parents", &["x", "y"]),
+        foreign_key("fk_b", &["c"], "others", &["z"]),
+    ];
+    let mut fks = declared_foreign_keys(&relation);
+    assert_eq!(
+        fks,
+        vec![
+            DeclaredForeignKey {
+                columns: vec!["a".to_owned(), "b".to_owned()],
+                referenced_table: "parents".to_owned(),
+                referenced_columns: vec!["x".to_owned(), "y".to_owned()],
+            },
+            DeclaredForeignKey {
+                columns: vec!["c".to_owned()],
+                referenced_table: "others".to_owned(),
+                referenced_columns: vec!["z".to_owned()],
+            },
+        ]
+    );
+    fks[0].columns[0] = "mutated".to_owned();
+    fks[1].referenced_columns[0] = "mutated".to_owned();
+    assert_eq!(relation.foreign_keys[0].columns[0], "a");
+    assert_eq!(relation.foreign_keys[1].referenced_columns[0], "z");
+}
+
+/// React uses a `Set`, so a column mentioned by two indexes is still one name.
+#[test]
+fn indexed_column_names_deduplicates_across_indexes() {
+    let mut relation = relation();
+    relation.indexes = vec![
+        index("idx_a", &["USER_ID", "Code"], false, false),
+        index("idx_b", &["user_id"], true, false),
+    ];
+    let names = indexed_column_names(&relation);
+    assert_eq!(names.len(), 2, "{names:?}");
+    assert!(names.contains("user_id") && names.contains("code"), "{names:?}");
+}
