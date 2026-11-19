@@ -98,6 +98,9 @@ enum Pending {
 }
 
 impl Pending {
+    // consumer: the query-panel result view that resolves in-flight effects;
+    // remove when that view lands and drives the port directly.
+    #[allow(dead_code)]
     fn call_id(&self) -> u64 {
         match self {
             Self::Execution { call_id, .. } | Self::Read { call_id, .. } => *call_id,
