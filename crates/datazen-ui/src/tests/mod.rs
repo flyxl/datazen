@@ -277,6 +277,11 @@ mod connection_navigator_tree_audit;
 
 // T068: MigrationJobFailureNotice (fail-closed refusal notice).
 mod migration_failure_notice;
+// T140: MigrationRunHistoryDialog (history rows, states, rollback, reconcile).
+mod migration_run_history;
+// T140 independent audit: untested rollback outcomes, optional lines, callback
+// guard and a rect-based on-screen/sized probe.
+mod migration_run_history_audit;
 
 // T068 independent audit: i18n no-echo, key stability, two-theme geometry.
 mod migration_failure_audit;
