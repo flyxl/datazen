@@ -240,6 +240,10 @@ mod copy_button;
 // T253-T256: the .ts support layer semantics.
 // T036: lib/structureEditor .ts helper parity (pure value logic).
 mod structure_editor_helpers;
+// T124: isControlEnabled / resolveCreateTableSchema / schemaToDraft parity.
+mod structure_editor_create_schema;
+// T124 independent audit: no-meta fallback/empty-string and branch-order gaps.
+mod structure_editor_create_schema_audit;
 // T036 independent audit: extra edge cases on the ported helpers.
 mod structure_editor_audit;
 // T028: lib/chart/export.ts port — PNG/SVG export options, data-URL
@@ -313,6 +317,11 @@ mod metadata_cache_retest;
 // T081: relationPrediction/fromRelationMetadata.ts + relationMetadata contract gap fill.
 mod relation_prediction_ports;
 
+// T135: components/filter/FilterSqlPreviewDialog.tsx port.
+mod filter_sql_preview;
+// T135 independent audit: no-count copy text, kind labels, closed mount rule,
+// falsy empty error, and long-SQL rect containment at both sizes/palettes.
+mod filter_sql_preview_audit;
 // T083: lib/session/EditorSessionController.ts port (state machine + effects).
 mod editor_session_controller;
 // T083 independent audit: refresh, detach/attach feeds, open-failure queue
@@ -326,6 +335,11 @@ mod execution_projection_audit;
 // T122 independent re-audit (D1 retest): reconnect flow, permanent binding
 // invalidation, null-handle guards and dispose (previously uncovered branches).
 mod execution_projection_retest;
+// T154: lib/session/pageUnload.ts port (host-owned fallback registry).
+mod page_unload;
+// T154 independent audit: multi-failure accumulation, re-registration and id
+// monotonicity, per-release error reset, unknown-token unregister.
+mod page_unload_audit;
 
 // T091: platform/capabilities.ts — desktop and web capability tables.
 mod platform_capabilities;
@@ -411,6 +425,12 @@ mod batch_export_audit;
 // T016 fix retest: independent D1/D2 verification.
 mod batch_export_retest;
 
+// T144: the React ConnectionWorkspaceHome port (hero counts, card keys,
+// filter, MCP copy feedback with a real wake, KV-slot takeover, geometry).
+mod connection_workspace_home;
+// T144 independent audit: React testid clicks, filter engine/id, pinned pill
+// text, copy deadline retargeting and rect containment.
+mod connection_home_audit;
 // T110: the React windows/connection/ConnectionPage.tsx container port
 // (composed shell, section reachability, tabs/toolbar, two-size two-theme fit).
 mod connection_page;
@@ -426,6 +446,12 @@ mod connection_navigator_tree_audit;
 
 // T068: MigrationJobFailureNotice (fail-closed refusal notice).
 mod migration_failure_notice;
+// T140: MigrationRunHistoryDialog (history rows, states, rollback, reconcile).
+mod migration_run_history;
+// T140 independent audit: untested rollback outcomes, optional lines, callback
+// guard and a rect-based on-screen/sized probe.
+mod migration_run_history_audit;
+
 // T068 independent audit: i18n no-echo, key stability, two-theme geometry.
 mod migration_failure_audit;
 
@@ -438,6 +464,12 @@ mod session_cancel;
 // T097 independent audit: mark gate, literal 8000ms, settled-only listener,
 // per-request deadlines, disposed no-ops, vanished entry, real 8s runtime wake.
 mod session_cancel_audit;
+// T133: the ai/streamRegistry.ts port (lifecycle, generations, cancel gating,
+// subscriber events and the no-pruning invariant).
+mod stream_registry;
+// T133 independent audit: supersede events, terminal re-begin, precedence and
+// multi-subscriber delivery order.
+mod stream_registry_audit;
 // T010: the controlled source/target endpoint bar port.
 mod migration_endpoints_bar;
 // T010 independent audit: label-vs-id display, close-on-choice, geometry.
@@ -663,3 +695,13 @@ mod index_entry_audit;
 // boosts, the all-columns dedup, SELECT-column extraction, and the
 // relations-by-columns filter.
 mod schema_completion;
+// T137: ConnectionShareDialog (export validation, import titles/actions, geometry).
+mod connection_share_dialog;
+// T137 independent audit: full error table, stale epochs, footer disable,
+// React-faithful field/error placement and adversarial geometry.
+mod connection_share_audit;
+// T156: structureEditor/types.ts contract verification and gap-fill.
+mod structure_editor_types;
+// T156 independent audit: full 20-field capability surface, nested UiConfig
+// defaults, duplicate-definition and bare-panic source guards.
+mod structure_editor_types_audit;

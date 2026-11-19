@@ -18,6 +18,12 @@ pub(crate) mod control_hints;
 pub(crate) mod ddl_apply_warnings;
 pub(crate) mod draft_defaults;
 pub(crate) mod draft_ids;
+// T124: the capability/schema helpers from `lib/structureEditor`.
+pub(crate) mod is_control_enabled;
+pub(crate) mod resolve_create_table_schema;
+pub(crate) mod schema_to_draft;
+// T156: contract verification + gap-fill for React lib/structureEditor/types.ts.
+pub(crate) mod types;
 
 /// Mirror of `StructureChangeMode` (`'create' | 'alter'`).
 // consumers: the future structure-editor view; delete this allow when it lands.

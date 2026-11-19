@@ -9,3 +9,5 @@
 #[allow(dead_code)] // T049; no host caller until the AI chat panel lands. Delete when it does.
 pub(crate) mod grant_state;
 pub(crate) mod session_cancel;
+#[allow(dead_code)] // T133; consumer: AI chat panel (not landed). Delete when it lands.
+pub(crate) mod stream_registry;

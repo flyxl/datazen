@@ -9,3 +9,4 @@ pub(crate) mod connection_advanced_settings;
 pub(crate) mod connection_ai_notes;
 pub(crate) mod connection_form_body;
 pub(crate) mod connection_import_fields;
+pub(crate) mod connection_share_dialog;

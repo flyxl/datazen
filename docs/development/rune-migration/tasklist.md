@@ -140,7 +140,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T121 · lib/relationPrediction · 0.90d · lib/relationPrediction/relatedTables.ts lib/relationPrediction/types.ts lib/relativeTime.ts
 - [x] T122 · lib/session · 0.90d · lib/session/ExecutionProjection.ts
 - [ ] T123 · lib/sqlDialects · 0.90d · lib/sqlDialects/mysql.ts lib/sqlDialects/postgresql.ts lib/sqlDialects/rowLimit.ts
-- [ ] T124 · lib/structureEditor · 0.90d · lib/structureEditor/isControlEnabled.ts lib/structureEditor/resolveCreateTableSchema.ts lib/structureEditor/schemaToDraft.ts
+- [x] T124 · lib/structureEditor · 0.90d · lib/structureEditor/isControlEnabled.ts lib/structureEditor/resolveCreateTableSchema.ts lib/structureEditor/schemaToDraft.ts
 - [ ] T125 · lib/valuePresentation · 1.00d · lib/valuePresentation/columnPresentationSession.ts lib/valuePresentation/index.ts
 - [ ] T126 · hooks · 0.90d · hooks/useAiKeyboard.ts hooks/useAutoScroll.ts hooks/useClipboardCopyFeedback.ts
 - [ ] T127 · stores · 0.90d · stores/connectionStore.ts
@@ -149,18 +149,18 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T130 · types · 0.90d · types/connection.ts
 - [ ] T131 · platform · 1.30d · platform/contracts.ts · split
 - [ ] T132 · commands · 0.90d · commands/artifact.ts
-- [ ] T133 · ai · 2.00d · ai/streamRegistry.ts · split
+- [x] T133 · ai · 2.00d · ai/streamRegistry.ts · split
 - [ ] T134 · components/DataTable · 1.30d · components/DataTable/DataExportDialog.tsx · split
-- [ ] T135 · components/filter · 0.90d · components/filter/FilterSqlPreviewDialog.tsx
+- [x] T135 · components/filter · 0.90d · components/filter/FilterSqlPreviewDialog.tsx
 - [ ] T136 · components/query · 0.30d · components/query/QueryExecutionStatus.tsx
-- [ ] T137 · components/connection · 0.90d · components/connection/ConnectionShareDialog.tsx
+- [x] T137 · components/connection · 0.90d · components/connection/ConnectionShareDialog.tsx
 - [ ] T138 · components/chart · 2.00d · components/chart/LogScaleTooltip.tsx · split
 - [ ] T139 · components/ai · 0.80d · components/ai/AiInput.tsx
-- [ ] T140 · components/migration · 0.90d · components/migration/MigrationRunHistoryDialog.tsx
+- [x] T140 · components/migration · 0.90d · components/migration/MigrationRunHistoryDialog.tsx
 - [ ] T141 · components/sql-editor · 3.40d · components/sql-editor/editorExtensions.ts · split
 - [ ] T142 · components · 0.30d · components/LocaleDomainLoading.tsx
 - [ ] T143 · windows/settings · 0.50d · windows/settings/ai/ModelProfileListItem.tsx
-- [ ] T144 · windows/connection · 1.30d · windows/connection/ConnectionWorkspaceHome.tsx · split
+- [x] T144 · windows/connection · 1.30d · windows/connection/ConnectionWorkspaceHome.tsx · split
 - [ ] T145 · windows/workspace · 0.90d · windows/workspace/WorkspaceNavigator.tsx
 - [ ] T146 · windows/dashboard · 0.90d · windows/dashboard/MonitorScheduleAuthorization.tsx
 - [ ] T147 · windows/workflow · 1.30d · windows/workflow/WorkflowPage.tsx · split
@@ -170,9 +170,9 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T151 · windows/schema-diff · 0.30d · windows/schema-diff/SchemaDiffObjectsStep.tsx
 - [x] T152 · lib · 0.60d · lib/dataTypeColors.ts components/DataTable/editors/toEditString.ts
 - [ ] T153 · lib/chart · 0.60d · lib/chart/recommend.ts lib/chart/seriesOverlap.ts
-- [ ] T154 · lib/session · 0.30d · lib/session/pageUnload.ts
+- [x] T154 · lib/session · 0.30d · lib/session/pageUnload.ts
 - [ ] T155 · lib/sqlDialects · 0.90d · lib/sqlDialects/sqlite.ts lib/sqlDialects/sqlParameterPolicy.ts lib/sqlEditorContextMenu.ts
-- [ ] T156 · lib/structureEditor · 0.30d · lib/structureEditor/types.ts
+- [x] T156 · lib/structureEditor · 0.30d · lib/structureEditor/types.ts
 - [ ] T157 · lib/valuePresentation · 0.80d · lib/valuePresentation/presentationPlan.ts
 - [ ] T158 · hooks · 0.90d · hooks/useColumnPresentationSession.ts
 - [ ] T159 · stores · 0.90d · stores/contextMenuStore.ts
