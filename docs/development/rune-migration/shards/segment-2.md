@@ -28,7 +28,6 @@
 - [ ] T147 · windows/workflow · 1.30d · windows/workflow/WorkflowPage.tsx · split
 - [x] T152 · lib · 0.60d · lib/dataTypeColors.ts components/DataTable/editors/toEditString.ts
 - [ ] T168 · components/chart · 2.00d · components/chart/renderers/AreaChartRenderer.tsx · split
-- [ ] T176 · windows/workflow · 0.30d · windows/workflow/workflowStepResultUtils.tsx
 - [ ] T181 · lib · 0.90d · lib/aiMemoryCorrection.ts
 - [ ] T194 · components/chart · 2.00d · components/chart/renderers/BarChartRenderer.tsx · split
 - [ ] T202 · windows/workflow · 2.00d · windows/workflow/WorkflowYamlEditor.tsx · split
@@ -172,3 +171,4 @@
 - [x] T128 · types · 0.90d · types/connection.ts
 - [x] T159 · types · 0.90d · types/dashboard.ts
 - [x] T188 · types · 0.30d · types/filters.ts
+- [x] T174 · windows/workflow · 0.30d · windows/workflow/workflowStepResultUtils.tsx
