@@ -30,6 +30,9 @@ use crate::views::create_database_dialog::{
     build_snapshot as build_db_snapshot, AdminCreateAction, AdminCreateState, DB_SPEC,
 };
 use crate::views::create_schema_dialog::build_schema_snapshot;
+use crate::views::create_user_dialog::{
+    build_snapshot as build_user_snapshot, CreateUserAction, CreateUserState,
+};
 
 /// React's export capability union (mirrors `lib/exportCapability.ts`).
 #[allow(dead_code)] // VM surface; removed when the child dialog port lands
@@ -263,22 +266,25 @@ pub(crate) fn build<S: 'static>(
         build_schema_snapshot::<S>(&form, Some(database_of(vm)), Some(adapter), dark, layer);
     }
 
+    // T286: the real create-user dialog replaces the structural shell. The
+    // adapter maps the form's host calls onto T223's existing callback surface.
     if vm.create_user_open {
-        shell(
-            k,
-            layer,
-            "content-view-create-user-dialog",
-            t("common.createUser"),
-            on_action,
-            &format!("{} · {}", ctx.connection_name, database_of(vm)),
-            None,
-            Button::new(t("common.createUser"))
-                .variant(ButtonVariant::Contrast)
-                .control_size(ControlSize::ExtraLarge)
-                .on_press(close(on_action, DialogAction::UserCreated))
-                .build(k),
-            dark,
-        );
+        let adapter: Rc<dyn Fn(&mut S, CreateUserAction)> = {
+            let on_action = on_action.clone();
+            Rc::new(move |s: &mut S, action: CreateUserAction| match action {
+                CreateUserAction::Close => on_action(s, DialogAction::CloseCreateUser),
+                CreateUserAction::Create { .. }
+                | CreateUserAction::Grant { .. }
+                | CreateUserAction::Created { .. }
+                | CreateUserAction::Skip { .. } => on_action(s, DialogAction::UserCreated),
+            })
+        };
+        let form = CreateUserState {
+            username: TextEdit::new("new_user".to_owned()),
+            ..Default::default()
+        };
+        let context = format!("{} · {}", ctx.connection_name, database_of(vm));
+        build_user_snapshot::<S>(&form, Some(&context), Some(adapter), dark, layer);
     }
 }
 

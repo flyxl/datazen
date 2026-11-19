@@ -445,6 +445,8 @@ mod create_db_schema_dialogs;
 // T266 independent audit: blank-name guard, failure retry, schema spec words,
 // running guard, Enter commit, visible-rect geometry and slot composition.
 mod create_db_schema_dialogs_audit;
+// T286: CreateUserDialog port (two steps, validation, host actions, slot mount).
+mod create_user_dialog;
 // T245: ContentViewDrawers port (drawer keys, split-pane source, auto-context,
 // result-readonly verdicts, KV slot and geometry).
 mod content_view_drawers;
