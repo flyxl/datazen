@@ -3,6 +3,7 @@
 //! Hosts implement [`WorkspaceApi`]. The memory workspace is only a stand-in so the
 //! interface can run before the desktop and HTTP adapters exist.
 
+mod ai_memory_correction;
 mod ai_sessions;
 mod ai_store_types;
 mod ai_streaming;
@@ -38,6 +39,10 @@ use std::collections::HashMap;
 // `connection_types::ConnectionConfig` exports at the crate root.
 use datazen_driver_api::{ConnectionConfig as DriverConnectionConfig, SslMode as DriverSslMode};
 
+pub use ai_memory_correction::{
+    AiMemoryCommands, MemoryCorrectionSubmission, SchemaStaleSubmission,
+    mark_stale_for_schema_drops, submit_memory_correction_if_needed,
+};
 pub use ai_sessions::{
     ActiveConnectionEntry, ActiveConnections, AiSessionBackend, AiSessionStore, ExportFormat,
     MigrationOutcome, NewId, SessionClock, SessionDeleteResult, SessionExport, SessionKey,
