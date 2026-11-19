@@ -378,3 +378,38 @@ pub(crate) fn brand_sidebar_radial_tint() -> Color {
     // kit 无对应 token: brand radial tint #4fc3f7 @ 13%
     rune::oklcha(0.773, 0.127, 231.0, 0.13)
 }
+
+/// The onboarding S0 entry cards' dark-mode vertical gradient
+/// (`WelcomeStep.tsx`'s `dark:bg-[linear-gradient(180deg,#121824,#0f131c)]`;
+/// the light theme paints the flat `bg-surface` instead), as `(top, bottom)`.
+/// React's opaque `bg-edge` surface (themes.css `--c-edge`: the future
+/// step-dot pin and other solid edge fills — NOT the kit's translucent
+/// border ink).
+pub(crate) fn edge_solid(dark: bool) -> Color {
+    if dark {
+        rune::color::hex("#1e2534").unwrap_or(Color::WHITE)
+    } else {
+        rune::color::hex("#e1e8f1").unwrap_or(Color::WHITE)
+    }
+}
+
+pub(crate) fn welcome_card_gradient() -> (Color, Color) {
+    // kit 无对应 token: the entry cards' dark pair #121824 / #0f131c
+    (
+        rune::color::hex("#121824").unwrap_or(Color::BLACK),
+        rune::color::hex("#0f131c").unwrap_or(Color::BLACK),
+    )
+}
+
+/// The onboarding S0 entry cards' hover fill: dark is React's
+/// `dark:hover:bg-[#141a26]`, light is `hover:bg-accent-dim` — the
+/// `--c-accent-dim` token, #4fc3f7 at 12%.
+pub(crate) fn welcome_card_hover(dark: bool) -> Color {
+    if dark {
+        // kit 无对应 token: the entry cards' dark hover #141a26
+        rune::color::hex("#141a26").unwrap_or(Color::BLACK)
+    } else {
+        // kit 无对应 token: bg-accent-dim = #4fc3f7 @ 12%
+        rune::color::hex("#4fc3f7").unwrap_or(Color::WHITE).alpha(0.12)
+    }
+}

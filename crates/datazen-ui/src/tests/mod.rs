@@ -737,3 +737,11 @@ mod onboarding_wizard_audit;
 // subtitle, the bordered form card, the security note and the optional
 // hint, and the hasCredentials journey link).
 mod ai_provider_step_audit;
+// T247: the onboarding wizard footer port (the shared chrome height, the
+// step dots + label, the skip/back/continue/finish visibility and
+// disabled rules, and the four action wirings).
+mod wizard_footer_audit;
+// T247: the onboarding welcome step port (the S0 column and header, the
+// three stacked entry cards with their accent wells, the FASTEST pill,
+// the detected-client sub-line, and the three entry actions).
+mod welcome_step_audit;
