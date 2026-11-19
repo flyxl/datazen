@@ -72,6 +72,9 @@
 //!   arms; test-only).
 //! - [`wiring_tests`] — the pure wiring pins (routing map, registry
 //!   accessor, attribution forward, cancelChat; test-only).
+//! - [`audit_tests`] — the T088 audit round's pins: one test per surviving
+//!   mutation of the audit that walked streaming.ts line by line
+//!   (test-only).
 
 mod adapter;
 mod seams;
@@ -81,6 +84,8 @@ mod test_support;
 mod tests;
 #[cfg(test)]
 mod wiring_tests;
+#[cfg(test)]
+mod audit_tests;
 
 pub use adapter::AiStreaming;
 pub use seams::{
