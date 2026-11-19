@@ -240,6 +240,9 @@ mod batch_export_audit;
 // T016 fix retest: independent D1/D2 verification.
 mod batch_export_retest;
 
+// T110: the React windows/connection/ConnectionPage.tsx container port
+// (composed shell, section reachability, tabs/toolbar, two-size two-theme fit).
+mod connection_page;
 // T067: the React ConnectionNavigatorTree port (groups, rows, keys, keyboard,
 // reveal and two-size two-theme geometry).
 mod connection_navigator_tree;
