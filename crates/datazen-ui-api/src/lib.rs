@@ -23,6 +23,8 @@ mod metadata;
 mod platform_shared;
 mod relation_prediction;
 mod relative_time;
+mod sql_path_prefix;
+mod sql_schema_drop_targets;
 mod tabs;
 
 use std::collections::HashMap;
@@ -139,6 +141,11 @@ pub use relative_time::{
     RELATIVE_WINDOW_MS, RelativeTimeParts, RelativeTimeUnit, format_relative_time,
     get_relative_time_parts,
 };
+pub use sql_path_prefix::{
+    QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
+    parse_qualified_path_parents, resolve_ensure_segments,
+};
+pub use sql_schema_drop_targets::{SqlSchemaDropTarget, parse_schema_drop_targets};
 pub use tabs::{Tab, TabKind, Tabs};
 
 /// One foreign key: this table's columns (a compound key stays together), the
