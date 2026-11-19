@@ -22,7 +22,7 @@
 - [x] T057 · components/history · 1.00d · components/history/HistoryEntryCard.tsx components/history/HistoryFilterBar.tsx
 - [x] T062 · components/sql-editor · 4.20d · components/sql-editor/completion/schemaCompletion.ts · split
 - [x] T066 · windows/settings · 0.30d · windows/settings/ai/ModelProfileDialog.tsx
-- [ ] T068 · windows/workspace · 0.90d · windows/workspace/WappPageShell.tsx
+- [x] T068 · windows/workspace · 0.90d · windows/workspace/WappPageShell.tsx
 - [ ] T069 · windows/dashboard · 0.80d · windows/dashboard/ChartWidgetTile.tsx
 - [ ] T072 · windows/onboarding · 0.90d · windows/onboarding/OnboardingWindow.tsx
 - [ ] T076 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffExecutionPanels.tsx
