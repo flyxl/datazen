@@ -250,7 +250,7 @@ pub(crate) fn glyph_ids(system: &mut rune::text::TextSystem, text: &str) -> Vec<
 // T019: the workflow editor action bar port.
 // TRIM mod workflow_action_bar;
 // T019: the workflow execution result panel port.
-mod workflow_execution_panel;
+// TRIM mod workflow_execution_panel;
 // T070: the workflow visual editor form port (draft model, field/variable/
 // step editors, command-input schema editor, both footer variants).
 // TRIM mod workflow_form;
@@ -286,3 +286,7 @@ mod workflow_execution_panel;
 // T136: the log-scale tooltip port (the __orig__ formatter arms, the JS
 // number coercions and the contentStyle chrome tokens).
 // TRIM mod log_scale_tooltip;
+
+// T166: the area chart engine port (the log-hint pipeline, geometry, the
+// hidden-series toggle, hit-bucket routing and the tooltip mounts).
+mod area_chart_renderer;

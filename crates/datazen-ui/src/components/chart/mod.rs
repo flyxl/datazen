@@ -21,9 +21,16 @@
 //! recharts `<Tooltip>` formatter that reads `__orig__${name}` back
 //! (the slots `mapToLogScale` stashes) plus the `contentStyle` chrome — the
 //! five chart-engine tasks mount the content box it builds.
+//!
+//! `renderers/` is the engine directory (one module per React file):
+//! `AreaChartRenderer.tsx` (T166) is the first engine on the `ChartRenderer`
+//! seam — the log-hint pipeline, the area/grid/axis shapes, the legend toggle
+//! and the tooltip mount — and the canvas's renderer factory replaces the
+//! Area placeholder with it.
 #[allow(dead_code)]
 pub(crate) mod chart_view;
 pub(crate) mod chart_canvas;
 pub(crate) mod chart_empty_state;
 pub(crate) mod chart_toolbar;
 pub(crate) mod log_scale_tooltip;
+pub(crate) mod renderers;
