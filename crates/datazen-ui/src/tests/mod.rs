@@ -257,6 +257,10 @@ mod backup_window_state;
 // T026-S1 independent audit: full label table, dialect aliases,
 // untouched-field journey, React grouping quirks, timestamp edges.
 mod backup_window_state_audit;
+// T026-S2: BackupWindow execution actions + three-column rendering
+// (progress formatting, log pump, run-state machine, chrome,
+// columns, options, backup/restore journeys, N4 host contract).
+mod backup_window;
 
 // T008: ChartCanvas dispatcher, measured viewport and honest placeholders.
 mod chart_canvas;
