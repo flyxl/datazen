@@ -35,8 +35,10 @@
 //!   the host wires to its dispatch. The [`Step`] / [`Entry`] seam types
 //!   are absorbed into `wizard_state.rs` (T323) and re-exported here
 //!   under their T114 names (the T021→T287 absorb pattern — every existing
-//!   import path stays untouched); [`ImportApp`] / [`ImportSource`] stay
-//!   here until the import track absorbs them.
+//!   import path stays untouched); [`ImportApp`] is absorbed into
+//!   `use_detected_import_source.rs` (T306, the import track) and
+//!   re-exported here the same way; [`ImportSource`] stays here until the
+//!   import track's remaining tasks absorb it.
 //! - `onboardingGate.ts` (T268, later): `handleOpen`'s
 //!   `updateSettings({ onboarding: completedOnboardingState() })` — the
 //!   completed-state payload is the host's feed-in at its `on_open` seam.
@@ -56,8 +58,9 @@
 //!   forces a key); credentials typed → `requestSave`, whose high-risk
 //!   egress confirmation reports back through the draft's `onSaved` seam as
 //!   the host's `FINISH { aiLabel }` dispatch.
-//! - `useDetectedImportSource` (T306, later): the detection pre-check is a
-//!   host concern; the wizard keeps only what the React file itself owns —
+//! - `useDetectedImportSource` (T306, landed:
+//!   `use_detected_import_source.rs`): the detection pre-check is a host
+//!   concern; the wizard keeps only what the React file itself owns —
 //!   the `importSource` `useState('file')`
 //!   ([`OnboardingWizard::import_source`], fed to `ImportStep` as
 //!   `initialSource` at the host's slot build) and the `useEffect` that
@@ -131,22 +134,15 @@ use super::onboarding_layout::WIZARD_FOOTER_HEIGHT;
 // the steps' and the audits' import paths stay untouched (the
 // onboarding_layout ← brand_sidebar precedent).
 pub(crate) use super::wizard_state::{Entry, Step};
+// The T306 absorb: the import-track app enum lives in
+// `use_detected_import_source.rs` now (the detection hook owns
+// `IMPORT_APP_ORDER`, its ordered universe, and the probe ids); it is
+// re-exported here under its T114 name so the steps'/audits' import
+// paths stay untouched (the same precedent).
+pub(crate) use super::use_detected_import_source::ImportApp;
 
 /// The wizard's action slots (`Rc<dyn Fn(&mut S)>`, the crate convention).
 type ActionFn<S> = Rc<dyn Fn(&mut S) + 'static>;
-
-/// React `ConnectionImportApp`
-/// (`components/connection/ConnectionShareDialog.tsx:13`): the five clients
-/// whose local config the import entry can pre-detect. A seam type — the
-/// import track (T177/T306) absorbs it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ImportApp {
-    Dbx,
-    Navicat,
-    Datagrip,
-    Dbeaver,
-    Tableplus,
-}
 
 /// React `ConnectionImportSource` (`ConnectionShareDialog.tsx:15`):
 /// `'file' | ConnectionImportApp` — the wizard's own `importSource` state.

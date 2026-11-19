@@ -54,7 +54,7 @@
 //! - `initialSource` is the wizard's own `importSource` state (T114's
 //!   [`OnboardingWizard::import_source`], seeded by
 //!   `resync_detected`); `detectedApps` is `useDetectedImportSource`'s
-//!   output (T306, later) — the feed-in
+//!   output (T306, landed: `use_detected_import_source.rs`) — the feed-in
 //!   [`ImportStep::detected_apps`], every client whose config was found.
 //! - `CONNECTION_IMPORT_APP_LABEL` (`ConnectionShareDialog.tsx:17`) is
 //!   reused from T247's port of the same map
@@ -166,15 +166,13 @@ pub(crate) const SOURCE_ORDER: [ImportSource; 6] = [
 
 /// The React source id behind a picker button's testid (`'file'` or the
 /// client id) — the `onboarding-import-source-<id>` /
-/// `onboarding-import-found-<id>` postfixes, verbatim.
+/// `onboarding-import-found-<id>` postfixes, verbatim. The client ids
+/// delegate to [`ImportApp::source_id`] (T306's absorb — the one truth
+/// the host's detection probes share).
 pub(crate) fn source_id(source: ImportSource) -> &'static str {
     match source {
         ImportSource::File => "file",
-        ImportSource::App(ImportApp::Dbx) => "dbx",
-        ImportSource::App(ImportApp::Navicat) => "navicat",
-        ImportSource::App(ImportApp::Datagrip) => "datagrip",
-        ImportSource::App(ImportApp::Dbeaver) => "dbeaver",
-        ImportSource::App(ImportApp::Tableplus) => "tableplus",
+        ImportSource::App(app) => app.source_id(),
     }
 }
 

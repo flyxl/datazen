@@ -10,6 +10,7 @@
 //! | `steps/AiProviderStep.tsx` (+ `WelcomeStep.tsx`'s `StepTag` export) | `steps` | T148 |
 //! | `WizardFooter.tsx` | `wizard_footer` | T247 |
 //! | `steps/WelcomeStep.tsx` | `steps::welcome_step` | T247 |
+//! | `useDetectedImportSource.ts` | `use_detected_import_source` | T306 |
 
 pub(crate) mod brand_sidebar;
 pub(crate) mod onboarding_layout;
@@ -19,6 +20,10 @@ pub(crate) mod onboarding_wizard;
 // steps/ directory and WizardFooter.tsx).
 pub(crate) mod steps;
 pub(crate) mod wizard_footer;
+// T306: the detected-import-source hook (the import entry's config
+// pre-check — the probe order/hits, the enabled effect, the cancelled
+// round guard; absorbs the ImportApp seam type).
+pub(crate) mod use_detected_import_source;
 // T323: the wizard's state machine (wizardState.ts) — the step/entry seam
 // types and summary cores absorb here.
 pub(crate) mod wizard_state;
@@ -38,3 +43,7 @@ pub(crate) use onboarding_wizard::{
 };
 #[allow(unused_imports)] // the onboarding wizard host (T114's footer seat) is the production consumer
 pub(crate) use wizard_footer::WizardFooter;
+#[allow(unused_imports)] // the onboarding window host (the wizard's detection wiring) is the production consumer
+pub(crate) use use_detected_import_source::{
+    DetectedImportSource, IMPORT_APP_ORDER, ImportProbe,
+};

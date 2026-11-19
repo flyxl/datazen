@@ -772,3 +772,7 @@ mod done_step_audit;
 mod wizard_state;
 // T323: bridge to the schema-diff limitation keys' inline suite.
 mod schema_diff_limitation_keys;
+// T306: bridge to the detected-import-source hook's inline suite (the
+// useDetectedImportSource port — probe order/hits, the enabled effect and
+// the cancelled-round guard).
+mod use_detected_import_source;
