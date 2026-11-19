@@ -713,3 +713,6 @@ mod workspace_pages;
 // T069: the chart widget tile port (header switches, the eight body states,
 // the expand overlay, the transform/axis seams).
 mod chart_widget_tile_audit;
+// T146: the monitor schedule authorization card port (grant load guards,
+// the authorized-until status line, the authorize/revoke buttons).
+mod monitor_schedule_authorization_audit;
