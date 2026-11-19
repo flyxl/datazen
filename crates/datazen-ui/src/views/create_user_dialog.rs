@@ -67,6 +67,8 @@ pub(crate) struct CreateUserState {
     pub selected_privileges: Vec<String>,
     pub grant_option: bool,
     pub target_database: String,
+    /// Rune's Select needs its open state from the caller; React keeps it inside.
+    pub database_select_open: bool,
     pub databases: Vec<String>,
     pub privileges: Vec<String>,
     pub show_grant_option: bool,
@@ -120,6 +122,7 @@ impl CreateUserState {
     }
 
     /// Resolve the create answer: success advances to the grant step.
+    #[allow(dead_code)] // consumer: the host create-user result feed (not landed); remove when wired.
     pub(crate) fn apply_create(
         &mut self,
         result: Result<(), String>,
@@ -155,6 +158,7 @@ impl CreateUserState {
     }
 
     /// Resolve the grant answer: success resets and reports creation.
+    #[allow(dead_code)] // consumer: the host create-user result feed (not landed); remove when wired.
     pub(crate) fn apply_grant(&mut self, result: Result<(), String>) -> Vec<CreateUserAction> {
         self.running = false;
         match result {
@@ -241,7 +245,7 @@ pub(crate) fn build<S: 'static>(
     if is_create {
         root = build_create_body(root, state, state_edit.clone(), &submit, dark);
     } else {
-        root = build_grant_body(root, state, state_edit.clone(), &submit, dark);
+        root = build_grant_body(root, state, state_edit.clone(), &submit, dark, layer);
     }
     if !state.error.is_empty() {
         root = root.child(CopyableError::new(format!("{ROOT}-error"), state.error.clone()).build::<S>(k));
@@ -364,6 +368,7 @@ fn build_grant_body<S: 'static>(
     state_edit: Option<Rc<dyn Fn(&mut S) -> &mut CreateUserState>>,
     _submit: &Rc<dyn Fn(&mut S)>,
     dark: bool,
+    layer: &mut Vec<El>,
 ) -> El {
     root = root.child(
         text(state.success_text())
@@ -380,22 +385,34 @@ fn build_grant_body<S: 'static>(
     let values: Vec<String> = std::iter::once(String::new())
         .chain(state.databases.iter().cloned())
         .collect();
+    // The kit matches `current` against option labels; an empty target means
+    // React's "All databases" default, not an empty string.
+    let current = if state.target_database.is_empty() {
+        t("createUser.allDatabases")
+    } else {
+        state.target_database.as_str()
+    };
     let mut db_sel = Select::new(format!("{ROOT}-database"), &labels)
         .values(&values)
-        .current(Some(state.target_database.as_str()))
+        .current(Some(current))
         .label(t("createUser.database"))
+        .open(state.database_select_open)
+        // The base requires a toggle even when no host state is wired; without
+        // an accessor the list simply never opens rather than panicking.
         .on_toggle(move |_s: &mut S| {});
     if let Some(on_db) = state_edit.clone() {
+        let open = on_db.clone();
+        db_sel = db_sel.on_toggle(move |s: &mut S| open(s).database_select_open = true);
+        let close = on_db.clone();
+        db_sel = db_sel.on_close(move |s: &mut S| close(s).database_select_open = false);
         db_sel = db_sel.on_choose(move |s: &mut S, value: &str, _tx: &mut Tx| {
-            on_db(s).target_database = value.to_owned();
+            let form = on_db(s);
+            form.target_database = value.to_owned();
+            form.database_select_open = false;
         });
     }
-    let mut layer = Vec::new();
     root = root.child(Label::new(format!("{ROOT}-database-label"), t("createUser.database")).build(dark))
-        .child(db_sel.build(&kit(dark), &mut layer));
-    for el in layer {
-        root = root.child(el);
-    }
+        .child(db_sel.build(&kit(dark), layer));
 
     if !state.privileges.is_empty() {
         let mut privileges_row = row()

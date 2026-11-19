@@ -315,3 +315,38 @@ fn real_create_user_dialog_is_composed_into_the_content_view_slot() {
     click(&mut rt, &format!("{ROOT}-confirm"));
     assert!(rt.state.actions.borrow().contains(&DialogAction::UserCreated));
 }
+
+#[test]
+fn React_s_default_database_selection_shows_All_databases() {
+    let mut scene = Scene::new("alice", "", true);
+    scene.form.step = CreateUserStep::Grant;
+    scene.form.created_username = "alice".to_owned();
+    scene.form.show_grant_step = true;
+    scene.form.databases = vec!["shop".to_owned(), "analytics".to_owned()];
+    let mut rt = runtime(scene, DESIGN);
+    click(&mut rt, &format!("{ROOT}-database-trigger"));
+    assert!(
+        has_key(&rt, "option0") && element(&rt, "option0").item_selected,
+        "React's default database selection shows All databases"
+    );
+}
+
+#[test]
+fn the_database_select_must_open_its_option_list_like_React() {
+    let mut scene = Scene::new("alice", "", true);
+    scene.form.step = CreateUserStep::Grant;
+    scene.form.created_username = "alice".to_owned();
+    scene.form.show_grant_step = true;
+    scene.form.databases = vec!["shop".to_owned(), "analytics".to_owned()];
+    let mut rt = runtime(scene, DESIGN);
+
+    click(&mut rt, &format!("{ROOT}-database-trigger"));
+    assert!(rt.state.form.database_select_open, "the trigger writes the open state");
+    assert!(has_key(&rt, "option0"), "the database select must open its option list like React");
+    assert!(has_key(&rt, "option2"), "all database options are mounted");
+
+    // Selecting a database writes back and closes the list.
+    click(&mut rt, "option1");
+    assert_eq!(rt.state.form.target_database, "shop");
+    assert!(!rt.state.form.database_select_open, "a choice closes the listbox");
+}
