@@ -20,6 +20,10 @@ serde_json = { workspace = true }
 # valuePresentation persisted shapes (TimestampOptions and friends) serialize
 # with React's exact JSON field names.
 serde = { workspace = true }
+# valuePresentationRules (T291): restricted-regex matching. The crate's
+# engine is non-backtracking (linear time) — strictly safer than the JS
+# engine the restricted subset was designed to fence in.
+regex = { workspace = true }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # lib/valuePresentation (issue-32 T02): the temporal core needs the full IANA
 # zone table with historical offsets (1850 Asia/Shanghai LMT +08:05:43) — the

@@ -2771,6 +2771,7 @@ dependencies = [
  "datazen-ui-api",
  "iana-time-zone",
  "parley",
+ "regex",
  "rune",
  "rune-kit",
  "serde",

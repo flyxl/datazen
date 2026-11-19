@@ -21,3 +21,4 @@
 pub(crate) mod temporal_math;
 pub(crate) mod timestamp_format; // T272: the three output formats
 pub(crate) mod timestamp_config; // T230: persisted options + full validation
+pub(crate) mod value_presentation_rules; // T291: rules, restricted regex, matching

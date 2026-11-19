@@ -256,3 +256,5 @@ mod temporal_math;
 mod timestamp_format;
 // T230: valuePresentation timestamp options validation (pathed problems).
 mod timestamp_config;
+// T291: valuePresentation rules — restricted regex, validation, matching.
+mod value_presentation_rules;
