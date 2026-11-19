@@ -46,12 +46,20 @@ pub(crate) fn condition_summary(filter: &FilterCondition) -> String {
                 // `formatCell` on a string returns the string unchanged; route
                 // through the real formatter so the contract stays in one place.
                 FilterValue::Single(value) => format_cell(&serde_json::Value::String(value.clone())),
-                FilterValue::Pair(lower, upper) => {
-                    format_cell(&serde_json::Value::String(format!("{lower},{upper}")))
-                }
-                FilterValue::Tokens(tokens) => {
-                    format_cell(&serde_json::Value::String(tokens.join(",")))
-                }
+                // A legacy draft can carry an array/Pair under a single-value
+                // operator. React passes the raw value to `formatCell`, which
+                // JSON-stringifies arrays; do not flatten it into a joined string.
+                FilterValue::Pair(lower, upper) => format_cell(&serde_json::Value::Array(vec![
+                    serde_json::Value::String(lower.clone()),
+                    serde_json::Value::String(upper.clone()),
+                ])),
+                FilterValue::Tokens(tokens) => format_cell(&serde_json::Value::Array(
+                    tokens
+                        .iter()
+                        .cloned()
+                        .map(serde_json::Value::String)
+                        .collect(),
+                )),
             };
             format!("{} {} {}", filter.column, op, shown)
         }
