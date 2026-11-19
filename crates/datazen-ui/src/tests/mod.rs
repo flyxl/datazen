@@ -46,6 +46,17 @@ mod column_stats_dialog;
 mod cell_renderer;
 // Independent T002 audit: tree-observed colour, branch order, raw handoff, flags and geometry.
 mod cell_renderer_audit;
+// T054-S1: ColumnPresentationDialog draft model + pure functions (coder tests).
+mod column_presentation_dialog;
+// T054-S1 audit: independent mirror checks (IANA bounds, verbatim messages,
+// predicate wiring, fallback and round-trips).
+mod column_presentation_dialog_audit;
+// T054-S2: ColumnPresentationDialog dialog component + state + save/enable
+// wiring (coder tests: plan/preview/rules, state machine, render).
+mod column_presentation_dialog_s2;
+// T054-S2 audit: independent checks (U+FEFF, plan order a-e, preview,
+// regex bytes semantics, save/enable outbox, render).
+mod column_presentation_dialog_s2_audit;
 pub(crate) use support::*;
 
 pub(crate) fn runtime() -> Runtime<AppState> {
@@ -265,6 +276,43 @@ mod explain_plan_tree;
 // key collisions, clipped+scrollable overflow, light-theme window fit.
 mod explain_plan_audit;
 
+// T063: DbTypeBadge port (meta table, parent map, sizing, mounted tile).
+mod db_type_badge;
+// T063: ErrorBoundary port (state machine, fallbacks, mounted fallback).
+mod error_boundary;
+// T063: ExportColumnPicker port (order, selection, toggles, bulk actions).
+mod export_column_picker;
+// T064: AdminSchemaFields port (commandSchema parse, visibility, labels, mounted list).
+mod admin_schema_fields;
+// T064: PrivilegeSelector port (x-datazen parse, flattening, grid, toggles).
+mod privilege_selector;
+// T064 audit: parse order, non-string type, parse rejection arms, mounted
+// placeholder, group spacing, same-label key collision.
+mod t064_audit;
+// T063 audit: backup re-export path, light-theme fills, half-up rounding,
+// capture-over-capture, PK-chip/type-label no-toggle.
+mod t063_audit;
+
+// T057: QueryArtifactExport port (dedup, visibility, labels, state machine,
+// mounted bar with the in-flight guard and status lines).
+mod query_artifact_export;
+// T057 audit: guard no-ops, outcome marks React only sets, stale-press guard.
+mod query_artifact_export_audit;
+
+// T060: AiCodeBlock port (SQL detection, dialect, labels, state machine,
+// mounted inline + fullscreen block).
+mod ai_code_block;
+// T060 audit: long-line overflow, detection edges, dialect survival,
+// mounted stale-expiry guard, fullscreen-toggle text deviation pin.
+mod ai_code_block_audit;
+
+// T073: DataTransferAttachedJobs port (counter reading, active-job filter,
+// cancel disposition + state machine, mounted strip).
+mod data_transfer_attached_jobs;
+
+// T073 audit: number-branch safe-integer gate (React has none on numbers).
+mod data_transfer_attached_jobs_audit;
+
 // T027: SchemaDiffPanel port and its independent audit.
 mod schema_diff_panel;
 mod schema_diff_audit;
@@ -439,3 +487,10 @@ mod filter_condition_editor_audit;
 // chips and derivations, the grouped all view, the cards and their gates,
 // the toggle/uninstall/open seams, and the geometry at both sizes).
 mod wapp_management_page;
+// T049: the `@datazen/frontend/app` barrel — crate-root launch surface,
+// host-entry construction, first-frame adapter consult.
+mod app_entry;
+// T049 audit: the host half — a host-built adapter's list (and the
+// unwired adapter's error) through the assign + sync the launch closure
+// performs, which the coder's demo-path test does not exercise.
+mod app_entry_audit;

@@ -85,6 +85,10 @@ full_count=$(grep -cE '^(pub\(crate\) )?mod [A-Za-z0-9_]+;$' "$MOD")
 # Trim: drop every `mod X;` line except support/tokens and the requested ones.
 # Everything else (imports, `runtime()`, comments) is kept verbatim, so the
 # file still compiles exactly as before, only smaller.
+# An outer attribute (e.g. `#[cfg(test)]`) sitting directly above a dropped
+# `mod` line is dropped with it: leaving it behind is a dangling attribute
+# and the file stops compiling (`expected item after attributes`). Attribute
+# lines are therefore held back until the following item line decides them.
 KEEP="support tokens ${mods[*]}"
 if ! KEEP="$KEEP" awk '
 function modname(line,   n) {
@@ -96,12 +100,21 @@ function modname(line,   n) {
     }
     return ""
 }
+function flush() {
+    if (held) { printf "%s", buf; buf = ""; held = 0 }
+}
 {
+    if ($0 ~ /^[[:space:]]*#\[.*\]$/) { buf = buf $0 "\n"; held = 1; next }
+    if (held && ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*\/\//)) { buf = buf $0 "\n"; next }
     name = modname($0)
-    if (name == "") { print; next }
+    if (name == "") { flush(); print; next }
     split(ENVIRON["KEEP"], arr, " ")
-    for (i in arr) if (arr[i] == name) { print; next }
-    # dropped module line (its preceding comment, if any, stays: harmless)
+    for (i in arr) if (arr[i] == name) { flush(); print; next }
+    # dropped module line: any attribute (+ blank/comment) lines held above
+    # it go with it, so no dangling attribute is left behind.
+    buf = ""; held = 0
+}
+END { # a dangling attribute at EOF never compiled anyway; drop it silently
 }
 ' "$MOD" > "$MOD.tmp"; then
     echo "probe: trim failed; mod.rs untouched" >&2

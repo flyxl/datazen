@@ -35,6 +35,13 @@ chrono-tz = "0.10"
 # The `{ kind: 'local' }` display-zone spec needs the machine's IANA name
 # (already in the graph via chrono); same purpose as Intl resolvedOptions().
 iana-time-zone = "0.1"
+# T054-S2: rule-name matching for the dialog's plan (`match_name_pattern`):
+# the restricted regex subset the TS validator accepts (literals, classes,
+# groups, quantifiers — no lookaround / backreferences) is exactly what the
+# `regex` crate evaluates, so a validated `regex` pattern is matched with
+# it; an unvalidated one that fails to compile matches nothing (the TS
+# defensive catch in `matchNamePattern`).
+regex = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { workspace = true }

@@ -2773,6 +2773,7 @@ dependencies = [
  "futures",
  "iana-time-zone",
  "parley",
+ "regex",
  "rune",
  "rune-kit",
  "rust_xlsxwriter",

@@ -336,6 +336,17 @@ pub(crate) static ICON_TRENDING_UP: rune::Icon = rune::Icon {
     view: 24.0,
     body: "<polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"22 7 13.5 15.5 8.5 10.5 2 17\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"16 7 22 7 22 13\"/>",
 };
+/// T060: lucide `code-2`, the language-label glyph in `AiCodeBlock`
+/// (`AiCodeBlock.tsx` uses `Code2`). The two chevrons are the whole icon;
+/// geometry verified against the lucide `code-2` icon (polylines
+/// `16 18 22 12 16 6` and `8 6 2 12 8 18`).
+pub(crate) static ICON_CODE: rune::Icon = rune::Icon {
+    name: "code-2",
+    view: 24.0,
+    body: "<polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"16 18 22 12 16 6\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"8 6 2 12 8 18\"/>",
+};
+/// T060: lucide `maximize-2`, the enter-fullscreen glyph in `AiCodeBlock`
+/// (`AiCodeBlock.tsx` uses `Maximize2`).
 pub(crate) static ICON_MAXIMIZE_2: rune::Icon = rune::Icon {
     name: "maximize-2",
     view: 24.0,
@@ -347,6 +358,12 @@ pub(crate) static ICON_PACKAGE_OPEN: rune::Icon = rune::Icon {
     name: "package-open",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 22v-9\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15.17 2.21a1.67 1.67 0 0 1 1.63 0L21 4.57a1.93 1.93 0 0 1 0 3.36L8.82 14.79a1.655 1.655 0 0 1-1.64 0L3 12.43a1.93 1.93 0 0 1 0-3.36z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 13v3.87a2.06 2.06 0 0 1-1.11 1.83l-6 3.08a1.93 1.93 0 0 1-1.78 0l-6-3.08A2.06 2.06 0 0 1 4 16.87V13\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 12.43a1.93 1.93 0 0 0 0-3.36L8.83 2.2a1.64 1.64 0 0 0-1.63 0L3 4.57a1.93 1.93 0 0 0 0 3.36l12.18 6.86a1.636 1.636 0 0 0 1.63 0z\"/>",
+/// T060: lucide `minimize-2`, the exit-fullscreen glyph in `AiCodeBlock`
+/// (`AiCodeBlock.tsx` uses `Minimize2`).
+pub(crate) static ICON_MINIMIZE_2: rune::Icon = rune::Icon {
+    name: "minimize-2",
+    view: 24.0,
+    body: "<polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"4 14 10 14 10 20\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"20 10 14 10 14 4\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"14\" x2=\"21\" y1=\"10\" y2=\"3\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"3\" x2=\"10\" y1=\"21\" y2=\"14\"/>",
 };
 
 pub(crate) fn section_icon(section: Section) -> &'static rune::Icon {

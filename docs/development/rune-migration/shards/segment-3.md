@@ -18,15 +18,15 @@
 - [x] T039 · stores · 0.90d · stores/activeConnectionStore.ts
 - [x] T041 · stores/tableData · 0.30d · stores/tableData/connectionState.ts
 - [x] T043 · platform · 2.00d · platform/blobTablesExporter.ts · split
-- [~] T049 · app.ts · 0.30d · app.ts
+- [x] T049 · app.ts · 0.30d · app.ts
 - [x] T053 · components/ui · 0.30d · components/ui/Spinner.tsx
-- [ ] T054 · components/DataTable · 1.30d · components/DataTable/ColumnPresentationDialog.tsx · split
-- [ ] T057 · components/query · 0.90d · components/query/QueryArtifactExport.tsx
-- [ ] T060 · components/ai · 0.80d · components/ai/AiCodeBlock.tsx
-- [ ] T063 · components · 0.90d · components/DbTypeBadge.tsx components/ErrorBoundary.tsx components/export/ExportColumnPicker.tsx
-- [ ] T064 · components/admin · 0.60d · components/admin/AdminSchemaFields.tsx components/admin/PrivilegeSelector.tsx
-- [ ] T073 · windows/data-transfer · 0.90d · windows/data-transfer/DataTransferAttachedJobs.tsx
-- [ ] T074 · windows/data-sync · 0.30d · windows/data-sync/DataSyncDialogs.tsx
+- [x] T054 · components/DataTable · 1.30d · components/DataTable/ColumnPresentationDialog.tsx · split
+- [x] T057 · components/query · 0.90d · components/query/QueryArtifactExport.tsx
+- [x] T060 · components/ai · 0.80d · components/ai/AiCodeBlock.tsx
+- [x] T063 · components · 0.90d · components/DbTypeBadge.tsx components/ErrorBoundary.tsx components/export/ExportColumnPicker.tsx
+- [x] T064 · components/admin · 0.60d · components/admin/AdminSchemaFields.tsx components/admin/PrivilegeSelector.tsx
+- [x] T073 · windows/data-transfer · 0.90d · windows/data-transfer/DataTransferAttachedJobs.tsx
+- [~] T074 · windows/data-sync · 0.30d · windows/data-sync/DataSyncDialogs.tsx
 - [ ] T076 · windows/backup · 2.00d · windows/backup/ProgressLog.tsx · split
 - [ ] T078 · lib/chart · 0.60d · lib/chart/fieldInference.ts lib/chart/format.ts
 - [ ] T087 · stores · 1.30d · stores/aiStore.ts · split
