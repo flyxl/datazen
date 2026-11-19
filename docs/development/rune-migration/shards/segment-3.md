@@ -24,7 +24,7 @@
 - [x] T057 · components/query · 0.90d · components/query/QueryArtifactExport.tsx
 - [x] T060 · components/ai · 0.80d · components/ai/AiCodeBlock.tsx
 - [x] T063 · components · 0.90d · components/DbTypeBadge.tsx components/ErrorBoundary.tsx components/export/ExportColumnPicker.tsx
-- [ ] T064 · components/admin · 0.60d · components/admin/AdminSchemaFields.tsx components/admin/PrivilegeSelector.tsx
+- [~] T064 · components/admin · 0.60d · components/admin/AdminSchemaFields.tsx components/admin/PrivilegeSelector.tsx
 - [ ] T073 · windows/data-transfer · 0.90d · windows/data-transfer/DataTransferAttachedJobs.tsx
 - [ ] T074 · windows/data-sync · 0.30d · windows/data-sync/DataSyncDialogs.tsx
 - [ ] T076 · windows/backup · 2.00d · windows/backup/ProgressLog.tsx · split
