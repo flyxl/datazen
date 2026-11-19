@@ -255,6 +255,9 @@ mod db_type_badge;
 mod error_boundary;
 // T063: ExportColumnPicker port (order, selection, toggles, bulk actions).
 mod export_column_picker;
+// T063 audit: backup re-export path, light-theme fills, half-up rounding,
+// capture-over-capture, PK-chip/type-label no-toggle.
+mod t063_audit;
 
 // T057: QueryArtifactExport port (dedup, visibility, labels, state machine,
 // mounted bar with the in-flight guard and status lines).
