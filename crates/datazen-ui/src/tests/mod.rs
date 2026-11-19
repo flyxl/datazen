@@ -206,6 +206,9 @@ mod execution_projection_audit;
 mod execution_projection_retest;
 // T154: lib/session/pageUnload.ts port (host-owned fallback registry).
 mod page_unload;
+// T154 independent audit: multi-failure accumulation, re-registration and id
+// monotonicity, per-release error reset, unknown-token unregister.
+mod page_unload_audit;
 
 // Independent re-audit of merged T0-07 menu base.
 mod menus_merge_reaudit;
