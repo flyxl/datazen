@@ -289,6 +289,9 @@ mod connection_form_parts;
 mod connection_form_audit;
 // T281: SshTunnelFields + StandardConnectionFields ports and the form-body swap.
 mod ssh_standard_fields;
+// T281 independent audit: auth mapping, toggle rule, path pick, no-username,
+// error transitions, source guards and long-value geometry.
+mod ssh_fields_audit;
 // T239: the React NewConnectionDialog port (picker, form wiring, actions, geometry).
 mod new_connection_dialog;
 // T239 independent audit: availability filter, group wiring/labels, edit AI
