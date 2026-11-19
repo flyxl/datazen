@@ -562,3 +562,8 @@ mod timestamp_contribution;
 mod bootstrap;
 // T047: the ADB driver-command wrappers (unified execute entry).
 mod commands_adb;
+// T051: the `@datazen/frontend` light entry — the barrel that dissolved
+// into the crate split (api crate = light surface, crate root = launch
+// surface): one import point, the separation invariant, capability bits
+// as the linked assembly, the light consumer's exercise.
+mod index_entry;
