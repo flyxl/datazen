@@ -29,7 +29,7 @@
 - [x] T106 · components/migration · 1.30d · components/migration/MigrationJobVerdictPanel.tsx · split
 - [x] T110 · windows/connection · 1.30d · windows/connection/ConnectionPage.tsx · split
 - [x] T122 · lib/session · 0.90d · lib/session/ExecutionProjection.ts
-- [ ] T124 · lib/structureEditor · 0.90d · lib/structureEditor/isControlEnabled.ts lib/structureEditor/resolveCreateTableSchema.ts lib/structureEditor/schemaToDraft.ts
+- [x] T124 · lib/structureEditor · 0.90d · lib/structureEditor/isControlEnabled.ts lib/structureEditor/resolveCreateTableSchema.ts lib/structureEditor/schemaToDraft.ts
 - [x] T133 · ai · 2.00d · ai/streamRegistry.ts · split
 - [ ] T135 · components/filter · 0.90d · components/filter/FilterSqlPreviewDialog.tsx
 - [ ] T137 · components/connection · 0.90d · components/connection/ConnectionShareDialog.tsx
