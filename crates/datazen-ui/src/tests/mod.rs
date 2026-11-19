@@ -285,6 +285,8 @@ mod schema_diff_audit;
 
 mod connection_advanced_settings;
 mod connection_advanced_audit;
+// T318: tunnel contract DTOs, validation rules and the clipboard-fill hook port.
+mod tunnel_contracts;
 // T217: HttpProxyTunnelFields + IndexConnectionFields ports.
 mod tunnel_fields;
 // T217 independent audit: placeholders/secure password, scheme back-switch and

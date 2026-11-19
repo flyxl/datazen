@@ -8,11 +8,12 @@
 //! and [`is_ws_url_valid`] mirrors that form rule as a pure helper so a caller
 //! can pin it without inventing a test id.
 //!
-//! ## Local contract (removal stage)
+//! ## Contract
 //!
-//! `WebSocketTunnelFieldsValue` from `tunnelFieldContracts.ts` has no Rust DTO
-//! yet; [`WebSocketValue`] mirrors its values with `TextEdit`s. Remove it when
-//! that contract is ported and drive the component from the shared value.
+//! [`WebSocketValue`] is `WebSocketTunnelFieldsValue` re-exported from
+//! `tunnel_field_contracts`, the single definition site; the mode normalization
+//! and URL validation helpers live there too. Existing callers keep the old
+//! local names; remove the re-export when they import the contract directly.
 //!
 //! ## Keys (React `data-testid` preserved)
 //!
@@ -33,77 +34,9 @@ use crate::ui::select::Select;
 
 const ROOT: &str = "new-conn-ws-fields";
 
-/// React `WebSocketTunnelFieldsValue['wsMode']`.
-#[allow(dead_code)] // contract mirror; remove when tunnelFieldContracts lands.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum WsMode {
-    DatazenV1,
-    RawBinary,
-}
-
-#[allow(dead_code)] // contract mirror; remove with the enum.
-impl WsMode {
-    /// The component's `onChange`: only the exact raw-binary value survives.
-    pub(crate) fn from_value(value: &str) -> Self {
-        if value == "raw_binary" {
-            Self::RawBinary
-        } else {
-            Self::DatazenV1
-        }
-    }
-
-    pub(crate) fn value(self) -> &'static str {
-        match self {
-            Self::DatazenV1 => "datazen_v1",
-            Self::RawBinary => "raw_binary",
-        }
-    }
-
-    /// The kit select matches `current` against option labels.
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::DatazenV1 => "newConn.wsModeDatazen",
-            Self::RawBinary => "newConn.wsModeRaw",
-        }
-    }
-}
-
-impl Default for WsMode {
-    fn default() -> Self {
-        Self::DatazenV1
-    }
-}
-
-/// Mirror of the form's wsUrl validation (`useConnectionForm.ts`):
-/// `if (!wsUrl.trim()) errors.wsUrl = t('newConn.required')`.
-#[allow(dead_code)] // form rule mirror; consumed by the connection form host.
-pub(crate) fn is_ws_url_valid(url: &str) -> bool {
-    !url.trim().is_empty()
-}
-
-/// Local mirror of `WebSocketTunnelFieldsValue`; removable with the contract.
-#[allow(dead_code)] // contract mirror; remove when tunnelFieldContracts lands.
-#[derive(Clone, Debug)]
-pub(crate) struct WebSocketValue {
-    pub url: TextEdit,
-    pub mode: WsMode,
-    /// Rune's Select needs its open state from the caller; React keeps it inside.
-    pub mode_open: bool,
-    pub timeout: TextEdit,
-    pub auth_token: TextEdit,
-}
-
-impl Default for WebSocketValue {
-    fn default() -> Self {
-        Self {
-            url: TextEdit::new(String::new()),
-            mode: WsMode::DatazenV1,
-            mode_open: false,
-            timeout: TextEdit::new("30".to_owned()),
-            auth_token: TextEdit::new(String::new()),
-        }
-    }
-}
+pub(crate) use super::tunnel_field_contracts::{
+    is_ws_url_valid, WebSocketTunnelFieldsValue as WebSocketValue, WsMode,
+};
 
 type EditFn<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static>;
 type BoolFn<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut bool + 'static>;
