@@ -16,8 +16,14 @@
 //! is a later migration track, so the module-level allow moves here — and
 //! an `#[allow(dead_code)]` item also keeps the parts it mounts live for the
 //! lint, which is why the T059 modules no longer need their own.
+//!
+//! `LogScaleTooltip.tsx` (T136) is the log-scale tooltip half: the custom
+//! recharts `<Tooltip>` formatter that reads `__orig__${name}` back
+//! (the slots `mapToLogScale` stashes) plus the `contentStyle` chrome — the
+//! five chart-engine tasks mount the content box it builds.
 #[allow(dead_code)]
 pub(crate) mod chart_view;
 pub(crate) mod chart_canvas;
 pub(crate) mod chart_empty_state;
 pub(crate) mod chart_toolbar;
+pub(crate) mod log_scale_tooltip;

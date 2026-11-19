@@ -282,3 +282,7 @@ mod install_wapp_dialog;
 // chips and derivations, the grouped all view, the cards and their gates,
 // the toggle/uninstall/open seams, and the geometry at both sizes).
 mod wapp_management_page;
+
+// T136: the log-scale tooltip port (the __orig__ formatter arms, the JS
+// number coercions and the contentStyle chrome tokens).
+mod log_scale_tooltip;
