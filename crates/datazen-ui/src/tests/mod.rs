@@ -287,6 +287,8 @@ mod connection_ai_notes;
 mod connection_form_parts;
 // T103 independent audit: observable behaviour, structural parity and coverage gaps.
 mod connection_form_audit;
+// T281: SshTunnelFields + StandardConnectionFields ports and the form-body swap.
+mod ssh_standard_fields;
 // T239: the React NewConnectionDialog port (picker, form wiring, actions, geometry).
 mod new_connection_dialog;
 // T239 independent audit: availability filter, group wiring/labels, edit AI
