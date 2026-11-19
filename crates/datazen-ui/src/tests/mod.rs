@@ -274,3 +274,5 @@ mod value_presentation_rules;
 mod timestamp_contribution;
 // T046: the shared bootstrap chain (adapter + bundled registration + sync).
 mod bootstrap;
+// T047: the ADB driver-command wrappers (unified execute entry).
+mod commands_adb;

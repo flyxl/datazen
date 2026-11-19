@@ -6,6 +6,8 @@ license = "GPL-3.0-or-later"
 description = "UI ports and the desktop adapter for the DataZen Rune interface"
 
 [dependencies]
+# The unified driver-command seam speaks the drivers' JSON payload shapes.
+serde_json = { workspace = true }
 
 # H3/H6: the desktop adapter — the native host's use cases. Everything here is
 # native-only: the wasm host compiles the same ports over the memory workspace
