@@ -200,7 +200,7 @@ fn all_open() -> DialogsVm {
 
 fn slot_view(state: &AppState, _cx: &mut Cx<AppState>) -> El {
     let (vm, dark) = SLOT_FIXTURE.with(|f| f.borrow().clone());
-    col().w_full().h_full().child(crate::views::content_view::build(state, tok::theme(dark), dark, &vm))
+    col().w_full().h_full().child(crate::views::content_view::build(state, tok::theme(dark), dark, &vm, &mut Vec::new()))
 }
 
 #[test]
