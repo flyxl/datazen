@@ -12,16 +12,15 @@
 - [x] T018 · windows/dashboard · 0.90d · windows/dashboard/AddToDashboardDialog.tsx
 - [x] T021 · windows/onboarding · 0.90d · windows/onboarding/BrandSidebar.tsx
 - [x] T025 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffDeployPanel.tsx
-- [ ] T029 · lib/connectionViews · 0.90d · lib/connectionViews/types.ts lib/contextItems.ts lib/contextMenuPosition.ts
 - [x] T035 · lib/sqlDialects · 1.00d · lib/sqlDialects/dialectProfile.ts lib/sqlDialects/extra.ts
 - [x] T037 · lib/valuePresentation · 0.50d · lib/valuePresentation/columnOverrides.ts
 - [x] T038 · hooks · 0.30d · hooks/useConfirmDialog.tsx
-- [ ] T044 · platform/shared · 0.30d · platform/shared/index.ts
 - [x] T047 · bootstrap · 2.00d · bootstrap/startSharedApp.tsx · split
 - [x] T048 · commands · 0.30d · commands/adb.ts
-- [ ] T050 · app.ts · 0.30d · app.ts
+- [x] T051 · index.ts · 0.90d · index.ts
+- [x] T052 · shell.ts · 0.90d · shell.ts
 - [x] T057 · components/history · 1.00d · components/history/HistoryEntryCard.tsx components/history/HistoryFilterBar.tsx
-- [ ] T063 · components/sql-editor · 4.20d · components/sql-editor/completion/schemaCompletion.ts · split
+- [~] T062 · components/sql-editor · 4.20d · components/sql-editor/completion/schemaCompletion.ts · split
 - [ ] T066 · windows/settings · 0.30d · windows/settings/ai/ModelProfileDialog.tsx
 - [ ] T068 · windows/workspace · 0.90d · windows/workspace/WappPageShell.tsx
 - [ ] T069 · windows/dashboard · 0.80d · windows/dashboard/ChartWidgetTile.tsx
@@ -30,7 +29,6 @@
 - [ ] T084 · lib/sqlDialects · 0.80d · lib/sqlDialects/identifierQuoting.ts lib/sqlDialects/index.ts
 - [x] T086 · lib/valuePresentation · 0.80d · lib/valuePresentation/columnPresentation.ts
 - [ ] T087 · hooks · 0.90d · hooks/useAiEditorGrant.ts
-- [ ] T093 · platform/shared · 0.80d · platform/shared/mcpClient.ts
 - [ ] T096 · commands · 1.30d · commands/ai.ts · split
 - [ ] T101 · components/history · 0.50d · components/history/historyQuery.ts
 - [ ] T107 · components/sql-editor · 2.00d · components/sql-editor/contracts.ts · split

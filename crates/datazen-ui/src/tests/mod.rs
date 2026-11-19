@@ -648,3 +648,18 @@ mod t078_tester;
 mod t087_tester;
 mod t089_tester;
 mod t091_tester;
+// T051: the `@datazen/frontend` light entry — the barrel that dissolved
+// into the crate split (api crate = light surface, crate root = launch
+// surface): one import point, the separation invariant, capability bits
+// as the linked assembly, the light consumer's exercise.
+mod index_entry;
+// T051 audit: the publicity tripwire (the mutation round proved pub vs
+// pub(crate) invisible to in-crate tests), the no-second-import-point
+// scan, the native host's two-surface manifest, and the contracts
+// family's ported members through the api crate alone.
+mod index_entry_audit;
+// T062-S1: schema completion's pure core — dialect facade (quote/fold/
+// must-quote), the three quoting policies, qualifier filtering with
+// boosts, the all-columns dedup, SELECT-column extraction, and the
+// relations-by-columns filter.
+mod schema_completion;
