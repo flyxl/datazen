@@ -7,6 +7,13 @@ mod filter_connector_toggle;
 mod filter_operators;
 mod filter_values;
 pub(crate) mod filter_sql_preview_dialog;
+mod filter_token_input;
+mod filter_value_input;
+
+#[allow(unused_imports)] // consumed by the component tests until the filter panel view lands
+pub(crate) use filter_token_input::FilterTokenInput;
+#[allow(unused_imports)] // consumed by the component tests until the filter panel view lands
+pub(crate) use filter_value_input::{FilterValueInput, FILTER_VALUE_DEBOUNCE_MS};
 
 #[allow(unused_imports)] // consumed by the component tests until the filter panel view lands
 pub(crate) use filter_between_input::{is_inverted, FilterBetweenInput};

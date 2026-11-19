@@ -33,16 +33,12 @@
 //!
 //! ## The value controls and their owners
 //!
-//! React renders `FilterValueInput` / `FilterTokenInput` (T166) and
-//! `FilterBetweenInput` (already ported, T021). Rune renders the between bounds
-//! with that ported control and keeps **minimal local stand-ins** for the other
-//! two, because T166 owns the real ones:
-//!
-//! - single: a [`TextField`] over the caller's draft.
-//! - tokens: the same field plus a chip per value.
-//!
-//! T166 replaces the two stand-ins; this module keeps only the wiring (which
-//! key, which commit, which collapse) and the doc says so at each site.
+//! React renders `FilterValueInput` / `FilterTokenInput` and
+//! `FilterBetweenInput` (T021). All three now use real ports: T166 owns the
+//! single-value and token controls (`filter_value_input` / `filter_token_input`)
+//! and this module only wires them to its own commit/collapse rules. The
+//! earlier local stand-ins were removed by T166; keep that replacement note
+//! here so a future revert is obvious.
 //!
 //! ## Collapse on completion (React `onBlur` / deferred timer)
 //!
@@ -71,18 +67,19 @@
 
 use std::rc::Rc;
 
-use rune::{icon, row, text, El, Key, KeyEvent, TextEdit, Tx};
+use rune::{row, text, El, Key, KeyEvent, TextEdit, Tx};
 use rune_kit::{ControlSize, IconButton, IconButtonVariant, Kit};
 
 use crate::i18n::t;
 use crate::icons::ICON_X;
 use crate::support::cell_types::CellTypeHints;
-use crate::ui::field::TextField;
 use crate::ui::kit::kit;
 use crate::ui::select::Select;
 
 use super::filter_between_input::FilterBetweenInput;
 use super::filter_condition_chip::{FilterCondition, FilterValue};
+use super::filter_token_input::FilterTokenInput;
+use super::filter_value_input::FilterValueInput;
 use super::filter_operators::{
     convert_filter_value, normalize_operator_for_column, operators_for_column, static_operator,
     value_input_for, FilterValueInputKind,
@@ -273,32 +270,6 @@ impl<S: 'static> Rules<S> {
             change(state, self.index, next);
         }
         complete
-    }
-
-    /// Append one token and report whether the list is complete.
-    fn commit_token(&self, state: &mut S, token: &str) -> bool {
-        let mut next = self.live(state);
-        let mut tokens = to_tokens(&next.value);
-        tokens.push(token.to_owned());
-        next.value = FilterValue::Tokens(tokens);
-        let complete = is_complete_filter(&next);
-        if let Some(change) = &self.on_change {
-            change(state, self.index, next);
-        }
-        complete
-    }
-
-    /// Drop the token at `position` (React `value.filter((_, i) => i !== index)`).
-    fn remove_token(&self, state: &mut S, position: usize) {
-        let mut next = self.live(state);
-        let mut tokens = to_tokens(&next.value);
-        if position < tokens.len() {
-            tokens.remove(position);
-        }
-        next.value = FilterValue::Tokens(tokens);
-        if let Some(change) = &self.on_change {
-            change(state, self.index, next);
-        }
     }
 
     fn collapse(&self, state: &mut S) {
@@ -585,7 +556,31 @@ impl<'a, S: 'static> FilterConditionEditor<'a, S> {
         match value_input_for(filter.operator) {
             FilterValueInputKind::None => {}
             FilterValueInputKind::Single => {
-                root = root.child(self.single_value(&k, dark, &rules));
+                // T166: the real `FilterValueInput` owns the draft/field/Enter
+                // contract; this module only translates its callbacks.
+                root = root.child(match &self.single {
+                    Some(draft) => {
+                        let bind = draft.bind;
+                        let committing = rules.clone();
+                        let collapsing = rules.clone();
+                        FilterValueInput::<S>::new(self.key.clone(), draft.edit, bind)
+                        .placeholder(t("filter.value"))
+                        .disabled(self.disabled)
+                        // T056's editor contract commits on every Enter; keep it
+                        // until its tests follow React's unchanged-value skip.
+                        .commit_unchanged(true)
+                        .on_commit(move |s: &mut S, value: String| {
+                            committing.commit_value(s, FilterValue::Single(value));
+                        })
+                        .on_enter_complete(move |s: &mut S| {
+                            if is_complete_filter(&collapsing.live(s)) {
+                                collapsing.collapse(s);
+                            }
+                        })
+                        .build(dark)
+                    }
+                    None => self.read_only_single(&k),
+                });
                 if self.like_case_insensitive && filter.operator == "like" {
                     let hint = t("filter.likeCaseInsensitiveHint");
                     root = root.child(
@@ -600,7 +595,35 @@ impl<'a, S: 'static> FilterConditionEditor<'a, S> {
                 }
             }
             FilterValueInputKind::Tokens => {
-                root = root.child(self.token_value(&k, dark, &rules));
+                // T166: the real `FilterTokenInput` owns chips/Enter/comma/
+                // Backspace; this module owns the token list and collapse rule.
+                let tokens = to_tokens(&self.filter.value);
+                root = root.child(match &self.tokens {
+                    Some(draft) => {
+                        let bind = draft.bind;
+                        let committing = rules.clone();
+                        let collapsing = rules.clone();
+                        FilterTokenInput::<S>::new(
+                            self.key.clone(),
+                            tokens,
+                            draft.edit,
+                            bind,
+                        )
+                        .placeholder(t("filter.tokensPlaceholder"))
+                        .disabled(self.disabled)
+                        .remove_label(t("filter.tokenRemove"))
+                        .on_commit(move |s: &mut S, next: Vec<String>| {
+                            committing.commit_value(s, FilterValue::Tokens(next));
+                        })
+                        .on_enter_complete(move |s: &mut S| {
+                            if is_complete_filter(&collapsing.live(s)) {
+                                collapsing.collapse(s);
+                            }
+                        })
+                        .build(dark)
+                    }
+                    None => self.read_only_tokens(&k),
+                });
             }
             FilterValueInputKind::Pair => {
                 root = root.child(self.pair_value(dark));
@@ -639,150 +662,6 @@ impl<'a, S: 'static> FilterConditionEditor<'a, S> {
             });
         }
         root.child(remove)
-    }
-
-    /// The single literal field. T166 owns the real control; this is the
-    /// minimal stand-in: the caller's draft, committed on Enter (React commits
-    /// on a 350 ms debounce and on blur; Rune has no per-element blur, so Enter
-    /// and the parent's own commit hook carry those).
-    fn single_value(&self, k: &Kit, dark: bool, rules: &Rc<Rules<S>>) -> El {
-        let Some(draft) = &self.single else {
-            return self.read_only_single(k);
-        };
-        let bind = draft.bind;
-        let committing = rules.clone();
-        let mut field = TextField::new(format!("{}-value", self.key), draft.edit)
-            .height(28.0)
-            .width(96.0)
-            .pad_x(8.0)
-            .text_style(k.ty.text_xsmall)
-            .placeholder(t("filter.value"))
-            .on_edit(bind)
-            .on_submit(move |s: &mut S, _tx: &mut Tx| {
-                let text = bind(s).text.clone();
-                if committing.commit_value(s, FilterValue::Single(text)) {
-                    committing.collapse(s);
-                }
-            })
-            .build(dark);
-        if self.disabled {
-            field = field.disabled(true);
-        }
-        field
-    }
-
-    /// The token list. T166 owns the real control; this stand-in renders the
-    /// chips and the pending-token field, and keeps React's Enter / comma /
-    /// Backspace rules. Rune's runtime keeps Return and Escape away from the
-    /// field while an IME composition is open, so the composition guard the
-    /// React control carries by hand is already structural.
-    fn token_value(&self, k: &Kit, dark: bool, rules: &Rc<Rules<S>>) -> El {
-        let mut list = row()
-            .key(format!("{}-tokens", self.key))
-            .min_w(0.0)
-            .max_w(256.0)
-            .gap(2.0)
-            .center_y();
-        for (position, token) in to_tokens(&self.filter.value).iter().enumerate() {
-            list = list.child(self.token_chip(k, rules, position, token));
-        }
-        let Some(draft) = &self.tokens else {
-            return list;
-        };
-        let bind = draft.bind;
-        let typing = rules.clone();
-        let mut field = TextField::new(format!("{}-token-field", self.key), draft.edit)
-            .height(28.0)
-            .width(80.0)
-            .pad_x(8.0)
-            .text_style(k.ty.text_xsmall)
-            .placeholder(t("filter.tokensPlaceholder"))
-            .on_edit(bind)
-            .on_key(move |s: &mut S, event: &KeyEvent, _tx: &mut Tx| match &event.key {
-                Key::Enter => {
-                    let token = bind(s).text.trim().to_owned();
-                    if token.is_empty() {
-                        return true;
-                    }
-                    bind(s).replace_text(String::new());
-                    if typing.commit_token(s, &token) {
-                        typing.collapse(s);
-                    }
-                    true
-                }
-                Key::Text(text) if text.as_str() == "," => {
-                    let token = bind(s).text.trim().to_owned();
-                    if token.is_empty() {
-                        return true;
-                    }
-                    bind(s).replace_text(String::new());
-                    typing.commit_token(s, &token);
-                    true
-                }
-                Key::Backspace if bind(s).text.is_empty() => {
-                    let count = to_tokens(&typing.live(s).value).len();
-                    if count == 0 {
-                        return false;
-                    }
-                    typing.remove_token(s, count - 1);
-                    true
-                }
-                _ => false,
-            })
-            .build(dark);
-        if self.disabled {
-            field = field.disabled(true);
-        }
-        list.child(field)
-    }
-
-    fn token_chip(
-        &self,
-        k: &Kit,
-        rules: &Rc<Rules<S>>,
-        position: usize,
-        token: &str,
-    ) -> El {
-        let label = t("filter.tokenRemove").to_owned();
-        let removing = rules.clone();
-        let mut remove = row()
-            .role("button")
-            .key(format!("{}-token-{position}-remove", self.key))
-            .size(12.0, 12.0)
-            .center()
-            .radius(k.radius.sm)
-            .label(label.clone())
-            .help(label)
-            .focusable(!self.disabled)
-            .child(
-                icon(&ICON_X, 10.0)
-                    .key("icon")
-                    .color(k.c.text_accent)
-                    .a11y_hidden(),
-            )
-            .on_press(move |s: &mut S| removing.remove_token(s, position));
-        if self.disabled {
-            remove = remove.disabled(true).layer_opacity(0.5);
-        }
-        row()
-            .key(format!("{}-token-{position}", self.key))
-            .min_w(0.0)
-            .max_w(128.0)
-            .gap(2.0)
-            .center_y()
-            .radius(k.radius.sm)
-            .pl(4.0)
-            .pr(2.0)
-            .py(1.0)
-            .fill(k.alpha(k.c.bg_accent, 0.15))
-            .child(
-                text(token.to_owned())
-                    .key("label")
-                    .font(k.ty.small)
-                    .color(k.c.text_accent)
-                    .truncate(),
-            )
-            .child(remove)
     }
 
     /// The range control, reusing the ported `FilterBetweenInput` (T021).
@@ -838,6 +717,40 @@ impl<'a, S: 'static> FilterConditionEditor<'a, S> {
             FilterValue::None => String::new(),
         };
         self.read_only_value(k, "value", value)
+    }
+
+    /// The token chips with no editable draft (a read-only row).
+    fn read_only_tokens(&self, k: &Kit) -> El {
+        let tokens = to_tokens(&self.filter.value);
+        let mut list = row()
+            .key(format!("{}-tokens", self.key))
+            .min_w(0.0)
+            .max_w(256.0)
+            .gap(2.0)
+            .center_y();
+        for (position, token) in tokens.iter().enumerate() {
+            list = list.child(
+                row()
+                    .key(format!("{}-token-{position}", self.key))
+                    .min_w(0.0)
+                    .max_w(128.0)
+                    .gap(2.0)
+                    .center_y()
+                    .radius(k.radius.sm)
+                    .pl(4.0)
+                    .pr(2.0)
+                    .py(1.0)
+                    .fill(k.alpha(k.c.bg_accent, 0.15))
+                    .child(
+                        text(token.clone())
+                            .key("label")
+                            .font(k.ty.small)
+                            .color(k.c.text_accent)
+                            .truncate(),
+                    ),
+            );
+        }
+        list
     }
 
     /// The two bounds of a range with no drafts, read only.
