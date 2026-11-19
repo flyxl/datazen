@@ -253,6 +253,7 @@ fn can_open_false_when_structure_editor_is_explicitly_disabled() {
     let mut meta = sql_meta();
     meta.structure_editor = Some(StructureEditorUiConfig {
         enabled: Some(false),
+        ..Default::default()
     });
     assert!(!can_open_structure_editor(Some(&meta)));
 }
@@ -263,7 +264,10 @@ fn can_open_true_when_structure_editor_is_absent_or_enabled_unspecified() {
     assert!(can_open_structure_editor(Some(&absent)));
 
     let no_enabled = DatabaseTypeMeta {
-        structure_editor: Some(StructureEditorUiConfig { enabled: None }),
+        structure_editor: Some(StructureEditorUiConfig {
+            enabled: None,
+            ..Default::default()
+        }),
         ..sql_meta()
     };
     assert!(can_open_structure_editor(Some(&no_enabled)));
@@ -271,6 +275,7 @@ fn can_open_true_when_structure_editor_is_absent_or_enabled_unspecified() {
     let enabled = DatabaseTypeMeta {
         structure_editor: Some(StructureEditorUiConfig {
             enabled: Some(true),
+            ..Default::default()
         }),
         ..sql_meta()
     };
@@ -294,6 +299,7 @@ fn can_open_rejects_combinations_even_when_later_checks_would_pass() {
         connection_view: ConnectionView::Document,
         structure_editor: Some(StructureEditorUiConfig {
             enabled: Some(false),
+            ..Default::default()
         }),
         supports_sql: false,
     };
