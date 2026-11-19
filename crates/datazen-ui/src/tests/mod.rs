@@ -184,6 +184,8 @@ mod counters_audit;
 mod metadata_cache;
 // Fresh-tester independent re-audit of the D1/D2 fix (test-only probes).
 mod metadata_cache_retest;
+// T081: relationPrediction/fromRelationMetadata.ts + relationMetadata contract gap fill.
+mod relation_prediction_ports;
 
 // Independent re-audit of merged T0-07 menu base.
 mod menus_merge_reaudit;
