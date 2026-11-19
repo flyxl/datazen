@@ -39,6 +39,15 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+### 全量合流到父分支（2026-11-19，主会话执行）
+
+- 4 个 segment 成果首次全量合入 `feat/rune-native-ui-migration`：
+  - seg1 `836ce3b94`（Wave A/B） / seg2 `0e6c4d095`（15 task）/ seg3 `c271ba598`（10 task）/ seg4 `007380f87`（9 task）。
+  - 合流冲突已全部解决：app.rs（保留 `views::app_root` 委托，删除 seg3 过时内联 view）、state_def.rs（running_close_* + ai_* 字段加法）、views/mod.rs（双方 mod 行全保留）、ui/field.rs（disabled 语义合并）、icons.rs（三方重复 `ICON_ALERT_TRIANGLE` 去重）、workspace.rs（page_body 4 参数签名统一）、main_page.rs（补 layer 参数 + children）。
+  - 合流后 gate 最终 PASS（check 103 / 三 crate 120 / test 103 warnings）。第一次后台 gate 的 17 failed 是竞态（在冲突解决中途启动读到中间态），稳定后重跑全绿。
+  - 父分支已 push `836ce3b94..007380f87`。
+- segment-1 已 reset 到含全部 4 段成果的基线 `836ce3b94`，交给独立 coordinator `ses_e0e4dc6ad…` 自治推进（用户指令）。主会话不再操作 segment-1 分支，只做全局合流/协调。
+
 ### 执行模型裁决（2026-11-19，用户选 A）
 
 - 依赖分析（`task-dependencies.md` 2722 边）+ 拓扑排序提案（`task-order-topological.md` 203 波）已完成；拓扑 wave 与静态 segment 分段不兼容（每波混段、1602 跨段边）。
