@@ -361,3 +361,8 @@ mod structure_editor_types;
 // T156 independent audit: full 20-field capability surface, nested UiConfig
 // defaults, duplicate-definition and bare-panic source guards.
 mod structure_editor_types_audit;
+// T167: ConnectionShareDialogHost (state, callback wiring, keys, geometry).
+mod connection_share_host;
+// T167 independent audit: independent i18n formatter pin, exact 1500ms wake +
+// copied label, long-message visible-rect geometry, export failure fallback.
+mod connection_share_host_audit;
