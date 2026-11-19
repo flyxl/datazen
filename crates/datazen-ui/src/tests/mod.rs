@@ -365,6 +365,9 @@ mod progress_log_s1_audit;
 
 // T076-S2: ProgressLog component (header, copy button, virtualized rows).
 mod progress_log_s2;
+// T076-S2 independent audit: row pitch from rects, host-driven copied
+// label, pinned vs unpinned windows.
+mod progress_log_s2_audit;
 
 // T008: ChartCanvas dispatcher, measured viewport and honest placeholders.
 mod chart_canvas;
