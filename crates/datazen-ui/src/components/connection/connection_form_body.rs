@@ -42,6 +42,9 @@ use rune::{col, row, text, El, TextEdit, Tx};
 use crate::components::connection::connection_advanced_settings::{
     AdvancedAction, AdvancedSettingsVm, ConnectionAdvancedSettings,
 };
+use crate::components::connection::file_connection_fields::{
+    FileConnectionFields, FileFieldsAction, FileFieldsState,
+};
 use crate::i18n::t;
 use crate::ui::copyable::CopyableError;
 use crate::ui::field::TextField;
@@ -147,6 +150,8 @@ pub(crate) struct FormBodyVm {
     pub open_select: Option<FormSelect>,
     /// The advanced/tunnel accordion this body composes.
     pub advanced: AdvancedSettingsVm,
+    /// T193's `FileConnectionFields` state (replaces the local stand-in below).
+    pub file_fields: FileFieldsState,
 }
 
 #[allow(dead_code)] // initial-state convenience; wired by later callers/tests
@@ -180,6 +185,7 @@ impl Default for FormBodyVm {
             test_err: String::new(),
             open_select: None,
             advanced: AdvancedSettingsVm::default(),
+            file_fields: FileFieldsState::default(),
         }
     }
 }
@@ -300,6 +306,8 @@ pub(crate) struct ConnectionFormBody<S: 'static> {
     vm: FormBodyVm,
     on_vm: Option<VmFn<S>>,
     on_action: Option<ActionFn<S>>,
+    /// T193 forwards FileConnectionFields presses to the host port.
+    on_file_fields: Option<Rc<dyn Fn(&mut S, FileFieldsAction) + 'static>>,
 }
 
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
@@ -309,6 +317,7 @@ impl<S: 'static> ConnectionFormBody<S> {
             vm,
             on_vm: None,
             on_action: None,
+            on_file_fields: None,
         }
     }
 
@@ -327,9 +336,20 @@ impl<S: 'static> ConnectionFormBody<S> {
         self
     }
 
+    /// Forward `FileConnectionFields` presses (path browse and ADB flow) to the
+    /// host, which owns the injected [`crate::components::connection::file_connection_fields::FileFieldsPort`].
+    #[allow(dead_code)] // wired by the connection form host (not landed).
+    pub(crate) fn on_file_fields(
+        mut self,
+        f: impl Fn(&mut S, FileFieldsAction) + 'static,
+    ) -> Self {
+        self.on_file_fields = Some(Rc::new(f));
+        self
+    }
+
     /// Builds the whole body, pushing any open select listboxes into `layer`.
     pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
-        let ConnectionFormBody { vm, on_vm, on_action } = self;
+        let ConnectionFormBody { vm, on_vm, on_action, on_file_fields } = self;
         let k = kit(dark);
         let name_edit = field_edit(on_vm.as_ref(), |vm| &mut vm.name);
         let host_edit = field_edit(on_vm.as_ref(), |vm| &mut vm.host);
@@ -443,28 +463,28 @@ impl<S: 'static> ConnectionFormBody<S> {
             .flex_wrap();
         match vm.form_variant {
             FormVariant::File => {
-                // React `FileConnectionFields`: the always-visible database
-                // file path (ADB import is a separate later task).
-                let path = input_field(
-                    "new-conn-db-file-path",
+                // T193 owns the real FileConnectionFields port; the former local
+                // stand-in (path field only) is removed in favour of the full
+                // component (path + ADB pull flow). Same `new-conn-db-file-path`
+                // keys, so the existing form tests keep their targets.
+                let mut file_fields = FileConnectionFields::<S>::new(
+                    &vm.file_fields,
                     &vm.database,
-                    database_edit.as_ref(),
-                    Some("/path/to/db.sqlite"),
-                    !vm.database_error.is_empty(),
-                    false,
-                    dark,
+                    &vm.database_error,
                 );
-                fields = fields.child(field_block(
-                    "new-conn-db-file-path",
-                    t("newConn.dbFilePath"),
-                    true,
-                    path,
-                    (!vm.database_error.is_empty()).then_some((
-                        "new-conn-db-file-path-error",
-                        vm.database_error.as_str(),
-                    )),
-                    dark,
-                ));
+                if let Some(edit) = database_edit.as_ref() {
+                    let edit = edit.clone();
+                    file_fields = file_fields.database_edit(move |s: &mut S| edit(s));
+                }
+                let filter_edit = field_edit(on_vm.as_ref(), |vm| &mut vm.file_fields.package_filter);
+                if let Some(edit) = filter_edit {
+                    file_fields = file_fields.filter_edit(move |s: &mut S| edit(s));
+                }
+                if let Some(handler) = on_file_fields.as_ref() {
+                    let handler = handler.clone();
+                    file_fields = file_fields.on_action(move |s: &mut S, action| handler(s, action));
+                }
+                fields = fields.child(file_fields.build(dark, layer));
             }
             FormVariant::Index => {
                 // React `IndexConnectionFields` is passed as `databaseField`
