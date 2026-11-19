@@ -244,6 +244,9 @@ mod metadata_cache;
 // Fresh-tester independent re-audit of the D1/D2 fix (test-only probes).
 mod metadata_cache_retest;
 
+// T091: platform/capabilities.ts — desktop and web capability tables.
+mod platform_capabilities;
+
 // Independent re-audit of merged T0-07 menu base.
 mod menus_merge_reaudit;
 
