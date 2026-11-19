@@ -276,6 +276,12 @@ mod blob_tables_exporter_emission;
 mod blob_tables_exporter_emission_audit;
 // T039: React stores/activeConnectionStore.ts parity (active-connection store).
 mod active_connection_store;
+// T209: the per-panel editor-selection store (empty removes, no-op
+// unchanged, clear drops, the nullish read).
+mod editor_selection_store;
+// T209 independent audit: whitespace selections, overwrite semantics,
+// panel isolation, the full global round-trip grid.
+mod editor_selection_store_audit;
 // T039 independent audit: markConnected spread semantics, timeout re-arm
 // and per-entry isolation, disconnect finally ordering, reset interplay.
 mod active_connection_store_audit;
