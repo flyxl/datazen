@@ -89,10 +89,16 @@ fn has_key(rt: &Runtime<PanelState>, key: &str) -> bool {
 }
 
 fn click(rt: &mut Runtime<PanelState>, key: &str) {
+    // Freshly-mounted content rides a reveal: a press cannot reach it until
+    // the reveal lands, and what the press mounts is itself mid-reveal until
+    // it settles. Settle both sides — the rail-modals suite's ruling.
+    rt.settle_all();
+    rt.frame(0.0);
     let (x, y) = rt.find(key).unwrap_or_else(|| panic!("{key} is laid out"));
     rt.pointer_down(x, y);
     rt.pointer_up(x, y);
-    rt.frame(1.0 / 60.0);
+    rt.settle_all();
+    rt.frame(0.0);
 }
 
 fn step(id: &str, status: WorkflowStepStatus) -> StepExecutionResult {
@@ -429,7 +435,6 @@ fn the_table_preview_shows_the_first_twenty_rows_and_the_more_line() {
         .collect();
     let mut rt = probe(run(vec![data_step(json!(rows), None)]));
     click(&mut rt, &format!("{PREFIX}-step-0-row"));
-
     // The row count reads the row list's length.
     assert_eq!(
         element(&rt, &format!("{PREFIX}-step-0-rows-count")).text.as_deref(),
@@ -484,11 +489,15 @@ fn the_table_preview_shows_the_first_twenty_rows_and_the_more_line() {
     click(&mut exact, &format!("{PREFIX}-step-0-row"));
     assert!(!has_key(&exact, &format!("{PREFIX}-step-0-table-more")));
 
-    // The rows_count the host reported wins over the list length.
-    let mut reported = probe(run(vec![data_step(
-        json!({ "rows": [{ "a": 1 }], "rows_count": 99 }),
-        None,
-    )]));
+    // The rows_count the host reported wins over the list length. The
+    // payload's shape is `{"rows": [...], "rows_count": 99}` — the count
+    // rides the payload next to the rows (a `rows` that is not an array is
+    // no result at all).
+    let mut reported_step = data_step(json!([{ "a": 1 }]), None);
+    if let Some(result) = reported_step.result.as_mut() {
+        result["rows_count"] = json!(99);
+    }
+    let mut reported = probe(run(vec![reported_step]));
     click(&mut reported, &format!("{PREFIX}-step-0-row"));
     assert_eq!(
         element(&reported, &format!("{PREFIX}-step-0-rows-count")).text.as_deref(),
@@ -538,7 +547,29 @@ fn the_view_toggle_exists_only_for_chartable_results() {
 
     // Pressing the chart entry flips to the chart frame (T104's honest
     // placeholder inside React's 260pt geometry).
+    let (dbg_x, dbg_y) = rt.find(&format!("{PREFIX}-step-0-view-chart")).unwrap();
+    eprintln!("DBG chart entry at ({dbg_x},{dbg_y})");
+    for e in rt.elements() {
+        if e.opacity < 0.9 {
+            eprintln!("DBG dim: key={:?} opacity={} rect={:?}", e.key, e.opacity, e.rect);
+        }
+    }
+    rt.frame(0.5);
+    eprintln!("DBG after settle: entry opacity={}", rt.elements().into_iter().find(|e| e.key.as_deref() == Some(&format!("{PREFIX}-step-0-view-chart"))).unwrap().opacity);
+    for probe in [dbg_x - 10.0, dbg_x, dbg_x + 10.0] {
+        if let Some(picked) = rt.element_at(probe, dbg_y) {
+            eprintln!("DBG element_at({probe:.0},{dbg_y}) picks path={:?} key={:?}", picked.path(), picked.key());
+        } else {
+            eprintln!("DBG element_at({probe:.0},{dbg_y}) picks nothing");
+        }
+    }
     click(&mut rt, &format!("{PREFIX}-step-0-view-chart"));
+    eprintln!("DBG chart set: {:?}", rt.state.chart);
+    for e in rt.elements() {
+        if e.key.as_deref().is_some_and(|k| k.contains("chart") || k.contains("table")) {
+            eprintln!("DBG key={:?} exiting={}", e.key, e.exiting);
+        }
+    }
     assert!(has_key(&rt, &format!("{PREFIX}-step-0-chart")));
     assert!(!has_key(&rt, &format!("{PREFIX}-step-0-table")));
     let chart = element(&rt, &format!("{PREFIX}-step-0-chart"));
@@ -775,10 +806,11 @@ fn the_helper_slice_matches_react_semantics() {
 /// real run paths (the memory port's audit workflow fails its applying
 /// step), through the same keys the page pins.
 #[test]
-fn the_workflows_page_mounts_the_bar_and_the_panel_over_a_real_run() {
+fn the_workflows_page_mounts_the_panel_over_a_real_run() {
     let mut rt = runtime();
     rt.frame(0.0);
-    // Navigate to the workflows page and open the audit workflow.
+    // Navigate to the workflows page and open the audit workflow's run
+    // panel (T145's page port; the lite page's inline run it replaces).
     let (x, y) = rt.find("rail-workflows").expect("workflows navigation");
     rt.pointer_down(x, y);
     rt.pointer_up(x, y);
@@ -787,26 +819,7 @@ fn the_workflows_page_mounts_the_bar_and_the_panel_over_a_real_run() {
     rt.pointer_down(x, y);
     rt.pointer_up(x, y);
     rt.frame(1.0);
-
-    // The action bar replaced the form head's Save/Close pair.
-    assert!(rt.find("workflow-editor-action-bar").is_some(), "the bar mounts");
-    assert!(rt.find("workflow-save").is_some(), "Save keeps its pinned key");
-    assert!(rt.find("workflow-editor-cancel").is_some(), "Cancel mounts");
-    assert!(rt.find("workflow-run").is_some(), "Run stays in the head");
-    // Cancel closes the editor (React's onCancel → closePanel).
-    let (x, y) = rt.find("workflow-editor-cancel").expect("the cancel button");
-    rt.pointer_down(x, y);
-    rt.pointer_up(x, y);
-    rt.frame(1.0);
-    assert!(rt.state.workflow_editing.is_none(), "Cancel closed the editor");
-    assert!(rt.find("workflow-form").is_none());
-
-    // Reopen, run, and read the panel the projection filled.
-    let (x, y) = rt.find("workflow-audit").expect("the audit workflow row");
-    rt.pointer_down(x, y);
-    rt.pointer_up(x, y);
-    rt.frame(1.0);
-    let (x, y) = rt.find("workflow-run").expect("the run button");
+    let (x, y) = rt.find("workflow-execute-button").expect("the execute button");
     rt.pointer_down(x, y);
     rt.pointer_up(x, y);
     rt.frame(1.0);
@@ -830,24 +843,32 @@ fn the_workflows_page_mounts_the_bar_and_the_panel_over_a_real_run() {
         .expect("the panel head time");
     assert_eq!(time.text.as_deref(), Some("0ms"));
 
-    // Two steps: the failing "apply plan" carries its summary as the error
-    // line once expanded; the lite projection types no steps (no chip).
+    // Two steps, in the result's own order: steps[0] is "compare
+    // structures" (ok) and steps[1] is the failing "apply plan", whose
+    // summary becomes the error line once expanded; the lite projection
+    // types no steps (no chip).
     assert!(rt.find("workflow-execution-result-step-0-row").is_some());
     assert!(rt.find("workflow-execution-result-step-1-row").is_some());
+    // The panel's rows mount mid-reveal after the execute press: settle
+    // before the row's press reaches it, and settle what the press mounts
+    // (the rail-modals suite's ruling).
+    rt.settle_all();
+    rt.frame(0.0);
     let (x, y) = rt
-        .find("workflow-execution-result-step-0-row")
-        .expect("the first step row");
+        .find("workflow-execution-result-step-1-row")
+        .expect("the failing step's row");
     rt.pointer_down(x, y);
     rt.pointer_up(x, y);
-    rt.frame(1.0);
+    rt.settle_all();
+    rt.frame(0.0);
     let error = rt
         .elements()
         .into_iter()
-        .find(|e| e.key.as_deref() == Some("workflow-execution-result-step-0-error"))
+        .find(|e| e.key.as_deref() == Some("workflow-execution-result-step-1-error"))
         .expect("the failing step's error line");
     assert_eq!(error.text.as_deref(), Some("the replica refused the plan"));
     assert!(
-        rt.find("workflow-execution-result-step-0-type").is_none(),
+        rt.find("workflow-execution-result-step-1-type").is_none(),
         "the lite projection types no steps"
     );
     assert!(
@@ -856,20 +877,30 @@ fn the_workflows_page_mounts_the_bar_and_the_panel_over_a_real_run() {
     );
 }
 
-/// The app wiring: closing the editor clears the panel's interaction state,
-/// like React unmounting the panel resets its row `useState`s.
+/// The app wiring: closing the run panel clears the interaction state the
+/// panel's rows own, like React unmounting the panel resets its row
+/// `useState`s — while the store's result slot survives the close (React
+/// keeps `workflowExecutionResult` in the store).
 #[test]
-fn closing_the_editor_clears_the_panel_state() {
+fn closing_the_run_panel_clears_the_panel_state() {
     let mut rt = runtime();
     rt.frame(0.0);
     rt.state.active = crate::types::Section::Workflows;
-    rt.state.edit_workflow("audit");
-    rt.state.run_edited_workflow();
+    rt.state.fetch_workflow_list();
+    let workflow = rt.state.workflow_list[0].clone();
+    rt.state.select_workflow_list_item(&workflow);
+    rt.state.execute_active_workflow();
     rt.state.toggle_workflow_step_expanded("apply plan");
     assert!(rt.state.workflow_step_expanded.contains("apply plan"));
     assert!(rt.state.workflow_execution.is_some());
-    rt.state.close_workflow_editor();
-    assert!(rt.state.workflow_execution.is_none());
+    let active = rt
+        .state
+        .workflow_active_panel
+        .clone()
+        .expect("the run panel is open");
+    rt.state.close_workflow_panel(&active);
+    assert!(rt.state.workflow_panels.is_empty());
+    assert!(rt.state.workflow_execution.is_some(), "the store slot survives");
     assert!(rt.state.workflow_step_expanded.is_empty());
     assert!(rt.state.workflow_step_chart.is_empty());
 }

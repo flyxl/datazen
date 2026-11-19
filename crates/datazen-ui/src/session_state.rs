@@ -41,6 +41,18 @@ impl AppState {
             // keeps a loaded store from refetching on every entry.
             self.fetch_wapps();
         }
+        if section == Section::Workflows {
+            // T145: React's page mount effect (`WorkflowPage.tsx:231-241`) —
+            // the real halves run: the workflow list (`loadWorkflows`) and
+            // the connections (`reloadConnections`, into the form's slot).
+            // The command seams stay: `workflowGetDir` keeps the dir slot
+            // empty (React's own conditional then hides the open-dir
+            // button), and the reload/listeners need their use cases. React
+            // refetches on every mount — the section entry is this build's
+            // mount — so no `loaded` guard here (the wapps page's own).
+            self.fetch_workflow_list();
+            self.reload_workflow_connections();
+        }
     }
 
     /// Ask the desktop adapter for the connection list. A wired adapter's

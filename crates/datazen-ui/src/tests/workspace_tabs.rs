@@ -43,20 +43,28 @@ fn the_widget_and_workflow_forms_save_through_the_host() {
         "the form cleared after the host's save"
     );
 
-    // The workflow editor's save and run land in the host's registry.
+    // The workflow page's edit pane saves through the host's registry, and
+    // the run panel runs through the host's engine (T145's page port — the
+    // lite inline editor's save/run pair it replaces).
     let (x, y) = runtime
         .find("rail-workflows")
         .expect("workflows navigation");
     runtime.pointer_down(x, y);
     runtime.pointer_up(x, y);
     runtime.frame(1.0);
-    let (x, y) = runtime.find("workflow-host-etl").expect("the host's row");
+    let (x, y) = runtime
+        .find("workflow-host-etl-edit")
+        .expect("the row's edit affordance");
     runtime.pointer_down(x, y);
     runtime.pointer_up(x, y);
     runtime.frame(1.0);
+    assert!(
+        runtime.find("workflow-form-root").is_some(),
+        "the visual form mounts in the edit pane"
+    );
     let (x, y) = runtime
-        .find("workflow-save")
-        .expect("the workflow save button");
+        .find("workflow-yaml-save")
+        .expect("the shared action bar's save button");
     runtime.pointer_down(x, y);
     runtime.pointer_up(x, y);
     runtime.frame(0.0);
@@ -69,8 +77,8 @@ fn the_widget_and_workflow_forms_save_through_the_host() {
         "the host's registry received the workflow"
     );
     assert!(
-        runtime.state.workflow_editing.is_none(),
-        "the editor closed after the save"
+        runtime.state.workflow_panels.is_empty(),
+        "the edit panel closed after the save"
     );
 
     let (x, y) = runtime
@@ -79,7 +87,9 @@ fn the_widget_and_workflow_forms_save_through_the_host() {
     runtime.pointer_down(x, y);
     runtime.pointer_up(x, y);
     runtime.frame(1.0);
-    let (x, y) = runtime.find("workflow-run").expect("the run button");
+    let (x, y) = runtime
+        .find("workflow-execute-button")
+        .expect("the run panel's execute button");
     runtime.pointer_down(x, y);
     runtime.pointer_up(x, y);
     runtime.frame(0.0);
@@ -110,7 +120,10 @@ fn the_workflow_list_is_sorted_by_name() {
     runtime.pointer_up(x, y);
     runtime.frame(0.0);
 
-    assert!(runtime.find("workflows-page").is_some());
+    // T145: the page port's root (the lite page's `workflows-page` went with
+    // it); the list still keys the rows `workflow-{name}`.
+    assert!(runtime.find("workflow-workspace").is_some());
+    assert!(runtime.find("workflow-list").is_some());
     let audit = runtime
         .presented("workflow-audit")
         .expect("audit is listed")
@@ -130,80 +143,6 @@ fn the_workflow_list_is_sorted_by_name() {
 }
 
 #[test]
-fn the_first_workflow_step_cannot_move_up() {
-    use datazen_ui_api::WorkspaceApi;
-
-    let mut runtime = runtime();
-    runtime.frame(0.0);
-    let (x, y) = runtime.find("rail-workflows").unwrap();
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
-    runtime.frame(1.0);
-
-    let (x, y) = runtime.find("workflow-audit").expect("a workflow row");
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
-    runtime.frame(1.0);
-    assert!(runtime.find("workflow-form").is_some());
-    assert!(runtime.find("step-row-0").is_some());
-    assert!(runtime.find("step-row-1").is_some());
-
-    // The first step cannot move up.
-    let (x, y) = runtime.find("step-up-0").unwrap();
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
-    runtime.frame(0.0);
-    assert_eq!(
-        runtime.state.workflow_editing.as_ref().unwrap().1,
-        vec!["compare structures".to_owned(), "apply plan".to_owned()],
-        "the first step stayed put"
-    );
-
-    // Down moves it below the second; up brings it back.
-    let (x, y) = runtime.find("step-down-0").unwrap();
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
-    runtime.frame(0.0);
-    assert_eq!(
-        runtime.state.workflow_editing.as_ref().unwrap().1,
-        vec!["apply plan".to_owned(), "compare structures".to_owned()]
-    );
-    let (x, y) = runtime.find("step-up-1").unwrap();
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
-    runtime.frame(0.0);
-    assert_eq!(
-        runtime.state.workflow_editing.as_ref().unwrap().1,
-        vec!["compare structures".to_owned(), "apply plan".to_owned()]
-    );
-
-    // The last step cannot move down either.
-    let (x, y) = runtime.find("step-down-1").unwrap();
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
-    runtime.frame(0.0);
-    assert_eq!(runtime.state.workflow_editing.as_ref().unwrap().1.len(), 2);
-
-    // Save persists the order through the port.
-    runtime.state.move_workflow_step(0, false);
-    let (x, y) = runtime.find("workflow-save").unwrap();
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
-    runtime.frame(0.0);
-    let audit = runtime
-        .state
-        .workspace
-        .workflows()
-        .into_iter()
-        .find(|flow| flow.name == "audit")
-        .unwrap();
-    assert_eq!(
-        audit.steps,
-        vec!["apply plan".to_owned(), "compare structures".to_owned()]
-    );
-}
-
-#[test]
 fn the_workflow_yaml_edits_and_undoes_through_the_document_model() {
     use crate::app_key;
     use rune::{Key, KeyEvent, Mods};
@@ -216,7 +155,19 @@ fn the_workflow_yaml_edits_and_undoes_through_the_document_model() {
     runtime.pointer_up(x, y);
     runtime.frame(1.0);
 
-    let (x, y) = runtime.find("workflow-audit").unwrap();
+    // T145: the edit pane's yaml mode carries the document (the lite page's
+    // inline yaml surface it replaces) — the row's edit affordance opens the
+    // pane, the mode tab writes the document over the loaded draft.
+    let (x, y) = runtime.find("workflow-audit-edit").unwrap();
+    runtime.pointer_down(x, y);
+    runtime.pointer_up(x, y);
+    runtime.frame(1.0);
+    assert!(runtime.find("workflow-edit-panel").is_some(), "the edit pane");
+    assert!(
+        runtime.find("yaml-editor").is_none(),
+        "the visual mode mounts no yaml surface yet"
+    );
+    let (x, y) = runtime.find("workflow-mode-yaml").unwrap();
     runtime.pointer_down(x, y);
     runtime.pointer_up(x, y);
     runtime.frame(1.0);
@@ -264,31 +215,36 @@ fn workflow_run_results_separate_failures_from_successes() {
     runtime.pointer_down(x, y);
     runtime.pointer_up(x, y);
     runtime.frame(1.0);
+    // T145: the row's press opens the run panel (React's openRunPanel), and
+    // the variables row's Execute runs it.
     let (x, y) = runtime.find("workflow-audit").unwrap();
     runtime.pointer_down(x, y);
     runtime.pointer_up(x, y);
     runtime.frame(1.0);
+    assert!(runtime.find("workflow-tab-wf-1").is_some(), "the run panel tab");
 
-    let (x, y) = runtime.find("workflow-run").expect("run button");
+    let (x, y) = runtime.find("workflow-execute-button").expect("run button");
     runtime.pointer_down(x, y);
     runtime.pointer_up(x, y);
     runtime.frame(0.0);
 
-    assert!(runtime.find("run-results").is_some());
-    assert!(runtime.find("run-result-0").is_some());
-    assert!(
-        runtime.find("run-ok-0").is_some(),
-        "the first step succeeded"
-    );
-    assert!(runtime.find("run-result-1").is_some());
-    assert!(
-        runtime.find("run-fail-1").is_some(),
-        "the applying step failed"
-    );
-    assert!(
-        runtime.find("run-ok-1").is_none(),
-        "a step is one or the other"
-    );
+    // The run status row: the failed run's ✗ mark (0ms — the lite report
+    // carries no timing).
+    assert!(runtime.find("workflow-run-status").is_some());
+    let status = runtime
+        .elements()
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some("workflow-run-status"))
+        .expect("the run status line");
+    assert!(status.text.as_deref().unwrap_or_default().starts_with('✗'));
+
+    // The steps bar (desc order — the settings default): the applying step
+    // is first; the panel's own rows carry the ok/fail split below.
+    assert!(runtime.find("workflow-step-apply plan").is_some());
+    assert!(runtime.find("workflow-step-compare structures").is_some());
+    assert!(runtime.find("workflow-execution-result").is_some());
+    assert!(runtime.find("workflow-execution-result-step-0-row").is_some());
+    assert!(runtime.find("workflow-execution-result-step-1-row").is_some());
     let results = &runtime.state.workflow_results;
     assert_eq!(results[0].summary, "ok: 12 rows");
     assert_eq!(results[1].summary, "the replica refused the plan");

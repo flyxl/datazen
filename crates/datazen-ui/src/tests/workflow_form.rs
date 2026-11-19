@@ -428,13 +428,13 @@ fn the_compact_variant_boxes_in_p3_and_gates_its_save() {
     assert!(!save.focusable, "an empty draft disables the compact Save");
     assert!(cancel.focusable, "Cancel stays enabled beside it");
 
-    // A disabled Save is inert: its press never reaches the host save path.
-    rt.state.workflow_editing = Some(("wf".to_owned(), vec!["SELECT 1".to_owned()]));
+    // A disabled Save is inert: its press never reaches the host save path
+    // (the feedback line the save would write stays silent).
     rt.settle_all();
     rt.frame(0.0);
     click(&mut rt, "workflow-form-save");
     assert!(
-        rt.state.workflow_editing.is_some(),
+        rt.state.workflow_feedback.is_empty(),
         "a disabled Save press does nothing"
     );
 
@@ -443,10 +443,23 @@ fn the_compact_variant_boxes_in_p3_and_gates_its_save() {
     type_into(&mut rt, "workflow-form-name", "夜跑");
     assert!(element(&rt, "workflow-form-save").focusable, "the gate opened");
     click(&mut rt, "workflow-form-save");
-    assert!(
-        rt.state.workflow_editing.is_none(),
+    assert_eq!(
+        rt.state.workflow_feedback,
+        crate::i18n::t("workflows.saved"),
         "the enabled Save ran save_workflow_form over the real slots"
     );
+    // The draft's steps reached the memory registry: the empty first step's
+    // sql rides as its id (the lean projection workflowDraftToDefinition
+    // carries, T225's full conversion is ahead).
+    use datazen_ui_api::WorkspaceApi;
+    let saved = rt
+        .state
+        .workspace
+        .workflows()
+        .into_iter()
+        .find(|flow| flow.name == "夜跑")
+        .expect("the registry saved the draft");
+    assert_eq!(saved.steps, vec!["step1".to_owned()]);
 
     // The compact Cancel routes through the real slot wiring too.
     rt.state

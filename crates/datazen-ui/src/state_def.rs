@@ -5,8 +5,13 @@ use crate::sql_editor::SqlEditor;
 use crate::types::{QuerySidebarPanel, ResultView, Section, TableView, Tool};
 use crate::views::{InstallWappStep, RunningExecutionCloseRequest, WappFilter, WappPackagePreview, WappRemoveRequest, WappSummaryVm};
 use crate::views::WorkflowExecutionResult;
+use crate::views::HistoryListItem;
 use crate::views::{
     WorkflowCommandDefinition, WorkflowConnectionOption, WorkflowDraft, WorkflowFormSelect,
+};
+use crate::views::workflow_page::{
+    WorkflowConfirmRequest, WorkflowContextMenuRequest, WorkflowEditorMode, WorkflowListItem,
+    WorkflowPanel, WorkflowSideTab, WorkflowStepOrder,
 };
 use std::cell::Cell;
 
@@ -314,9 +319,9 @@ pub struct AppState {
     pub(crate) widget_title: TextEdit,
     pub(crate) widget_query: TextEdit,
     pub(crate) widget_error: Option<String>,
-    /// The workflow being edited: its name and the step list being reordered.
-    pub(crate) workflow_editing: Option<(String, Vec<String>)>,
-    /// The workflow's YAML, edited through the SQL editor's document model.
+    /// The workflow page's YAML document, edited through the SQL editor's
+    /// document model (T145: the edit panel's yaml mode and the lite editor
+    /// before it — the surface the workspace-tabs tests pin).
     pub(crate) workflow_yaml: SqlEditor,
     /// The last workflow run's results.
     pub(crate) workflow_results: Vec<WorkflowStepResult>,
@@ -334,41 +339,100 @@ pub struct AppState {
     pub(crate) workflow_generation: u32,
     pub(crate) workflow_loading: Option<u32>,
     /// T070: the visual workflow form's draft (React `WorkflowForm`'s
-    /// `draft` prop). The page mount that drives it is the WorkflowPage
-    /// port (T147); the form's tests drive the real state through
-    /// `workflow_form_slots()`.
-    #[allow(dead_code)]
+    /// `draft` prop), driven by the page mount's edit pane (T145) and the
+    /// form's tests through `workflow_form_slots()`.
     pub(crate) workflow_draft: WorkflowDraft,
     /// T070: the form's open listbox (React's `ui/Select` keeps its own open
     /// state internally; immediate mode puts the one open select in `S`).
-    #[allow(dead_code)]
     pub(crate) workflow_form_open: Option<WorkflowFormSelect>,
     /// T070: the command-input text areas' editing state (React's
     /// `CommandInputEditor` locals), keyed `step<i>.<field>` / `step<i>.raw`.
-    #[allow(dead_code)]
     pub(crate) workflow_form_input_edits: std::collections::BTreeMap<String, TextEdit>,
     /// T070: the connections the form offers (React's `connections` prop —
-    /// the page's `savedConnections`), held here for the page mount (T147)
-    /// and the form's probes.
-    #[allow(dead_code)]
+    /// the page's `savedConnections`), filled by the page's
+    /// `reload_workflow_connections` (T145) and the form's probes.
     pub(crate) workflow_form_connections: Vec<WorkflowConnectionOption>,
     /// T070: the loaded command definitions per connection (React's
     /// `commandsByConnection` — the loader itself is a host-side seam).
-    #[allow(dead_code)]
     pub(crate) workflow_form_commands:
         std::collections::BTreeMap<String, Vec<WorkflowCommandDefinition>>,
     /// T070: the connections whose command list is in flight (React's
     /// `loadingCommands`).
-    #[allow(dead_code)]
     pub(crate) workflow_form_commands_loading: std::collections::BTreeSet<String>,
     /// T070: the loaded database lists per multi-db connection (React's
     /// `databasesByConn`; the `listDatabasesDedicated` loader is T467's).
-    #[allow(dead_code)]
     pub(crate) workflow_form_databases: std::collections::BTreeMap<String, Vec<String>>,
     /// T070: the connections whose database list is in flight (React's
     /// `loadingDatabases`).
-    #[allow(dead_code)]
     pub(crate) workflow_form_databases_loading: std::collections::BTreeSet<String>,
+    /// T145: the page's workflow list (React `aiStore.workflows`) — the host
+    /// registry's lite projection, refilled by `fetch_workflow_list`
+    /// (`workflow_page_state.rs`).
+    pub(crate) workflow_list: Vec<WorkflowListItem>,
+    /// T145: the list's loading flag (React `workflowsLoading`).
+    pub(crate) workflow_list_loading: bool,
+    /// T145: the store's error slot (React `workflowError`) — the pane branch
+    /// the page renders while it is `Some`.
+    pub(crate) workflow_store_error: Option<String>,
+    /// T145: the open panels (React `panels`) — run, edit, history and
+    /// ai-create, in open order.
+    pub(crate) workflow_panels: Vec<WorkflowPanel>,
+    /// T145: the active panel id (React `activePanelId`).
+    pub(crate) workflow_active_panel: Option<String>,
+    /// T145: the active step index (React `activeStepIndex`) — the step the
+    /// detail view shows within the active panel's result.
+    pub(crate) workflow_active_step: Option<usize>,
+    /// T145: the page's operation error (React `operationError`) — the strip
+    /// banner the sidebar renders.
+    pub(crate) workflow_operation_error: Option<String>,
+    /// T145: the page's feedback line (React `feedback`).
+    pub(crate) workflow_feedback: String,
+    /// T145: the sidebar's side tab (React `sideTab`).
+    pub(crate) workflow_side_tab: WorkflowSideTab,
+    /// T145: the history items (React `historyItems`) — the list use case's
+    /// seam keeps them empty; the wiring's transition
+    /// (`workflow_history_loaded`) fills them.
+    pub(crate) workflow_history_items: Vec<HistoryListItem>,
+    /// T145: the run's variable inputs (React `variables`) — the field values
+    /// the run panel's inputs edit.
+    pub(crate) workflow_variables: std::collections::BTreeMap<String, TextEdit>,
+    /// T145: the connection variable's select — the open dropdown's
+    /// variable name (the workflow form's select slots pattern).
+    pub(crate) workflow_variable_select: Option<String>,
+    /// T145: the workflows dir (React `workflowsDir`) — the get-dir command
+    /// seam keeps it `None`, so React's own conditional hides the open-dir
+    /// button.
+    pub(crate) workflow_dir: Option<String>,
+    /// T145: the edit panel's editor mode (React `editorMode`).
+    pub(crate) workflow_editor_mode: WorkflowEditorMode,
+    /// T145: the step-result order (React
+    /// `appSettings.workflowStepResultOrder ?? 'desc'`; the settings store's
+    /// persistence is the seam).
+    pub(crate) workflow_step_order: WorkflowStepOrder,
+    /// T145: the confirm dialog's pending ask (React `useConfirmDialog`'s
+    /// `{options, resolve}`; the root modal layer mounts the dialog while
+    /// one is pending).
+    pub(crate) workflow_confirm_request: Option<WorkflowConfirmRequest>,
+    /// T145: the generation of a confirm-dialog open (`Dialog::open_epoch`).
+    pub(crate) workflow_confirm_epoch: u64,
+    /// T145: the add-to-dashboard dialog is open — the pending mount the
+    /// modal layer shows (T018's dialog port swaps it).
+    pub(crate) workflow_add_dashboard_open: bool,
+    /// T145: the list row's secondary press — the context-menu seam's trigger
+    /// (the workflow id and the window point; the entries builder and the
+    /// native host are T646's).
+    pub(crate) workflow_context_menu: Option<WorkflowContextMenuRequest>,
+    /// T145: the page's chart config slot per step id (ChartView's
+    /// `savedConfig`).
+    pub(crate) workflow_chart_configs:
+        std::collections::BTreeMap<String, crate::components::chart::chart_canvas::ChartConfig>,
+    /// T145: the page's per-step chart flags — the expanded overlay, the split
+    /// view and the export dropdown (ChartView's own state, S-owned).
+    pub(crate) workflow_chart_expanded: std::collections::BTreeSet<String>,
+    pub(crate) workflow_chart_split: std::collections::BTreeSet<String>,
+    pub(crate) workflow_chart_export_open: std::collections::BTreeSet<String>,
+    /// T145: the panel id counter (React's module-scope `panelCounter`).
+    pub(crate) workflow_panel_counter: u32,
     /// Live size for the splitter being dragged (L2): (region key, points).
     /// While `Some`, `splitter_size` returns this instead of the persisted
     /// value; a cancelled or finished drag clears it.
@@ -541,7 +605,6 @@ impl Default for AppState {
             widget_title: TextEdit::new(String::new()),
             widget_query: TextEdit::new(String::new()),
             widget_error: None,
-            workflow_editing: None,
             workflow_yaml: SqlEditor::new(),
             workflow_results: Vec::new(),
             workflow_execution: None,
@@ -557,6 +620,30 @@ impl Default for AppState {
             workflow_form_commands_loading: std::collections::BTreeSet::new(),
             workflow_form_databases: std::collections::BTreeMap::new(),
             workflow_form_databases_loading: std::collections::BTreeSet::new(),
+            workflow_list: Vec::new(),
+            workflow_list_loading: false,
+            workflow_store_error: None,
+            workflow_panels: Vec::new(),
+            workflow_active_panel: None,
+            workflow_active_step: None,
+            workflow_operation_error: None,
+            workflow_feedback: String::new(),
+            workflow_side_tab: WorkflowSideTab::Workflows,
+            workflow_history_items: Vec::new(),
+            workflow_variables: std::collections::BTreeMap::new(),
+            workflow_variable_select: None,
+            workflow_dir: None,
+            workflow_editor_mode: WorkflowEditorMode::Visual,
+            workflow_step_order: WorkflowStepOrder::Desc,
+            workflow_confirm_request: None,
+            workflow_confirm_epoch: 0,
+            workflow_add_dashboard_open: false,
+            workflow_context_menu: None,
+            workflow_chart_configs: std::collections::BTreeMap::new(),
+            workflow_chart_expanded: std::collections::BTreeSet::new(),
+            workflow_chart_split: std::collections::BTreeSet::new(),
+            workflow_chart_export_open: std::collections::BTreeSet::new(),
+            workflow_panel_counter: 0,
             splitter_preview: None,
             running_close_request: None,
             running_close_epoch: 0,
