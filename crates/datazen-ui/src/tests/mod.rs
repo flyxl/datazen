@@ -343,6 +343,11 @@ mod page_unload_audit;
 
 // T091: platform/capabilities.ts — desktop and web capability tables.
 mod platform_capabilities;
+// T160: platform/env.ts — the compile-time form determination.
+mod platform_env;
+// T160 independent audit: the fold agrees with the capability tables,
+// and the consumer branch shape.
+mod platform_env_audit;
 // T091 independent audit: web keeps behavior, drops logging, desktop ends
 // at extensions, neither table uses the http version source.
 mod platform_capabilities_audit;
