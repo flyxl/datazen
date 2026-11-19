@@ -716,3 +716,7 @@ mod chart_widget_tile_audit;
 // T146: the monitor schedule authorization card port (grant load guards,
 // the authorized-until status line, the authorize/revoke buttons).
 mod monitor_schedule_authorization_audit;
+// T175: the run-history drawer port (index list branches, entry rows, the
+// epoch-cancelled deliveries, the loaded run's chart/table/error states,
+// the right-anchored max-w-3xl geometry).
+mod run_history_drawer_audit;

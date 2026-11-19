@@ -277,6 +277,15 @@ pub(crate) fn timeout_amber(_dark: bool) -> Color {
     rune::oklch(0.828, 0.189, 84.429)
 }
 
+/// Run-history ok-status ink (T175, `RunHistoryDrawer.tsx`'s
+/// `text-emerald-500` on an ok index entry — the `statusClass` table's ok
+/// arm). Tailwind emerald-500 (oklch 0.696 0.17 162.48) verbatim, the
+/// sibling of the tile's `alert_amber` / `timeout_amber`.
+pub(crate) fn run_ok_emerald(_dark: bool) -> Color {
+    // kit 无对应 token: dashboard run-status emerald
+    rune::oklch(0.696, 0.17, 162.48)
+}
+
 /// AI profile shield tint per safety preset (T009-S3, `AiChatPanel.tsx`:
 /// `text-emerald-400` / `text-amber-400` / `text-blue-400`). Exact Tailwind
 /// sRGB values, so the laid-out shield reports the same hue React paints.

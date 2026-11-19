@@ -226,8 +226,9 @@ pub(crate) enum WidgetRunStatus {
 
 impl WidgetRunStatus {
     /// Parse a wire status; unknown values fall back to `error` so a malformed
-    /// payload cannot paint a success state.
-    fn from_str(value: &str) -> Self {
+    /// payload cannot paint a success state. (Also the run-history drawer's
+    /// index-entry parser, T175.)
+    pub(crate) fn from_str(value: &str) -> Self {
         match value {
             "ok" => Self::Ok,
             "timeout" => Self::Timeout,
@@ -727,9 +728,9 @@ fn centered_note(key: &str, k: &Kit, message: &str, color: Color) -> El {
 }
 
 /// The table mode: the shared keyed grid over the run's columns and rows.
-/// `prefix` keys the grid (`{prefix}-grid`) so the tile and the overlay keep
-/// distinct subtrees.
-fn table_grid(run: &WidgetRunVm, prefix: &str, dark: bool) -> El {
+/// `prefix` keys the grid (`{prefix}-grid`) so the tile, the overlay and the
+/// run-history drawer keep distinct subtrees.
+pub(crate) fn table_grid(run: &WidgetRunVm, prefix: &str, dark: bool) -> El {
     let columns = table_columns(run);
     let rows: Vec<Vec<String>> = run
         .rows
