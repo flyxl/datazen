@@ -473,3 +473,5 @@ mod t078_tester;
 mod t087_tester;
 mod t089_tester;
 mod t091_tester;
+// T096: WebContextMenu — contract, position math, store, panels, presses.
+mod web_context_menu;
