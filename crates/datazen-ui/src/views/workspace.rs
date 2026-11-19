@@ -64,7 +64,9 @@ pub(crate) fn page_body(
         Section::Settings => settings_page(state, theme, dark),
         Section::Tools => tools_page(state, theme, dark),
         Section::Dashboards => dashboards_page(state, theme, dark),
-        Section::Workflows => workflows_page(state, theme, dark),
+        // T145: the workflow window's page port — the lite editor that stood
+        // here until this port swapped the whole section.
+        Section::Workflows => workflow_page(state, theme, dark),
         Section::Wapps => wapp_management_page(state, theme, dark),
     }
 }

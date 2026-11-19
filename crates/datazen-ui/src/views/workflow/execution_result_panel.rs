@@ -59,7 +59,7 @@
 //! | data / row count | `<prefix>-step-<i>-data`, `-rows-count`, `-data-body` |
 //! | view toggle | `<prefix>-step-<i>-view-toggle`, `-view-table`, `-view-chart` |
 //! | chart frame | `<prefix>-step-<i>-chart`, `-sampled-warning`, `-chart-pending` |
-//! | table preview | `<prefix>-step-<i>-table`, `-table-head`, `-table-col-<j>`, `-table-row-<r>`, `-table-cell-<r>-<j>`, `-table-more` |
+//! | table preview | `<prefix>-step-<i>-table`, `-table-head`, `-table-col-<j>`, `-table-row-<r>`, `-table-cell-<r>-<j>` (on the cell's text — a keyed container never carries text), `-table-more` |
 //! | AI result | `<prefix>-step-<i>-ai-result` |
 
 use std::collections::BTreeSet;
@@ -776,13 +776,23 @@ fn table_preview(index: usize, preview: &StatementPreview, ctx: &RenderCtx) -> E
                 Some(value) => text(js_string(value)).font(ctx.f11).color(k.c.text_muted),
             };
             row_el = row_el.child(cell_width(
-                value
-                    .key(ctx.step(index, &format!("-table-cell-{r}-{j}")))
-                    .truncate()
+                row()
                     .shrink()
                     .min_w(0.0)
                     .px(8.0)
-                    .py(2.0),
+                    .py(2.0)
+                    // The cell's key rides the text node itself — the
+                    // newer ports' pattern (the T145 page's lean table, the
+                    // T102 chart view's cells): a keyed container's
+                    // ElementInfo never carries text, so the cell's value
+                    // would be unreadable from the tree.
+                    .child(
+                        value
+                            .key(ctx.step(index, &format!("-table-cell-{r}-{j}")))
+                            .truncate()
+                            .shrink()
+                            .min_w(0.0),
+                    ),
             ));
         }
         table = table.child(row_el);

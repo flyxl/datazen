@@ -176,45 +176,70 @@ impl AppState {
         self.draft_name = TextEdit::new(String::new());
         self.draft_type = TextEdit::new(String::new());
     }
-    pub(crate) fn edit_workflow(&mut self, name: &str) {
-        if let Some(flow) = self.host_workflows().into_iter().find(|flow| flow.name == name) {
-            self.workflow_yaml = SqlEditor::from_doc(workflow_yaml(&flow.name, &flow.steps));
-            self.workflow_editing = Some((flow.name, flow.steps));
-        }
-    }
-
-    /// Move a step up or down. The first step cannot move up, the last cannot
-    /// move down; everything else swaps with its neighbour.
-    pub(crate) fn move_workflow_step(&mut self, index: usize, up: bool) {
-        let Some((_, steps)) = &mut self.workflow_editing else { return };
-        let target = if up { index.checked_sub(1) } else { Some(index + 1) };
-        match target {
-            Some(target) if target < steps.len() => steps.swap(index, target),
-            _ => {}
-        }
-    }
-
-    /// Save the edited workflow: the host's registry use case first (N13);
-    /// its fixed not-implemented error means the demo process, and the
-    /// memory port answers instead.
+    /// Save the workflow the visual form carries — the form's footer Save
+    /// (React's `onSave` caller: `workflowDraftToDefinition` →
+    /// `workflowSave`): the draft's name and its steps through the host's
+    /// registry use case (N13), the memory port under it. A successful save
+    /// closes the edit panel, writes the feedback line and reloads the list
+    /// (the page's `handleSave`); a failure writes the feedback line
+    /// (React's catch). The lite editor's own save (of `workflow_editing`)
+    /// went with the lite page this port replaced.
     pub(crate) fn save_workflow_form(&mut self) {
-        let Some((name, steps)) = self.workflow_editing.clone() else { return };
-        let saved = match self.desktop.save_workflow(&name, &steps) {
+        let name = self.workflow_draft.name_trimmed().to_owned();
+        let steps = crate::views::workflow_page::workflow_draft_to_steps(&self.workflow_draft);
+        match self.save_workflow_through_host(&name, &steps) {
+            Ok(()) => {
+                let active = self.workflow_active_panel.clone();
+                if let Some(id) = active {
+                    if matches!(
+                        self.workflow_panels.iter().find(|panel| panel.id() == id),
+                        Some(crate::views::workflow_page::WorkflowPanel::Edit(_))
+                    ) {
+                        self.close_workflow_panel(&id);
+                    }
+                }
+                // React's 2s feedback reset is the timer seam — the line
+                // stays until the next feedback write.
+                self.workflow_feedback = crate::i18n::t("workflows.saved").to_owned();
+                self.fetch_workflow_list();
+            }
+            Err(error) => {
+                self.workflow_feedback = error;
+            }
+        }
+    }
+
+    /// The registry save both workflow save halves share (the lite editor's
+    /// save and this port's edit-pane/form saves): the host's use case first
+    /// (N13); its fixed not-implemented error means the demo process, and the
+    /// memory port answers instead.
+    pub(crate) fn save_workflow_through_host(
+        &mut self,
+        name: &str,
+        steps: &[String],
+    ) -> Result<(), String> {
+        match self.desktop.save_workflow(name, steps) {
             Ok(()) => Ok(()),
             Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
-                self.workspace.save_workflow(&name, &steps)
+                self.workspace.save_workflow(name, steps)
             }
             Err(error) => Err(error),
-        };
-        if saved.is_ok() {
-            self.workflow_editing = None;
         }
     }
+
+    /// The form's footer Cancel (React's `onCancel` → the caller's
+    /// `closePanel`): the edit panel closes and the form's interaction
+    /// state resets with the unmount; the run read the lite editor cleared
+    /// goes with it — the compact variant's own tests pin that half. The
+    /// page's own edit-pane Cancel is the shared action bar's
+    /// (`close_edit_panel`, React's page-level `closePanel` exactly).
     pub(crate) fn close_workflow_editor(&mut self) {
-        self.workflow_editing = None;
+        let active = self.workflow_active_panel.clone();
+        if let Some(id) = active {
+            self.close_workflow_panel(&id);
+        }
+        self.reset_workflow_form_caches();
         self.workflow_results.clear();
-        // T019: closing the editor unmounts the execution-result panel —
-        // React's row `useState`s reset with it, so the interaction sets go.
         self.workflow_execution = None;
         self.workflow_step_expanded.clear();
         self.workflow_step_chart.clear();
@@ -222,16 +247,42 @@ impl AppState {
 
     /// T019: one run's answers land together — the lite step report the
     /// summary rows read, and the projection the execution-result panel
-    /// renders from.
+    /// renders from. T145: the page's executing run panel takes the answer
+    /// too (React's `setPanels` in `runWorkflowInPanel`) and re-seeds the
+    /// step view at the order's first shown step.
     pub(crate) fn set_workflow_results(&mut self, results: Vec<WorkflowStepResult>) {
         self.workflow_execution = Some(WorkflowExecutionResult::from_step_results(&results));
         self.workflow_results = results;
+        let order = self.workflow_step_order;
+        let answer = self.workflow_execution.clone();
+        if let Some(panel) = self.workflow_panels.iter_mut().find_map(|panel| match panel {
+            crate::views::workflow_page::WorkflowPanel::Run(run) if run.is_executing => {
+                Some(run)
+            }
+            _ => None,
+        }) {
+            panel.is_executing = false;
+            panel.result = answer;
+            self.workflow_active_step = self
+                .workflow_execution
+                .as_ref()
+                .and_then(|result| {
+                    crate::views::workflow_page::first_shown_index(result.steps.len(), order)
+                });
+        }
     }
 
     /// T019: a failed run reports nothing; both reads of it go together.
+    /// T145: the catch branch resets the executing panel (React's
+    /// `isExecuting: false`).
     pub(crate) fn clear_workflow_results(&mut self) {
         self.workflow_results.clear();
         self.workflow_execution = None;
+        for panel in &mut self.workflow_panels {
+            if let crate::views::workflow_page::WorkflowPanel::Run(run) = panel {
+                run.is_executing = false;
+            }
+        }
     }
 
     /// T019: the execution-result panel's per-row expansion state.
@@ -251,9 +302,8 @@ impl AppState {
     }
 
     /// T070: the visual workflow form's slots over the real state — the
-    /// wiring [`WorkflowForm`] consumes. The page mount is T147's
-    /// WorkflowPage port; the form's tests drive the same slots.
-    #[allow(dead_code)]
+    /// wiring [`WorkflowForm`] consumes. The page's edit pane (T145) is the
+    /// production caller; the form's tests drive the same slots.
     pub(crate) fn workflow_form_slots(&self) -> WorkflowFormSlots<AppState> {
         WorkflowFormSlots {
             draft: |s: &AppState| &s.workflow_draft,
@@ -273,37 +323,23 @@ impl AppState {
 
     /// T070: the form's ephemeral interaction state (React resets it by
     /// unmounting the form — the AI panel's `showForm` toggle); the draft
-    /// itself stays. The first caller is T147's page mount.
-    #[allow(dead_code)]
+    /// itself stays. The page's edit-panel lifecycle (T145) is the production
+    /// caller.
     pub(crate) fn reset_workflow_form_caches(&mut self) {
         self.workflow_form_open = None;
         self.workflow_form_input_edits.clear();
     }
 
-    /// W7: run the edited workflow; the results list below is read-only.
+    /// W7: run a workflow; the results list below is read-only.
     /// T8: the host's engine runs as a job (every step kind it supports); a
     /// declined job falls back to the sync paths — the host's N13 runner,
     /// then the memory port's demo runner.
-    pub(crate) fn run_edited_workflow(&mut self) {
-        let Some((name, _)) = self.workflow_editing.clone() else { return };
-        let generation = self.next_workflow_generation();
-        let job = AdapterJob::RunWorkflow { generation, name: name.clone() };
-        if self.desktop.begin_job(job) {
-            self.workflow_loading = Some(generation);
-            return;
-        }
-        let ran = match self.desktop.run_workflow(&name) {
-            Ok(results) => Ok(results),
-            Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
-                self.workspace.run_workflow(&name)
-            }
-            Err(error) => Err(error),
-        };
-        match ran {
-            Ok(results) => self.set_workflow_results(results),
-            Err(_) => self.clear_workflow_results(),
-        }
-    }
+    ///
+    /// T145: the lite editor's run entry (`run_edited_workflow`) went with
+    /// the lite page; the page's run core (`run_workflow_by_name` in
+    /// `workflow_page_state.rs`) is this same path, and the answer lands
+    /// through `set_workflow_results`, which also resolves the page's
+    /// executing run panel.
     pub(crate) fn next_workflow_generation(&mut self) -> u32 {
         self.workflow_generation += 1;
         self.workflow_generation

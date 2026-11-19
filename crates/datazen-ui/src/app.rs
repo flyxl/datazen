@@ -122,8 +122,11 @@ pub(crate) fn init_state() -> AppState {
 
 pub(crate) fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
     if state.active != Section::Workspace {
+        // T145: the workflow page's yaml document takes the keyboard while
+        // the edit pane's yaml mode is the active panel (the lite editor's
+        // `workflow_editing` gate this replaces).
         return state.active == Section::Workflows
-            && state.workflow_editing.is_some()
+            && state.workflow_yaml_focused()
             && sql_editor::on_key(&mut state.workflow_yaml, ev, tx);
     }
     if query_selected(state) {
@@ -188,7 +191,7 @@ pub(crate) fn app_poll(state: &mut AppState, now: f64, tx: &mut Tx) -> bool {
 }
 
 pub(crate) fn app_ime(state: &mut AppState, ev: &Ime, _: &mut Tx) -> bool {
-    if state.active == Section::Workflows && state.workflow_editing.is_some() {
+    if state.active == Section::Workflows && state.workflow_yaml_focused() {
         return crate::sql_editor::on_ime(&mut state.workflow_yaml, ev);
     }
     state.active == Section::Workspace

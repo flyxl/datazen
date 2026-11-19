@@ -10,7 +10,7 @@ use crate::state_def::AppState;
 use crate::ui::dialog::Dialog;
 use crate::ui::kit::kit;
 use rune::tok::{self, type_};
-use rune::{col, row, text, Color, El, ScrollSpec, TextStyle};
+use rune::{col, icon, row, text, Color, El, ScrollSpec, TextStyle};
 
 use crate::ui::palette;
 use rune_kit::{Button, ButtonVariant, ControlSize};
@@ -18,8 +18,10 @@ use rune_kit::{Button, ButtonVariant, ControlSize};
 /// The floating layer for whatever dialog is open — the import dialog first
 /// (the React share dialog opens at most one), else the connection form,
 /// else the wapps install dialog (T022), else the wapps uninstall confirm
-/// (T072; one ask at a time, the layer's one-dialog precedent). Empty mounts
-/// nothing and the window keeps its plain layout.
+/// (T072; one ask at a time, the layer's one-dialog precedent), else the
+/// workflow page's confirm ask (T145, the same `useConfirmDialog` pattern)
+/// and its add-to-dashboard pending dialog. Empty mounts nothing and the
+/// window keeps its plain layout.
 pub(crate) fn modal_layer(state: &AppState, theme: tok::Theme, dark: bool) -> Vec<El> {
     let mut layer = Vec::new();
     let dialog = if state.import_dialog_open {
@@ -36,6 +38,16 @@ pub(crate) fn modal_layer(state: &AppState, theme: tok::Theme, dark: bool) -> Ve
         // The ask is held in state (`wapp_remove_request`); the answers run
         // `answer_remove_wapp`, so the dialog unmounts either way.
         Some(wapp_remove_confirm_dialog(state, dark))
+    } else if state.workflow_confirm_request.is_some() {
+        // T145: the workflow page's confirm ask — the same `useConfirmDialog`
+        // portal pattern (the delete ask and the history-clear ask, one at a
+        // time); the answers run `answer_workflow_confirm`.
+        Some(workflow_confirm_dialog(state, dark))
+    } else if state.workflow_add_dashboard_open {
+        // T145: the add-to-dashboard press — the pending mount for T018's
+        // dialog (the chart-frame ruling: the modal layer shows the honest
+        // pending state, no dashboard picker is faked).
+        Some(workflow_add_dashboard_dialog(state, dark))
     } else {
         None
     };
@@ -93,6 +105,114 @@ fn engine_badge_icon(engine: &str, size: f32, dark: bool) -> El {
                 .font(TextStyle::new(size * 0.46, 700.0))
                 .color(palette::badge_ink(dark)),
         )
+}
+
+/// The workflow page's confirm dialog (T145) — React's `useConfirmDialog`
+/// portal over the wapps remove pattern: the warning glyph leads the
+/// message, Cancel resolves the ask false, Confirm resolves it true (the
+/// danger variant — the ask's warning kind), and the header close and Escape
+/// are the cancel answer.
+fn workflow_confirm_dialog(state: &AppState, dark: bool) -> Dialog {
+    // The ask is always present while the dialog is mounted (the modal layer
+    // checks); a missing ask keeps an empty message out of the tree anyway.
+    let message = state
+        .workflow_confirm_request
+        .as_ref()
+        .map(|request| request.message.clone())
+        .unwrap_or_default();
+    let title = state
+        .workflow_confirm_request
+        .as_ref()
+        .map(|request| request.title.clone())
+        .unwrap_or_else(|| t("workflows.delete").to_owned());
+    let k = kit(dark);
+    Dialog::new("workflow-confirm-dialog", title)
+        .open(true)
+        .open_epoch(state.workflow_confirm_epoch)
+        // React's `max-w-md` on the packages/ui ConfirmDialog.
+        .width(448.0)
+        .fit()
+        .body_max_height(448.0)
+        .child(
+            row()
+                .key("workflow-confirm-dialog-message-row")
+                .w_full()
+                .items_start()
+                .gap(12.0)
+                .child(
+                    // React: `kind === 'warning'` — the amber glyph leads the
+                    // message (both of the page's asks are warning asks).
+                    icon(&crate::icons::ICON_ALERT_TRIANGLE, 20.0)
+                        .key("workflow-confirm-dialog-warning")
+                        .mt(2.0)
+                        .color(k.c.warning.fg),
+                )
+                .child(
+                    text(message)
+                        .key("workflow-confirm-dialog-message")
+                        .font(k.ty.body)
+                        .color(k.c.text_muted)
+                        .wrap()
+                        .grow(1.0)
+                        .min_w(0.0)
+                        .selectable(true),
+                ),
+        )
+        .footer(
+            Button::new(t("common.cancel"))
+                .variant(ButtonVariant::Ghost)
+                .control_size(ControlSize::Large)
+                .on_press(|state: &mut AppState| state.answer_workflow_confirm(false))
+                .build(k)
+                .key("workflow-confirm-dialog-cancel"),
+        )
+        .footer(
+            // React's warning kind: the confirm is the danger variant.
+            Button::new(t("common.confirm"))
+                .variant(ButtonVariant::Danger)
+                .control_size(ControlSize::Large)
+                .on_press(|state: &mut AppState| state.answer_workflow_confirm(true))
+                .build(k)
+                .key("workflow-confirm-dialog-confirm"),
+        )
+        // React's `onClose` resolves the ask false (the header close and
+        // Escape are the cancel answer).
+        .on_close(|state: &mut AppState| state.answer_workflow_confirm(false))
+}
+
+/// The workflow page's add-to-dashboard pending dialog (T145) — React's
+/// `AddToDashboardDialog` is T018's port; until it lands the modal layer
+/// mounts the honest pending state (the chart-frame ruling): the sentence
+/// says which dialog belongs there, and Close is the flag's `onClose`.
+fn workflow_add_dashboard_dialog(state: &AppState, dark: bool) -> Dialog {
+    let k = kit(dark);
+    let _ = state;
+    Dialog::new("workflow-add-dashboard-dialog", t("workflows.addToDashboard"))
+        .open(true)
+        .width(448.0)
+        .fit()
+        .child(
+            text(
+                "the add-to-dashboard dialog is not ported yet — the dashboard area's port \
+                 (T018) will pick the dashboard here"
+                    .to_owned(),
+            )
+            .key("workflow-add-dashboard-dialog-pending")
+            .font(k.ty.body)
+            .color(k.c.text_muted)
+            .wrap()
+            .grow(1.0)
+            .min_w(0.0),
+        )
+        .footer(
+            Button::new(t("common.close"))
+                .variant(ButtonVariant::Ghost)
+                .control_size(ControlSize::Large)
+                .on_press(|state: &mut AppState| state.close_add_to_dashboard())
+                .build(k)
+                .key("workflow-add-dashboard-dialog-close"),
+        )
+        .on_close(|state: &mut AppState| state.close_add_to_dashboard())
 }
 
 /// Import dialog (React ConnectionShareDialog, import/file mode layout).

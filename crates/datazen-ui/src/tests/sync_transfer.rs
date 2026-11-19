@@ -21,13 +21,20 @@ use rune::{Env, Runtime};
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
-        // A workflow to run: the workflow form saves through the memory port
-        // (the JobAdapter answers no sync workflows).
-        runtime.state.workflow_editing = Some(("engine run".into(), vec!["SELECT 1".into()]));
+        // T145: a workflow to run comes from the registry the page's list
+        // read (the JobAdapter answers no sync workflows, so the memory
+        // port's audit workflow is the row); the row's press opens the run
+        // panel and the execute press sends the engine job.
+        let (x, y) = runtime.find("workflow-audit").expect("the workflow row");
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(1.0);
         runtime.settle_all();
         runtime.frame(0.0);
 
-        let (x, y) = runtime.find("workflow-run").expect("the run button");
+        let (x, y) = runtime
+            .find("workflow-execute-button")
+            .expect("the run panel's execute button");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
@@ -557,14 +564,19 @@ use rune::{Env, Runtime};
             "the memory port's demo list stepped back"
         );
 
-        // The editor opens the host's steps.
-        let (x, y) = runtime.find("workflow-host-etl").expect("the host's row");
+        // T145: the row's edit affordance opens the edit pane over the
+        // host's steps (the visual form's draft).
+        let (x, y) = runtime
+            .find("workflow-host-etl-edit")
+            .expect("the host's row edit affordance");
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
-        assert!(runtime.find("workflow-form").is_some(), "the editor opened");
+        assert!(runtime.find("workflow-form-root").is_some(), "the form opened");
         assert_eq!(
-            runtime.state.workflow_editing.as_ref().unwrap().1,
+            crate::views::workflow_page::workflow_draft_to_steps(
+                &runtime.state.workflow_draft
+            ),
             vec!["SELECT count(*) FROM users".to_owned()],
             "the steps are the host's"
         );

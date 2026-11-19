@@ -86,6 +86,7 @@ pub(crate) mod schema_request_tracker;
 mod search_state;
 mod schema_workflows_state;
 mod tools_state;
+mod workflow_page_state;
 mod workspace_state;
 mod wapps_state;
 pub(crate) mod ui;

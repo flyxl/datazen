@@ -450,7 +450,7 @@ pub(crate) fn is_chartable_preview(preview: &StatementPreview) -> bool {
         .any(|(index, column)| column_infers_numeric(column, preview, index))
 }
 
-fn column_infers_numeric(column: &StepColumn, preview: &StatementPreview, index: usize) -> bool {
+pub(crate) fn column_infers_numeric(column: &StepColumn, preview: &StatementPreview, index: usize) -> bool {
     let declared = column
         .data_type
         .as_deref()

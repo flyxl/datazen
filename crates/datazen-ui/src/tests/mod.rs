@@ -1049,3 +1049,6 @@ mod chart_widget_tile_audit;
 // T146: the monitor schedule authorization card port (grant load guards,
 // the authorized-until status line, the authorize/revoke buttons).
 mod monitor_schedule_authorization_audit;
+// T166: the area chart engine port (the log-hint pipeline, geometry, the
+// hidden-series toggle, hit-bucket routing and the tooltip mounts).
+mod area_chart_renderer;

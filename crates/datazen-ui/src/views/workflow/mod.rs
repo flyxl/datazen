@@ -16,26 +16,39 @@
 //!   form: the draft model, field/variable/step editors, the command-input
 //!   schema editor and the two footer variants).
 //!
-//! The workflows page (`views/dashboards_workflows.rs`) mounts the first
-//! two; the form's page mount is `WorkflowPage.tsx` (T147) — the lite
-//! editor stays until that port swaps the whole edit pane.
+//! - `workflow_page.rs` — `WorkflowPage.tsx` (T145; the ledger's older
+//!   numbering says T147) — the page-level assembly: the toolbar, the
+//!   workflows/history sidebar, the panel tab bar, the variables + execute
+//!   row, the step detail view and the dialogs' ask state.
+//!
+//! The workflows page (`views/dashboards_workflows.rs`) routed to the lite
+//! editor until this module's page port (T145) swapped the whole section.
 
 pub(crate) mod editor_action_bar;
 pub(crate) mod execution_result_panel;
-// T113: the section's two list views wait for their pages — WorkflowPage
-// (T147) and the AI panel's workflow tab (T334, segment-3) are the callers;
-// drop this allow when the first lands.
-#[allow(dead_code)]
+// T113: the page port (T145) mounts the sidebar list; the AI panel's
+// workflow tab (T334, segment-3) is the family's remaining caller.
 pub(crate) mod history_section;
 pub(crate) mod step_result_utils;
-// T070: the form has no production mount yet — the WorkflowPage port (T147)
-// is the first caller; drop this allow when it lands.
-#[allow(dead_code)]
+// T145: the workflow page port — the page-level assembly that mounts the
+// form, the history list and the action bar as its production consumer (the
+// section swap in `views/workspace.rs` routes here).
+pub(crate) mod workflow_page;
+// T070: the page's edit pane (T145) is the form's production consumer.
 pub(crate) mod workflow_form;
 
+// The family's re-exported view models (the page's own helpers ride through
+// `workflow_page::*`; the page reaches the action bar, the result panel and
+// the form through their module paths directly — the lite page's `super::*`
+// consumers went with it).
+#[allow(unused_imports)] // the family surface; the remaining callers are module-path imports
 pub(crate) use editor_action_bar::*;
+#[allow(unused_imports)] // the family surface; the remaining callers are module-path imports
 pub(crate) use execution_result_panel::*;
-#[allow(unused_imports)] // consumers: WorkflowPage (T147), AI panel (T334)
+#[allow(unused_imports)] // consumers: the AI panel (T334)
 pub(crate) use history_section::*;
 pub(crate) use step_result_utils::*;
+// T145: the page's view models and pure helpers — the section arm in
+// `views/workspace.rs` calls the page function through this re-export.
+pub(crate) use workflow_page::*;
 pub(crate) use workflow_form::*;
