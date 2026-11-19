@@ -248,6 +248,9 @@ mod workflow_form;
 // T113: the workflow history section port (the sidebar list, the inline
 // tab's rows and its detail branch over the result panel).
 mod workflow_history_section;
+// T176: the workflow step-result utils port (the StepStatusIcon ladder, the
+// column extraction and the step → statement-result conversion).
+mod workflow_step_result_utils;
 
 // T051: the App.tsx root port — the window router the host's one window is
 // handed through (first-frame composition, bounds, and the wiring pin).
