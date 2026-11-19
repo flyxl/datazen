@@ -279,6 +279,9 @@ mod session_cancel_audit;
 // T133: the ai/streamRegistry.ts port (lifecycle, generations, cancel gating,
 // subscriber events and the no-pruning invariant).
 mod stream_registry;
+// T133 independent audit: supersede events, terminal re-begin, precedence and
+// multi-subscriber delivery order.
+mod stream_registry_audit;
 // T010: the controlled source/target endpoint bar port.
 mod migration_endpoints_bar;
 // T010 independent audit: label-vs-id display, close-on-choice, geometry.
