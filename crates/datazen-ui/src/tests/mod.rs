@@ -225,6 +225,9 @@ mod ai_store_chat;
 mod ai_store_chat_audit;
 // T087-S4: workflow chat, spinner, insights, MCP, injection/skill guards.
 mod ai_store_rest;
+// T087-S4 independent audit: 300ms spinner deadline, MCP plan order,
+// skill identity by name when id is empty.
+mod ai_store_rest_audit;
 // T041: React stores/tableData/connectionState.ts parity (row records, cell
 // values, error messages, the empty panel state, the load target).
 mod table_data_connection_state;
