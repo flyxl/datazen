@@ -246,6 +246,9 @@ mod recordset_editor_audit;
 // T024: DataSyncCompareStep (comparing / compared / prompt branches, cancel,
 // page-key/cursor derivations, empty child mounts for T288/T308/T383).
 mod data_sync_compare_step;
+// T024 independent audit: full branch matrix, NUL key, cursor semantics,
+// empty child mounts, light theme.
+mod data_sync_compare_step_audit;
 
 // T008: ChartCanvas dispatcher, measured viewport and honest placeholders.
 mod chart_canvas;
