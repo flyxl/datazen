@@ -764,3 +764,9 @@ mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the
 // same change, stranger unsubscribes, per-panel independence).
 mod panel_close_notifier_audit;
+// T385: the query-run request bridge (immediate accept, ordered queue,
+// flush-on-mount, unregister drops both).
+mod query_run_request_store;
+// T385 independent audit: fresh vectors (runner replacement, foreign
+// mounts, the acceptance contract, duplicate requests).
+mod query_run_request_store_audit;
