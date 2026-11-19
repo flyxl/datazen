@@ -25,6 +25,10 @@ use rune::{FileDialogOptions, TextEdit, Tx};
 // first port — the manifest-icon-or-puzzle glyph the wapp page shell,
 // default cards, navigator and tab bar reuse).
 pub(crate) mod wapp_icon;
+// T067: the host-side shell around a sandboxed wapp page — the lazy entry
+// resolve with its per-wapp cache, the 10s load watchdog, the reload/retry
+// recovery and the loading/missing/ready body branches.
+pub(crate) mod wapp_page_shell;
 
 pub(crate) fn page_body(
     state: &AppState,

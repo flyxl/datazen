@@ -684,3 +684,6 @@ mod model_profile_dialog_audit;
 // badge and action gating rules, the four action slots, preset tints and
 // the truncation-cap geometry.
 mod model_profile_list_item_audit;
+// T067: the WappPageShell port (entry phases, the manifest-entry cache, the
+// 10s load watchdog, reload/retry, geometry and fill).
+mod wapp_page_shell_audit;
