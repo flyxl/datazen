@@ -97,3 +97,5 @@ mod counters_audit;
 mod presentation_plan;
 // T085: the column presentation panel's pure logic (validate/read/preview).
 mod column_presentation;
+// T123: the session override store and its snapshot merge.
+mod column_presentation_session;
