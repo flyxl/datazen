@@ -409,6 +409,23 @@ pub(crate) static ICON_MINIMIZE_2: rune::Icon = rune::Icon {
     body: "<polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"4 14 10 14 10 20\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"20 10 14 10 14 4\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"14\" x2=\"21\" y1=\"10\" y2=\"3\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"3\" x2=\"10\" y1=\"21\" y2=\"14\"/>",
 };
 
+/// T112: lucide `pause`, the monitor-pause glyph in the dashboard panel's
+/// toolbar (`DashboardPanel.tsx` uses `Pause`; `Play` above is its resume
+/// twin). Body verified against lucide-react 0.487.0's `pause` node (two
+/// rounded 4×16 bars at x=6 and x=14).
+pub(crate) static ICON_PAUSE: rune::Icon = rune::Icon {
+    name: "pause",
+    view: 24.0,
+    body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"4\" height=\"16\" x=\"6\" y=\"4\" rx=\"1\"/><rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"4\" height=\"16\" x=\"14\" y=\"4\" rx=\"1\"/>",
+};
+/// T112: lucide `upload`, the import glyph in the dashboard panel's tab-bar
+/// actions (`DashboardPanel.tsx` uses `Upload`; it is `download`'s mirror).
+pub(crate) static ICON_UPLOAD: rune::Icon = rune::Icon {
+    name: "upload",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"7 8 12 3 17 8\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"12\" x2=\"12\" y1=\"3\" y2=\"15\"/>",
+};
+
 pub(crate) fn section_icon(section: Section) -> &'static rune::Icon {
     match section {
         Section::Connections => &ICON_CONNECTIONS,

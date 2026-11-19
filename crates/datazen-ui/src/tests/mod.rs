@@ -720,3 +720,5 @@ mod monitor_schedule_authorization_audit;
 // epoch-cancelled deliveries, the loaded run's chart/table/error states,
 // the right-anchored max-w-3xl geometry).
 mod run_history_drawer_audit;
+// [check-only] new-module declaration
+mod dashboard_panel_audit;

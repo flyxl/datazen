@@ -5,6 +5,10 @@ pub(crate) mod add_to_dashboard_dialog;
 // T069: the chart widget tile (header switches, the eight body states, the
 // expand overlay with the axis-configurator seam).
 pub(crate) mod chart_widget_tile;
+// T112: the dashboards page body (the board tab strip, the toolbar, the
+// widget grid of tiles, the run-history drawer mount, the delete
+// confirmations; the editor drawer is the T201 seam).
+pub(crate) mod dashboard_panel;
 // T146: the scheduled-refresh authorization card (grant load, the
 // authorized-until status line, the authorize/revoke guards).
 pub(crate) mod monitor_schedule_authorization;
