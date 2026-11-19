@@ -316,7 +316,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T297 · types · 0.50d · types/wapp.ts
 - [ ] T298 · commands · 2.00d · commands/file.ts · split
 - [ ] T299 · components/DataTable · 0.80d · components/DataTable/editors/CellEditorHost.tsx
-- [ ] T300 · components/connection · 0.80d · components/connection/WebSocketTunnelFields.tsx components/chart/AxisConfigurator.tsx
+- [x] T300 · components/connection · 0.80d · components/connection/WebSocketTunnelFields.tsx components/chart/AxisConfigurator.tsx
 - [ ] T301 · components/ai · 0.90d · components/ai/NlFilterInput.tsx
 - [ ] T302 · components/sql-editor · 2.00d · components/sql-editor/paste/multiCursorPointer.ts · split
 - [ ] T303 · components · 0.30d · components/WindowChromeFallback.tsx
