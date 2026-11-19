@@ -398,3 +398,6 @@ mod content_view;
 // T199 independent audit: no-panel React gates, AI drawer independence,
 // host pinned keys and the 800-line / no-bare-panic source contract.
 mod content_view_audit;
+// T245: ContentViewDrawers port (drawer keys, split-pane source, auto-context,
+// result-readonly verdicts, KV slot and geometry).
+mod content_view_drawers;

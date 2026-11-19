@@ -27,10 +27,11 @@
 //! Every reusable item carries `#[allow(dead_code)]` with the same removal
 //! stage: the panel-store / drawer / dialog view track that wires real content.
 
-use rune::tok::{self, type_};
-use rune::{col, row, text, El};
+use rune::tok;
+use rune::{col, row, El};
 
 use crate::i18n::t;
+use crate::state_def::AppState;
 
 /// The conditional structure of React `ContentView` that Rune can represent.
 #[allow(dead_code)] // VM surface; consumed by connection_page and the tests
@@ -153,24 +154,43 @@ pub(crate) fn build(
     main = main.child(panes);
 
     if vm.show_drawers() {
-        let mut drawers = col()
-            .key("content-view-drawers")
-            .w(280.0)
-            .min_w(0.0)
-            .h_full()
-            .gap(8.0);
-        if vm.detail_open && vm.detail_panel_applicable {
-            drawers = drawers.child(drawer(
-                "content-view-detail",
-                "content-view-detail-close",
-                t("detail.title"),
-                theme,
-            ));
-        }
-        if vm.ai_chat_open {
-            drawers = drawers.child(drawer("content-view-ai", "content-view-ai-close", "AI", theme));
-        }
-        main = main.child(drawers);
+        // T245: the drawer host is the real `ContentViewDrawers` port. The VM
+        // carries the two flags; every other input defaults (the host that owns
+        // the panel store will fill it). The pinned drawer keys are preserved by
+        // the port itself.
+        let drawer_vm = super::content_view_drawers::DrawerState {
+            detail_open: vm.detail_open,
+            ai_chat_open: vm.ai_chat_open,
+            detail_panel_applicable: vm.detail_panel_applicable,
+            // The pre-port host has no db-session id, but its existing tests
+            // pin that `ai_chat_open` alone mounts the AI drawer. Supply the
+            // flag as the gate so the old composition behavior is preserved.
+            has_db_session: vm.ai_chat_open,
+            panel_id: String::new(),
+            panel_kind: super::content_view_drawers::PanelKind::Other,
+            focused_pane: None,
+            panes: std::collections::HashMap::new(),
+            editor_selection: String::new(),
+            verdict: None,
+            resolving_origin: false,
+            key_props_slot: false,
+            // The pre-port host has no resizable sidebar; use the minimum so
+            // the AI drawer fits the fixed 280pt drawer column at 960px.
+            sidebar_width: 240.0,
+            table_columns: Vec::new(),
+            table_rows: Vec::new(),
+            table_detail_row_index: None,
+            kv_selected_key: None,
+        };
+        let mut layer = Vec::new();
+        super::content_view_drawers::build::<AppState>(
+            &drawer_vm,
+            None::<std::rc::Rc<dyn Fn(&mut AppState, super::content_view_drawers::DrawerAction) + 'static>>,
+            dark,
+            &mut layer,
+        );
+        // The port mounts the `content-view-drawers` root and its drawers.
+        main = main.children(layer);
     } else {
         main = main.child(row().key("content-view-drawers-absent").size(0.0, 0.0));
     }
@@ -186,34 +206,4 @@ pub(crate) fn build(
 
     // React's dialog hosts have no Rune port yet; keep the structural key.
     root.child(row().key("content-view-dialogs").size(0.0, 0.0))
-}
-
-fn drawer(key: &str, close_key: &str, title: &str, theme: tok::Theme) -> El {
-    col()
-        .key(key)
-        .label(title)
-        .w_full()
-        .h(160.0)
-        .radius(8.0)
-        .fill(theme.control_off)
-        .px(12.0)
-        .py(8.0)
-        .gap(8.0)
-        .child(
-            row()
-                .w_full()
-                .center_y()
-                .child(text(title).font(type_::LABEL).color(theme.text)),
-        )
-        .child(
-            row()
-                .key(close_key)
-                .role("button")
-                .label("Close")
-                .focusable(true)
-                .w(20.0)
-                .h(20.0)
-                .center()
-                .child(text("×").font(type_::LABEL).color(theme.text_secondary)),
-        )
 }
