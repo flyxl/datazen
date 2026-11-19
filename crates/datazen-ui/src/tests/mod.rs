@@ -350,6 +350,11 @@ mod platform_web_stub;
 // source, prove Rune has no browser ports, and guard the mapping table rows.
 mod platform_web_stub_audit;
 
+// T192: the React NamedViewMenu port (six-state machine, flows, geometry).
+mod named_view_menu;
+// T192 independent audit: overwrite id, apply-close, default exclusivity,
+// import refusal, keyboard commits and many-view geometry.
+mod named_view_menu_audit;
 // T056: the expanded filter condition editor port.
 mod filter_condition_editor;
 // T056 independent audit: ported contracts, dispatch paths, i18n, token events.
