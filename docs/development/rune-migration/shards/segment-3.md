@@ -37,19 +37,19 @@
 - [x] T100 · components/query · 1.00d · components/query/QueryContextSelectors.tsx components/query/QueryErrorPanel.tsx
 - [x] T103 · components/ai · 0.90d · components/ai/AiEgressNotice.tsx
 - [x] T106 · components · 2.60d · components/FilterEditor.tsx · split
-- [ ] T113 · windows/data-transfer · 0.90d · windows/data-transfer/DataTransferTerminalResults.tsx
-- [ ] T114 · windows/data-sync · 0.90d · windows/data-sync/DataSyncEndpointStep.tsx
+- [x] T113 · windows/data-transfer · 0.90d · windows/data-transfer/DataTransferTerminalResults.tsx
+- [x] T114 · windows/data-sync · 0.90d · windows/data-sync/DataSyncEndpointStep.tsx
 - [x] T117 · lib/chart · 0.90d · lib/chart/postQueryView.ts
-- [ ] T125 · stores · 0.90d · stores/connectionStore.ts
-- [ ] T127 · stores/tableData · 2.00d · stores/tableData/dirtyIndex.ts · split
-- [ ] T129 · platform · 1.30d · platform/contracts.ts · split
-- [ ] T132 · components/DataTable · 1.30d · components/DataTable/DataExportDialog.tsx · split
-- [ ] T134 · components/query · 0.30d · components/query/QueryExecutionStatus.tsx
-- [ ] T137 · components/ai · 0.80d · components/ai/AiInput.tsx
+- [x] T125 · stores · 0.90d · stores/connectionStore.ts
+- [x] T127 · stores/tableData · 2.00d · stores/tableData/dirtyIndex.ts · split
+- [x] T129 · platform · 1.30d · platform/contracts.ts · split
+- [x] T132 · components/DataTable · 1.30d · components/DataTable/DataExportDialog.tsx · split
+- [x] T134 · components/query · 0.30d · components/query/QueryExecutionStatus.tsx
+- [x] T137 · components/ai · 0.80d · components/ai/AiInput.tsx
 - [x] T140 · components · 0.30d · components/LocaleDomainLoading.tsx
-- [ ] T147 · windows/data-transfer · 1.30d · windows/data-transfer/DataTransferWindow.tsx · split
+- [x] T147 · windows/data-transfer · 1.30d · windows/data-transfer/DataTransferWindow.tsx · split
 - [ ] T148 · windows/data-sync · 0.90d · windows/data-sync/DataSyncJobStatusPanel.tsx
-- [ ] T151 · lib/chart · 0.60d · lib/chart/recommend.ts lib/chart/seriesOverlap.ts
+- [x] T151 · lib/chart · 0.60d · lib/chart/recommend.ts lib/chart/seriesOverlap.ts
 - [x] T157 · stores · 0.90d · stores/contextMenuStore.ts
 - [ ] T158 · stores/tableData · 0.80d · stores/tableData/draftInserts.ts stores/tableData/enumCandidates.ts
 - [x] T160 · platform · 0.30d · platform/env.ts

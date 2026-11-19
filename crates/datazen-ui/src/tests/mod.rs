@@ -884,3 +884,89 @@ mod content_view_drawers_audit;
 // T136: the log-scale tooltip port (the __orig__ formatter arms, the JS
 // number coercions and the contentStyle chrome tokens).
 mod log_scale_tooltip;
+
+// T113: the Data Transfer terminal-results strip (the restored verdict:
+// uncompleted surfaces, verdict fold, load reducer, mounted strip).
+mod data_transfer_terminal_results;
+
+// T113 independent audit: fresh vectors (mixed kinds, the in-flight latest
+// gate, the fixed uncompleted attribute set, stale identities, copy path).
+mod data_transfer_terminal_results_audit;
+
+// T114: the Data Sync endpoint step (scope reconfirmation, profile
+// controls: name input, profile select, save/load/delete gates).
+mod data_sync_endpoint_step;
+
+// T114 independent audit: fresh vectors (empty profile list, pre-selected
+// id, pre-held name text, the dismissal close path, narrow-window notice).
+mod data_sync_endpoint_step_audit;
+
+// T125: the persisted-connections store (display helpers over the T403
+// placeholder subset, load/refetch chains, group edits, per-connection moves).
+mod connection_store;
+
+// T125 independent audit: fresh vectors (the registry label branch, the
+// rank ladder, duplicate ids, invalid timestamps, collapse renames).
+mod connection_store_audit;
+
+// T127: the dirty-state index (identity subset, anchor priority, the
+// ambiguity guard, counts, off-page keys, structural sharing).
+mod table_data_dirty_index;
+
+// T127 independent audit: fresh vectors (composite keys, nested identity
+// values, anchor under ambiguity, expressions, the delete-mark flip).
+mod table_data_dirty_index_audit;
+
+// T129: the platform port contracts (updater wire types, window routing,
+// the exporter port, the §7.4 binding registry).
+mod platform_contracts;
+
+// T129 independent audit: fresh vectors (a web capability table, an
+// exporter offering the optional arms, the registry's reader isolation).
+mod platform_contracts_audit;
+
+// T132 independent audit: fresh vectors (the scope/format gates and
+// fallbacks, the export-button gate, the mounted modal and its request).
+mod data_export_dialog_audit;
+
+// T134: the query execution status strip (coder tests).
+mod query_execution_status;
+
+// T134 independent audit: fresh vectors (the a11y surface, the winding-down run, the inert button tooltip, three counted presses, both windows).
+mod query_execution_status_audit;
+
+// T137: the AI input (coder tests: the @ trigger, the token pop, the pick
+// rewrite, the placeholder ternary, the send/stop gate).
+mod ai_input;
+
+// T137 independent audit: fresh vectors (unicode @ queries, the mid-word
+// caret pick, the Backspace key path, stop presses, the inert wire-less field).
+mod ai_input_audit;
+
+// T151 independent audit: fresh vectors (boundary rows/counts, cascade
+// precedence, overlap cliques, pattern wraparound, JS coercion corners).
+mod chart_recommend_audit;
+
+// T147-S1: the Data Transfer window's wizard state model (coder tests).
+mod data_transfer_window_state;
+
+// T147-S1 independent audit: fresh vectors (driver-meta table, pairing
+// matrix, fail-open options, sql-file round-trip, plan max count, gate
+// normalization).
+mod data_transfer_window_state_audit;
+
+// T147-S2: the Data Transfer Job run machine (coder tests).
+mod transfer_job_run;
+
+// T147-S2 independent audit: fresh vectors (classification order, the
+// replayed carve-out, downgrade spellings, stale-id refusal, cancel
+// address holes, unbacked-row verdicts).
+mod transfer_job_run_audit;
+
+// T147-S3: the Data Transfer window's rendering (coder tests).
+mod data_transfer_window;
+
+// T147-S3 independent audit: fresh tree-level vectors (experimental pair
+// note, rail/body geometry, destructive arm, DDL key suffixes, sql-file
+// mode swap, execute gate, 40-row fit).
+mod data_transfer_window_audit;

@@ -43,6 +43,21 @@ pub(crate) enum TransferMappingStatus {
     Incompatible,
 }
 
+impl TransferMappingStatus {
+    /// The TS union's own spelling (`'MATCHED' | 'CREATE_NEW' | …`,
+    /// `commands/transfer.ts:7-13`) — what React's objects row renders.
+    pub(crate) fn spelling(self) -> &'static str {
+        match self {
+            TransferMappingStatus::Matched => "MATCHED",
+            TransferMappingStatus::CreateNew => "CREATE_NEW",
+            TransferMappingStatus::UnmappedSource => "UNMAPPED_SOURCE",
+            TransferMappingStatus::UnmappedTarget => "UNMAPPED_TARGET",
+            TransferMappingStatus::Disabled => "DISABLED",
+            TransferMappingStatus::Incompatible => "INCOMPATIBLE",
+        }
+    }
+}
+
 /// React `TransferTableResult` (`commands/transfer.ts:132-150`), cut down
 /// to what the shell (React 35–193) reads.
 ///
@@ -266,4 +281,65 @@ pub(crate) fn unmapped_target_columns(table: &TransferTableVm) -> Vec<String> {
         .filter(|col| !used.contains(&col.as_str()))
         .cloned()
         .collect()
+}
+
+// ---------------------------------------------------------------------------
+// T147 gate placeholders: `mappingGateAllowsAdvance` /
+// `mappingGateBlockReason` (`transferMappingView.ts:74-100`). T305 replaces
+// these with the real port; the Data Transfer window (T147) routes every
+// gate decision through this module.
+// ---------------------------------------------------------------------------
+
+/// `tableHasActiveMappings` (`transferMappingView.ts:58-60`): the table
+/// has at least one non-skipped mapping with a non-empty target column.
+fn table_has_active_mappings(table: &TransferTableVm) -> bool {
+    normalize_column_mappings(table)
+        .iter()
+        .any(|m| !m.skip && !m.target_column.trim().is_empty())
+}
+
+/// `rowClearsGate` (`transferMappingView.ts:68-73`), line for line:
+/// whether one row, on its own, is complete enough to carry the gate. A
+/// table that does not exist yet has nothing the backend can look the name
+/// up for, so the name has to be one somebody typed. An enabled
+/// create-new row behind nothing but whitespace is the one shape the
+/// backend will happily echo back and then write as a nameless table, so
+/// it does not clear the gate.
+fn row_clears_gate(row: &TransferTableVm) -> bool {
+    if !row.enabled {
+        return false;
+    }
+    if row.create_new && row.target_table.trim().is_empty() {
+        return false;
+    }
+    table_has_active_mappings(row)
+}
+
+/// VM placeholder for `mappingGateAllowsAdvance`
+/// (`transferMappingView.ts:82-84`): the one definition of "the mapping
+/// step may be left". The Next gate and the post-prepare re-check both
+/// call this on the *rows they hold at the moment they run*, so a rule
+/// written twice cannot drift into two components disagreeing about the
+/// same table.
+pub(crate) fn mapping_gate_allows_advance(rows: &[TransferTableVm]) -> bool {
+    rows.iter().any(row_clears_gate)
+}
+
+/// VM placeholder for `mappingGateBlockReason`
+/// (`transferMappingView.ts:92-100`): why the gate is shut, as an i18n
+/// key. Only the unnamed-create-new case is reported. "Nothing is mapped
+/// yet" is the state the user is still working in, not a dead end that
+/// deserves a banner.
+pub(crate) fn mapping_gate_block_reason(rows: &[TransferTableVm]) -> Option<&'static str> {
+    if rows.iter().any(row_clears_gate) {
+        return None;
+    }
+    let blocked = rows
+        .iter()
+        .any(|row| row.enabled && row.create_new && table_has_active_mappings(row));
+    if blocked {
+        Some("transfer.mapping.targetNameRequired")
+    } else {
+        None
+    }
 }
