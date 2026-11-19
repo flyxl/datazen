@@ -79,5 +79,6 @@ pub(crate) mod ai_write_proposal_host;
 pub(crate) mod ai_write_proposal_host_view;
 pub(crate) mod chat_bubble;
 pub(crate) mod ai_egress_notice;
+pub(crate) mod ai_input;
 
 pub(crate) use ai_egress_notice::{AiEgressNotice, ContextItem, ContextKind};

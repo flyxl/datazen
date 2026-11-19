@@ -89,6 +89,12 @@ pub(crate) static ICON_CHEVRON_DOWN: rune::Icon = rune::Icon {
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m6 9 6 6 6-6\"/>",
 };
+pub(crate) static ICON_FILE: rune::Icon = rune::Icon {
+    name: "file",
+    view: 24.0,
+    // lucide-react 0.487.0 `File` (verified against lucide-static@0.487.0).
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M14 2v4a2 2 0 0 0 2 2h4\"/>",
+};
 pub(crate) static ICON_FOLDER: rune::Icon = rune::Icon {
     name: "folder",
     view: 24.0,

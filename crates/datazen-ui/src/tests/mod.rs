@@ -831,3 +831,7 @@ mod query_execution_status;
 
 // T134 independent audit: fresh vectors (the a11y surface, the winding-down run, the inert button tooltip, three counted presses, both windows).
 mod query_execution_status_audit;
+
+// T137: the AI input (coder tests: the @ trigger, the token pop, the pick
+// rewrite, the placeholder ternary, the send/stop gate).
+mod ai_input;
