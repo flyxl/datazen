@@ -4,3 +4,5 @@
 pub(crate) mod schema_diff_deploy_panel;
 // T323: the limitations dialog's key list (schemaDiffLimitationKeys.ts).
 pub(crate) mod schema_diff_limitation_keys;
+// T363: the unified-plan object identity key (schemaDiffObjectIdentity.ts).
+pub(crate) mod schema_diff_object_identity;

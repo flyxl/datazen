@@ -779,3 +779,6 @@ mod use_detected_import_source;
 // T268: bridge to the onboarding gate's inline suite (the onboardingGate
 // port — the show/hide decision and the versioned exit payload).
 mod onboarding_gate;
+// T363: bridge to the schema-diff object identity key's inline suite (the
+// schemaDiffObjectIdentity port — the JSON.stringify identity fold).
+mod schema_diff_object_identity;
