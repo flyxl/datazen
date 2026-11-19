@@ -363,6 +363,9 @@ mod progress_log_s1;
 // re-implementation + sweep) and copy-feedback ordering.
 mod progress_log_s1_audit;
 
+// T076-S2: ProgressLog component (header, copy button, virtualized rows).
+mod progress_log_s2;
+
 // T008: ChartCanvas dispatcher, measured viewport and honest placeholders.
 mod chart_canvas;
 // T008 independent audit: marker honesty, factory seam, geometry, source guards.

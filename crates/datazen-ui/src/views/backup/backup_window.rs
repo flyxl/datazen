@@ -102,9 +102,10 @@
 //!   `datazen:refresh-connection` with the session id. The start
 //!   button is disabled exactly when `!can_start()`.
 //! * **Log copy.** `on_copy_log` copies `vm.progress_log.join("\n")`
-//!   to the clipboard; the 1500 ms "copied" feedback lives with
-//!   the `ProgressLog` component (T077), so this slice always shows
-//!   `t('backup.copyLog')`.
+//!   to the clipboard. The button label follows [`BackupWindow::log_copied`]:
+//!   `t('backup.logCopied')` while the host's [`super::progress_log_state::ProgressLogState`]
+//!   is in the copied state, otherwise `t('backup.copyLog')`. The host
+//!   arms the 1500 ms timer (S1); this window only renders the flag.
 //!
 //! ## Documented deviations from React
 //!
@@ -129,12 +130,15 @@
 //! * **The indeterminate progress bar does not pulse.** React shows
 //!   a `w-1/3 animate-pulse` bar while backing with no progress
 //!   yet; Rune has no CSS pulse, so the bar sits static at 1/3.
-//! * **The progress log is not virtualized.** React's `ProgressLog`
-//!   virtualizes its rows; this slice renders every line (bounded
-//!   at 1500 by the pump). The component task (T077) replaces this
-//!   inline rendering with the real `ProgressLog` — virtualization,
-//!   auto-scroll pinning, and the copied feedback — keeping the
-//!   same keys.
+//! * **The progress log is the `ProgressLog` component (T076-S2).**
+//!   Rows are virtualized at 20pt through `El::virtual_rows` inside
+//!   the same `backup-progress-log` scroll box. An empty log is still
+//!   the `backup-progress-log-spacer` (no copy button), which is the
+//!   T026 contract the window tests pin. Auto-scroll is
+//!   `stick_bottom`, taken from [`BackupWindow::log_auto_scroll`]
+//!   (default pinned). The host writes
+//!   [`super::progress_log_state::ProgressLogState::on_scroll`];
+//!   `on_scroll_offset` cannot update that state by itself.
 //! * **The chrome is always drawn.** React's `WindowChromeSlot`
 //!   renders nothing when no chrome is registered (web) and the
 //!   desktop `TitleBar` when registered; the Rune window always
@@ -158,7 +162,7 @@ use rune_kit::{popover, scrim, Button, ButtonVariant, ControlSize, Kit, Placemen
 
 use crate::i18n::t;
 use crate::icons::{
-    ICON_ALERT_TRIANGLE, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT, ICON_CONNECTIONS, ICON_COPY,
+    ICON_ALERT_TRIANGLE, ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT, ICON_CONNECTIONS,
     ICON_HARD_DRIVE,
 };
 use crate::ui::dialog::Dialog;
@@ -170,6 +174,7 @@ use super::backup_db_meta::db_supports_backup;
 use super::backup_grouping::{group_display_label, ConnectionGroup};
 use super::backup_progress::backup_progress_ratio;
 use super::backup_window_state::{BackupConnection, BackupWindowVm, DatabaseInfo};
+use super::progress_log::ProgressLog;
 
 /// The `TextEdit`s behind the window's three text fields. Rune edits
 /// text through `TextEdit`; the Vm keeps the `String` model, so the
@@ -282,6 +287,11 @@ pub(crate) struct BackupWindow<'a, S: 'static> {
     on_start_backup: Option<Rc<dyn Fn(&mut S)>>,
     on_start_restore: Option<Rc<dyn Fn(&mut S)>>,
     on_copy_log: Option<Rc<dyn Fn(&mut S)>>,
+    /// React `copied` on the log's copy button. Default `false`.
+    log_copied: bool,
+    /// React `shouldAutoScroll`, rendered as the log's `stick_bottom`.
+    /// Default `true`.
+    log_auto_scroll: bool,
     on_confirm_restore: Option<Rc<dyn Fn(&mut S)>>,
     on_cancel_restore: Option<Rc<dyn Fn(&mut S)>>,
     on_file_name_edit: Option<Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit>>,
@@ -318,6 +328,8 @@ impl<'a, S: 'static> BackupWindow<'a, S> {
             on_start_backup: None,
             on_start_restore: None,
             on_copy_log: None,
+            log_copied: false,
+            log_auto_scroll: true,
             on_confirm_restore: None,
             on_cancel_restore: None,
             on_file_name_edit: None,
@@ -398,6 +410,20 @@ impl<'a, S: 'static> BackupWindow<'a, S> {
     /// The log copy button's press: the host copies the joined log.
     pub(crate) fn on_copy_log(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_copy_log = Some(Rc::new(f));
+        self
+    }
+
+    /// Whether the log copy button shows `backup.logCopied`. The host
+    /// sets this from [`super::progress_log_state::ProgressLogState::copied`].
+    pub(crate) fn log_copied(mut self, copied: bool) -> Self {
+        self.log_copied = copied;
+        self
+    }
+
+    /// Whether the log stays pinned to the bottom. The host sets this
+    /// from [`super::progress_log_state::ProgressLogState::auto_scroll`].
+    pub(crate) fn log_auto_scroll(mut self, auto_scroll: bool) -> Self {
+        self.log_auto_scroll = auto_scroll;
         self
     }
 
@@ -1037,74 +1063,17 @@ impl<'a, S: 'static> BackupWindow<'a, S> {
             .child(col().grow(1.0 - ratio))
     }
 
-    /// The progress log: the real lines where S1 left the empty
-    /// [`super::backup_window_state::progress_log_mount`], or the
-    /// `flex-1` spacer while the log is empty. T077 replaces this
-    /// inline rendering with the `ProgressLog` component (see the
-    /// module docs).
+    /// The progress log: [`ProgressLog`] (T076-S2). An empty log is the
+    /// spacer; a non-empty log is the header, the copy button and the
+    /// virtualized body. Keys match the T026 window tests.
     fn progress_log_area(&self, vm: &BackupWindowVm, k: &Kit) -> El {
-        if vm.progress_log.is_empty() {
-            return col().key("backup-progress-log-spacer").grow(1.0).min_h(0.0);
+        let mut log = ProgressLog::<S>::new(&vm.progress_log)
+            .copied(self.log_copied)
+            .auto_scroll(self.log_auto_scroll);
+        if let Some(copy) = self.on_copy_log.clone() {
+            log = log.on_copy(move |state| copy(state));
         }
-        let copy = self.on_copy_log.clone().unwrap_or_else(no_op_unit::<S>);
-        let mut lines = col()
-            .key("backup-progress-log")
-            .w_full()
-            .grow(1.0)
-            .min_h(0.0)
-            .px(8.0)
-            .py(4.0)
-            .radius(6.0)
-            .fill(k.c.layer_01)
-            .border(1.0, k.c.border_base)
-            .scroll(ScrollSpec { stick_bottom: true });
-        for (index, line) in vm.progress_log.iter().enumerate() {
-            lines = lines.child(
-                text(line.clone())
-                    .key(format!("backup-progress-log-line-{index}"))
-                    .font(TextStyle::new(11.0, 400.0).mono().lh(20.0))
-                    .color(k.c.text_muted)
-                    .truncate(),
-            );
-        }
-        col()
-            .key("backup-progress-log-wrap")
-            .w_full()
-            .grow(1.0)
-            .min_h(0.0)
-            .mb(12.0)
-            .child(
-                row()
-                    .key("backup-progress-log-header")
-                    .w_full()
-                    .mb(4.0)
-                    .center_y()
-                    .child(
-                        text(t("backup.progressLog").to_owned())
-                            .font(k.ty.small_medium)
-                            .color(k.c.text_faint)
-                            .grow(1.0)
-                            .min_w(0.0),
-                    )
-                    .child(
-                        row()
-                            .key("backup-progress-log-copy")
-                            .px(6.0)
-                            .py(2.0)
-                            .gap(4.0)
-                            .center_y()
-                            .radius(4.0)
-                            .hover(k.c.hover)
-                            .on_press(move |s: &mut S| copy(s))
-                            .child(icon(&ICON_COPY, 12.0).color(k.c.text_faint))
-                            .child(
-                                text(t("backup.copyLog").to_owned())
-                                    .font(k.ty.small)
-                                    .color(k.c.text_faint),
-                            ),
-                    ),
-            )
-            .child(lines)
+        log.build(k)
     }
 
     /// The start button: disabled exactly when `!can_start()`, and
