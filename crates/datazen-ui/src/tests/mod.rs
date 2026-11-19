@@ -752,5 +752,10 @@ mod ai_egress_notice;
 mod ai_egress_notice_audit;
 // T185: the filter-draft helpers (filterUtils).
 mod table_data_filter_utils;
+// T210: grid-selection geometry and state transitions (DB-01).
+mod table_data_grid_selection;
+// T210 independent audit: fresh vectors (render order disagreeing with
+// lexicographic everywhere, boundary walls, combined deltas, reconcile).
+mod table_data_grid_selection_audit;
 // T185 independent audit: fresh vectors for the filter-draft helpers.
 mod table_data_filter_utils_audit;

@@ -49,6 +49,8 @@ pub(crate) mod ai_store_rest;
 pub(crate) mod table_data_connection_state;
 pub(crate) mod table_data_count_strategy;
 pub(crate) mod table_data_filter_utils;
+// T210: the grid-selection geometry and state transitions (gridSelection.ts).
+pub(crate) mod table_data_grid_selection;
 pub(crate) mod components;
 pub(crate) mod ai;
 pub(crate) mod hooks; // the hooks/ ports (T038: useConfirmDialog is its first)
