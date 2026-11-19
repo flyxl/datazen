@@ -137,6 +137,7 @@ pub(crate) fn connection_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
 /// existing tests pin (`content-toolbar`, `tab-strip`, `content-status-bar` and
 /// `page_body`'s per-section keys) do not move.
 fn connection_content(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+    let vm = crate::views::content_view::ContentViewVm::from_host(state);
     col()
         .key("datazen-page")
         .grow(1.0)
@@ -146,14 +147,7 @@ fn connection_content(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .py(24.0)
         .gap(16.0)
         .fill(theme.bg)
-        .child(content_toolbar(state, theme))
-        .child(if state.active == Section::Workspace {
-            tab_strip(state, theme)
-        } else {
-            row().key("tab-strip-absent").h(0.0)
-        })
-        .child(page_body(state, theme, dark))
-        .child(content_status_bar(state, theme))
+        .child(crate::views::content_view::build(state, theme, dark, &vm))
 }
 
 /// The title band: React's `titleBarLeft` (back + menu bar), the centred title,
