@@ -10,6 +10,14 @@ mod connection_types;
 mod connection_views;
 mod context_items;
 mod context_menu_position;
+// `pub mod` — the crate's only public module: the T159 dashboard facade
+// keeps its display `DashboardWidget` here, but that root name is held
+// by the N13 workspace stub below (whose `datazen-ui` consumers are out
+// of that task's reach), and the module-local `ExecutionTarget` wire
+// mirror's root name belongs to `metadata`'s serde-less family — so those
+// names reach the outside world through the module path while everything
+// else re-exports at the root (see `dashboard_types`' docs).
+pub mod dashboard_types;
 mod metadata;
 mod platform_shared;
 mod relation_prediction;
@@ -74,6 +82,21 @@ pub use context_items::{ContextItem, ContextKind, SplitContextItems, split_conte
 pub use context_menu_position::{
     CONTEXT_MENU_PAD, Point, Rect, RootMenuPosition, Size, SubmenuPosition, SubmenuSide, Viewport,
     position_root_menu, position_root_menu_with_pad, position_submenu, position_submenu_with_pad,
+};
+// The T159 dashboard vocabulary (see `dashboard_types`' docs): every
+// name the React facade re-exports rides the crate root, but the display
+// `DashboardWidget` (the N13 stub above owns the root name) and the
+// module-local serde `ExecutionTarget` family stay module-path only —
+// the mounting note there rules the split.
+pub use dashboard_types::{
+    AlertChannel, AlertMetric, AlertMetricAgg, AlertMetricKind, AlertOperator, AlertRule,
+    CreateWidgetFromSqlParams, CreateWidgetFromWorkflowParams, CreateWidgetResult, Dashboard,
+    DashboardLayout, DashboardWorkflowRef, MonitorEmailSettings, MonitorGrant,
+    MonitorScheduleGrantSummary, MonitorSettings, MonitorScope, RefreshMode, RefreshPolicy,
+    RunIndexEntry, UpdateHiddenWidgetSqlParams, ViewMode, WidgetLayout, WidgetRun,
+    WidgetRunStatus, DEFAULT_MONITOR_SETTINGS, DEFAULT_REFRESH, MIN_REFRESH_SEC,
+    REFRESH_WARN_BELOW_SEC, clamp_refresh_sec, normalize_refresh_policy,
+    should_warn_refresh_sec,
 };
 pub use metadata::{
     BatchFlush, CurrentCallContext, CurrentProvenanceContext, ExecutionTarget,
@@ -342,7 +365,11 @@ pub struct Workflow {
     pub steps: Vec<String>,
 }
 
-/// One dashboard widget: its id, its title, its kind.
+/// The facade's display `DashboardWidget` (chart config, layout,
+/// refresh, alert) lives at [`crate::dashboard_types::DashboardWidget`]:
+/// this root name stays with the stub because `datazen-ui` consumes it
+/// from the root in 16 files, and that crate is outside the T159 port's
+/// reach — see the `dashboard_types` module docs for the ruling.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DashboardWidget {
     pub id: u64,
