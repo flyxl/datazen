@@ -19,3 +19,4 @@
 //! registry keyed by contribution id is the whole surface.
 
 pub(crate) mod temporal_math;
+pub(crate) mod timestamp_format; // T272: the three output formats

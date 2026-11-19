@@ -173,6 +173,16 @@ pub(crate) enum TemporalParseError {
     OutOfRange,
 }
 
+/// Format-side error codes (React `TemporalFormatError`, consumed by
+/// timestampFormat's `formatTimestampOutput`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TemporalFormatError {
+    InvalidInstant,
+    InvalidTimeZone,
+    InvalidLocale,
+    OutOfRange,
+}
+
 /// `parse_zoned_timestamp` / `parse_unix_value` result.
 pub(crate) type InstantParseResult = Result<InstantParts, TemporalParseError>;
 
