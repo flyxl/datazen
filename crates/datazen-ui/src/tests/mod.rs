@@ -403,3 +403,9 @@ mod content_view;
 // T199 independent audit: no-panel React gates, AI drawer independence,
 // host pinned keys and the 800-line / no-bare-panic source contract.
 mod content_view_audit;
+
+// T223: ContentViewDialogs host (keys, open gates, callbacks, geometry).
+mod content_view_dialogs;
+// T223 independent audit: cancel/header routing, database fallback, slot
+// integration geometry and the source-contract guard.
+mod content_view_dialogs_audit;
