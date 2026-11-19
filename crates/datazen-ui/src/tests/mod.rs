@@ -282,6 +282,11 @@ mod connection_ai_notes;
 mod connection_form_parts;
 // T103 independent audit: observable behaviour, structural parity and coverage gaps.
 mod connection_form_audit;
+// T239: the React NewConnectionDialog port (picker, form wiring, actions, geometry).
+mod new_connection_dialog;
+// T239 independent audit: availability filter, group wiring/labels, edit AI
+// notes, host-port contract and group-heavy geometry.
+mod new_dialog_audit;
 // T193: FileConnectionFields port (path field, ADB flow, keys, geometry).
 mod file_connection_fields;
 // T193 independent audit: empty/no-match filter, load failures, cancelled pull,
