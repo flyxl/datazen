@@ -401,6 +401,14 @@ mod data_sync_compare_step;
 // empty child mounts, light theme.
 mod data_sync_compare_step_audit;
 
+// T074: DataSyncDialogs (error / delete-confirm / explain / execute-confirm
+// dialogs, footer wiring, explain loading/result branches, open epochs).
+mod data_sync_dialogs;
+// T074 independent audit: empty explain text, topmost-dialog click
+// capture when all four are open, non-error epoch restamp, header close
+// label, light theme all-open, 576pt panel width.
+mod data_sync_dialogs_audit;
+
 // T026-S1: BackupWindow state model + selection logic (option tables,
 // select/session journey, grouping + search ranking, prefill, close
 // listener, empty ProgressLog mount).
@@ -416,6 +424,20 @@ mod backup_window;
 // extension, restore None-payload, re-arm, badge tones, confirm
 // dialog, log-copy visibility.
 mod backup_window_audit;
+
+// T076-S1: ProgressLog model — virtual-window math, auto-scroll
+// decision, copy text and copy-feedback state (coder tests).
+mod progress_log_s1;
+
+// T076-S1 independent audit: TanStack cross-check (independent
+// re-implementation + sweep) and copy-feedback ordering.
+mod progress_log_s1_audit;
+
+// T076-S2: ProgressLog component (header, copy button, virtualized rows).
+mod progress_log_s2;
+// T076-S2 independent audit: row pitch from rects, host-driven copied
+// label, pinned vs unpinned windows.
+mod progress_log_s2_audit;
 
 // T008: ChartCanvas dispatcher, measured viewport and honest placeholders.
 mod chart_canvas;
@@ -456,6 +478,14 @@ mod running_execution_close_host;
 // T022: the install-wapp dialog port (two-step pick/review flow, the
 // native pickers, the honest host seams and the close/reset path).
 mod install_wapp_dialog;
+// T078: chart field inference and number/axis formatting.
+mod chart_field_inference;
+mod chart_format;
+// T078 independent audit: type-name substrings, Number/Date.parse
+// deviations, Intl fraction rounding, the 1e4 compact cutoff.
+mod chart_field_inference_audit;
+mod chart_format_audit;
+
 // T009-S1: AiChatPanel leaf subcomponents (format/hasSnapshotContent/chip/QuestionBlock).
 mod ai_chat_panel;
 // T009-S1 independent audit: fresh vectors, dual-channel selection, geometry, source guards.

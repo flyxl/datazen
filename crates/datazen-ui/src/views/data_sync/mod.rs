@@ -3,8 +3,10 @@
 //! | React source | Rune module | task |
 //! |---|---|---|
 //! | `DataSyncCompareStep.tsx` | `data_sync_compare_step` | T024 |
+//! | `DataSyncDialogs.tsx` | `data_sync_dialogs` | T074 |
 
 pub(crate) mod data_sync_compare_step;
+pub(crate) mod data_sync_dialogs;
 
 #[allow(unused_imports)] // the Data Sync window (T270) is the production consumer
 pub(crate) use data_sync_compare_step::{
@@ -15,3 +17,6 @@ pub(crate) use data_sync_compare_step::{
     DataSyncTableSelection, RowOperation, SelectedTablePage, SyncConflictPolicy,
     SyncLargeValueMode, SyncMatchingStrategy, SyncOptions, SyncState, TableDiffFilter,
 };
+
+#[allow(unused_imports)] // the Data Sync window (T270) is the production consumer
+pub(crate) use data_sync_dialogs::{DataSyncDialogs, DataSyncDialogsVm};
