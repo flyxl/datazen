@@ -15,3 +15,6 @@ pub(crate) mod connection_share_dialog_host;
 pub(crate) mod file_connection_fields;
 pub(crate) mod http_proxy_tunnel_fields;
 pub(crate) mod index_connection_fields;
+pub(crate) mod object_filter_dialog;
+pub(crate) mod save_tunnel_dialog;
+pub(crate) mod shared;
