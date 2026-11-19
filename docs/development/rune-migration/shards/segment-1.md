@@ -14,7 +14,7 @@
 - [ ] T036 · lib/structureEditor · 0.90d · lib/structureEditor/buildStructureChangeRequest.ts lib/structureEditor/canOpenStructureEditor.ts lib/structureEditor/controlHints.ts
 - [ ] T045 · platform/web · 0.30d · platform/web/index.ts
 - [ ] T049 · ai · 0.80d · ai/grantState.ts
-- [ ] T053 · shell.ts · 0.90d · shell.ts
+- [x] T053 · shell.ts · 0.90d · shell.ts
 - [ ] T056 · components/filter · 0.90d · components/filter/FilterConditionEditor.tsx
 - [ ] T059 · components/connection · 0.90d · components/connection/ConnectionAiNotes.tsx
 - [x] T062 · components/migration · 0.50d · components/migration/MigrationJobFailureNotice.tsx

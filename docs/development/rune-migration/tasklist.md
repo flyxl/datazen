@@ -69,7 +69,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T050 · app.ts · 0.30d · app.ts
 - [ ] T051 · App.tsx · 0.30d · App.tsx
 - [ ] T052 · index.ts · 0.90d · index.ts
-- [ ] T053 · shell.ts · 0.90d · shell.ts
+- [x] T053 · shell.ts · 0.90d · shell.ts
 - [x] T054 · components/ui · 0.30d · components/ui/Spinner.tsx
 - [ ] T055 · components/DataTable · 1.30d · components/DataTable/ColumnPresentationDialog.tsx · split
 - [ ] T056 · components/filter · 0.90d · components/filter/FilterConditionEditor.tsx
