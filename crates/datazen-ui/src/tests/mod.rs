@@ -250,3 +250,5 @@ mod migration_endpoints_retest;
 mod chart_canvas;
 // T008 independent audit: marker honesty, factory seam, geometry, source guards.
 mod chart_canvas_audit;
+// T207: valuePresentation temporal math — parsers, DST refusal, LMT offsets.
+mod temporal_math;

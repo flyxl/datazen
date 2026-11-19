@@ -18,6 +18,10 @@ rune = { workspace = true }
 rune-kit = { workspace = true }
 serde_json = { workspace = true }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# lib/valuePresentation (issue-32 T02): the temporal core needs the full IANA
+# zone table with historical offsets (1850 Asia/Shanghai LMT +08:05:43) — the
+# same data Intl's `timeZone` option reads. Pure Rust, works on wasm too.
+chrono-tz = "0.10"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { workspace = true }
