@@ -839,3 +839,7 @@ mod ai_input;
 // T137 independent audit: fresh vectors (unicode @ queries, the mid-word
 // caret pick, the Backspace key path, stop presses, the inert wire-less field).
 mod ai_input_audit;
+
+// T151 independent audit: fresh vectors (boundary rows/counts, cascade
+// precedence, overlap cliques, pattern wraparound, JS coercion corners).
+mod chart_recommend_audit;
