@@ -29,6 +29,10 @@ pub(crate) mod wapp_icon;
 // resolve with its per-wapp cache, the 10s load watchdog, the reload/retry
 // recovery and the loading/missing/ready body branches.
 pub(crate) mod wapp_page_shell;
+// T145: the workspace mode's left rail — one item per page contributed by
+// an enabled wapp (icon, title, description) with the active tab tinted,
+// and the empty state's jump-to-extensions escape hatch.
+pub(crate) mod workspace_navigator;
 
 pub(crate) fn page_body(
     state: &AppState,
