@@ -298,6 +298,8 @@ mod stream_registry;
 mod stream_registry_audit;
 // T164: the ai/targetClaim.ts contract port (claim, attribution, receipt reuse).
 mod target_claim;
+// T164 independent audit: Pick<grantId> semantics and verbatim string flow.
+mod target_claim_audit;
 // T010: the controlled source/target endpoint bar port.
 mod migration_endpoints_bar;
 // T010 independent audit: label-vs-id display, close-on-choice, geometry.
