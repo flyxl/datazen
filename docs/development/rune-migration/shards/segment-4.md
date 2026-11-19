@@ -18,7 +18,7 @@
 - [x] T038 · hooks · 0.30d · hooks/useConfirmDialog.tsx
 - [ ] T044 · platform/shared · 0.30d · platform/shared/index.ts
 - [x] T047 · bootstrap · 2.00d · bootstrap/startSharedApp.tsx · split
-- [ ] T048 · commands · 0.30d · commands/adb.ts
+- [x] T048 · commands · 0.30d · commands/adb.ts
 - [ ] T050 · app.ts · 0.30d · app.ts
 - [x] T057 · components/history · 1.00d · components/history/HistoryEntryCard.tsx components/history/HistoryFilterBar.tsx
 - [ ] T063 · components/sql-editor · 4.20d · components/sql-editor/completion/schemaCompletion.ts · split
