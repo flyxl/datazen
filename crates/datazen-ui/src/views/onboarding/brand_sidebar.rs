@@ -14,11 +14,11 @@
 //!   exactly as React leaves it. [`version_label`] is the `v{version}`
 //!   format and this file's only logic.
 //! - The layout metrics (`WIZARD_ASIDE_PX_CLASS` 34px, `WIZARD_FOOTER_HEIGHT_CLASS`
-//!   56px, `WIZARD_CHROME_TEXT_CLASS` 11.5px mono muted) come from
-//!   `windows/onboarding/onboardingLayout.ts`, which is this segment's own
-//!   later task (T287); until it lands they live here as
-//!   [`ASIDE_PAD_X`] / [`FOOTER_HEIGHT`] / the chrome text style, the seam
-//!   T287 absorbs.
+//!   56px, `WIZARD_CHROME_TEXT_CLASS` 11.5px mono muted) live in the
+//!   `onboardingLayout.ts` port [`super::onboarding_layout`] (T287, the
+//!   seam this sidebar once placeholder-held); they are re-exported here
+//!   under their T021 names (`ASIDE_PAD_X` / `FOOTER_HEIGHT`) so the
+//!   T021 audit's import path is untouched.
 //! - The gradient background is React's one always-dark brand anchor: the
 //!   linear pair and the radial tint are fixed colours from `ui/palette.rs`
 //!   (`brand_sidebar_gradient` / `brand_sidebar_radial_tint`), painted on
@@ -70,15 +70,14 @@ use crate::icons::{
 use crate::ui::kit::kit;
 use crate::ui::palette;
 
-/// React `WIZARD_ASIDE_PX_CLASS` (`px-[34px]`), the sidebar's horizontal
-/// rhythm (34px → 25.5pt). The seam `onboardingLayout.ts` (T287) absorbs.
-#[allow(dead_code)] // reusable port; wired by the onboarding wizard track
-pub(crate) const ASIDE_PAD_X: f32 = 25.5;
-/// React `WIZARD_FOOTER_HEIGHT_CLASS` (`h-[56px]`, 56px → 42pt): the version
-/// row and the wizard's step indicator share this height so both footers
-/// end on the same bottom line.
-#[allow(dead_code)] // reusable port; wired by the onboarding wizard track
-pub(crate) const FOOTER_HEIGHT: f32 = 42.0;
+use super::onboarding_layout::chrome_text;
+// The shared chrome metrics now live in `onboarding_layout` (the T287
+// port of `onboardingLayout.ts`); the aliases keep the T021 audit's
+// import path (`brand_sidebar::{ASIDE_PAD_X, FOOTER_HEIGHT}`) untouched.
+pub(crate) use super::onboarding_layout::{
+    WIZARD_ASIDE_PX as ASIDE_PAD_X, WIZARD_FOOTER_HEIGHT as FOOTER_HEIGHT,
+};
+
 /// The sidebar's fixed width (`w-[352px]`, 352px → 264pt).
 #[allow(dead_code)] // reusable port; wired by the onboarding wizard track
 pub(crate) const ASIDE_WIDTH: f32 = 264.0;
@@ -88,11 +87,6 @@ pub(crate) const ASIDE_WIDTH: f32 = 264.0;
 #[allow(dead_code)] // reusable port; wired by the onboarding wizard track
 pub(crate) fn version_label(version: &str) -> String {
     format!("v{version}")
-}
-
-/// React `WIZARD_CHROME_TEXT_CLASS` (`text-[11.5px] font-mono text-fg-muted`).
-fn chrome_text() -> TextStyle {
-    TextStyle::new(8.625, 400.0).mono()
 }
 
 /// The brand sidebar. Purely presentational; the version is host-delivered.

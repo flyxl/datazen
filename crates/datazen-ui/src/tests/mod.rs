@@ -1052,3 +1052,19 @@ mod monitor_schedule_authorization_audit;
 // T166: the area chart engine port (the log-hint pipeline, geometry, the
 // hidden-series toggle, hit-bucket routing and the tooltip mounts).
 mod area_chart_renderer;
+// T175: the run-history drawer port (index list branches, entry rows, the
+// epoch-cancelled deliveries, the loaded run's chart/table/error states,
+// the right-anchored max-w-3xl geometry).
+mod run_history_drawer_audit;
+// [check-only] new-module declaration
+mod dashboard_panel_audit;
+// T201: the widget editor drawer port (the form over the widget config —
+// every field's edit journey, the save guards and the normalized payload,
+// the chart-vs-table conditionals, the refresh-interval rules, the dirty
+// comparison, and the right-anchored max-w-md geometry).
+mod widget_editor_drawer_audit;
+// T072: the onboarding window shell port (root row, sidebar, wizard slot).
+mod onboarding_window_audit;
+// T114: the onboarding wizard port (the step host: the step seats, the
+// footer wiring + seat, the completion handlers' seams).
+mod onboarding_wizard_audit;
