@@ -366,3 +366,9 @@ mod connection_share_host;
 // T167 independent audit: independent i18n formatter pin, exact 1500ms wake +
 // copied label, long-message visible-rect geometry, export failure fallback.
 mod connection_share_host_audit;
+
+// T173: ContentStatusBar + ContentToolbar controlled ports.
+mod content_bar_ports;
+// T173 independent audit: preserved inner ER testid, React detail/AI titles,
+// KV slot branches and adversarial two-size two-theme geometry.
+mod content_bar_audit;
