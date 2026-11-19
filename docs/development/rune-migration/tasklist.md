@@ -261,7 +261,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T242 · components/sql-editor · 0.90d · components/sql-editor/metadata/findRelation.ts components/sql-editor/metadata/metadataCache.ts components/sql-editor/metadata/types.ts
 - [ ] T243 · components · 0.80d · components/SqlEditor.tsx components/SqlSyntaxPreview.tsx
 - [ ] T244 · windows/settings · 0.90d · windows/settings/DataCleanupSection.tsx
-- [ ] T245 · windows/connection · 1.30d · windows/connection/ContentViewDrawers.tsx · split
+- [x] T245 · windows/connection · 1.30d · windows/connection/ContentViewDrawers.tsx · split
 - [ ] T246 · windows/workflow · 2.00d · windows/workflow/yamlLint.ts · split
 - [ ] T247 · windows/onboarding · 1.00d · windows/onboarding/steps/WelcomeStep.tsx windows/onboarding/WizardFooter.tsx
 - [ ] T248 · windows/data-transfer · 0.30d · windows/data-transfer/TransferJobResultPanel.tsx
