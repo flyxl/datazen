@@ -31,7 +31,7 @@
 - [x] T078 · lib/chart · 0.60d · lib/chart/fieldInference.ts lib/chart/format.ts
 - [x] T087 · stores · 1.30d · stores/aiStore.ts · split
 - [x] T089 · stores/tableData · 0.90d · stores/tableData/countStrategy.ts
-- [ ] T091 · platform · 0.30d · platform/capabilities.ts
+- [x] T091 · platform · 0.30d · platform/capabilities.ts
 - [ ] T096 · components/ui · 0.90d · components/ui/WebContextMenu.tsx
 - [x] T097 · components/DataTable · 0.30d · components/DataTable/ColumnStatsDialog.tsx
 - [ ] T100 · components/query · 1.00d · components/query/QueryContextSelectors.tsx components/query/QueryErrorPanel.tsx
