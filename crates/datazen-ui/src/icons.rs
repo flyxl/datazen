@@ -282,6 +282,30 @@ pub(crate) static ICON_SQUARE: rune::Icon = rune::Icon {
     body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/>",
 };
 
+/// T060: lucide `code-2`, the language-label glyph in `AiCodeBlock`
+/// (`AiCodeBlock.tsx` uses `Code2`). The two chevrons are the whole icon;
+/// geometry verified against the lucide `code-2` icon (polylines
+/// `16 18 22 12 16 6` and `8 6 2 12 8 18`).
+pub(crate) static ICON_CODE: rune::Icon = rune::Icon {
+    name: "code-2",
+    view: 24.0,
+    body: "<polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"16 18 22 12 16 6\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"8 6 2 12 8 18\"/>",
+};
+/// T060: lucide `maximize-2`, the enter-fullscreen glyph in `AiCodeBlock`
+/// (`AiCodeBlock.tsx` uses `Maximize2`).
+pub(crate) static ICON_MAXIMIZE_2: rune::Icon = rune::Icon {
+    name: "maximize-2",
+    view: 24.0,
+    body: "<polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"15 3 21 3 21 9\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"9 21 3 21 3 15\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"21\" x2=\"14\" y1=\"3\" y2=\"10\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"3\" x2=\"10\" y1=\"21\" y2=\"14\"/>",
+};
+/// T060: lucide `minimize-2`, the exit-fullscreen glyph in `AiCodeBlock`
+/// (`AiCodeBlock.tsx` uses `Minimize2`).
+pub(crate) static ICON_MINIMIZE_2: rune::Icon = rune::Icon {
+    name: "minimize-2",
+    view: 24.0,
+    body: "<polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"4 14 10 14 10 20\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"20 10 14 10 14 4\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"14\" x2=\"21\" y1=\"10\" y2=\"3\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"3\" x2=\"10\" y1=\"21\" y2=\"14\"/>",
+};
+
 pub(crate) fn section_icon(section: Section) -> &'static rune::Icon {
     match section {
         Section::Connections => &ICON_CONNECTIONS,

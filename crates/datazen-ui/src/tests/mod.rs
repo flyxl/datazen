@@ -255,6 +255,10 @@ mod query_artifact_export;
 // T057 audit: guard no-ops, outcome marks React only sets, stale-press guard.
 mod query_artifact_export_audit;
 
+// T060: AiCodeBlock port (SQL detection, dialect, labels, state machine,
+// mounted inline + fullscreen block).
+mod ai_code_block;
+
 // T027: SchemaDiffPanel port and its independent audit.
 mod schema_diff_panel;
 mod schema_diff_audit;
