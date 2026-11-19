@@ -103,6 +103,7 @@ use crate::views::data_transfer::recordset_editor::TransferRecordset;
 use crate::views::data_transfer::transfer_mapping_view::{
     mapping_gate_allows_advance, normalize_column_mappings, TransferMappingStatus, TransferTableVm,
 };
+use crate::views::data_transfer::transfer_job_run::{TransferJobRunVm, TransferRunPhase};
 use crate::views::data_transfer::transfer_pairing_vm::{
     is_transfer_target_supported, is_verified_migration_pair, pick_prefill_database,
     resolve_default_database, resolve_transfer_pairing, sync_category, MigrationWindowPrefill,
@@ -447,7 +448,7 @@ pub(crate) struct TransferWritePlanVm {
 
 /// React `TransferPreview` (`commands/transfer.ts:169-179`) — the review
 /// the prepare Job returns.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct TransferPreviewVm {
     pub plan_id: String,
     pub pairing_path: String,
@@ -643,6 +644,11 @@ pub(crate) struct DataTransferWindowVm {
     pub execute_confirm_open: bool,
     // -- the wizard position (React 126) -----------------------------------
     pub step: WizardStep,
+    // -- the Job run machine (React 93, the `jobRun` hook) -----------------
+    /// React `useTransferJobRun()` (React 93): the prepare → apply →
+    /// verdict lifecycle, ported as [`TransferJobRunVm`]. The host drives
+    /// its async hops; the window reads its slots.
+    pub job_run: TransferJobRunVm,
 }
 
 impl Default for DataTransferWindowVm {
@@ -702,6 +708,7 @@ impl Default for DataTransferWindowVm {
             limitations_open: false,
             execute_confirm_open: false,
             step: WizardStep::Endpoints,
+            job_run: TransferJobRunVm::default(),
         }
     }
 }
@@ -1575,15 +1582,6 @@ impl DataTransferWindowVm {
         }
     }
 
-    /// React `handleReReviewPlan` (React 872-877) — the pure state half:
-    /// drop the preview, return to mapping, clear the progress line. The
-    /// run machine's reset is S2's.
-    pub(crate) fn handle_re_review_plan(&mut self) {
-        self.preview = None;
-        self.step = WizardStep::Mapping;
-        self.execute_progress.clear();
-    }
-
     /// The dialog surfaces (React 147-148, 196-200).
     pub(crate) fn set_limitations_open(&mut self, open: bool) {
         self.limitations_open = open;
@@ -1601,5 +1599,121 @@ impl DataTransferWindowVm {
 
     pub(crate) fn dismiss_error(&mut self) {
         self.error_open = false;
+    }
+
+    // -----------------------------------------------------------------------
+    // The Job run wiring (React 773-877) — the window-side halves of the
+    // hook's callbacks; the host performs the IPC hops through
+    // [`TransferJobRunVm`]'s own methods.
+    // -----------------------------------------------------------------------
+
+    /// React `reconcilePending` (React 933): a re-review may only be
+    /// offered while nothing is pending reconcile. A `null` verdict means
+    /// no Job settled at all (a refusal before any write), so there is no
+    /// half-written range to protect and the affordance stays open.
+    pub(crate) fn reconcile_pending(&self) -> bool {
+        self.job_run
+            .verdict()
+            .map(|verdict| verdict.requires_reconcile)
+            .unwrap_or(false)
+    }
+
+    /// React `handleCancel`'s decision half (React 847-865): the host reads
+    /// the phase *before* the request (the apply-in-flight flag), performs
+    /// the cancel, and applies the answer here. A cancel the backend
+    /// acknowledged while the plan was merely prepared has disposed that
+    /// plan: no write was ever in flight, so there is nothing to show a
+    /// verdict for. Dropping it back to mapping is the honest outcome —
+    /// the next review mints a fresh planId. A cancel that could not be
+    /// addressed changes nothing and must leave the review untouched.
+    pub(crate) fn handle_cancel(&mut self, was_applying: bool, acknowledged: bool) {
+        if acknowledged && !was_applying {
+            self.job_run.reset();
+            self.preview = None;
+            self.step = WizardStep::Mapping;
+            self.execute_progress.clear();
+        }
+    }
+
+    /// React `handleReReviewPlan`'s full body (React 872-877) — the run
+    /// reset joins the state reset now that the machine is a field.
+    pub(crate) fn handle_re_review_plan(&mut self) {
+        self.job_run.reset();
+        self.preview = None;
+        self.step = WizardStep::Mapping;
+        self.execute_progress.clear();
+    }
+
+    /// React `runExecute`'s executing brackets (React 793, 816-819): the
+    /// progress line is armed with the table count, and the outcome's step
+    /// transition — a settled apply steps to `result`; a refusal (scope,
+    /// budget, consumed plan) stays on `preview` so the fail-closed
+    /// notices are shown where the user still has the review in front of
+    /// them (React 813-815).
+    pub(crate) fn begin_execute(&mut self, table_count: usize) {
+        self.executing = true;
+        // React 798: `t('transfer.executingProgress', { count })`.
+        self.execute_progress = t("transfer.executingProgress").replace("{count}", &table_count.to_string());
+    }
+
+    pub(crate) fn finish_execute(&mut self, settled: bool) {
+        self.executing = false;
+        self.execute_progress.clear();
+        self.step = if settled {
+            WizardStep::Result
+        } else {
+            WizardStep::Preview
+        };
+    }
+
+    /// React `goNext`'s mapping→preview round trip brackets (React
+    /// 942-943): the editor is disabled for the whole round trip
+    /// (`preparing`), and the decision is re-made against the rows that
+    /// exist *after* it (the host calls
+    /// [`go_next_after_mapping_gate`] with the post-await rows).
+    pub(crate) fn begin_go_next_prepare(&mut self) {
+        self.preparing = true;
+    }
+
+    pub(crate) fn finish_go_next_prepare(&mut self) {
+        self.preparing = false;
+    }
+
+    /// The prepare refusal path of `goNext` (React 944-947): prepare
+    /// itself refused; the preview step owns that error surface.
+    pub(crate) fn go_next_prepare_refused(&mut self) {
+        self.preparing = false;
+        self.step = WizardStep::Preview;
+    }
+
+    /// `loadSelectedProfile`'s run reset (React 550-552): a different
+    /// profile is a different plan; any run state from the previous one
+    /// must go with it, or a spent planId would look reusable.
+    pub(crate) fn profile_run_reset(&mut self) {
+        self.job_run.reset();
+    }
+
+    /// `runPreview`'s non-advance detail read (React 751-753): the
+    /// backend's own words, read synchronously from the run machine's
+    /// same-tick mirror.
+    pub(crate) fn last_run_failure_message(&self) -> Option<&str> {
+        self.job_run.last_failure().map(|failure| failure.message.as_str())
+    }
+
+    /// The window's own `preparing`/`executing`/`loading` gating the
+    /// footer's Next button honours (React 1801, 1851-1852): back is
+    /// disabled while executing; next while loading.
+    pub(crate) fn back_disabled(&self) -> bool {
+        self.step.index() == 0 || self.executing
+    }
+
+    pub(crate) fn next_disabled(&self) -> bool {
+        !self.can_next() || self.loading
+    }
+
+    /// The run phase the window surfaces (the footer's cancel buttons and
+    /// the pending-id notice key off it, React 1767-1807).
+    pub(crate) fn run_phase(&self) -> TransferRunPhase {
+        self.job_run.phase
     }
 }

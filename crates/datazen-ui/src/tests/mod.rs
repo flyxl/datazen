@@ -851,3 +851,11 @@ mod data_transfer_window_state;
 // matrix, fail-open options, sql-file round-trip, plan max count, gate
 // normalization).
 mod data_transfer_window_state_audit;
+
+// T147-S2: the Data Transfer Job run machine (coder tests).
+mod transfer_job_run;
+
+// T147-S2 independent audit: fresh vectors (classification order, the
+// replayed carve-out, downgrade spellings, stale-id refusal, cancel
+// address holes, unbacked-row verdicts).
+mod transfer_job_run_audit;

@@ -9,6 +9,7 @@
 //! | `DataTransferAttachedJobs.tsx` | `data_transfer_attached_jobs` | T073 |
 //! | `DataTransferTerminalResults.tsx` | `data_transfer_terminal_results` | T113 |
 //! | segment-2 pairing/prefill libs (T636/T563/T625 VM placeholders) | `transfer_pairing_vm` | T147-S1 |
+//! | `hooks/useTransferJobRun.ts` — the Job run machine | `transfer_job_run` | T147-S2 |
 //! | `DataTransferWindow.tsx` — state model | `data_transfer_window_state` | T147-S1 |
 
 pub(crate) mod column_mapping_editor;
@@ -17,6 +18,7 @@ pub(crate) mod data_transfer_attached_jobs;
 pub(crate) mod data_transfer_terminal_results;
 pub(crate) mod data_transfer_window_state;
 pub(crate) mod recordset_editor;
+pub(crate) mod transfer_job_run;
 pub(crate) mod transfer_mapping_view;
 pub(crate) mod transfer_pairing_vm;
 
@@ -58,6 +60,12 @@ pub(crate) use data_transfer_window_state::{
     TransferProfileVm, TransferSourceFilter, TransferSqlFileTargetVm, TransferTableMapping,
     TransferTablePatch, TransferTableRow, TransferWritePlanVm, WizardStep,
     DataTransferWindowVm, WriteMode, STEPS, DEFAULT_TRANSFER_OPTIONS,
+};
+#[allow(unused_imports)] // the Data Transfer window (T147) is the production consumer
+pub(crate) use transfer_job_run::{
+    classify_transfer_run_failure, is_ambiguous_apply_submission_error, TransferApplyInput,
+    TransferApplyJobViewVm, TransferApplyRequestVm, TransferJobRunVm, TransferPrepareJobViewVm,
+    TransferRunFailure, TransferRunFailureKind, TransferRunPhase,
 };
 #[allow(unused_imports)] // the editor shell (T023-S2) is the production consumer
 pub(crate) use column_mapping_row::{
