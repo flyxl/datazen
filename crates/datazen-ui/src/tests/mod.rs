@@ -204,6 +204,8 @@ mod execution_projection_audit;
 // T122 independent re-audit (D1 retest): reconnect flow, permanent binding
 // invalidation, null-handle guards and dispose (previously uncovered branches).
 mod execution_projection_retest;
+// T154: lib/session/pageUnload.ts port (host-owned fallback registry).
+mod page_unload;
 
 // Independent re-audit of merged T0-07 menu base.
 mod menus_merge_reaudit;
