@@ -297,6 +297,12 @@ mod connection_ai_notes;
 mod connection_form_parts;
 // T103 independent audit: observable behaviour, structural parity and coverage gaps.
 mod connection_form_audit;
+// T300: WebSocketTunnelFields + AxisConfigurator ports (keys, mode validation,
+// axis config branches, field mapping, config edits and two-window geometry).
+mod websocket_axis;
+// T300 independent audit: edit routing, accessor-free path, hiding rules,
+// select edits, palette data and source guards.
+mod ws_axis_audit;
 // T281: SshTunnelFields + StandardConnectionFields ports and the form-body swap.
 mod ssh_standard_fields;
 // T281 independent audit: auth mapping, toggle rule, path pick, no-username,
