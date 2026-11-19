@@ -241,7 +241,8 @@ fn failure_diagnostic_prefers_an_execution_error_chunk_then_the_view_code() {
     view.error_code = None;
     assert_eq!(
         execution_error_message(&view, &[]),
-        "failed: undefined; effect: unknown"
+        "failed: Execution outcome unavailable; effect: unknown",
+        "React fallback sentence when no diagnostic and no errorCode"
     );
 }
 

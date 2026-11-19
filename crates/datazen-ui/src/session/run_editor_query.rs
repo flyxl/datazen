@@ -544,7 +544,12 @@ pub(crate) fn execution_error_message(view: &ExecutionView, chunks: &[PublishedR
         }
         output.get("message")?.as_str().map(str::to_owned)
     });
-    let code = diagnostic.unwrap_or_else(|| error_code_str(view.error_code).to_owned());
+    // React: `diagnostic?.message ?? view.errorCode ??
+    // 'Execution outcome unavailable'`. An absent code is not "undefined".
+    let code = diagnostic.unwrap_or_else(|| match view.error_code {
+        Some(code) => error_code_str(code).to_owned(),
+        None => "Execution outcome unavailable".to_owned(),
+    });
     format!(
         "{}: {}; effect: {}",
         execution_state_str(view.state),
@@ -566,16 +571,15 @@ fn execution_state_str(state: ExecutionState) -> &'static str {
     }
 }
 
-fn error_code_str(code: Option<ExecutionErrorCode>) -> &'static str {
+fn error_code_str(code: ExecutionErrorCode) -> &'static str {
     match code {
-        Some(ExecutionErrorCode::SqlError) => "sqlError",
-        Some(ExecutionErrorCode::ProtocolError) => "protocolError",
-        Some(ExecutionErrorCode::Cancelled) => "cancelled",
-        Some(ExecutionErrorCode::Timeout) => "timeout",
-        Some(ExecutionErrorCode::ResourceLost) => "resourceLost",
-        Some(ExecutionErrorCode::PipelineAborted) => "pipelineAborted",
-        Some(ExecutionErrorCode::HostRejected) => "hostRejected",
-        None => "undefined",
+        ExecutionErrorCode::SqlError => "sqlError",
+        ExecutionErrorCode::ProtocolError => "protocolError",
+        ExecutionErrorCode::Cancelled => "cancelled",
+        ExecutionErrorCode::Timeout => "timeout",
+        ExecutionErrorCode::ResourceLost => "resourceLost",
+        ExecutionErrorCode::PipelineAborted => "pipelineAborted",
+        ExecutionErrorCode::HostRejected => "hostRejected",
     }
 }
 
