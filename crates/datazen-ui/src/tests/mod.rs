@@ -821,3 +821,7 @@ mod platform_contracts;
 // T129 independent audit: fresh vectors (a web capability table, an
 // exporter offering the optional arms, the registry's reader isolation).
 mod platform_contracts_audit;
+
+// T132 independent audit: fresh vectors (the scope/format gates and
+// fallbacks, the export-button gate, the mounted modal and its request).
+mod data_export_dialog_audit;
