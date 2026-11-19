@@ -797,3 +797,7 @@ mod data_sync_endpoint_step;
 // T114 independent audit: fresh vectors (empty profile list, pre-selected
 // id, pre-held name text, the dismissal close path, narrow-window notice).
 mod data_sync_endpoint_step_audit;
+
+// T125: the persisted-connections store (display helpers over the T403
+// placeholder subset, load/refetch chains, group edits, per-connection moves).
+mod connection_store;
