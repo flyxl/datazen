@@ -176,6 +176,8 @@ mod chart_export_audit;
 mod counters;
 // T034 independent audit: 2^53 gate, branch order, regex-vs-BigInt faithfulness.
 mod counters_audit;
+// T039: React stores/activeConnectionStore.ts parity (active-connection store).
+mod active_connection_store;
 // T032: relationMetadata/metadataCache.ts port — standard wiring so the
 // `metadata_cache` test filter really runs these tests (tests::metadata_cache::*).
 mod metadata_cache;
