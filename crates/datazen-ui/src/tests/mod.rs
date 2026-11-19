@@ -825,3 +825,6 @@ mod platform_contracts_audit;
 // T132 independent audit: fresh vectors (the scope/format gates and
 // fallbacks, the export-button gate, the mounted modal and its request).
 mod data_export_dialog_audit;
+
+// T134: the query execution status strip (coder tests).
+mod query_execution_status;
