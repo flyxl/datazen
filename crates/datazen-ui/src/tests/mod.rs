@@ -34,6 +34,9 @@ mod cell_renderer;
 mod cell_renderer_audit;
 // T054-S1: ColumnPresentationDialog draft model + pure functions (coder tests).
 mod column_presentation_dialog;
+// T054-S1 audit: independent mirror checks (IANA bounds, verbatim messages,
+// predicate wiring, fallback and round-trips).
+mod column_presentation_dialog_audit;
 pub(crate) use support::*;
 
 pub(crate) fn runtime() -> Runtime<AppState> {
