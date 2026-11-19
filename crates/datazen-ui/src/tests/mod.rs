@@ -331,6 +331,10 @@ mod data_sync_compare_step;
 // empty child mounts, light theme.
 mod data_sync_compare_step_audit;
 
+// T074: DataSyncDialogs (error / delete-confirm / explain / execute-confirm
+// dialogs, footer wiring, explain loading/result branches, open epochs).
+mod data_sync_dialogs;
+
 // T026-S1: BackupWindow state model + selection logic (option tables,
 // select/session journey, grouping + search ranking, prefill, close
 // listener, empty ProgressLog mount).
