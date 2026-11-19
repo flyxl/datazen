@@ -52,7 +52,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T033 · lib/relationPrediction · 0.80d · lib/relationPrediction/fromTableSchema.ts lib/relationPrediction/normalize.ts
 - [x] T034 · lib/session · 0.90d · lib/session/counters.ts
 - [ ] T035 · lib/sqlDialects · 1.00d · lib/sqlDialects/dialectProfile.ts lib/sqlDialects/extra.ts
-- [ ] T036 · lib/structureEditor · 0.90d · lib/structureEditor/buildStructureChangeRequest.ts lib/structureEditor/canOpenStructureEditor.ts lib/structureEditor/controlHints.ts
+- [x] T036 · lib/structureEditor · 0.90d · lib/structureEditor/buildStructureChangeRequest.ts lib/structureEditor/canOpenStructureEditor.ts lib/structureEditor/controlHints.ts
 - [ ] T037 · lib/valuePresentation · 0.50d · lib/valuePresentation/columnOverrides.ts
 - [ ] T038 · hooks · 0.30d · hooks/useConfirmDialog.tsx
 - [ ] T039 · stores · 0.90d · stores/activeConnectionStore.ts
@@ -61,11 +61,11 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T042 · types · 0.80d · types/ai.ts
 - [ ] T043 · platform · 2.00d · platform/blobTablesExporter.ts · split
 - [ ] T044 · platform/shared · 0.30d · platform/shared/index.ts
-- [ ] T045 · platform/web · 0.30d · platform/web/index.ts
+- [x] T045 · platform/web · 0.30d · platform/web/index.ts
 - [ ] T046 · extensions · 0.30d · extensions/generated-pro.ts
 - [ ] T047 · bootstrap · 2.00d · bootstrap/startSharedApp.tsx · split
 - [ ] T048 · commands · 0.30d · commands/adb.ts
-- [ ] T049 · ai · 0.80d · ai/grantState.ts
+- [x] T049 · ai · 0.80d · ai/grantState.ts
 - [ ] T050 · app.ts · 0.30d · app.ts
 - [ ] T051 · App.tsx · 0.30d · App.tsx
 - [ ] T052 · index.ts · 0.90d · index.ts
