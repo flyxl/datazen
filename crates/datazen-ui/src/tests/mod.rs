@@ -258,6 +258,9 @@ mod query_artifact_export_audit;
 // T060: AiCodeBlock port (SQL detection, dialect, labels, state machine,
 // mounted inline + fullscreen block).
 mod ai_code_block;
+// T060 audit: long-line overflow, detection edges, dialect survival,
+// mounted stale-expiry guard, fullscreen-toggle text deviation pin.
+mod ai_code_block_audit;
 
 // T027: SchemaDiffPanel port and its independent audit.
 mod schema_diff_panel;
