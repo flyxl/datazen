@@ -180,16 +180,16 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T161 · types · 0.90d · types/dashboard.ts
 - [ ] T162 · platform · 0.30d · platform/env.ts
 - [ ] T163 · commands · 0.90d · commands/backup.ts
-- [ ] T164 · ai · 2.00d · ai/targetClaim.ts · split
+- [x] T164 · ai · 2.00d · ai/targetClaim.ts · split
 - [ ] T165 · components/DataTable · 4.50d · components/DataTable/DataTable.tsx · split
-- [ ] T166 · components/filter · 0.80d · components/filter/FilterTokenInput.tsx components/filter/FilterValueInput.tsx
-- [ ] T167 · components/connection · 0.90d · components/connection/ConnectionShareDialogHost.tsx
+- [x] T166 · components/filter · 0.80d · components/filter/FilterTokenInput.tsx components/filter/FilterValueInput.tsx
+- [x] T167 · components/connection · 0.90d · components/connection/ConnectionShareDialogHost.tsx
 - [ ] T168 · components/chart · 2.00d · components/chart/renderers/AreaChartRenderer.tsx · split
 - [ ] T169 · components/ai · 2.00d · components/ai/AiMessageContent.tsx · split
 - [ ] T170 · components/sql-editor · 0.60d · components/sql-editor/extensions/executionState.ts components/sql-editor/extensions/types.ts
 - [ ] T171 · components · 0.90d · components/McpApprovalHost.tsx
 - [ ] T172 · windows/settings · 0.90d · windows/settings/AiSettingsSection.tsx
-- [ ] T173 · windows/connection · 0.80d · windows/connection/ContentStatusBar.tsx windows/connection/ContentToolbar.tsx
+- [x] T173 · windows/connection · 0.80d · windows/connection/ContentStatusBar.tsx windows/connection/ContentToolbar.tsx
 - [ ] T174 · windows/workspace · 0.90d · windows/workspace/WorkspaceTabBar.tsx
 - [ ] T175 · windows/dashboard · 0.90d · windows/dashboard/RunHistoryDrawer.tsx
 - [ ] T176 · windows/workflow · 0.30d · windows/workflow/workflowStepResultUtils.tsx

@@ -470,6 +470,10 @@ mod stream_registry;
 // T133 independent audit: supersede events, terminal re-begin, precedence and
 // multi-subscriber delivery order.
 mod stream_registry_audit;
+// T164: the ai/targetClaim.ts contract port (claim, attribution, receipt reuse).
+mod target_claim;
+// T164 independent audit: Pick<grantId> semantics and verbatim string flow.
+mod target_claim_audit;
 // T010: the controlled source/target endpoint bar port.
 mod migration_endpoints_bar;
 // T010 independent audit: label-vs-id display, close-on-choice, geometry.
@@ -647,6 +651,11 @@ mod timestamp_config;
 mod filter_condition_editor;
 // T056 independent audit: ported contracts, dispatch paths, i18n, token events.
 mod filter_condition_editor_audit;
+// T166: the React FilterTokenInput + FilterValueInput ports.
+mod filter_token_value_input;
+// T166 independent audit: commit edge cases, position-based removal, editor
+// de-duplication and many-token geometry.
+mod filter_token_value_audit;
 
 // T072: the wapps management page port (header/counts, the search/filter
 // chips and derivations, the grouped all view, the cards and their gates,
@@ -721,3 +730,14 @@ mod ai_egress_notice_audit;
 mod table_data_filter_utils;
 // T185 independent audit: fresh vectors for the filter-draft helpers.
 mod table_data_filter_utils_audit;
+// T167: ConnectionShareDialogHost (state, callback wiring, keys, geometry).
+mod connection_share_host;
+// T167 independent audit: independent i18n formatter pin, exact 1500ms wake +
+// copied label, long-message visible-rect geometry, export failure fallback.
+mod connection_share_host_audit;
+
+// T173: ContentStatusBar + ContentToolbar controlled ports.
+mod content_bar_ports;
+// T173 independent audit: preserved inner ER testid, React detail/AI titles,
+// KV slot branches and adversarial two-size two-theme geometry.
+mod content_bar_audit;

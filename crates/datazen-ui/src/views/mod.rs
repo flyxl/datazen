@@ -4,6 +4,8 @@ mod ai_chat;
 mod app_root;
 mod backup;
 mod chrome;
+pub(crate) mod content_status_bar;
+pub(crate) mod content_toolbar;
 mod connection_page;
 mod connection_workspace_home;
 mod connections;
@@ -34,6 +36,8 @@ pub(crate) use app_root::*;
 #[allow(unused_imports)] // the Backup window (T026-S2) is the production consumer
 pub(crate) use backup::*;
 pub(crate) use chrome::*;
+pub(crate) use content_status_bar::*;
+pub(crate) use content_toolbar::*;
 pub(crate) use connection_page::*;
 pub(crate) use connection_workspace_home::*;
 pub(crate) use connections::*;
