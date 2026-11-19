@@ -785,3 +785,7 @@ mod window_chrome_fallback_audit;
 // T113: the Data Transfer terminal-results strip (the restored verdict:
 // uncompleted surfaces, verdict fold, load reducer, mounted strip).
 mod data_transfer_terminal_results;
+
+// T113 independent audit: fresh vectors (mixed kinds, the in-flight latest
+// gate, the fixed uncompleted attribute set, stale identities, copy path).
+mod data_transfer_terminal_results_audit;
