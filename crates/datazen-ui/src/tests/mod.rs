@@ -759,3 +759,8 @@ mod table_data_grid_selection;
 mod table_data_grid_selection_audit;
 // T185 independent audit: fresh vectors for the filter-draft helpers.
 mod table_data_filter_utils_audit;
+// T293: the tab-closed notification (panelCloseNotifier).
+mod panel_close_notifier;
+// T293 independent audit: fresh vectors (multi-close diffs, re-add in the
+// same change, stranger unsubscribes, per-panel independence).
+mod panel_close_notifier_audit;

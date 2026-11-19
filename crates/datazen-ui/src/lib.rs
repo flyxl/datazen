@@ -73,6 +73,8 @@ mod session_state;
 mod settings_state;
 mod snippets_state;
 mod connections_io_state;
+// T293: the tab-closed notification (panelCloseNotifier.ts).
+pub(crate) mod panel_close_notifier;
 mod search_state;
 mod schema_workflows_state;
 mod tools_state;
