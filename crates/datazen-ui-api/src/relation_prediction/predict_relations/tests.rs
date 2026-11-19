@@ -346,8 +346,285 @@ fn does_not_treat_a_unique_index_over_the_primary_key_as_a_second_target() {
     assert!(!evidence_codes(&found[0]).contains(&PredictionEvidenceCode::TargetIsUnique));
 }
 
-// ── `predictRelations.scale.test.ts` ──
+// ── audit pins (T081) ──
+//
+// The mirrored React suite above pins the port's behaviour wherever React
+// itself asserts it. These pins close the gaps the React suite leaves open
+// — each one a mutation that survived the mirrored suite alone:
+//
+// - the three default thresholds and their boundary comparisons;
+// - the source-side suffix fallback (`t_user_id`), the weakest naming rule;
+// - "two keys of the same table are not a conflict";
+// - the composite fold's pair order, best-match choice and emitted id;
+// - the output order (descending score, then ascending id);
+// - the kebab evidence/tier literals `as_str` renders.
+//
+// Scores are pinned through the `EVIDENCE_WEIGHTS` constants (React's
+// `toBeCloseTo(…, 3)` tolerance), not magic numbers, so a weight edit
+// renames the expectation instead of hiding behind it.
 
+#[test]
+fn applies_the_source_suffix_fallback_at_the_weakest_weight() {
+    // `t_user_id` does not spell any registered name, but its suffix
+    // `user_id` does: the column still names `users.id`, at the weakest
+    // weight — and carrying the bucket entry's own code, never the
+    // never-emitted `name-suffix-matches-table`.
+    let orders_with_prefixed = table("orders", vec![col("id"), col("t_user_id")]);
+    let found = predict_relations(&[users(), orders_with_prefixed], &default_options());
+    assert_eq!(found.len(), 1);
+    assert_eq!(
+        found[0].column_pairs,
+        vec![ColumnPair {
+            left: "t_user_id".to_string(),
+            right: "id".to_string()
+        }]
+    );
+    // The override clamps the naming weight, so the suffix path scores
+    // below the exact-name cases — and below the high tier.
+    let expected = EVIDENCE_WEIGHTS.name_suffix_matches_table
+        + EVIDENCE_WEIGHTS.target_is_primary_key
+        + EVIDENCE_WEIGHTS.type_exact;
+    assert!((found[0].score - expected).abs() < 0.0005);
+    assert_eq!(found[0].tier, PredictionTier::Medium);
+    let codes = evidence_codes(&found[0]);
+    assert!(codes.contains(&PredictionEvidenceCode::NameMatchesTableStem));
+    assert!(!codes.contains(&PredictionEvidenceCode::NameSuffixMatchesTable));
+    assert!(!codes.contains(&PredictionEvidenceCode::NameMatchesTable));
+}
+
+#[test]
+fn drops_candidates_just_below_the_medium_threshold_but_keeps_just_above() {
+    // The exact `account_no` key-name hit scores 0.7 (0.3 + 0.3 + 0.1);
+    // the same key reached through the `x_account_no` suffix fallback
+    // scores 0.55 with an exact type and 0.45 with a compatible one —
+    // bracketing the default 0.5 drop line from both sides.
+    let mut accounts = table("accounts", vec![col("id"), col_typed("account_no", "integer")]);
+    accounts.unique_column_sets = vec![vec!["account_no".to_string()]];
+    let exact = table("invoices", vec![col("id"), col("account_no")]);
+    let via_suffix = table("invoices", vec![col("id"), col("x_account_no")]);
+    let mut compat_target = accounts.clone();
+    compat_target.columns = vec![col("id"), col_typed("account_no", "bigint")];
+    let compat_source = table("invoices", vec![col("id"), col_typed("x_account_no", "integer")]);
+
+    let exact_found = predict_relations(&[accounts.clone(), exact], &default_options());
+    assert_eq!(exact_found.len(), 1);
+    let exact_expected = EVIDENCE_WEIGHTS.name_matches_key
+        + EVIDENCE_WEIGHTS.target_is_unique
+        + EVIDENCE_WEIGHTS.type_exact;
+    assert!((exact_found[0].score - exact_expected).abs() < 0.0005);
+    assert_eq!(exact_found[0].tier, PredictionTier::Medium);
+
+    let kept = predict_relations(&[accounts, via_suffix], &default_options());
+    assert_eq!(kept.len(), 1);
+    let kept_expected = EVIDENCE_WEIGHTS.name_suffix_matches_table
+        + EVIDENCE_WEIGHTS.target_is_unique
+        + EVIDENCE_WEIGHTS.type_exact;
+    assert!((kept[0].score - kept_expected).abs() < 0.0005);
+
+    // A compatible (not exact) type drops the 0.1 bonus and the candidate
+    // with it — 0.45 stays under the default medium threshold.
+    assert!(predict_relations(&[compat_target, compat_source], &default_options()).is_empty());
+}
+
+#[test]
+fn tiers_a_score_landing_exactly_on_the_default_high_threshold_as_high() {
+    // `name-matches-table` 0.4 + `target-is-primary-key` 0.4 + a compatible
+    // (zero-weight) type: exactly 0.8, which the `>=` in the tier check
+    // must still call high.
+    let big_users = table("users", vec![col_typed("id", "bigint")]);
+    let int_orders = table("orders", vec![col("id"), col("user_id")]);
+    let found = predict_relations(&[big_users, int_orders], &default_options());
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].tier, PredictionTier::High);
+    assert!(evidence_codes(&found[0]).contains(&PredictionEvidenceCode::TypeCompatible));
+
+    // The prefixed-table match scores 0.75, one step below the line.
+    let app_users = table("app_users", vec![col("id")]);
+    let sessions = table("sessions", vec![col("id"), col("user_id")]);
+    let found = predict_relations(&[app_users, sessions], &default_options());
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].tier, PredictionTier::Medium);
+}
+
+#[test]
+fn flags_a_runner_up_inside_the_margin_and_not_one_past_it() {
+    // A 1:1-style table whose primary key is literally `user_id` (with its
+    // own reference declared, so it stops being a source itself) is named
+    // by `rows.user_id` through the key-name rule (0.8), 0.1 behind `users`
+    // (0.9) — well inside the default margin, so both candidates abstain.
+    let mut accounts = table("accounts", vec![col("id"), col("user_id")]);
+    accounts.primary_key = vec!["user_id".to_string()];
+    accounts.declared_foreign_keys = vec![DeclaredForeignKey {
+        columns: vec!["user_id".to_string()],
+        referenced_table: "users".to_string(),
+        referenced_columns: vec!["id".to_string()],
+    }];
+    let rows = table("rows", vec![col("id"), col("user_id")]);
+    let found = predict_relations(&[users(), accounts.clone(), rows.clone()], &default_options());
+    assert_eq!(found.len(), 2);
+    assert!(found.iter().all(|candidate| candidate.ambiguous));
+    assert!(found.iter().all(|candidate| candidate.tier == PredictionTier::Medium));
+    // Stronger first: the output is ordered by descending score.
+    assert_eq!(found[0].to_table, "users");
+    assert_eq!(found[1].to_table, "accounts");
+    // A margin tighter than the gap lets the engine choose again.
+    let tight = PredictionOptions {
+        ambiguity_margin: Some(0.05),
+        ..PredictionOptions::default()
+    };
+    let tight_found = predict_relations(&[users(), accounts, rows], &tight);
+    assert!(tight_found.iter().all(|candidate| !candidate.ambiguous));
+    assert_eq!(tight_found[0].to_table, "users");
+    assert_eq!(tight_found[0].tier, PredictionTier::High);
+
+    // `users` (0.9) and the prefixed `app_users` (0.75): the gap lands just
+    // past the default margin, so neither candidate is flagged.
+    let app_users = table("app_users", vec![col("id")]);
+    let rows = table("rows", vec![col("id"), col("user_id")]);
+    let found = predict_relations(&[users(), app_users.clone(), rows.clone()], &default_options());
+    assert_eq!(found.len(), 2);
+    assert!(found.iter().all(|candidate| !candidate.ambiguous));
+    assert_eq!(found[0].to_table, "users");
+    assert_eq!(found[1].to_table, "app_users");
+    // Handing the observed gap back as the margin makes the runner-up
+    // "equally well" — React's `<=` counts a runner-up at exactly the
+    // margin.
+    let gap = found[0].score - found[1].score;
+    let at_margin = PredictionOptions {
+        ambiguity_margin: Some(gap),
+        ..PredictionOptions::default()
+    };
+    let found = predict_relations(&[users(), app_users, rows], &at_margin);
+    assert_eq!(found.len(), 2);
+    assert!(found.iter().all(|candidate| candidate.ambiguous));
+}
+
+#[test]
+fn does_not_flag_two_keys_of_the_same_table_as_a_conflict() {
+    // `parents_id` is registered by both the primary key and a composite
+    // unique index of the same table; a conflict needs two *tables*, or
+    // every two-key table would abstain from its own single target.
+    let mut parents = table("parents", vec![col("id"), col("no")]);
+    parents.unique_column_sets = vec![vec!["id".to_string(), "no".to_string()]];
+    let children = table("children", vec![col("id"), col("parents_id")]);
+    let found = predict_relations(&[parents, children], &default_options());
+    // The composite half is incomplete (only `id` is matched), so exactly
+    // the primary-key candidate survives — unflagged.
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].to_table, "parents");
+    assert!(!found[0].ambiguous);
+    assert_eq!(found[0].tier, PredictionTier::High);
+    assert_eq!(
+        found[0].column_pairs,
+        vec![ColumnPair {
+            left: "parents_id".to_string(),
+            right: "id".to_string()
+        }]
+    );
+}
+
+#[test]
+fn sorts_composite_pairs_by_the_source_column_even_when_declared_reversed() {
+    // The fold emits the pairs of one composite relationship ordered by
+    // the source column, whatever order the schema declared them in.
+    let mut parents = table("parents", vec![col("id"), col("no")]);
+    parents.primary_key = vec!["id".to_string(), "no".to_string()];
+    let reversed_children = table(
+        "children",
+        vec![col("id"), col("parent_no"), col("parent_id")],
+    );
+    let found = predict_relations(&[parents, reversed_children], &default_options());
+    assert_eq!(found.len(), 1);
+    assert_eq!(
+        found[0].column_pairs,
+        vec![
+            ColumnPair {
+                left: "parent_id".to_string(),
+                right: "id".to_string()
+            },
+            ColumnPair {
+                left: "parent_no".to_string(),
+                right: "no".to_string()
+            },
+        ]
+    );
+}
+
+#[test]
+fn builds_the_documented_candidate_id() {
+    // The id is the string a user's removal is persisted against — its
+    // spelling is the contract, not an implementation detail.
+    let found = predict_relations(&[users(), orders()], &default_options());
+    assert_eq!(found[0].id, "predicted-orders-users-user_id=id");
+
+    let mut parents = table("parents", vec![col("id"), col("no")]);
+    parents.primary_key = vec!["id".to_string(), "no".to_string()];
+    let children = table("children", vec![col("id"), col("parent_id"), col("parent_no")]);
+    let found = predict_relations(&[parents, children], &default_options());
+    assert_eq!(found[0].id, "predicted-children-parents-parent_id=id,parent_no=no");
+}
+
+#[test]
+fn picks_the_strongest_match_when_a_composite_group_scores_unevenly() {
+    // Only one column of the pair is indexed, so the two matches of the
+    // composite group score differently: the relationship reports the
+    // stronger match's score and its evidence.
+    let mut parents = table("parents", vec![col("id"), col("no")]);
+    parents.primary_key = vec!["id".to_string(), "no".to_string()];
+    let children = table(
+        "children",
+        vec![col("id"), col_indexed("parent_id", "integer", true), col("parent_no")],
+    );
+    let found = predict_relations(&[parents, children], &default_options());
+    assert_eq!(found.len(), 1);
+    let expected = EVIDENCE_WEIGHTS.name_matches_table_stem
+        + EVIDENCE_WEIGHTS.target_is_primary_key
+        + EVIDENCE_WEIGHTS.type_exact
+        + EVIDENCE_WEIGHTS.source_indexed;
+    assert!((found[0].score - expected).abs() < 0.0005);
+    assert_eq!(found[0].tier, PredictionTier::High);
+    assert!(evidence_codes(&found[0]).contains(&PredictionEvidenceCode::SourceIndexed));
+}
+
+#[test]
+fn orders_equal_scores_by_id() {
+    // Two equally scoring candidates keep a deterministic order: ascending
+    // id (`predicted-rows-people-…` sorts before `predicted-rows-person-…`).
+    let legacy = table("person", vec![col("id")]);
+    let modern = table("people", vec![col("id")]);
+    let rows = table("rows", vec![col("id"), col("person_id")]);
+    let found = predict_relations(&[legacy, modern, rows], &default_options());
+    assert_eq!(found.len(), 2);
+    assert_eq!(found[0].score, found[1].score);
+    assert_eq!(found[0].to_table, "people");
+    assert_eq!(found[1].to_table, "person");
+}
+
+#[test]
+fn renders_react_s_evidence_and_tier_literals() {
+    // `as_str` is the string vocabulary the UI renders and the React suite
+    // compares against; a Rust-side rename would be invisible to every
+    // enum-level assertion above.
+    let codes = [
+        (PredictionEvidenceCode::TargetIsPrimaryKey, "target-is-primary-key"),
+        (PredictionEvidenceCode::TargetIsUnique, "target-is-unique"),
+        (PredictionEvidenceCode::NameMatchesTable, "name-matches-table"),
+        (PredictionEvidenceCode::NameMatchesTableStem, "name-matches-table-stem"),
+        (PredictionEvidenceCode::NameSuffixMatchesTable, "name-suffix-matches-table"),
+        (PredictionEvidenceCode::NameMatchesKey, "name-matches-key"),
+        (PredictionEvidenceCode::TypeExact, "type-exact"),
+        (PredictionEvidenceCode::TypeCompatible, "type-compatible"),
+        (PredictionEvidenceCode::SourceIndexed, "source-indexed"),
+        (PredictionEvidenceCode::Ambiguous, "ambiguous"),
+    ];
+    for (code, literal) in codes {
+        assert_eq!(code.as_str(), literal);
+    }
+    assert_eq!(PredictionTier::High.as_str(), "high");
+    assert_eq!(PredictionTier::Medium.as_str(), "medium");
+}
+
+// ── `predictRelations.scale.test.ts` ──
 /// The React generator, unchanged: `entity_{t}` with an `id` primary key,
 /// 15 `field_{c}` columns (a third of them varchar), and every third table
 /// carrying `entity_{t-1}_id` — a third of the tables reference an earlier
