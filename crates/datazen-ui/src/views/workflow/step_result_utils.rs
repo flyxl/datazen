@@ -171,8 +171,20 @@ pub(crate) fn extract_step_column_names(result: &Value) -> Vec<StepColumn> {
 /// *待 T176 正式化*.
 pub(crate) fn step_to_statement_preview(step: &StepExecutionResult) -> Option<StatementPreview> {
     let result = step.result.as_ref()?;
-    let raw_rows = result.get("rows")?.as_array()?;
-    let columns = extract_step_column_names(result);
+    let rows_slot = result.get("rows")?;
+    // A host may deliver the statement result nested under `rows` (the
+    // `{ rows: [...], rows_count }` shape), instead of putting its array
+    // directly in `result.rows`. Accept both: the nested object becomes the
+    // view we read columns, rows and the reported count from.
+    let view = if rows_slot.is_array() {
+        result
+    } else if rows_slot.is_object() {
+        rows_slot
+    } else {
+        return None;
+    };
+    let raw_rows = view.get("rows")?.as_array()?;
+    let columns = extract_step_column_names(view);
     if columns.is_empty() {
         return None;
     }
@@ -196,7 +208,7 @@ pub(crate) fn step_to_statement_preview(step: &StepExecutionResult) -> Option<St
         };
         rows.push(cells);
     }
-    let rows_count = result
+    let rows_count = view
         .get("rows_count")
         .and_then(Value::as_u64)
         .map_or_else(|| rows.len(), |count| count as usize);

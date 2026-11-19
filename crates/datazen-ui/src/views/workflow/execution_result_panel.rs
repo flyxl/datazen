@@ -64,7 +64,7 @@
 
 use std::collections::BTreeSet;
 
-use rune::{col, el, icon, row, text, El, ScrollSpec, TextStyle};
+use rune::{col, el, icon, row, text, El, ScrollSpec, Transition, TextStyle};
 use rune_kit::Kit;
 
 use super::step_result_utils::{
@@ -136,7 +136,15 @@ impl<'a, S: 'static> WorkflowExecutionResultPanel<'a, S> {
             },
         };
         let result = self.result;
-        let last = result.steps.len().saturating_sub(1);
+        // React's `WorkflowPage` defaults `workflowStepResultOrder` to 'desc'
+        // (`appSettings.workflowStepResultOrder ?? 'desc'`), so the most
+        // recent — and in the lite report the failing — step leads the result
+        // read. The panel mirrors that order; the VM itself stays in report
+        // order for the host's own summary rows.
+        let mut ordered: Vec<&super::step_result_utils::StepExecutionResult> =
+            result.steps.iter().collect();
+        ordered.reverse();
+        let last = ordered.len().saturating_sub(1);
         let mut panel = col()
             .key(self.key.clone())
             .w_full()
@@ -144,9 +152,14 @@ impl<'a, S: 'static> WorkflowExecutionResultPanel<'a, S> {
             .radius(k.radius.md)
             .border(1.0, k.c.border_base)
             .fill(k.c.bg_base)
+            // React's panel has no mount/step-expand animation: an expanded
+            // body and its controls are fully laid out and pickable on the
+            // very frame they appear. Land subtree changes at once rather
+            // than letting Rune's default fade/growth leave them unclickable.
+            .instant_changes()
             .clip_soft(0.0)
             .child(head(result, &ctx));
-        for (index, step) in result.steps.iter().enumerate() {
+        for (index, step) in ordered.into_iter().enumerate() {
             panel = panel.child(step_row(step, index, index == last, s, &self.slots, &ctx));
         }
         if let Some(error) = &result.error {
@@ -326,6 +339,11 @@ fn step_row<S: 'static>(
         .items_center()
         .gap(8.0)
         .hover(k.alpha(k.c.layer_02, 0.5))
+        // The row is mounted with the panel, which itself can appear on a
+        // later frame (e.g. the run result arriving). Rune's default 0.2 s
+        // entrance fade would leave it non-hit-testable on the very frame a
+        // press lands; React's row is already fully present. Show it whole.
+        .transition(Transition::none())
         .focusable(true)
         .expanded(expanded)
         .child(
@@ -411,7 +429,12 @@ fn step_body<S: 'static>(
         .shrink()
         .px(12.0)
         .pb(8.0)
-        .gap(4.0);
+        .gap(4.0)
+        // This whole subtree mounts on the row press. Rune's default 0.2 s
+        // entrance fade would leave its controls translucent (and therefore
+        // unpickable) on the immediately following frame; React's expanded
+        // body is fully present as soon as it renders. Show it whole.
+        .transition(Transition::none());
 
     if let Some(sql) = &step.sql_executed {
         body = body.child(
@@ -507,6 +530,7 @@ fn data_section<S: 'static>(
         .shrink()
         .items_center()
         .gap(8.0)
+        .transition(Transition::none())
         .child(
             text(format!("{} row(s)", preview.rows_count))
                 .key(ctx.step(index, "-rows-count"))
@@ -529,6 +553,7 @@ fn data_section<S: 'static>(
         .w_full()
         .shrink()
         .gap(4.0)
+        .transition(Transition::none())
         .child(head)
         .child(view)
 }
@@ -565,6 +590,11 @@ fn view_toggle<S: 'static>(
             .gap(2.0)
             .center_y()
             .radius(k.radius.sm)
+            // The toggle mounts with the expanded body, i.e. after the row
+            // press. Rune's default entrance fade would leave it transparent
+            // (and unpickable) on the next frame's immediate click, unlike
+            // React's already-present button; show it whole at once.
+            .transition(Transition::none())
             .focusable(true)
             .child(icon(glyph, 10.0).key(format!("{key}-icon")).color(ink))
             .child(
@@ -584,6 +614,7 @@ fn view_toggle<S: 'static>(
     row()
         .key(ctx.step(index, "-view-toggle"))
         .shrink()
+        .transition(Transition::none())
         // React `rounded-md` (6pt), outside the 4pt `rounded` entries.
         .radius(k.radius.md)
         .fill(k.c.bg_base)
@@ -618,6 +649,7 @@ fn chart_frame(index: usize, preview: &StatementPreview, ctx: &RenderCtx) -> El 
         .border(1.0, k.c.border_base)
         .radius(k.radius.sm)
         .h(CHART_HEIGHT)
+        .transition(Transition::none())
         .clip_soft(0.0);
     if preview.rows.len() > SAMPLE_LIMIT {
         let warning = t("workflows.sampledWarning").replace("{limit}", "1000");
@@ -710,6 +742,7 @@ fn table_preview(index: usize, preview: &StatementPreview, ctx: &RenderCtx) -> E
         .border(1.0, k.c.border_base)
         .radius(k.radius.sm)
         .max_h(160.0)
+        .transition(Transition::none())
         .scroll(ScrollSpec { stick_bottom: false })
         .child(head);
 
@@ -731,7 +764,9 @@ fn table_preview(index: usize, preview: &StatementPreview, ctx: &RenderCtx) -> E
             );
         for (j, cell) in cells.iter().enumerate() {
             // React: `val == null` paints an italic muted null; anything else
-            // is `String(val)`.
+            // is `String(val)`. The cell key belongs on the text node itself
+            // (React's `<td>` text), so the a11y tree reports its text; a bare
+            // row wrapper with a key would leave `ElementInfo::text` empty.
             let value = match cell {
                 None => {
                     text("null".to_owned())
@@ -741,12 +776,13 @@ fn table_preview(index: usize, preview: &StatementPreview, ctx: &RenderCtx) -> E
                 Some(value) => text(js_string(value)).font(ctx.f11).color(k.c.text_muted),
             };
             row_el = row_el.child(cell_width(
-                row()
+                value
                     .key(ctx.step(index, &format!("-table-cell-{r}-{j}")))
+                    .truncate()
                     .shrink()
+                    .min_w(0.0)
                     .px(8.0)
-                    .py(2.0)
-                    .child(value.truncate().shrink().min_w(0.0)),
+                    .py(2.0),
             ));
         }
         table = table.child(row_el);

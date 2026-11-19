@@ -413,3 +413,9 @@ mod export_success_panel_audit;
 mod filter_bar;
 // T014 independent audit: fresh vectors for the filter bar.
 mod filter_bar_audit;
+// T207: valuePresentation temporal math — parsers, DST refusal, LMT offsets.
+mod temporal_math;
+// T272: valuePresentation timestamp output formats (iso / iso-tz / locale).
+mod timestamp_format;
+// T230: valuePresentation timestamp options validation (pathed problems).
+mod timestamp_config;

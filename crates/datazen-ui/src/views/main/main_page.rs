@@ -96,10 +96,17 @@ pub(crate) fn main_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
         state.active.label().to_owned()
     };
     let titlebar = main_titlebar(dark, cx, title_label);
+    // The window-level overlay layer (the two dialog hosts plus the select
+    // listboxes `page_body` adds) is composed once and mounted once at the
+    // root, as React's `MainPage` does. The merge had left a second
+    // `modal_layer` call inside `main_shell_body`, so every dialog mounted
+    // twice — two scrims, two form generations, and clicks landing on the
+    // stacked copy's scrim instead of the real control.
+    let mut layer = modal_layer(state, theme, dark);
     let body = if load_failed {
         main_load_error_body(state, dark)
     } else {
-        main_shell_body(state, theme, dark)
+        main_shell_body(state, theme, dark, &mut layer)
     };
 
     col()
@@ -124,7 +131,7 @@ pub(crate) fn main_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
         })
         .child(titlebar)
         .child(body)
-        .children(modal_layer(state, theme, dark))
+        .children(layer)
         // React's fourth fragment child (`MainPage.tsx:140`): the
         // running-execution close host, after the two dialog hosts. The
         // failure branch returns without it (`:112-133`), so it mounts only
@@ -245,7 +252,7 @@ fn main_load_error_body(state: &AppState, dark: bool) -> El {
 /// The healthy branch: React's `<ConnectionPage />` — the rail, navigator and
 /// page column the shell already composes, plus the root modal layer's two
 /// dialog hosts (mounted by [`main_page`]).
-fn main_shell_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+fn main_shell_body(state: &AppState, theme: tok::Theme, dark: bool, layer: &mut Vec<El>) -> El {
     let rail = rail_view(state, dark);
     let navigator = navigator_panel(state, theme, dark);
     let nav_splitter = splitter::splitter_handle(
@@ -257,10 +264,9 @@ fn main_shell_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         NAVIGATOR_WIDTH_DEFAULT,
     );
 
-    // Window-level overlay layer: dialogs and select listboxes mount here so
-    // they paint above the page (page_body takes the same vec). Appended after
-    // the body as a sibling, matching the app_root composition.
-    let mut layer = modal_layer(state, theme, dark);
+    // `page_body` appends its select listboxes to the overlay layer composed
+    // once by `main_page`; the layer itself is mounted at the root there,
+    // exactly as React's `MainPage` mounts its one dialog-host fragment.
 
     let page = col()
         .key("datazen-page")
@@ -277,7 +283,7 @@ fn main_shell_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         } else {
             row().key("tab-strip-absent").h(0.0)
         })
-        .child(page_body(state, theme, dark, &mut layer))
+        .child(page_body(state, theme, dark, layer))
         .child(content_status_bar(state, theme));
 
     row()
@@ -290,5 +296,4 @@ fn main_shell_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .child(navigator)
         .child(nav_splitter)
         .child(page)
-        .children(layer)
 }
