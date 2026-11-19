@@ -1798,4 +1798,171 @@ mod tests {
         assert_eq!(display.id, "widget-1");
         assert_eq!(display.chart_config, None);
     }
+
+    // ── audit pins (T159) ──
+    //
+    // The port's own pins caught 15 of the audit's 24 mutations. The nine
+    // survivors were all silent:
+    //
+    // - widening `ViewMode` with a third variant (`Grid`, wire "grid") left
+    //   every table green — the literal tables pin that the React members
+    //   exist, not that nothing else does, so the closedness TS guarantees
+    //   at compile time had no runtime pin here (T090 closed the same gap
+    //   for the chart vocabulary the same way);
+    // - narrowing five `u32`/`u64` fields (`WidgetLayout`'s cells to u8,
+    //   `DashboardLayout`'s to u16, `cooldownSec` to u16,
+    //   `revocationVersion` to u32, `runRetentionCount` to u8) and widening
+    //   `refreshSec` to u64 left 448 tests green — every width witness in
+    //   the round-trip pins used small human-scale values, so the widths
+    //   the native twin fixes (and the module docs promise) were unpinned;
+    // - dropping the *value* half of lib.rs's re-export list
+    //   (`clamp_refresh_sec`, `DEFAULT_REFRESH`) kept tests and all three
+    //   crates checking — the resolves-style root pin sees types only, and
+    //   no downstream crate consumes the constants yet.
+    //
+    // The three pins below close those: near-miss literal rejections for
+    // every closed union, wire-level width witnesses, and a root pin that
+    // *uses* the re-exported values and functions through `crate::` paths.
+
+    #[test]
+    fn the_literal_unions_are_closed() {
+        // TS's closed string-literal unions are compile-time contracts;
+        // the runtime mirror is serde refusing a non-member literal. The
+        // near-misses below are all spellings a widened enum would gladly
+        // accept — `grid` in the audit's surviving mutant would have
+        // decoded as a third view mode.
+        for unknown in ["grid", "Chart", "graph"] {
+            let rejected = serde_json::from_value::<ViewMode>(serde_json::json!(unknown));
+            assert!(rejected.is_err(), "ViewMode rejected {unknown:?}");
+        }
+        for unknown in ["onopen", "Manual", "open"] {
+            let rejected = serde_json::from_value::<RefreshMode>(serde_json::json!(unknown));
+            assert!(rejected.is_err(), "RefreshMode rejected {unknown:?}");
+        }
+        for unknown in ["failed", "Ok", "timedout"] {
+            let rejected = serde_json::from_value::<WidgetRunStatus>(serde_json::json!(unknown));
+            assert!(rejected.is_err(), "WidgetRunStatus rejected {unknown:?}");
+        }
+        for unknown in ["Column", "metric"] {
+            let rejected = serde_json::from_value::<AlertMetricKind>(serde_json::json!(unknown));
+            assert!(rejected.is_err(), "AlertMetricKind rejected {unknown:?}");
+        }
+        for unknown in ["average", "mean", "Last"] {
+            let rejected = serde_json::from_value::<AlertMetricAgg>(serde_json::json!(unknown));
+            assert!(rejected.is_err(), "AlertMetricAgg rejected {unknown:?}");
+        }
+        for unknown in [">>", "=<", "!=="] {
+            let rejected = serde_json::from_value::<AlertOperator>(serde_json::json!(unknown));
+            assert!(rejected.is_err(), "AlertOperator rejected {unknown:?}");
+        }
+        // AlertChannel's closed set is already pinned: the
+        // "carrier-pigeon" reject in the literal table test above.
+    }
+
+    #[test]
+    fn wire_widths_follow_the_native_twin() {
+        // Grid cells, seconds and counts are the native twin's `u32`;
+        // revisions are `u64`; the SMTP port is `u16` (its 65536 reject is
+        // pinned in the monitor-settings round trip above). Each witness
+        // below rides the wire at a value only the twin's width carries,
+        // so narrowing (or silently widening) a field fails here, not in
+        // production.
+        let layout: WidgetLayout = decode(serde_json::json!({
+            "x": 4294967295u64, "y": 65536, "w": 300, "h": 1
+        }));
+        assert_eq!(layout.x, u32::MAX);
+        assert_eq!(layout.y, 65_536);
+        assert_eq!(encode(&layout)["x"], serde_json::json!(4294967295u64));
+        let grid: DashboardLayout = decode(serde_json::json!({
+            "cols": 4294967295u64, "rowHeight": 65536
+        }));
+        assert_eq!(grid.cols, u32::MAX);
+        assert_eq!(grid.row_height, 65_536);
+        // A cooldown pinned at the wire's u32 ceiling.
+        let rule: AlertRule = decode(serde_json::json!({
+            "metric": { "kind": "column", "column": "v" },
+            "op": ">",
+            "threshold": 1.0,
+            "cooldownSec": 4294967295u64,
+            "channels": []
+        }));
+        assert_eq!(rule.cooldown_sec, u32::MAX);
+        // refreshSec tops out at u32: the ceiling decodes, u32::MAX + 1
+        // does not (a field silently widened to u64 would accept both).
+        let policy: RefreshPolicy =
+            decode(serde_json::json!({ "mode": "interval", "refreshSec": 4294967295u64 }));
+        assert_eq!(policy.refresh_sec, Some(u32::MAX));
+        assert!(
+            serde_json::from_value::<RefreshPolicy>(serde_json::json!({
+                "mode": "interval", "refreshSec": 4294967296u64
+            }))
+            .is_err(),
+            "refreshSec is a u32 field"
+        );
+        // Retention counts and concurrency are u32 at their ceilings.
+        let settings: MonitorSettings = decode(serde_json::json!({
+            "trayEnabled": true,
+            "closeToTray": false,
+            "maxConcurrentQueries": 300,
+            "exportIncludeDashboardRuns": true,
+            "runRetentionCount": 4294967295u64,
+            "runRetentionDays": 65536
+        }));
+        assert_eq!(settings.max_concurrent_queries, 300);
+        assert_eq!(settings.run_retention_count, u32::MAX);
+        assert_eq!(settings.run_retention_days, 65_536);
+        // Revisions are u64: revocationVersion past u32::MAX rides the
+        // wire both ways (configRevision's 2^33 witness already rides the
+        // grant round trip above).
+        let grant: MonitorGrant = decode(serde_json::json!({
+            "id": "grant-2",
+            "dashboardId": "dash-1",
+            "widgetId": "widget-1",
+            "workflowId": "wf-1",
+            "workflowRevision": "r",
+            "organizationId": "org-1",
+            "servicePrincipal": "sp-1",
+            "approvedBy": "user-1",
+            "scopes": [],
+            "actions": [],
+            "readOnly": true,
+            "expiresAt": "2027-01-02T03:04:05Z",
+            "revocationVersion": 4294967296u64,
+            "revoked": false
+        }));
+        assert_eq!(grant.revocation_version, u32::MAX as u64 + 1);
+        assert_eq!(
+            encode(&grant)["revocationVersion"],
+            serde_json::json!(4294967296u64)
+        );
+    }
+
+    #[test]
+    fn the_runtime_constants_and_helpers_reexport_at_the_crate_root() {
+        // The four consts and three helpers ride the crate root alongside
+        // the types — a resolves-style pin sees types only, so these are
+        // pinned by *using* them through `crate::` paths: a dropped root
+        // re-export stops this file from compiling instead of silently
+        // shrinking the facade.
+        assert_eq!(crate::MIN_REFRESH_SEC, 30);
+        assert_eq!(crate::REFRESH_WARN_BELOW_SEC, 60);
+        assert_eq!(crate::clamp_refresh_sec(29), 30);
+        assert_eq!(crate::clamp_refresh_sec(120), 120);
+        assert_eq!(crate::DEFAULT_REFRESH.mode, crate::RefreshMode::Manual);
+        assert_eq!(
+            encode(&crate::DEFAULT_REFRESH),
+            serde_json::json!({ "mode": "manual" })
+        );
+        let normalized = crate::normalize_refresh_policy(crate::RefreshPolicy {
+            mode: crate::RefreshMode::Interval,
+            refresh_sec: None,
+        });
+        assert_eq!(normalized.refresh_sec, Some(crate::MIN_REFRESH_SEC));
+        assert!(crate::should_warn_refresh_sec(crate::RefreshPolicy {
+            mode: crate::RefreshMode::Interval,
+            refresh_sec: Some(59),
+        }));
+        assert_eq!(crate::DEFAULT_MONITOR_SETTINGS.max_concurrent_queries, 2);
+        assert_eq!(crate::DEFAULT_MONITOR_SETTINGS.run_retention_days, 30);
+    }
 }
