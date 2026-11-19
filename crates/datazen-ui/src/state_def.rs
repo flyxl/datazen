@@ -3,6 +3,7 @@
 use crate::data_grid::DataGrid;
 use crate::sql_editor::SqlEditor;
 use crate::types::{QuerySidebarPanel, ResultView, Section, TableView, Tool};
+use crate::views::ConnectionHomeSlotVm;
 use std::cell::Cell;
 
 /// A3: one query result tab. Multiple executions produce multiple tabs; pinned
@@ -123,6 +124,13 @@ pub struct AppState {
     pub(crate) connection_search: TextEdit,
     /// A1: the connections card list's expanded state (show all / show less).
     pub(crate) connections_show_all: bool,
+    /// T144: which home row owns the copy marker, and its real runtime deadline
+    /// (seconds). Cleared by `home_copy_tick` in the app poll; not a boolean.
+    pub(crate) home_copied_id: Option<String>,
+    pub(crate) home_copied_until: Option<f64>,
+    /// T144: a driver-contributed connection home (React `KvConnectionHomeBinding`).
+    /// The host sets it only for a live session; removal stage: real driver slot.
+    pub(crate) home_slot: Option<ConnectionHomeSlotVm>,
     /// The connection form dialog is open over the home.
     pub(crate) connection_dialog_open: bool,
     /// The generation of a connection dialog open (`Dialog::open_epoch`):
@@ -320,6 +328,9 @@ impl Default for AppState {
             settings_section: "general".into(),
             connection_search: TextEdit::new(String::new()),
             connections_show_all: false,
+            home_copied_id: None,
+            home_copied_until: None,
+            home_slot: None,
             connection_dialog_open: false,
             connection_dialog_epoch: 0,
             import_dialog_open: false,

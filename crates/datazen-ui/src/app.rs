@@ -124,11 +124,13 @@ pub(crate) fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool 
     false
 }
 
-pub(crate) fn app_poll(state: &mut AppState, _: f64, _: &mut Tx) -> bool {
+pub(crate) fn app_poll(state: &mut AppState, now: f64, _: &mut Tx) -> bool {
+    // T144: the home's per-row copy marker carries a real deadline; when the
+    // runtime wakes at expiry the label must revert on the next frame.
+    let mut dirty = crate::views::home_copy_tick(state, now);
     // N1: the host's finished jobs land first, whatever section is showing;
     // a delivery redraws (it wrote state or cleared its marker), and stale
     // generations were dropped inside `deliver_host_job`.
-    let mut dirty = false;
     for delivery in state.desktop.poll_jobs() {
         state.deliver_host_job(delivery);
         dirty = true;
