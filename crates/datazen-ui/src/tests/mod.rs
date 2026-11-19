@@ -184,6 +184,9 @@ mod export_plan;
 // data_and_structure, the S1/S2 boundary, planner error propagation.
 mod blob_tables_exporter_audit;
 mod export_plan_audit;
+// T043-S2: platform/blobTablesExporter.ts slice 2 — data emission
+// (provided + table branches) and merged delivery.
+mod blob_tables_exporter_emission;
 // T039: React stores/activeConnectionStore.ts parity (active-connection store).
 mod active_connection_store;
 // T039 independent audit: markConnected spread semantics, timeout re-arm

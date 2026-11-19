@@ -1,15 +1,14 @@
 //! T043-S1: the web-shaped tables exporter — types, capability gates,
 //! DDL resolution and shared planning.
 //!
-//! Rune port of `packages/frontend/src/platform/blobTablesExporter.ts`
-//! (376 lines), slice 1 of 2 (1.0d). The other half of the form-split F4
-//! dual-flow demonstration: the same `exportTables(request)` signature,
-//! answered without a host. Table pages come from the (transport-agnostic)
-//! table reader the caller injects, and the assembled CSV is delivered
-//! with a Blob download, the browser's own path-free equivalent of the
-//! save-dialog token writer.
+//! T043-S2: data emission + merged delivery — `emit_data_plan`'s two
+//! branches, the single/multi plan merge, `deliver`, and the `Saved`
+//! return (see "The emission stage (S2)" below).
 //!
-//! ## Slice boundary — S1 (this file) vs S2
+//! Rune port of `packages/frontend/src/platform/blobTablesExporter.ts`
+//! (376 lines), slices 1 and 2 (1.0d each).
+//!
+//! ## Slice boundary — S1 vs S2
 //!
 //! S1 owns everything up to the emission stage:
 //!
@@ -24,65 +23,60 @@
 //!   [`export_plan::prepare_export`], `useZip` refusal, `requestContext`
 //!   assembly and the [`export_plan::default_export_name`] file name.
 //!
-//! S1 deliberately does **not** do S2's work: `emitDataPlan`'s two
-//! branches, the single/multi plan merge, `deliver`, or the `Saved`
-//! return. Instead [`BlobTablesExporter::plan_export`] returns the
-//! gate + plan result as a [`PlannedExport`] value, which is the seam S2's
-//! emission stage consumes. The factory already takes the pieces S2
-//! needs (`readPage`, `deliver`, `now`); the reader and the deliver sink
-//! are stored untouched by S1 and read by S2.
+//! S1 returns the gate + plan result as a [`PlannedExport`] value, the
+//! seam S2's emission stage consumes. The factory already takes the
+//! pieces S2 needs (`readPage`, `deliver`, `now`); the reader and the
+//! deliver sink are stored untouched by S1 and read by S2.
 //!
-//! ## The S2 emission contract (fixed here, implemented by S2)
+//! ## The emission stage (S2)
 //!
-//! S2 adds one method to [`BlobTablesExporter`], mirroring React's
-//! `emitDataPlan(plan: Extract<ExportFilePlan, { kind: 'data' }>)`:
+//! S2 adds three methods to [`BlobTablesExporter`] (the `impl` block
+//! lives in [`super::blob_tables_emission`] so neither file exceeds the
+//! 800-line recommendation), mirroring React's
+//! `emitDataPlan(plan: Extract<ExportFilePlan, { kind: 'data' }>)` and
+//! the merge + deliver tail of `exportTables`:
 //!
-//! ```rust,ignore
-//! // S2 sketch — the signature S2 implements against `PlannedExport`:
-//! pub(crate) struct EmittedDataPlan {
-//!     // Text for every format except XLSX, which delivers decoded
-//!     // workbook bytes (`base64_to_bytes`).
-//!     pub content: DeliveredContent,
-//!     pub mime_type: String,
-//! }
-//!
-//! impl BlobTablesExporter {
-//!     async fn emit_data_plan(
-//!         &self,
-//!         planned: &PlannedExport,
-//!         plan: &ExportFilePlan, // must be the `Data` variant
-//!     ) -> Result<EmittedDataPlan, BlobTablesExportError>;
-//! }
-//! ```
-//!
-//! Its two branches, in React order:
-//!
-//! * `provided` source — the caller's own rows, formatted in JS instead
-//!   of re-reading the table. CSV goes through the [`csv_cell`] emission
-//!   below (not `formatRowsAsText`: this exporter writes `\n`-terminated
-//!   lines, the streaming shape the Rust writer produces, while
-//!   `formatRowsAsText` joins lines with no trailing newline); XLSX
-//!   through `formatRowsAsXlsx` + [`base64_to_bytes`]; Parquet is
-//!   refused (`"provided-data export cannot format 'parquet'"`); every
-//!   other format through `formatRowsAsText`. Those formatters live in
-//!   `lib/exportFormat.ts` (T500); until T500 lands, S2 formats the CSV
-//!   branch from [`csv_cell`] and refuses the rest loudly rather than
-//!   inventing a formatter.
-//! * table source — page until the reader says the table is exhausted
-//!   (`nextCursor: null`); the first page contributes the header line,
-//!   every page contributes its rows as [`csv_cell`] lines; each page
-//!   call overrides the request context's schema with the table's own
+//! * [`BlobTablesExporter::emit_data_plan`] — the two branches, in React
+//!   order. `provided` source: CSV goes through the [`csv_cell`]
+//!   emission below (not `formatRowsAsText`: this exporter writes
+//!   `\n`-terminated lines, the streaming shape the Rust writer
+//!   produces, while `formatRowsAsText` joins lines with no trailing
+//!   newline); XLSX through [`export_format::format_rows_as_xlsx`] +
+//!   [`base64_to_bytes`]; Parquet is refused
+//!   (`"provided-data export cannot format 'parquet'"`); every other
+//!   format through [`export_format::format_rows_as_text`]. Table source:
+//!   page until the reader says the table is exhausted; the first page
+//!   contributes the header line, every page contributes its rows as
+//!   [`csv_cell`] lines; each page call overrides the request context's
+//!   schema with the table's own
 //!   (`schema: table.schema ?? requestContext.schema`).
+//!   A page whose `next_cursor` is `Some(Value::Null)` counts as
+//!   exhausted, exactly as React's `cursor === null` break — the
+//!   reader contract is that `None` and `Some(Null)` both mean "no
+//!   more pages" (see [`TablePage`]).
+//! * [`BlobTablesExporter::emit_planned`] — the merge: one data plan
+//!   delivers as-is (binary for XLSX, text for the rest) with its own
+//!   MIME type; several plans only reach here when they are all `.sql`
+//!   (anything else needed a zip and was refused in
+//!   [`BlobTablesExporter::plan_export`]), so they are concatenated
+//!   with `-- ===== {filename} =====` separators, `\n\n` between
+//!   plans, and a binary plan in a merge is refused (`'this export
+//!   produces a binary file that cannot be merged into a single
+//!   download'`).
+//! * [`BlobTablesExporter::export_tables`] — `plan_export` + the
+//!   emission stage, returning `{ Saved: request.tables.len() }`.
 //!
-//! Then S2 merges like the desktop single-file merge (one plan is
-//! written directly; several plans are concatenated with
-//! `-- ===== {filename} =====` separators — several plans only reach
-//! emission when they are all `.sql`, anything else needed a zip and
-//! was refused in [`BlobTablesExporter::plan_export`]), refuses a binary
-//! plan in a merge (`'this export produces a binary file that cannot be
-//! merged into a single download'`), delivers
-//! (`deliver(content, file_name, mime_type)`) and returns
-//! `{ Saved: request.tables.len() }`.
+//! Merge MIME (pinned): React's merge path calls
+//! `deliver(chunks, fileName)` with **no** mime, so `downloadBlob`'s
+//! default `text/csv` applies; [`download_blob`] has no default, so
+//! the merge passes `"text/csv"` explicitly. The single-plan path
+//! passes the emitted plan's own MIME type instead.
+//!
+//! The emission stage is split out as [`BlobTablesExporter::emit_planned`]
+//! (taking a [`PlannedExport`] directly) so tests can drive the merge
+//! with hand-built plans — a binary plan in a merge cannot be produced
+//! through [`BlobTablesExporter::plan_export`], which refuses the zip a
+//! multi-file non-`.sql` plan would need.
 //!
 //! ## Dependency mirrors — what exists in Rune, what is local
 //!
@@ -100,8 +94,8 @@
 //!   `lib/gridClipboard.ts`.
 //! * `applyCsvFormulaGuard` / `formatRowsAsText` / `formatRowsAsXlsx`
 //!   (`../lib/exportFormat`) → [`apply_csv_formula_guard`] here for the
-//!   guard only; the two formatters are S2's and arrive with T500's port
-//!   of `lib/exportFormat.ts`.
+//!   guard only; the two formatters are S2's minimal mirror in
+//!   [`export_format`], pending T500's port of `lib/exportFormat.ts`.
 //! * `TablesExporterPort` / `TablesExportRequest` (`./contracts`) → the
 //!   request types live in [`export_plan`] (minimal mirror of
 //!   `commands/file.ts`, pending T298); the port trait itself is T131's
@@ -144,10 +138,11 @@
 //! (which would cycle back through this module's [`download_blob`]).
 
 #![allow(dead_code)]
-// S1 seam items consumed by S2's emission, not by S1 itself: the injected
-// `reader` and `deliver` fields, `csv_cell`, `download_blob` and
-// `base64_to_bytes`. The `NoDownloadSink` / `ReadFailed` error variants
-// are likewise S2's (emission / page loop).
+// Kept: the port surface this slice defines for later tasks — the
+// `Cancelled` outcome (T131's port trait), the `NotDataPlan` guard —
+// is not consumed inside this crate yet. The S1 seam items (`reader`,
+// `deliver`, `csv_cell`, `download_blob`, `base64_to_bytes`,
+// `NoDownloadSink` / `ReadFailed`) are consumed by S2 below.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -157,14 +152,16 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 
+use super::export_format::ExportFormatError;
 use super::export_plan::{
     default_export_name, prepare_export, ExportDataFormat, ExportFilePlan, ExportMode,
     ExportOutputMode, ExportPlanError, ExportTableInput, ExportTableSource, TablesExportRequest,
 };
 
-/// Why a web-shaped export refused or failed. The gate / planner messages
-/// are the React `Error` messages verbatim; the last three variants have
-/// no React counterpart (they are Rune-side wiring failures) and say so.
+/// Why a web-shaped export refused or failed. The gate / planner /
+/// emission messages are the React `Error` messages verbatim; the
+/// variants marked Rune-side have no React counterpart (they are
+/// wiring failures) and say so.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum BlobTablesExportError {
     /// No tables in the request (`'no tables selected'`).
@@ -189,6 +186,23 @@ pub(crate) enum BlobTablesExportError {
     /// S2's emission is due a download but no deliver sink was wired
     /// (there is no React counterpart: the browser can always download).
     NoDownloadSink,
+    /// A `provided` source asked for Parquet (`"provided-data export
+    /// cannot format 'parquet'"`).
+    ProvidedParquetUnsupported,
+    /// A data plan carrying a DDL prefix asked for XLSX (`'DDL cannot
+    /// be prefixed to an XLSX export'`).
+    DdlPrefixOnXlsx,
+    /// A binary plan reached the single-file merge (`'this export
+    /// produces a binary file that cannot be merged into a single
+    /// download'`).
+    BinaryCannotMerge,
+    /// The provided-rows formatter refused or failed; the message is the
+    /// formatter's (see [`ExportFormatError`]).
+    Format(ExportFormatError),
+    /// `emit_data_plan` was called with a DDL plan (Rune-side: React's
+    /// `Extract<ExportFilePlan, { kind: 'data' }>` rules this out
+    /// statically, so there is no React message to mirror).
+    NotDataPlan,
 }
 
 impl std::fmt::Display for BlobTablesExportError {
@@ -216,6 +230,19 @@ impl std::fmt::Display for BlobTablesExportError {
                 "no Blob download sink is wired for the web exporter; \
                      the host must inject a deliver sink",
             ),
+            BlobTablesExportError::ProvidedParquetUnsupported => {
+                f.write_str("provided-data export cannot format 'parquet'")
+            }
+            BlobTablesExportError::DdlPrefixOnXlsx => {
+                f.write_str("DDL cannot be prefixed to an XLSX export")
+            }
+            BlobTablesExportError::BinaryCannotMerge => f.write_str(
+                "this export produces a binary file that cannot be merged into a single download",
+            ),
+            BlobTablesExportError::Format(err) => std::fmt::Display::fmt(err, f),
+            BlobTablesExportError::NotDataPlan => {
+                f.write_str("emit_data_plan called with a DDL plan; only data plans can be emitted")
+            }
         }
     }
 }
@@ -228,13 +255,22 @@ impl From<ExportPlanError> for BlobTablesExportError {
     }
 }
 
+impl From<ExportFormatError> for BlobTablesExportError {
+    fn from(err: ExportFormatError) -> Self {
+        BlobTablesExportError::Format(err)
+    }
+}
+
 /// One page of a table, as the injected reader answers it.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct TablePage {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<Value>>,
-    /// Paging cursor the reader understands; `None` when the table is
-    /// exhausted (React `nextCursor: null`).
+    /// Paging cursor the reader understands. `None` when the table is
+    /// exhausted (React `nextCursor: null`); a reader may also answer
+    /// `Some(Value::Null)` for exhaustion, and S2's page loop treats it
+    /// the same way — React breaks on `null` and on `undefined` alike,
+    /// and the two spellings are that pair on this side of the port.
     pub next_cursor: Option<Value>,
 }
 
@@ -283,11 +319,11 @@ pub(crate) trait DdlLoader: Send + Sync {
 /// JSON.
 ///
 /// Numbers render through `serde_json` (ryu): integral floats render as
-/// `1.0` where JS `String(1)` renders `1`, and large exponents render as
-/// `1e21` where JS renders `1e+21`. Integers and ordinary decimals match
-/// JS exactly; the divergence only bites floats that arrive on the wire
-/// as `1.0` / in exponent form.
-fn cell_to_text(value: &Value) -> String {
+/// `1.0` where JS `String(1)` renders `1`, and large exponents match JS
+/// exactly (`1e21` renders as `"1e+21"` in both — the S1 docs had this
+/// backwards). Integers and ordinary decimals match JS exactly; the
+/// divergence only bites floats that arrive on the wire as `1.0`.
+pub(crate) fn cell_to_text(value: &Value) -> String {
     match value {
         Value::Null => String::new(),
         Value::String(text) => text.clone(),
@@ -460,17 +496,52 @@ pub(crate) fn create_blob_tables_exporter(
     }
 }
 
-/// The web-shaped tables exporter (factory shell + gate/plan stage; S2
-/// adds the emission stage — see the module docs).
+/// The web-shaped tables exporter (factory shell + gate/plan stage +
+/// S2's emission stage — see the module docs).
 pub(crate) struct BlobTablesExporter {
-    /// S2: consumed by `emit_data_plan`'s page loop.
-    #[allow(dead_code)]
+    /// Consumed by `emit_data_plan`'s page loop (via [`BlobTablesExporter::reader`]).
     reader: Arc<dyn TablePageReader>,
     load_ddl: Option<Arc<dyn DdlLoader>>,
-    /// S2: consumed by the emission stage (`deliver` + `Saved`).
-    #[allow(dead_code)]
+    /// Consumed by the emission stage (`deliver` + `Saved`, via
+    /// [`BlobTablesExporter::deliver_sink`]).
     deliver: Option<DeliverFn>,
     now: NowFn,
+}
+
+impl BlobTablesExporter {
+    /// The injected page reader, for S2's emission stage — the `impl`
+    /// block lives in [`super::blob_tables_emission`] so neither file
+    /// exceeds the 800-line recommendation.
+    pub(crate) fn reader(&self) -> &Arc<dyn TablePageReader> {
+        &self.reader
+    }
+
+    /// The injected deliver sink, for S2's emission stage (`None` means
+    /// no sink was wired).
+    pub(crate) fn deliver_sink(&self) -> Option<&DeliverFn> {
+        self.deliver.as_ref()
+    }
+}
+
+/// One emitted data plan — React `emitDataPlan`'s
+/// `{ content: BlobPart; mimeType: string }`: text for every format
+/// except XLSX, which delivers decoded workbook bytes
+/// ([`base64_to_bytes`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct EmittedDataPlan {
+    pub content: DeliveredContent,
+    pub mime_type: String,
+}
+
+/// The `exportTables` outcome — React's
+/// `{ Saved: number } | { Cancelled: null }`. This exporter never
+/// cancels (there is no cancellation path on the web form), so every
+/// return is `Saved` today; the `Cancelled` arm stays so T131's port
+/// trait can share the shape.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ExportTablesOutcome {
+    Saved(usize),
+    Cancelled,
 }
 
 impl BlobTablesExporter {

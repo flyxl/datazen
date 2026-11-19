@@ -2763,8 +2763,10 @@ dependencies = [
  "parley",
  "rune",
  "rune-kit",
+ "rust_xlsxwriter",
  "serde_json",
  "wasm-bindgen",
+ "zip 2.4.2",
 ]
 
 [[package]]
