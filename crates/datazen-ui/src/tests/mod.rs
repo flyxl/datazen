@@ -254,6 +254,9 @@ mod data_sync_compare_step_audit;
 // select/session journey, grouping + search ranking, prefill, close
 // listener, empty ProgressLog mount).
 mod backup_window_state;
+// T026-S1 independent audit: full label table, dialect aliases,
+// untouched-field journey, React grouping quirks, timestamp edges.
+mod backup_window_state_audit;
 
 // T008: ChartCanvas dispatcher, measured viewport and honest placeholders.
 mod chart_canvas;
