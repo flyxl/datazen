@@ -2,11 +2,10 @@
 //! (issue-32 T11) — the path-scoped update form of valuePresentation
 //! saves.
 //!
-//! **Landing in two steps (documented split):** T037 (columnOverrides)
-//! passes an *updater* into `persist`, so this file's update type and
-//! [`apply_value_presentation_update`] land with it. The path helpers
-//! `with_timestamp_renderer` and `with_value_presentation_rules` are
-//! valuePresentationSave's own logic and land with T310.
+//! The update type and [`apply_value_presentation_update`] landed with
+//! T037 (columnOverrides passes an updater into `persist`); this task
+//! (T310) fills in the path helpers [`with_timestamp_renderer`] and
+//! [`with_value_presentation_rules`].
 //!
 //! The problem being solved: a stored-settings object rewritten wholesale
 //! from one window's stale base silently reverts fields another window
@@ -44,4 +43,42 @@ pub(crate) fn apply_value_presentation_update(
         ValuePresentationSettingsUpdate::Whole(next) => next,
         ValuePresentationSettingsUpdate::Apply(updater) => updater(fresh),
     }
+}
+
+use crate::support::value_presentation::settings::StoredRendererSettings;
+use crate::support::value_presentation::timestamp_contribution::TIMESTAMP_CONTRIBUTION_ID;
+use crate::support::value_presentation::value_presentation_rules::ValuePresentationRule;
+
+/// Replace only the `datazen.timestamp` renderer entry (enabled +
+/// options in their stored JSON shape): every other renderer entry, the
+/// rules, the column overrides, the version and all unknown fields come
+/// from `fresh` verbatim — an unknown version never loses its fields.
+pub(crate) fn with_timestamp_renderer(
+    fresh: &StoredValuePresentationSettings,
+    enabled: bool,
+    options: &serde_json::Value,
+) -> StoredValuePresentationSettings {
+    let mut next = fresh.clone();
+    next.renderers.insert(
+        TIMESTAMP_CONTRIBUTION_ID.to_string(),
+        StoredRendererSettings { enabled, options: options.clone() },
+    );
+    next
+}
+
+/// Replace the global rule list wholesale (a list has no per-item
+/// identity to merge by — last writer wins, and the panel prompts on
+/// external updates with unsaved edits). Only version 1 writes `rules`;
+/// an unknown version returns `fresh` verbatim (never interpreted, never
+/// written back).
+pub(crate) fn with_value_presentation_rules(
+    fresh: &StoredValuePresentationSettings,
+    rules: &[ValuePresentationRule],
+) -> StoredValuePresentationSettings {
+    if fresh.version != 1 {
+        return fresh.clone();
+    }
+    let mut next = fresh.clone();
+    next.rules = Some(rules.to_vec());
+    next
 }

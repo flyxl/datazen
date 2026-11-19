@@ -103,3 +103,5 @@ mod column_presentation_session;
 mod column_overrides;
 // T182: settings parse + snapshot builder + bundled registration.
 mod settings;
+// T310: the valuePresentation save path helpers (renderer / rules paths).
+mod value_presentation_save;

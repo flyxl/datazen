@@ -98,6 +98,11 @@ pub(crate) struct StoredValuePresentationSettings {
         skip_serializing_if = "Option::is_none"
     )]
     pub(crate) column_overrides: Option<BTreeMap<String, ColumnPresentationOverride>>,
+    /// Unknown fields ride along verbatim (React's `{...fresh}` spread):
+    /// an unknown top-level version's future fields must survive path
+    /// updates instead of being written back away.
+    #[serde(flatten)]
+    pub(crate) extra: serde_json::Map<String, serde_json::Value>,
 }
 
 /// The v1 default stored value: everything off (a missing fields default
@@ -109,6 +114,7 @@ pub(crate) fn default_value_presentation_settings() -> StoredValuePresentationSe
         renderers: BTreeMap::new(),
         rules: None,
         column_overrides: None,
+        extra: serde_json::Map::new(),
     }
 }
 
@@ -152,6 +158,7 @@ pub(crate) fn parse_stored_value_presentation_settings(
             renderers,
             rules: None,
             column_overrides: None,
+            extra: serde_json::Map::new(),
         };
     }
     let rules = match object.get("rules") {
@@ -166,7 +173,12 @@ pub(crate) fn parse_stored_value_presentation_settings(
         }
         _ => None,
     };
-    StoredValuePresentationSettings { version, renderers, rules, column_overrides }
+    let extra = object
+        .iter()
+        .filter(|(key, _)| !matches!(key.as_str(), "version" | "renderers" | "rules" | "columnOverrides"))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+    StoredValuePresentationSettings { version, renderers, rules, column_overrides, extra }
 }
 
 // ---------------------------------------------------------------------------

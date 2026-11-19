@@ -97,6 +97,7 @@ fn stored(enabled: bool, options: serde_json::Value) -> StoredValuePresentationS
         renderers,
         rules: None,
         column_overrides: None,
+        extra: serde_json::Map::new(),
     }
 }
 
@@ -124,6 +125,7 @@ fn parse_returns_the_default_for_an_empty_object() {
             renderers: BTreeMap::new(),
             rules: None,
             column_overrides: None,
+            extra: serde_json::Map::new(),
         }
     );
 }
@@ -137,6 +139,7 @@ fn parse_falls_back_to_version_1_for_non_numbers() {
             renderers: BTreeMap::new(),
             rules: None,
             column_overrides: None,
+            extra: serde_json::Map::new(),
         }
     );
     assert_eq!(
@@ -146,6 +149,7 @@ fn parse_falls_back_to_version_1_for_non_numbers() {
             renderers: BTreeMap::new(),
             rules: None,
             column_overrides: None,
+            extra: serde_json::Map::new(),
         }
     );
 }
@@ -159,6 +163,7 @@ fn parse_keeps_unknown_versions_verbatim() {
             renderers: BTreeMap::new(),
             rules: None,
             column_overrides: None,
+            extra: serde_json::Map::new(),
         }
     );
 }
@@ -173,6 +178,7 @@ fn parse_falls_back_to_empty_renderers_for_non_objects() {
                 renderers: BTreeMap::new(),
                 rules: None,
                 column_overrides: None,
+                extra: serde_json::Map::new(),
             }
         );
     }
@@ -268,6 +274,7 @@ fn snapshot_excludes_renderers_with_missing_contributions() {
         renderers,
         rules: None,
         column_overrides: None,
+        extra: serde_json::Map::new(),
     };
     let snapshot =
         build_value_presentation_snapshot(&stored_value, &env_snapshot(), &registry_with_timestamp(), 1);
@@ -451,6 +458,7 @@ fn snapshot_fills_overrides_from_storage() {
     overrides.insert(key_for(source_base(), "epoch_ms"), ColumnPresentationOverride::Raw);
     let stored_value = StoredValuePresentationSettings {
         column_overrides: Some(overrides),
+        extra: serde_json::Map::new(),
         ..stored(true, native_utc_iso())
     };
     let snapshot =
@@ -468,6 +476,7 @@ fn snapshot_carries_no_overrides_for_unknown_versions() {
     let stored_value = StoredValuePresentationSettings {
         version: 99,
         column_overrides: Some(overrides),
+        extra: serde_json::Map::new(),
         ..stored(true, native_utc_iso())
     };
     let snapshot =
@@ -481,6 +490,7 @@ fn snapshot_carries_overrides_even_when_the_renderer_is_disabled() {
     overrides.insert(key_for(source_base(), "epoch_ms"), ColumnPresentationOverride::Raw);
     let stored_value = StoredValuePresentationSettings {
         column_overrides: Some(overrides),
+        extra: serde_json::Map::new(),
         ..stored(false, native_utc_iso())
     };
     let snapshot =
@@ -612,6 +622,7 @@ fn matrix_stored() -> StoredValuePresentationSettings {
     );
     StoredValuePresentationSettings {
         column_overrides: Some(overrides),
+        extra: serde_json::Map::new(),
         ..stored(true, native_utc_iso())
     }
 }

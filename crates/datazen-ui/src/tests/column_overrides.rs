@@ -93,6 +93,7 @@ fn stored_with_overrides(
         renderers,
         rules: None,
         column_overrides: Some(overrides.into_iter().collect()),
+        extra: serde_json::Map::new(),
     }
 }
 
@@ -193,6 +194,7 @@ fn with_override_adds_raw_and_preserves_other_fields() {
         },
         rules: Some(Vec::new()),
         column_overrides: None,
+        extra: serde_json::Map::new(),
     };
     let next = with_column_override(&stored, source_base(), "epoch_ms", &ColumnPresentationOverride::Raw);
     assert_eq!(
@@ -213,6 +215,7 @@ fn with_override_adds_custom_by_full_source_identity() {
         renderers: BTreeMap::new(),
         rules: None,
         column_overrides: None,
+        extra: serde_json::Map::new(),
     };
     let next = with_column_override(&stored, source_base(), "created_at", &custom_ms());
     assert_eq!(
@@ -245,6 +248,7 @@ fn with_override_returns_input_for_unknown_version() {
         renderers: BTreeMap::new(),
         rules: None,
         column_overrides: None,
+        extra: serde_json::Map::new(),
     };
     let next = with_column_override(&stored, source_base(), "epoch_ms", &ColumnPresentationOverride::Raw);
     assert_eq!(stored_json(&next), stored_json(&stored));
@@ -266,6 +270,7 @@ fn with_override_returns_input_for_invalid_override() {
         renderers: BTreeMap::new(),
         rules: None,
         column_overrides: None,
+        extra: serde_json::Map::new(),
     };
     // An invalid custom (illegal options — unix without a unit) is the
     // representable invalid-override form; bogus modes are rejected at
@@ -300,6 +305,7 @@ fn with_override_refuses_new_past_cap_but_allows_replacement() {
         renderers: BTreeMap::new(),
         rules: None,
         column_overrides: Some(overrides),
+        extra: serde_json::Map::new(),
     };
     // A new key past the cap is refused.
     let new_source = ColumnSourceBase {
@@ -383,6 +389,7 @@ fn save_persists_and_clears_the_session_entry() {
         renderers: BTreeMap::new(),
         rules: None,
         column_overrides: None,
+        extra: serde_json::Map::new(),
     };
     let fresh = stored.clone();
     let (outcome, session) = run_save(
@@ -411,6 +418,7 @@ fn save_failure_keeps_the_session_entry() {
         renderers: BTreeMap::new(),
         rules: None,
         column_overrides: None,
+        extra: serde_json::Map::new(),
     };
     let (outcome, session) = run_save(
         &stored,
@@ -459,6 +467,7 @@ fn save_refusal_matrix_never_touches_persistence_or_session() {
         renderers: BTreeMap::new(),
         rules: None,
         column_overrides: None,
+        extra: serde_json::Map::new(),
     };
     let (outcome, session) = run_save(
         &stored,
@@ -523,6 +532,7 @@ fn save_refuses_new_entries_past_the_cap() {
         renderers: BTreeMap::new(),
         rules: None,
         column_overrides: Some(overrides),
+        extra: serde_json::Map::new(),
     };
     let new_source = ColumnSourceBase {
         connection_id: "conn-new",
@@ -549,6 +559,7 @@ fn save_succeeds_without_persist_when_deleting_a_missing_entry() {
         renderers: BTreeMap::new(),
         rules: None,
         column_overrides: None,
+        extra: serde_json::Map::new(),
     };
     let (outcome, _session) = run_save(
         &stored,
@@ -590,6 +601,7 @@ fn save_updater_applies_to_the_fresh_authoritative_value_t11() {
         renderers: BTreeMap::new(),
         rules: None,
         column_overrides: None,
+        extra: serde_json::Map::new(),
     };
     // Another window's simultaneous saves live in the fresh value.
     let fresh = stored_with_overrides(vec![(key_for("other"), ColumnPresentationOverride::Raw)]);
