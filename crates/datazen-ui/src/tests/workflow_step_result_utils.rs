@@ -1,10 +1,11 @@
-//! T176 (the tasklist's `windows/workflow/workflowStepResultUtils.tsx` port,
+//! T174 (the tasklist's `windows/workflow/workflowStepResultUtils.tsx` port,
 //! segment-2): the step-result helpers — the `StepStatusIcon` paint ladder,
 //! the `extractStepColumnNames` branch order, and the
 //! `stepToStatementResult` conversion with its two null guards, React's
 //! `ColumnInfo` assembly (`dataType || 'text'`, `nullable: true`) and its
-//! object/array row modes — plus the status-string parse and the preview
-//! projection the execution-result panel consumes.
+//! object/array row modes — plus the status-string parse, the preview
+//! projection and the chartability slice the execution-result panel
+//! consumes.
 //!
 //! React ships no test for this file; these probes pin the port against the
 //! 59-line source directly. The panel's own consumption slice stays pinned in
@@ -14,8 +15,9 @@ use serde_json::{json, Value};
 
 use crate::ui::kit::kit;
 use crate::views::{
-    extract_step_column_names, step_to_statement_preview, step_to_statement_result, ColumnInfo,
-    StatusInk, StepColumn, StepExecutionResult, WorkflowStepStatus,
+    extract_step_column_names, is_chartable_preview, step_to_statement_preview,
+    step_to_statement_result, ColumnInfo, StatusInk, StepColumn, StepExecutionResult,
+    StatementPreview, WorkflowStepStatus,
 };
 
 /// The probe's step: a query step carrying the raw result JSON the host's
@@ -313,5 +315,187 @@ fn the_preview_projects_the_statement_result_with_the_hosts_row_count() {
             name: "a".to_owned(),
             data_type: Some("text".to_owned())
         }]
+    );
+}
+
+// ---- T174 audit: the pins the mutation round added -------------------------
+//
+// The audit's mutation round found the chartability slice entirely unpinned
+// (no probe above reached `is_chartable_preview`), plus three narrower gaps:
+// the second null guard's rows-present leg, the nameless-column drop, and
+// React's falsy `||` on the default column type. These pins close them.
+
+#[test]
+fn the_second_null_guard_holds_even_when_rows_are_present() {
+    // React's second null: nothing extractable as columns converts to
+    // nothing — even when the result carries rows. Array-shaped or scalar
+    // rows have no object keys to extract, so the statement result is null
+    // despite `rows` being truthy (React's `!r?.rows` passes them through).
+    assert!(step_to_statement_result(&step(Some(json!({ "rows": [[1, 2]] })))).is_none());
+    assert!(step_to_statement_result(&step(Some(json!({ "rows": [5] })))).is_none());
+}
+
+#[test]
+fn nameless_column_entries_are_dropped_and_the_row_keys_take_over() {
+    // A `columns` entry without a string `name` is dropped rather than kept
+    // as a nameless column (React would hand `{ name: undefined }` on); when
+    // that empties the set, the row-key fallback takes over exactly like
+    // React's `cols.length > 0` check.
+    let nameless = json!({
+        "columns": [{ "dataType": "integer" }],
+        "rows": [{ "a": 1 }]
+    });
+    assert_eq!(
+        extract_step_column_names(&nameless),
+        vec![StepColumn {
+            name: "a".to_owned(),
+            data_type: None
+        }]
+    );
+    // A non-string `name` is just as nameless.
+    let mixed = json!({
+        "columns": [{ "name": "a" }, { "name": 5 }],
+        "rows": [{ "a": 1 }]
+    });
+    assert_eq!(
+        extract_step_column_names(&mixed),
+        vec![StepColumn {
+            name: "a".to_owned(),
+            data_type: None
+        }]
+    );
+}
+
+#[test]
+fn an_empty_data_type_string_defaults_like_reacts_falsy_or() {
+    // React's `c.dataType || 'text'` is falsy semantics: an empty string
+    // defaults exactly like an absent one, at the ColumnInfo assembly.
+    let declared_empty = step(Some(json!({
+        "columns": [{ "name": "a", "dataType": "" }],
+        "rows": [{ "a": 1 }]
+    })));
+    let statement = step_to_statement_result(&declared_empty).expect("the statement converts");
+    assert_eq!(
+        statement.columns,
+        vec![ColumnInfo {
+            name: "a".to_owned(),
+            data_type: "text".to_owned(),
+            nullable: true
+        }]
+    );
+    // The preview re-types off the defaulted statement column.
+    let preview = step_to_statement_preview(&declared_empty).expect("the preview converts");
+    assert_eq!(
+        preview.columns,
+        vec![StepColumn {
+            name: "a".to_owned(),
+            data_type: Some("text".to_owned())
+        }]
+    );
+}
+
+#[test]
+fn chartability_infers_the_declared_and_sampled_ladder() {
+    // The chartability slice of React's `inferFieldType`: the declared
+    // keyword table first, the boolean and datetime families that outrank
+    // the sample checks, then the sampled values themselves.
+    let declared = |dt: &str| -> StatementPreview {
+        step_to_statement_preview(&step(Some(json!({
+            // Categorical samples: only the declaration can make the column
+            // numeric.
+            "columns": [{ "name": "a", "dataType": dt }],
+            "rows": [{ "a": "x" }]
+        }))))
+        .expect("the preview converts")
+    };
+    // The declared numeric keywords — every subsumption-free word of
+    // React's regex (`smallint`/`bigint` ride in on `int`'s substring).
+    for dt in [
+        "int", "serial", "double", "numeric", "decimal", "real", "float", "money", "bigint",
+    ] {
+        assert!(
+            is_chartable_preview(&declared(dt)),
+            "a declared `{dt}` column is numeric, so the result is chartable"
+        );
+    }
+    // The boolean and datetime families outrank the sample checks — numeric
+    // samples included, which is what distinguishes the family branch from
+    // the sampled inference below.
+    let declared_numeric = |dt: &str| -> StatementPreview {
+        step_to_statement_preview(&step(Some(json!({
+            "columns": [{ "name": "a", "dataType": dt }],
+            "rows": [{ "a": 1 }]
+        }))))
+        .expect("the preview converts")
+    };
+    assert!(!is_chartable_preview(&declared_numeric("boolean")));
+    assert!(!is_chartable_preview(&declared_numeric("timestamp")));
+    assert!(!is_chartable_preview(&declared_numeric("date")));
+    // `time` on its own: a keyword the family shares with `timestamp`'s
+    // substring, pinned so its deletion cannot ride by unnoticed.
+    assert!(!is_chartable_preview(&declared_numeric("time")));
+
+    // Sampled inference (no declaration, so the row keys name the column
+    // and React's 'text' default types it): numbers and numeric-like
+    // strings are numeric...
+    let sampled = |values: Vec<Value>| -> StatementPreview {
+        let rows: Vec<Value> = values
+            .into_iter()
+            .map(|v| json!({ "a": v }))
+            .collect();
+        step_to_statement_preview(&step(Some(json!({ "rows": rows }))))
+            .expect("the preview converts")
+    };
+    assert!(is_chartable_preview(&sampled(vec![json!(1), json!(2.5)])));
+    assert!(is_chartable_preview(&sampled(vec![json!("3.5"), json!(" -7 ")])));
+    // ...and the non-numeric families: categorical strings...
+    assert!(!is_chartable_preview(&sampled(vec![json!("x"), json!("y")])));
+    // ...booleans (React infers `boolean`)...
+    assert!(!is_chartable_preview(&sampled(vec![json!(true), json!(false)])));
+    // ...empty strings (React's `s !== ''` guard; `Number('')` would be 0)...
+    assert!(!is_chartable_preview(&sampled(vec![json!("")])));
+    // ...and `NaN` sentinels — React's `Number('NaN')` is NaN, so the
+    // string is not numeric-like.
+    assert!(!is_chartable_preview(&sampled(vec![json!("NaN")])));
+    // Nulls are not samples: a nullable numeric column stays numeric, and
+    // an all-null column is `unknown`, not vacuously numeric.
+    assert!(is_chartable_preview(&sampled(vec![json!(null), json!(3)])));
+    assert!(!is_chartable_preview(&sampled(vec![json!(null)])));
+    // No rows at all: not chartable (React's rows.length === 0 gate), even
+    // with a numeric declaration.
+    let empty_rows = step(Some(json!({
+        "columns": [{ "name": "a", "dataType": "integer" }],
+        "rows": []
+    })));
+    let preview = step_to_statement_preview(&empty_rows).expect("the preview converts");
+    assert!(!is_chartable_preview(&preview), "no rows → not chartable");
+}
+
+#[test]
+fn chartability_samples_only_the_first_fifty_rows() {
+    // React's sample window: `Math.min(result.rows.length, 50)` — row 50 is
+    // inside it, row 51 is not.
+    let rows = |numeric: usize| -> Vec<Value> {
+        (1..=numeric).map(|i| json!({ "a": i })).collect()
+    };
+    // 50 numeric rows + the categorical 51st: the window never sees the
+    // tail, so the column stays numeric and the result chartable.
+    let mut beyond_rows = rows(50);
+    beyond_rows.push(json!({ "a": "x" }));
+    let preview = step_to_statement_preview(&step(Some(json!({ "rows": beyond_rows }))))
+        .expect("the preview converts");
+    assert!(
+        is_chartable_preview(&preview),
+        "the 51st row is outside React's 50-row sample window"
+    );
+    // 49 numeric rows + the categorical 50th: the window sees it, so the
+    // column is not numeric and the result not chartable.
+    let mut inside_rows = rows(49);
+    inside_rows.push(json!({ "a": "x" }));
+    let preview = step_to_statement_preview(&step(Some(json!({ "rows": inside_rows }))))
+        .expect("the preview converts");
+    assert!(
+        !is_chartable_preview(&preview),
+        "the 50th row is inside React's 50-row sample window"
     );
 }

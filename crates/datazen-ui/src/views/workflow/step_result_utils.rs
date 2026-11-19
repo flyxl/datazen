@@ -50,7 +50,8 @@ use crate::ui::kit::kit;
 
 /// React's default column typing (`c.dataType || 'text'`), the type every
 /// column `stepToStatementResult` assembles carries when the step's result
-/// declared none.
+/// declared none — or declared as an empty string, which React's falsy `||`
+/// defaults exactly like an absent one.
 const DEFAULT_COLUMN_TYPE: &str = "text";
 
 /// Mirror of `StepStatus` (`'success' | 'failed' | 'skipped' | 'timed_out'`).
@@ -312,15 +313,18 @@ pub(crate) fn step_to_statement_result(step: &StepExecutionResult) -> Option<Sta
         return None;
     }
     // React: `cols.map(c => ({ name, dataType: c.dataType || 'text',
-    // nullable: true }))`.
+    // nullable: true }))` — the `||` is falsy semantics, so an empty-string
+    // dataType defaults the same as an absent one.
     let columns: Vec<ColumnInfo> = cols
         .iter()
         .map(|column| ColumnInfo {
             name: column.name.clone(),
             data_type: column
                 .data_type
-                .clone()
-                .unwrap_or_else(|| DEFAULT_COLUMN_TYPE.to_owned()),
+                .as_deref()
+                .filter(|t| !t.is_empty())
+                .unwrap_or(DEFAULT_COLUMN_TYPE)
+                .to_owned(),
             nullable: true,
         })
         .collect();
@@ -457,6 +461,9 @@ fn column_infers_numeric(column: &StepColumn, preview: &StatementPreview, index:
         .iter()
         .take(50)
         .filter_map(|row| row.get(index).and_then(Option::as_ref))
+        // React's `filter(v => v != null)`: a JSON null cell is no sample
+        // either — a nullable numeric column stays numeric.
+        .filter(|value| !value.is_null())
         .collect();
     if non_null.is_empty() {
         return false; // React: 'unknown'
@@ -464,13 +471,18 @@ fn column_infers_numeric(column: &StepColumn, preview: &StatementPreview, index:
     non_null.iter().all(|value| numeric_like(value))
 }
 
-/// React's `isNumericLike`: a JSON number, or a non-empty string that parses.
+/// React's `isNumericLike`: a JSON number, or a non-empty string that parses
+/// to a number that is not `NaN` (React's `Number('NaN')` is `NaN`, so a
+/// NaN sentinel string is not numeric-like; Rust's parser would otherwise
+/// accept it). The other JS-number-string edges — hex literals, the exact
+/// `Infinity` spellings — stay the port's honesty: decimal and scientific
+/// notation are the shapes a result set actually carries.
 fn numeric_like(value: &Value) -> bool {
     match value {
         Value::Number(_) => true,
         Value::String(text) => {
             let trimmed = text.trim();
-            !trimmed.is_empty() && trimmed.parse::<f64>().is_ok()
+            !trimmed.is_empty() && trimmed.parse::<f64>().is_ok_and(|n| !n.is_nan())
         }
         _ => false,
     }
