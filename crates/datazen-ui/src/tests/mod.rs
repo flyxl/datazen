@@ -245,6 +245,9 @@ mod session_prompts;
 mod session_prompts_audit;
 // T292: lib/session/tableSession.ts port (key derivation + handle rules).
 mod table_session;
+// T292 independent audit: absent namespace fields and a controller with no
+// snapshot.
+mod table_session_audit;
 
 
 // Independent re-audit of merged T0-07 menu base.
