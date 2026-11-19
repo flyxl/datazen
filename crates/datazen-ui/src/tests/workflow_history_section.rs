@@ -226,6 +226,16 @@ fn the_list_renders_each_runs_clock_name_formatted_time_and_mark() {
             .as_deref(),
         Some("2024-06-01T12:00:00Z")
     );
+    // The formatted line keeps the `toLocaleString` stance's shape —
+    // seconds included — whatever the process zone is; the offset twin's
+    // exact math is pinned in the formatter tests below.
+    assert!(
+        element(&rt, "workflow-history-list-item-r1-created")
+            .text
+            .as_deref()
+            .is_some_and(is_local_datetime_shape),
+        "the created line renders YYYY-MM-DD HH:MM:SS"
+    );
 
     // ✓ green on the successful run, ✗ red on the failed one; the mark
     // sits right of the flex-1 body block (React's row edge).
@@ -236,6 +246,18 @@ fn the_list_renders_each_runs_clock_name_formatted_time_and_mark() {
     assert_ne!(
         ok.text_color, fail.text_color,
         "the mark's ink follows the outcome"
+    );
+    // The outcome inks are exact (React's green success / red failure),
+    // not merely different: a full swap keeps them different.
+    assert_eq!(
+        ok.text_color,
+        Some(crate::ui::kit::kit(true).c.success.fg),
+        "✓ reads the success ink"
+    );
+    assert_eq!(
+        fail.text_color,
+        Some(crate::ui::kit::kit(true).c.danger.fg),
+        "✗ reads the danger ink"
     );
     let body = element(&rt, "workflow-history-list-item-r1-body");
     assert!(
@@ -254,6 +276,30 @@ fn the_list_renders_each_runs_clock_name_formatted_time_and_mark() {
         Some(t("workflows.history.clear"))
     );
     assert!(!has_key(&rt, "workflow-history-list-empty"));
+    // React's sidebar clear reads the muted ink (`text-fg-muted`) — the
+    // exact twin of the tab's danger pin further down.
+    assert_eq!(
+        element(&rt, "workflow-history-list-clear-text").text_color,
+        Some(crate::ui::kit::kit(true).c.text_faint),
+        "the list's clear link reads the faint ink (React text-fg-muted)"
+    );
+    // React's `flex justify-end mb-1` bar: the link hugs the right edge.
+    let bar = element(&rt, "workflow-history-list-clear-bar");
+    let clear = element(&rt, "workflow-history-list-clear");
+    assert!(
+        (clear.rect[0] + clear.rect[2] - bar.rect[0] - bar.rect[2]).abs() < 0.5,
+        "the clear link is right-aligned in its bar: link {:?}, bar {:?}",
+        clear.rect,
+        bar.rect
+    );
+    // React's controls are buttons: the row is a focus stop carrying the
+    // workflow name, the clear link its sentence.
+    let row = element(&rt, "workflow-history-list-item-r1");
+    assert_eq!(row.role, "button");
+    assert!(row.focusable, "the run row is a tab stop");
+    assert_eq!(row.label.as_deref(), Some("Nightly ETL"));
+    assert_eq!(element(&rt, "workflow-history-list-clear").role, "button");
+    assert!(element(&rt, "workflow-history-list-clear").focusable);
 }
 
 #[test]
@@ -337,6 +383,16 @@ fn the_tab_lists_names_meta_and_marks_and_hands_the_host_the_id() {
     assert_eq!(ok.text.as_deref(), Some("✓"));
     assert_eq!(fail.text.as_deref(), Some("✗"));
     assert_ne!(ok.text_color, fail.text_color);
+    assert_eq!(
+        ok.text_color,
+        Some(crate::ui::kit::kit(true).c.success.fg),
+        "✓ reads the success ink"
+    );
+    assert_eq!(
+        fail.text_color,
+        Some(crate::ui::kit::kit(true).c.danger.fg),
+        "✗ reads the danger ink"
+    );
     // The mark sits right of the flex-1 body (React's justify-between).
     let body = element(&rt, "workflow-history-tab-item-r1-body");
     assert!(
@@ -345,6 +401,11 @@ fn the_tab_lists_names_meta_and_marks_and_hands_the_host_the_id() {
         ok.rect,
         body.rect
     );
+
+    // React's clickable div rows port as buttons: focus stops.
+    let row = element(&rt, "workflow-history-tab-item-r1");
+    assert_eq!(row.role, "button");
+    assert!(row.focusable, "the run row is a tab stop");
 
     // Pressing a row hands the host the run id alone (React's onView(id)).
     click(&mut rt, "workflow-history-tab-item-r1");
@@ -370,6 +431,8 @@ fn the_tab_clear_link_reads_danger_ink_and_clears_only_with_runs() {
     );
     click(&mut rt, "workflow-history-tab-clear");
     assert_eq!(rt.state.cleared, 1);
+    assert_eq!(element(&rt, "workflow-history-tab-clear").role, "button");
+    assert!(element(&rt, "workflow-history-tab-clear").focusable);
 
     // No runs: no clear link, the sentence instead.
     let empty = tab_runtime(Vec::new(), None, true);
@@ -398,6 +461,8 @@ fn a_detail_mounts_the_back_link_over_the_embedded_panel_not_the_rows() {
         Some(crate::ui::kit::kit(true).c.text_accent),
         "the back link reads the accent ink (React text-accent)"
     );
+    assert_eq!(element(&rt, "workflow-history-tab-back").role, "button");
+    assert!(element(&rt, "workflow-history-tab-back").focusable);
 
     // The embedded result panel mounts under its own prefix; its head reads
     // the detail's outcome and timing.
@@ -457,6 +522,23 @@ fn the_detail_branch_keeps_the_panels_step_state_in_the_host() {
 }
 
 // ---- the createdAt formatter ------------------------------------------------
+
+/// The `toLocaleString` stance's shape: `YYYY-MM-DD HH:MM:SS`. Asserted
+/// char-wise, so the pin holds whatever the process zone is (the exact
+/// math is the offset twin's, pinned below).
+fn is_local_datetime_shape(text: &str) -> bool {
+    let b = text.as_bytes();
+    b.len() == 19
+        && b[4] == b'-'
+        && b[7] == b'-'
+        && b[10] == b' '
+        && b[13] == b':'
+        && b[16] == b':'
+        && b
+            .iter()
+            .enumerate()
+            .all(|(i, c)| matches!(i, 4 | 7 | 10 | 13 | 16) || c.is_ascii_digit())
+}
 
 #[test]
 fn locale_string_formats_the_zoned_instant_in_the_supplied_offset() {
