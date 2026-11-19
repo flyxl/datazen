@@ -170,7 +170,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T151 · windows/schema-diff · 0.30d · windows/schema-diff/SchemaDiffObjectsStep.tsx
 - [x] T152 · lib · 0.60d · lib/dataTypeColors.ts components/DataTable/editors/toEditString.ts
 - [ ] T153 · lib/chart · 0.60d · lib/chart/recommend.ts lib/chart/seriesOverlap.ts
-- [ ] T154 · lib/session · 0.30d · lib/session/pageUnload.ts
+- [x] T154 · lib/session · 0.30d · lib/session/pageUnload.ts
 - [ ] T155 · lib/sqlDialects · 0.90d · lib/sqlDialects/sqlite.ts lib/sqlDialects/sqlParameterPolicy.ts lib/sqlEditorContextMenu.ts
 - [x] T156 · lib/structureEditor · 0.30d · lib/structureEditor/types.ts
 - [ ] T157 · lib/valuePresentation · 0.80d · lib/valuePresentation/presentationPlan.ts
