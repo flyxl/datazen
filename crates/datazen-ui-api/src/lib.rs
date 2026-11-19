@@ -6,18 +6,23 @@
 mod ai_sessions;
 mod ai_types;
 mod chart_types;
+mod connection_types;
 mod connection_views;
 mod context_items;
 mod context_menu_position;
 mod metadata;
 mod platform_shared;
 mod relation_prediction;
+mod relative_time;
 mod tabs;
 
 use std::collections::HashMap;
 
 #[cfg(not(target_arch = "wasm32"))]
-use datazen_driver_api::{ConnectionConfig, SslMode};
+// The adapter hands these to `datazen`'s connection domain, which owns the
+// backend's own `ConnectionConfig` — not the frontend facade shape
+// `connection_types::ConnectionConfig` exports at the crate root.
+use datazen_driver_api::{ConnectionConfig as DriverConnectionConfig, SslMode as DriverSslMode};
 
 pub use ai_sessions::{
     ActiveConnectionEntry, ActiveConnections, AiSessionBackend, AiSessionStore, ExportFormat,
@@ -52,6 +57,15 @@ pub use chart_types::{
     AggregationType, ChartConfig, ChartDataPoint, ChartDataPointValue, ChartField,
     ChartRecommendation, ChartSortBy, ChartType, InferredFieldType,
 };
+pub use connection_types::{
+    ConnectionConfig, ContextEntry, DatabaseObject, DatabaseObjectKind, DatabaseType,
+    DriverCapabilities, ExplainPlanDetail, ExplainPlanNode, ExplainResult,
+    ForeignKeyDeferrability, ForeignKeyInfo, ForeignKeyTargetRef, ForeignKeyTargetResolution,
+    HttpProxyScheme, HttpProxyTunnelConfig, IndexInfo, PrivilegeGrant, QueryHistoryEntry,
+    ResolveForeignKeyTargetsRequest, SavedTunnel, SavedTunnelKind, ServerInfo, SshAuthMethod,
+    SshTunnelConfig, SslMode, TableInfo, TableSchema, TableType, TunnelKind, Value, WebSocketMode,
+    WebSocketTunnelConfig,
+};
 pub use connection_views::{
     ConnectionOpenTarget, ConnectionViewActions, ConnectionViewProps, NewQueryContext,
     NodeContextMenuPayload, ObjectKind, TableContextInput, TableSqlActionKind,
@@ -62,23 +76,37 @@ pub use context_menu_position::{
     position_root_menu, position_root_menu_with_pad, position_submenu, position_submenu_with_pad,
 };
 pub use metadata::{
-    BatchFlush, ExecutionTarget, MetadataBatcher, MetadataBatcherOptions, MetadataClock,
-    MetadataIdentityInput, MetadataSessionIdentity, MetadataTarget, NamespaceTarget, ObjectTarget,
-    metadata_batch_bucket, metadata_cache_key, metadata_config_bucket, metadata_session_key,
+    BatchFlush, CurrentCallContext, CurrentProvenanceContext, ExecutionTarget,
+    InvalidationDecision, InvalidationReason, MetadataBatcher, MetadataBatcherOptions,
+    MetadataClock, MetadataIdentityInput, MetadataSessionIdentity, MetadataTarget, NamespaceTarget,
+    ObjectTarget, ResultProvenance, SessionHandle, TemporaryResult, check_temporary_result,
+    is_provenance_current, metadata_batch_bucket, metadata_cache_key, metadata_config_bucket,
+    metadata_session_key, read_temporary_result,
 };
 pub use platform_shared::{
     McpContentBlock, McpError, McpFetch, McpHttpResponse, McpJsonRpcError, McpRequestInit,
     McpToolCallResult, WebMcpClient, WebMcpClientManager, WebMcpConnectedServer,
     WebMcpServerConfig, WebMcpToolInfo, format_call_tool_result, mcp_qualified_name,
 };
+// `ColumnSchema`/`IndexInfo`/`ForeignKeyInfo`/`TableSchema` moved to the
+// `connection_types` export above: the crate root now carries the full
+// `types/connection.ts` facade shapes under those names (T128). The
+// prediction slices — the fields `from_table_schema.rs` reads — stay
+// reachable inside `relation_prediction`, which had no root-path consumer
+// outside this crate.
 pub use relation_prediction::{
-    ColumnPair, ColumnSchema, DEFAULT_AMBIGUITY_MARGIN, DEFAULT_HIGH_THRESHOLD,
-    DEFAULT_MEDIUM_THRESHOLD, DeclaredForeignKey, EVIDENCE_WEIGHTS, EvidenceWeights, ForeignKeyInfo,
-    IndexInfo, PredictionColumn, PredictionEvidence, PredictionEvidenceCode, PredictionOptions,
-    PredictionTable, PredictionTier, RelationCandidate, TableSchema, TypeFamily,
-    is_generic_key_name, normalize_data_type, normalize_identifier, predict_relations, singularize,
+    ColumnPair, DECLARED_RELATION_BOOST, DEFAULT_AMBIGUITY_MARGIN, DEFAULT_HIGH_THRESHOLD,
+    DEFAULT_MEDIUM_THRESHOLD, DeclaredForeignKey, EVIDENCE_WEIGHTS, EvidenceWeights,
+    PREDICTED_RELATION_BOOST, PredictionColumn, PredictionEvidence, PredictionEvidenceCode,
+    PredictionOptions, PredictionTable, PredictionTier, RelatedTableHint, RelatedTableOrigin,
+    RelationCandidate, TypeFamily, is_generic_key_name, normalize_data_type, normalize_identifier,
+    predict_relations, related_table_boost_map, related_table_hints, singularize,
     split_identifier_words, to_prediction_table_from_schema, to_prediction_tables_from_schemas,
     type_family,
+};
+pub use relative_time::{
+    RELATIVE_WINDOW_MS, RelativeTimeParts, RelativeTimeUnit, format_relative_time,
+    get_relative_time_parts,
 };
 pub use tabs::{Tab, TabKind, Tabs};
 
@@ -875,7 +903,7 @@ pub const DESKTOP_ORGANIZATION: &str = "desktop";
 /// defines it.
 #[cfg(not(target_arch = "wasm32"))]
 struct MemoryConnectionRepository {
-    connections: Vec<ConnectionConfig>,
+    connections: Vec<DriverConnectionConfig>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -884,7 +912,7 @@ impl datazen::connection::domain::ConnectionRepository for MemoryConnectionRepos
     async fn list(
         &self,
         scope: &datazen::connection::domain::ConnectionScope,
-    ) -> Result<Vec<ConnectionConfig>, datazen::connection::domain::ConnectionRepositoryError>
+    ) -> Result<Vec<DriverConnectionConfig>, datazen::connection::domain::ConnectionRepositoryError>
     {
         if scope.organization_id() != DESKTOP_ORGANIZATION {
             return Ok(Vec::new());
@@ -896,7 +924,7 @@ impl datazen::connection::domain::ConnectionRepository for MemoryConnectionRepos
         &self,
         scope: &datazen::connection::domain::ConnectionScope,
         connection_id: &str,
-    ) -> Result<Option<ConnectionConfig>, datazen::connection::domain::ConnectionRepositoryError>
+    ) -> Result<Option<DriverConnectionConfig>, datazen::connection::domain::ConnectionRepositoryError>
     {
         if scope.organization_id() != DESKTOP_ORGANIZATION {
             return Ok(None);
@@ -911,7 +939,7 @@ impl datazen::connection::domain::ConnectionRepository for MemoryConnectionRepos
     async fn save(
         &self,
         _scope: &datazen::connection::domain::ConnectionScope,
-        _config: ConnectionConfig,
+        _config: DriverConnectionConfig,
     ) -> Result<(), datazen::connection::domain::ConnectionRepositoryError> {
         Err(datazen::connection::domain::ConnectionRepositoryError::BackendUnavailable(
             "the adapter's demo store is read-only".into(),
@@ -968,8 +996,8 @@ impl datazen::connection::domain::ConnectionRepository for MemoryConnectionRepos
 /// adapter's demo seed carries only what the list shows; the desktop host
 /// seeds real configs instead.
 #[cfg(not(target_arch = "wasm32"))]
-fn config_from_profile(profile: &ConnectionProfile) -> ConnectionConfig {
-    ConnectionConfig {
+fn config_from_profile(profile: &ConnectionProfile) -> DriverConnectionConfig {
+    DriverConnectionConfig {
         id: profile.id.clone(),
         name: profile.name.clone(),
         database_type: profile.engine.clone(),
@@ -979,7 +1007,7 @@ fn config_from_profile(profile: &ConnectionProfile) -> ConnectionConfig {
         schema: None,
         username: None,
         password: None,
-        ssl_mode: SslMode::default(),
+        ssl_mode: DriverSslMode::default(),
         connection_timeout: 30,
         max_pool_size: 10,
         ssh_tunnel: None,
