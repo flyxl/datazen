@@ -20,12 +20,16 @@
 use std::rc::Rc;
 
 use rune::tok::{self, type_};
-use rune::{row, text, El};
+use rune::{row, text, El, TextEdit};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit};
 
 use crate::i18n::t;
 use crate::ui::dialog::Dialog;
 use crate::ui::kit::kit;
+use crate::views::create_database_dialog::{
+    build_snapshot as build_db_snapshot, AdminCreateAction, AdminCreateState, DB_SPEC,
+};
+use crate::views::create_schema_dialog::build_schema_snapshot;
 
 /// React's export capability union (mirrors `lib/exportCapability.ts`).
 #[allow(dead_code)] // VM surface; removed when the child dialog port lands
@@ -221,40 +225,42 @@ pub(crate) fn build<S: 'static>(
         );
     }
 
+    // T266: the real create dialogs replace the structural shells. The host
+    // here owns only the open flags, so it supplies a snapshot form; the action
+    // adapter maps the form's host calls onto T223's existing callback surface.
     if vm.create_db_open {
-        shell(
-            k,
-            layer,
-            "content-view-create-database-dialog",
-            t("common.createDatabase"),
-            on_action,
-            &format!("{} · {}", ctx.connection_name, ctx.database_type),
-            None,
-            Button::new(t("common.createDatabase"))
-                .variant(ButtonVariant::Contrast)
-                .control_size(ControlSize::ExtraLarge)
-                .on_press(close(on_action, DialogAction::DbCreated))
-                .build(k),
-            dark,
-        );
+        let adapter: Rc<dyn Fn(&mut S, AdminCreateAction)> = {
+            let on_action = on_action.clone();
+            Rc::new(move |s: &mut S, action: AdminCreateAction| match action {
+                AdminCreateAction::Close => on_action(s, DialogAction::CloseCreateDb),
+                AdminCreateAction::Execute { .. } | AdminCreateAction::Created { .. } => {
+                    on_action(s, DialogAction::DbCreated)
+                }
+            })
+        };
+        let form = AdminCreateState {
+            name: TextEdit::new("new_database".to_owned()),
+            ..Default::default()
+        };
+        let context = format!("{} · {}", ctx.connection_name, ctx.database_type);
+        build_db_snapshot::<S>(&form, DB_SPEC, Some(&context), Some(adapter), dark, layer);
     }
 
     if vm.create_schema_open {
-        shell(
-            k,
-            layer,
-            "content-view-create-schema-dialog",
-            t("common.createSchema"),
-            on_action,
-            &database_of(vm),
-            None,
-            Button::new(t("common.createSchema"))
-                .variant(ButtonVariant::Contrast)
-                .control_size(ControlSize::ExtraLarge)
-                .on_press(close(on_action, DialogAction::SchemaCreated))
-                .build(k),
-            dark,
-        );
+        let adapter: Rc<dyn Fn(&mut S, AdminCreateAction)> = {
+            let on_action = on_action.clone();
+            Rc::new(move |s: &mut S, action: AdminCreateAction| match action {
+                AdminCreateAction::Close => on_action(s, DialogAction::CloseCreateSchema),
+                AdminCreateAction::Execute { .. } | AdminCreateAction::Created { .. } => {
+                    on_action(s, DialogAction::SchemaCreated)
+                }
+            })
+        };
+        let form = AdminCreateState {
+            name: TextEdit::new("new_schema".to_owned()),
+            ..Default::default()
+        };
+        build_schema_snapshot::<S>(&form, Some(database_of(vm)), Some(adapter), dark, layer);
     }
 
     if vm.create_user_open {
