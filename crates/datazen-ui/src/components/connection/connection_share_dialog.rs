@@ -27,13 +27,10 @@
 //! `connection-import-fields`, `import-data-path`, `import-browse-folder`,
 //! `import-browse-file`, `import-selected-file`, `import-password-input`,
 //! `connection-import-error`.
-
 use std::rc::Rc;
-
 use chrono::{Datelike, Utc};
 use rune::{col, row, text, El, TextEdit};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit};
-
 use crate::i18n::t;
 use crate::ui::dialog::Dialog;
 use crate::ui::field::TextField;
@@ -362,7 +359,8 @@ impl ShareState {
                 self.submitting = false;
                 match result {
                     Ok(count) => out.extend([ShareOutput::Close, ShareOutput::ExportSuccess(count)]),
-                    Err(m) => push_error(&mut self.local_error, &m, fallback, &mut out),
+                    // React's catch calls onError only; localError stays for guards.
+                    Err(m) => out.push(ShareOutput::Error(ipc_connection_share_error(&m, fallback))),
                 }
             }
             ShareEvent::FilePicked { result, .. } => {
@@ -767,18 +765,20 @@ fn build_import_fields<S: 'static>(
         );
     }
 
-    let pw = TextField::new("import-password-input", &imp.password)
-        .height(36.0)
-        .secure()
-        .label(t("connShare.password"))
-        .on_edit({
-            let edit = owner.import_password_edit.clone();
-            move |s: &mut S| edit(s)
-        })
-        .build(dark)
-        .disabled(imp.submitting);
-    root = root.child(field_label(k, "connShare.password", "import-password-label"));
-    root = root.child(pw);
+    // React: app import or a chosen file; a bare file-flow dialog hides it.
+    if state.source.is_app() || imp.selected_file.is_some() {
+        let pw = TextField::new("import-password-input", &imp.password)
+            .height(36.0)
+            .secure()
+            .label(t("connShare.password"))
+            .on_edit({
+                let edit = owner.import_password_edit.clone();
+                move |s: &mut S| edit(s)
+            })
+            .build(dark)
+            .disabled(imp.submitting);
+        root = root.child(field_label(k, "connShare.password", "import-password-label")).child(pw);
+    }
 
     let error = if !imp.local_error.is_empty() {
         Some(imp.local_error.clone())
