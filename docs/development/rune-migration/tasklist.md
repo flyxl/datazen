@@ -321,7 +321,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T302 · components/sql-editor · 2.00d · components/sql-editor/paste/multiCursorPointer.ts · split
 - [ ] T303 · components · 0.30d · components/WindowChromeFallback.tsx
 - [ ] T304 · windows/settings · 0.30d · windows/settings/JsonSchemaSettingsForm.tsx
-- [ ] T305 · windows/connection · 0.90d · windows/connection/DatabaseObjectView.tsx
+- [x] T305 · windows/connection · 0.90d · windows/connection/DatabaseObjectView.tsx
 - [ ] T306 · windows/onboarding · 0.90d · windows/onboarding/useDetectedImportSource.ts
 - [ ] T307 · windows/data-transfer · 0.90d · windows/data-transfer/transferMappingView.ts
 - [ ] T308 · windows/data-sync · 1.30d · windows/data-sync/DiffDetail.tsx · split

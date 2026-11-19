@@ -60,7 +60,7 @@
 - [x] T286 · windows/connection · 0.90d · windows/connection/CreateUserDialog.tsx
 - [x] T292 · lib/session · 0.90d · lib/session/tableSession.ts
 - [ ] T300 · components/connection · 0.80d · components/connection/WebSocketTunnelFields.tsx components/chart/AxisConfigurator.tsx
-- [ ] T305 · windows/connection · 0.90d · windows/connection/DatabaseObjectView.tsx
+- [x] T305 · windows/connection · 0.90d · windows/connection/DatabaseObjectView.tsx
 - [ ] T311 · lib/session · 0.90d · lib/session/targetCommand.ts
 - [ ] T318 · components/connection · 0.60d · components/connection/tunnelFieldContracts.ts components/connection/useConnectionClipboardFill.ts
 - [ ] T322 · windows/connection · 0.50d · windows/connection/DDLView.tsx
