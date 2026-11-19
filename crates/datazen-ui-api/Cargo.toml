@@ -16,6 +16,7 @@ serde_json = { workspace = true }
 # order-preserving SessionMap hand-implementing the JS object-key contract
 # on top of serde_json's stream. Workspace pin (`derive` feature), wasm-safe.
 serde = { workspace = true }
+# The unified driver-command seam speaks the drivers' JSON payload shapes.
 
 # H3/H6: the desktop adapter — the native host's use cases. Everything here is
 # native-only: the wasm host compiles the same ports over the memory workspace

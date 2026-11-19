@@ -44,6 +44,9 @@ pub(crate) use types::{Section, TableView, Tool};
 // T049 (`@datazen/frontend/app` barrel): the shared-app launch surface,
 // kept apart from the light port/contract surface like the React barrel.
 pub use app::{app_with_adapter, run, run_with_adapter};
+pub use bootstrap::start_shared_app_state;
+mod bootstrap;
+pub(crate) mod commands;
 #[cfg(target_arch = "wasm32")]
 pub use app::start;
 pub(crate) use app::{app_ime, app_key, app_poll, view};

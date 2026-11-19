@@ -14,11 +14,11 @@
 - [x] T025 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffDeployPanel.tsx
 - [ ] T029 · lib/connectionViews · 0.90d · lib/connectionViews/types.ts lib/contextItems.ts lib/contextMenuPosition.ts
 - [x] T035 · lib/sqlDialects · 1.00d · lib/sqlDialects/dialectProfile.ts lib/sqlDialects/extra.ts
-- [ ] T037 · lib/valuePresentation · 0.50d · lib/valuePresentation/columnOverrides.ts
+- [x] T037 · lib/valuePresentation · 0.50d · lib/valuePresentation/columnOverrides.ts
 - [x] T038 · hooks · 0.30d · hooks/useConfirmDialog.tsx
 - [ ] T044 · platform/shared · 0.30d · platform/shared/index.ts
-- [ ] T047 · bootstrap · 2.00d · bootstrap/startSharedApp.tsx · split
-- [ ] T048 · commands · 0.30d · commands/adb.ts
+- [x] T047 · bootstrap · 2.00d · bootstrap/startSharedApp.tsx · split
+- [x] T048 · commands · 0.30d · commands/adb.ts
 - [ ] T050 · app.ts · 0.30d · app.ts
 - [x] T057 · components/history · 1.00d · components/history/HistoryEntryCard.tsx components/history/HistoryFilterBar.tsx
 - [ ] T063 · components/sql-editor · 4.20d · components/sql-editor/completion/schemaCompletion.ts · split
@@ -28,7 +28,7 @@
 - [ ] T072 · windows/onboarding · 0.90d · windows/onboarding/OnboardingWindow.tsx
 - [ ] T076 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffExecutionPanels.tsx
 - [ ] T084 · lib/sqlDialects · 0.80d · lib/sqlDialects/identifierQuoting.ts lib/sqlDialects/index.ts
-- [ ] T086 · lib/valuePresentation · 0.80d · lib/valuePresentation/columnPresentation.ts
+- [x] T086 · lib/valuePresentation · 0.80d · lib/valuePresentation/columnPresentation.ts
 - [ ] T087 · hooks · 0.90d · hooks/useAiEditorGrant.ts
 - [ ] T093 · platform/shared · 0.80d · platform/shared/mcpClient.ts
 - [ ] T096 · commands · 1.30d · commands/ai.ts · split
@@ -40,7 +40,7 @@
 - [ ] T114 · windows/onboarding · 0.90d · windows/onboarding/OnboardingWizard.tsx
 - [ ] T117 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffJobStatusPanel.tsx
 - [ ] T123 · lib/sqlDialects · 0.90d · lib/sqlDialects/mysql.ts lib/sqlDialects/postgresql.ts lib/sqlDialects/rowLimit.ts
-- [ ] T125 · lib/valuePresentation · 1.00d · lib/valuePresentation/columnPresentationSession.ts lib/valuePresentation/index.ts
+- [x] T125 · lib/valuePresentation · 1.00d · lib/valuePresentation/columnPresentationSession.ts lib/valuePresentation/index.ts
 - [ ] T126 · hooks · 0.90d · hooks/useAiKeyboard.ts hooks/useAutoScroll.ts hooks/useClipboardCopyFeedback.ts
 - [ ] T132 · commands · 0.90d · commands/artifact.ts
 - [ ] T141 · components/sql-editor · 3.40d · components/sql-editor/editorExtensions.ts · split
@@ -50,7 +50,7 @@
 - [ ] T148 · windows/onboarding · 0.90d · windows/onboarding/steps/AiProviderStep.tsx
 - [ ] T151 · windows/schema-diff · 0.30d · windows/schema-diff/SchemaDiffObjectsStep.tsx
 - [ ] T155 · lib/sqlDialects · 0.90d · lib/sqlDialects/sqlite.ts lib/sqlDialects/sqlParameterPolicy.ts lib/sqlEditorContextMenu.ts
-- [ ] T157 · lib/valuePresentation · 0.80d · lib/valuePresentation/presentationPlan.ts
+- [x] T157 · lib/valuePresentation · 0.80d · lib/valuePresentation/presentationPlan.ts
 - [ ] T158 · hooks · 0.90d · hooks/useColumnPresentationSession.ts
 - [ ] T163 · commands · 0.90d · commands/backup.ts
 - [ ] T170 · components/sql-editor · 0.60d · components/sql-editor/extensions/executionState.ts components/sql-editor/extensions/types.ts
@@ -59,7 +59,7 @@
 - [ ] T175 · windows/dashboard · 0.90d · windows/dashboard/RunHistoryDrawer.tsx
 - [ ] T177 · windows/onboarding · 1.00d · windows/onboarding/steps/DoneStep.tsx windows/onboarding/steps/ImportStep.tsx
 - [ ] T180 · windows/schema-diff · 1.30d · windows/schema-diff/SchemaDiffPlanPanel.tsx · split
-- [ ] T184 · lib/valuePresentation · 0.80d · lib/valuePresentation/registerBundledContributions.ts lib/valuePresentation/settings.ts
+- [x] T184 · lib/valuePresentation · 0.80d · lib/valuePresentation/registerBundledContributions.ts lib/valuePresentation/settings.ts
 - [ ] T185 · hooks · 0.50d · hooks/useColumnResize.ts
 - [ ] T190 · commands · 0.90d · commands/connection.ts
 - [ ] T196 · components/sql-editor · 2.00d · components/sql-editor/fold/foldCompartment.ts · split
@@ -83,7 +83,7 @@
 - [ ] T244 · windows/settings · 0.90d · windows/settings/DataCleanupSection.tsx
 - [ ] T247 · windows/onboarding · 1.00d · windows/onboarding/steps/WelcomeStep.tsx windows/onboarding/WizardFooter.tsx
 - [ ] T250 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffSelectionSteps.tsx
-- [ ] T253 · lib/valuePresentation · 0.80d · lib/valuePresentation/timestampContribution.ts
+- [x] T253 · lib/valuePresentation · 0.80d · lib/valuePresentation/timestampContribution.ts
 - [ ] T254 · hooks · 0.90d · hooks/useConnectionCommand.ts
 - [ ] T258 · commands · 1.30d · commands/database.ts · split
 - [ ] T263 · components/sql-editor · 2.00d · components/sql-editor/paste/createPasteExtensions.ts · split
@@ -97,14 +97,14 @@
 - [ ] T285 · windows/settings · 0.90d · windows/settings/InstallLanguagePackDialog.tsx
 - [ ] T287 · windows/onboarding · 0.30d · windows/onboarding/onboardingLayout.ts
 - [ ] T290 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffUnifiedObjectsPicker.tsx
-- [ ] T293 · lib/valuePresentation · 0.80d · lib/valuePresentation/valuePresentationRules.ts
+- [x] T293 · lib/valuePresentation · 0.80d · lib/valuePresentation/valuePresentationRules.ts
 - [ ] T294 · hooks · 1.30d · hooks/useGridClipboard.ts · split
 - [ ] T298 · commands · 2.00d · commands/file.ts · split
 - [ ] T302 · components/sql-editor · 2.00d · components/sql-editor/paste/multiCursorPointer.ts · split
 - [ ] T304 · windows/settings · 0.30d · windows/settings/JsonSchemaSettingsForm.tsx
 - [ ] T306 · windows/onboarding · 0.90d · windows/onboarding/useDetectedImportSource.ts
 - [ ] T309 · windows/schema-diff · 1.30d · windows/schema-diff/SchemaDiffWindow.tsx · split
-- [ ] T312 · lib/valuePresentation · 0.30d · lib/valuePresentation/valuePresentationSave.ts
+- [x] T312 · lib/valuePresentation · 0.30d · lib/valuePresentation/valuePresentationSave.ts
 - [ ] T313 · hooks · 0.90d · hooks/useGridKeyboardNav.ts
 - [ ] T316 · commands · 0.90d · commands/history.ts
 - [ ] T320 · components/sql-editor · 2.00d · components/sql-editor/paste/multipleSelections.ts · split

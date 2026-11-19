@@ -12,18 +12,8 @@ pub(crate) use rune::{Env, Runtime};
 
 pub(crate) mod support;
 pub(crate) mod tokens;
-// T0-09: the tree base (geometry, keyboard, virtualisation, selection).
-mod tree;
-// T0-09 audit: virtual staging, page height, edges and the selected a11y state.
-mod tree_audit;
 // T0-11 patch: a compact tooltip's long hint wraps inside the window.
 mod tooltip_text;
-// T0-04: chrome icons come from one 24-view lucide registry.
-mod icon_registry;
-// T0-11 audit: independent wrap and placement probes.
-mod tooltip_text_audit;
-// T0-11 row math: external selection reveal and page arithmetic.
-mod tree_rowmath_audit;
 
 // T004: the column-statistics dialog's four branches, dismissal and bounds.
 mod column_stats_audit;
@@ -94,6 +84,79 @@ pub(crate) fn glyph_ids(system: &mut rune::text::TextSystem, text: &str) -> Vec<
     ids
 }
 
+// A3 query workspace (editor/results/sidebar/tabs).
+mod query_workspace;
+// Rail alignment and modal dialogs.
+mod rail_modals;
+mod select_values;
+
+// T0-11 error display bases.
+mod banner;
+mod copyable;
+
+
+
+// T0-11 viewer bases.
+mod binary_viewer;
+mod json_viewer;
+
+
+mod chrome_fix_audit;
+
+
+
+
+// T253-T256: the .ts support layer semantics.
+mod support_layer_audit;
+// T034: React lib/session/counters.ts parity (counter + handle value logic).
+mod counters;
+// T034 independent audit: 2^53 gate, branch order, regex-vs-BigInt faithfulness.
+mod counters_audit;
+
+
+
+
+
+
+
+
+
+
+
+
+
+// T155: presentation plans — override keys, routing, cache keys, rules.
+mod presentation_plan;
+// T085: the column presentation panel's pure logic (validate/read/preview).
+mod column_presentation;
+// T123: the session override store and its snapshot merge.
+mod column_presentation_session;
+// T037: table-column override persistence (validate/apply/save).
+mod column_overrides;
+// T182: settings parse + snapshot builder + bundled registration.
+mod settings;
+// T310: the valuePresentation save path helpers (renderer / rules paths).
+mod value_presentation_save;
+// T0-09: the tree base (geometry, keyboard, virtualisation, selection).
+mod tree;
+// T0-09 audit: virtual staging, page height, edges and the selected a11y state.
+mod tree_audit;
+// T0-04: chrome icons come from one 24-view lucide registry.
+mod icon_registry;
+// T0-11 audit: independent wrap and placement probes.
+mod tooltip_text_audit;
+// T0-11 row math: external selection reveal and page arithmetic.
+mod tree_rowmath_audit;
+// T004: the column-statistics dialog's four branches, dismissal and bounds.
+// T015: the AI context settings section — budgets, editor rejections, flows.
+// T017: the WappIcon port (manifest icon or puzzle, the onError cycle).
+// T018: the add-to-dashboard dialog port (load gate, picker, create branch).
+// T021: the onboarding brand sidebar port (fixed-dark gradient, features).
+// T025: the schema-diff deploy panel port (dialect gates, confirm journey).
+// T038: the useConfirmDialog port (request ids, resolve identity, preview).
+// T035: the sqlDialects support layer (profiles, strategies, exact SQL).
+// T002: the single DataTable cell — formatting, colour, plan and geometry.
+// Independent T002 audit: tree-observed colour, branch order, raw handoff, flags and geometry.
 // Shell, navigation, connections home, data grid, fonts and rendering.
 mod shell_grid;
 // T053: React shell.ts is a pure re-export barrel; Rune's root view covers its
@@ -119,10 +182,6 @@ mod host_jobs;
 mod chrome_metrics;
 // Dialog base: mount rules, Escape close, focus return.
 mod dialog;
-// A3 query workspace (editor/results/sidebar/tabs).
-mod query_workspace;
-// Rail alignment and modal dialogs.
-mod rail_modals;
 // Base kit primitives: select and the switch family.
 mod components;
 // T0-09 table base: geometry, sort, selection, keyboard, window fit.
@@ -135,7 +194,6 @@ mod choice_extra;
 // Menu and context-menu base.
 mod menus;
 mod menus_audit;
-mod select_values;
 // Toast / Tooltip / HoverCard overlay base (T0-10).
 mod overlay;
 // Independent audit for T0-10 overlay base.
@@ -149,42 +207,26 @@ mod i18n_sweep;
 mod i18n_usage_audit;
 // Independent audit of the batch-3 view translations.
 mod i18n_batch3_audit;
-
-// T0-11 error display bases.
-mod banner;
 mod banner_audit;
 mod copyable_timer_audit;
-mod copyable;
-
 // T0-02 text field base and its audit.
 #[cfg(test)]
 mod field_kit;
 mod field_kit_audit;
-
 // Slider and PathInput base controls (T0-11).
 mod widgets;
 mod widgets_audit_t0_11;
-
-// T0-11 viewer bases.
-mod binary_viewer;
-mod json_viewer;
 // Independent audit for T0-11 viewer bases.
 mod viewer_audit;
-
 // T0-12 base geometry regression: every base inside the window, siblings apart.
 mod base_geometry;
-
 // T0-11 chrome bases: ToolbarButton, Tabs, Spinner, Badge, Label, ToolbarShell.
 mod chrome_parts;
 mod chrome_parts_audit;
-mod chrome_fix_audit;
-
 // T0-11 temporal value input: typing, validation and commit keys.
 mod temporal_input;
-
 // T0-11 audit: independent probes for the temporal editor contract.
 mod temporal_input_audit;
-
 // T029: history components (entry card + filter bar).
 mod history_components;
 mod history_components_audit;
@@ -193,11 +235,9 @@ mod sql_editor_component;
 // T005: the global query-history dialog port.
 mod global_query_history_dialog;
 mod global_query_history_audit;
-
 // T029 fix round: CopyButton base feedback + filter bar metrics.
 mod copy_button;
 // T253-T256: the .ts support layer semantics.
-mod support_layer_audit;
 // T036: lib/structureEditor .ts helper parity (pure value logic).
 mod structure_editor_helpers;
 // T036 independent audit: extra edge cases on the ported helpers.
@@ -209,9 +249,7 @@ mod chart_export;
 // places the port is stricter than atob / decodeURIComponent.
 mod chart_export_audit;
 // T034: React lib/session/counters.ts parity (counter + handle value logic).
-mod counters;
 // T034 independent audit: 2^53 gate, branch order, regex-vs-BigInt faithfulness.
-mod counters_audit;
 // T043-S1: platform/blobTablesExporter.ts slice 1 — types, capability
 // gates, DDL resolution and shared planning (planner mirror + exporter seam).
 mod blob_tables_exporter;
@@ -249,10 +287,8 @@ mod relation_prediction_ports;
 
 // Independent re-audit of merged T0-07 menu base.
 mod menus_merge_reaudit;
-
 // T0-10 merged-mainline overlay re-audit.
 mod overlay_merge_reaudit;
-
 // React parity: DefaultOrderSelect and GridKeyboardHints ports.
 mod data_table_selects;
 // T007: the DataTable selection bar port.
@@ -260,16 +296,12 @@ mod data_table_selection_bar;
 // T007 independent tester audit (coverage-driven, key/focus/geometry probes).
 mod data_table_selection_audit;
 mod data_table_ports_audit;
-
 // T021/T023: filter editor parts (between bounds, condition chip, connector).
 mod filter_parts;
-
 // T021/T023 audit: independent probes for the filter parts against React.
 mod filter_parts_audit;
-
 // T021/T023 fixes: chip width, truncation, accent X, tooltips and pressed state.
 mod filter_fixes;
-
 // T030: ExplainPlanTree port (recursive rows, expansion state, badges, bounds).
 mod explain_plan_tree;
 // T030 independent audit: i18n title, registry chevrons, S-owned state, detail
@@ -316,7 +348,6 @@ mod data_transfer_attached_jobs_audit;
 // T027: SchemaDiffPanel port and its independent audit.
 mod schema_diff_panel;
 mod schema_diff_audit;
-
 mod connection_advanced_settings;
 mod connection_advanced_audit;
 // T059: the ConnectionAiNotes port (load/save, UTF-8 byte limit, timed feedback, geometry).
@@ -336,7 +367,6 @@ mod connection_navigator_tree_audit;
 
 // T068: MigrationJobFailureNotice (fail-closed refusal notice).
 mod migration_failure_notice;
-
 // T068 independent audit: i18n no-echo, key stability, two-theme geometry.
 mod migration_failure_audit;
 
@@ -494,3 +524,11 @@ mod app_entry;
 // unwired adapter's error) through the assign + sync the launch closure
 // performs, which the coder's demo-path test does not exercise.
 mod app_entry_audit;
+// T291: valuePresentation rules — restricted regex, validation, matching.
+mod value_presentation_rules;
+// T251: the datazen.timestamp contribution + contracts/registry slice.
+mod timestamp_contribution;
+// T046: the shared bootstrap chain (adapter + bundled registration + sync).
+mod bootstrap;
+// T047: the ADB driver-command wrappers (unified execute entry).
+mod commands_adb;

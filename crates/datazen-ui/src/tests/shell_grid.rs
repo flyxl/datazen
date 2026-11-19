@@ -227,8 +227,15 @@ use rune::{Env, Runtime};
     }
 
     #[test]
-    fn the_unmigrated_areas_say_not_yet_migrated_and_keep_the_react_pages() {
+    fn the_migrated_wapps_area_shows_real_content_with_no_pending_notice() {
+        // C4's "Not yet migrated" notice was a stand-in for areas the Rune
+        // shell did not serve yet. Wapps (T072) now has a real management
+        // page, so the notice is retired: the same rail entry leads to the
+        // ported page and must carry its real controls, not a placeholder.
+        // This guard makes a future regression that swaps the real page back
+        // for a notice fail here.
         use crate::app_key;
+        use crate::i18n::t;
         use serde_json::Value;
 
         fn find<'a>(v: &'a Value, key: &str) -> Option<&'a Value> {
@@ -257,28 +264,37 @@ use rune::{Env, Runtime};
         let tree = runtime.accessibility_json();
         let nav = find(&tree, "rail-wapps").expect("the sidebar lists the area");
         assert_eq!(nav["role"], "tab");
-        assert_eq!(nav["name"], crate::i18n::t("nav.extensions"));
+        assert_eq!(nav["name"], t("nav.extensions"));
 
-        let page = find(&tree, "wapps-page").expect("the page is in the tree");
-        assert!(find(&tree, "wapps-pending").is_some(), "the WAPPS entry is mounted");
-        assert!(find(&tree, "onboarding-pending").is_some(), "the onboarding entry is mounted");
+        // Every Section in the shell now has a real page, so C4's pending
+        // placeholders — and their wording — must be gone from the tree.
+        assert!(find(&tree, "wapps-pending").is_none(), "the WAPPS pending notice is retired");
+        assert!(find(&tree, "onboarding-pending").is_none(), "the onboarding pending notice is retired");
 
-        // It says the status, and says where each area still lives.
+        // The rail press lands on the ported WappManagementPage, not a notice.
+        let page = find(&tree, "extension-management-page").expect("the real wapps page is mounted");
+        assert!(find(page, "extension-page-content").is_some(), "the page carries its content column");
+        assert!(find(page, "extension-page-title").is_some(), "the page title is mounted");
+        let install = find(page, "extension-install-button").expect("the install press is mounted");
+        assert_eq!(install["role"], "button", "the install press is a real button");
+        assert!(find(page, "extension-search-input").is_some(), "the search box is mounted");
+        assert!(find(page, "extension-filter-all").is_some(), "the All filter is mounted");
+        assert!(find(page, "extension-page-empty").is_some(), "an empty list shows the real empty state");
+
         let mut texts = Vec::new();
         names(page, &mut texts);
         let joined = texts.join(" | ");
-        assert!(joined.contains("Not yet migrated"), "the page says it: {joined}");
+        assert!(joined.contains(t("extensions.page.title")), "the page title reads the zh-CN table: {joined}");
+        assert!(joined.contains(t("extensions.page.install")), "the install action is labelled: {joined}");
+        assert!(!joined.contains("Not yet migrated"), "no stale pending notice: {joined}");
         assert!(
-            joined.contains("The React page is still there"),
-            "extensions entry points at React: {joined}"
+            !joined.contains("The React page is still there"),
+            "WAPPS now points at its Rune page: {joined}"
         );
-        assert!(joined.contains("The React wizard is still there"), "onboarding points at React: {joined}");
-        assert!(joined.contains("do not go into Rune"), "WAPP iframes stay out: {joined}");
-
-        // And nowhere does the page claim a replacement or a removal.
-        let lowered = joined.to_lowercase();
-        assert!(!lowered.contains("replaced"), "no claim of replacement: {joined}");
-        assert!(!lowered.contains("removed"), "no claim of removal: {joined}");
+        assert!(
+            !joined.contains("The React wizard is still there"),
+            "no stale onboarding pointer: {joined}"
+        );
     }
 
     #[test]

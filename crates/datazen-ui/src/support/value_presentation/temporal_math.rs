@@ -183,6 +183,51 @@ pub(crate) enum TemporalFormatError {
     OutOfRange,
 }
 
+impl TemporalParseError {
+    /// React's kebab-case stable reason string.
+    pub(crate) fn as_kebab(&self) -> &'static str {
+        match self {
+            TemporalParseError::EmptyInput => "empty-input",
+            TemporalParseError::InvalidFormat => "invalid-format",
+            TemporalParseError::InvalidIntegerSyntax => "invalid-integer-syntax",
+            TemporalParseError::NotSafeInteger => "not-safe-integer",
+            TemporalParseError::InvalidMonth => "invalid-month",
+            TemporalParseError::InvalidDay => "invalid-day",
+            TemporalParseError::InvalidHour => "invalid-hour",
+            TemporalParseError::InvalidMinute => "invalid-minute",
+            TemporalParseError::InvalidSecond => "invalid-second",
+            TemporalParseError::InvalidOffset => "invalid-offset",
+            TemporalParseError::FractionDigitsOutOfRange => "fraction-digits-out-of-range",
+            TemporalParseError::OutOfRange => "out-of-range",
+        }
+    }
+}
+
+impl WallToInstantError {
+    /// React's kebab-case stable reason string.
+    pub(crate) fn as_kebab(&self) -> &'static str {
+        match self {
+            WallToInstantError::DstAmbiguous => "dst-ambiguous",
+            WallToInstantError::DstInvalid => "dst-invalid",
+            WallToInstantError::InvalidTimeZone => "invalid-time-zone",
+            WallToInstantError::InvalidComponents => "invalid-components",
+            WallToInstantError::OutOfRange => "out-of-range",
+        }
+    }
+}
+
+impl TemporalFormatError {
+    /// React's kebab-case stable reason string.
+    pub(crate) fn as_kebab(&self) -> &'static str {
+        match self {
+            TemporalFormatError::InvalidInstant => "invalid-instant",
+            TemporalFormatError::InvalidTimeZone => "invalid-time-zone",
+            TemporalFormatError::InvalidLocale => "invalid-locale",
+            TemporalFormatError::OutOfRange => "out-of-range",
+        }
+    }
+}
+
 /// `parse_zoned_timestamp` / `parse_unix_value` result.
 pub(crate) type InstantParseResult = Result<InstantParts, TemporalParseError>;
 

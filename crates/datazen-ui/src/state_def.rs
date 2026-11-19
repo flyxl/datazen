@@ -58,6 +58,11 @@ pub struct AppState {
     /// keeps collecting every failure the page shows as a banner, including
     /// open-job sentences, which never gate the window.
     pub(crate) connections_load_error: Option<String>,
+    /// The value-presentation registry (issue-32): filled by the shared
+    /// bootstrap chain (`start_shared_app_state`) with the bundled
+    /// contributions; the settings/snapshot layer reads it.
+    pub(crate) value_presentation_registry:
+        crate::support::value_presentation::registry::ValuePresentationRegistry,
     pub(crate) tabs: Tabs,
     /// The page the workspace last opened for the selected table tab.
     pub(crate) table_page: u32,
@@ -463,6 +468,7 @@ impl Default for AppState {
             desktop_connections: None,
             desktop_error: None,
             connections_load_error: None,
+            value_presentation_registry: Default::default(),
             tabs: Tabs::new(),
             table_page: 0,
             sort: None,

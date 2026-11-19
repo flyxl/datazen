@@ -97,12 +97,7 @@ pub fn app_with_adapter(adapter: Box<dyn DesktopAdapter>) -> App<AppState> {
     .titlebar(Titlebar::new(TITLEBAR_HEIGHT))
     // The spec's `init` is a plain fn pointer; `App::init` takes the closure
     // that captured the host's adapter instead.
-    .init(move || {
-        let mut state = AppState::default();
-        state.desktop = adapter;
-        state.sync_desktop_connections();
-        state
-    })
+    .init(move || crate::bootstrap::start_shared_app_state(Some(adapter)))
     .on_ime(app_ime)
 }
 
@@ -112,13 +107,16 @@ pub fn app_with_adapter(adapter: Box<dyn DesktopAdapter>) -> App<AppState> {
 /// the connection use case, over the adapter's in-memory store; the wasm
 /// host starts on the unwired adapter and the port answers.
 pub(crate) fn init_state() -> AppState {
-    let mut state = AppState::default();
     #[cfg(not(target_arch = "wasm32"))]
     {
-        state.desktop = Box::new(UseCaseAdapter::with_demo_connections());
+        crate::bootstrap::start_shared_app_state(Some(Box::new(
+            UseCaseAdapter::with_demo_connections(),
+        )))
     }
-    state.sync_desktop_connections();
-    state
+    #[cfg(target_arch = "wasm32")]
+    {
+        crate::bootstrap::start_shared_app_state(None)
+    }
 }
 
 pub(crate) fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
