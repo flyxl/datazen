@@ -113,6 +113,7 @@ impl<'a, S: 'static> FilterTokenInput<'a, S> {
             .max_w(256.0)
             .gap(2.0)
             .center_y()
+            .flex_wrap()
             .child(el().key("filter-token-input").a11y_hidden());
 
         for (position, token) in self.tokens.iter().enumerate() {

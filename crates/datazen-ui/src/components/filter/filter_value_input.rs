@@ -20,6 +20,8 @@
 //! Removal stage: this is a shared filter part; drop the per-item
 //! `#[allow(dead_code)]` when the filter panel view mounts it (T024).
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use rune::{el, row, El, Key, KeyEvent, TextEdit, Tx};
@@ -35,6 +37,17 @@ pub(crate) const FILTER_VALUE_DEBOUNCE_MS: u64 = 350;
 type CommitFn<S> = Rc<dyn Fn(&mut S, String)>;
 type CompleteFn<S> = Rc<dyn Fn(&mut S)>;
 
+thread_local! {
+    /// The app-set value each `TextEdit` instance was given when this widget
+    /// first saw it. React keeps this in the `value` prop while the draft lives
+    /// in local state; Rune's host often stores both in one field, so a stable
+    /// per-instance baseline is needed to tell "user typed" from "no edit".
+    /// Keyed by the widget key (refreshed on every unfocused build) and bounded;
+    /// removal stage: when the host keeps the committed value in its own state
+    /// slice and passes it here.
+    static BASELINES: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+}
+
 /// Builder for the ported single-value input.
 #[allow(dead_code)] // consumer: FilterConditionEditor (this wave).
 pub(crate) struct FilterValueInput<'a, S: 'static> {
@@ -43,6 +56,10 @@ pub(crate) struct FilterValueInput<'a, S: 'static> {
     bind: fn(&mut S) -> &mut TextEdit,
     placeholder: String,
     disabled: bool,
+    /// T056's editor commits on Enter even when the draft equals the value it
+    /// was handed; the standalone React-faithful path skips that redundant
+    /// commit. Removal stage: align the editor with React and drop this flag.
+    commit_unchanged: bool,
     on_commit: Option<CommitFn<S>>,
     on_enter_complete: Option<CompleteFn<S>>,
 }
@@ -60,6 +77,7 @@ impl<'a, S: 'static> FilterValueInput<'a, S> {
             bind,
             placeholder: String::new(),
             disabled: false,
+            commit_unchanged: false,
             on_commit: None,
             on_enter_complete: None,
         }
@@ -74,6 +92,12 @@ impl<'a, S: 'static> FilterValueInput<'a, S> {
     /// React `disabled`: a disabled field keeps its value but takes no caret.
     pub(crate) fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
+        self
+    }
+
+    /// Preserve the T056 editor's "commit on every Enter" contract.
+    pub(crate) fn commit_unchanged(mut self, on: bool) -> Self {
+        self.commit_unchanged = on;
         self
     }
 
@@ -94,6 +118,19 @@ impl<'a, S: 'static> FilterValueInput<'a, S> {
         let bind = self.bind;
         let commit = self.on_commit.clone();
         let complete = self.on_enter_complete.clone();
+        let commit_unchanged = self.commit_unchanged;
+        let baseline_key = self.key.clone();
+        // An unfocused build is the app handing us its committed value: start a
+        // fresh baseline there (also clears any stale entry from a dropped view).
+        if !self.value.focused {
+            BASELINES.with(|map| {
+                let mut map = map.borrow_mut();
+                if map.len() > 256 {
+                    map.clear();
+                }
+                map.insert(baseline_key.clone(), self.value.text.clone());
+            });
+        }
 
         let mut field = TextField::new(format!("{}-value", self.key), self.value)
             .height(28.0)
@@ -109,9 +146,35 @@ impl<'a, S: 'static> FilterValueInput<'a, S> {
                 move |s: &mut S, event: &KeyEvent, _tx: &mut Tx| match event.key {
                     Key::Enter => {
                         let value = bind(s).text.clone();
-                        if let Some(commit) = &commit {
-                            commit(s, value.clone());
+                        // React `flush` skips `onCommit` when `next === value`.
+                        // `BASELINES` holds the value this edit was first given
+                        // and is updated on each real commit, so a repeated Enter
+                        // on an untouched draft is a no-op. An empty baseline
+                        // still commits (React commits `""` into a set filter).
+                        let should_commit = BASELINES.with(|map| {
+                            let mut map = map.borrow_mut();
+                            if map.len() > 256 {
+                                map.clear();
+                            }
+                            let baseline = map
+                                .entry(baseline_key.clone())
+                                .or_insert_with(|| value.clone())
+                                .clone();
+                            let commit_it = commit_unchanged || baseline.is_empty() || value != baseline;
+                            if commit_it {
+                                if let Some(slot) = map.get_mut(&baseline_key) {
+                                    *slot = value.clone();
+                                }
+                            }
+                            commit_it
+                        });
+                        if should_commit {
+                            if let Some(commit) = &commit {
+                                commit(s, value.clone());
+                            }
                         }
+                        // React calls `onEnterComplete` for any non-empty draft,
+                        // even when the value was unchanged and flush skipped.
                         if !value.trim().is_empty() {
                             if let Some(complete) = &complete {
                                 complete(s);

@@ -566,6 +566,9 @@ impl<'a, S: 'static> FilterConditionEditor<'a, S> {
                         FilterValueInput::<S>::new(self.key.clone(), draft.edit, bind)
                         .placeholder(t("filter.value"))
                         .disabled(self.disabled)
+                        // T056's editor contract commits on every Enter; keep it
+                        // until its tests follow React's unchanged-value skip.
+                        .commit_unchanged(true)
                         .on_commit(move |s: &mut S, value: String| {
                             committing.commit_value(s, FilterValue::Single(value));
                         })
