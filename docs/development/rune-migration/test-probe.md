@@ -14,7 +14,10 @@
 1. 备份当前 `crates/datazen-ui/src/tests/mod.rs`（含 tester 未提交的注册行）；
 2. 只保留 `support` / `tokens` 和指定的模块，把其余 `mod X;` 行临时裁掉
    （121 个测试模块 → 一片通常只剩 2–4 个，编译体量缩小约 30 倍），
-   其余内容（imports、`runtime()`、注释）原样保留；
+   其余内容（imports、`runtime()`、注释）原样保留；裁剪时若 `#[cfg(test)]`
+   等外层属性紧贴在被裁 `mod` 行之上，会随之一并裁掉，否则会留下悬空
+   属性导致编译失败（2026-11-19 修复，起因是 `mod field_kit;` 上的
+   `#[cfg(test)]`）；
 3. 以 `CARGO_BUILD_JOBS=1`、`RUSTFLAGS='-C debuginfo=0'` 跑
    `cargo test -p datazen-ui --lib --offline`，拿真实运行时红/绿；
 4. 无论通过、失败还是被中断，都把 `mod.rs` 还原成备份的逐字节一致，
