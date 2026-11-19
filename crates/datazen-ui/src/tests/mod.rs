@@ -775,3 +775,9 @@ mod schema_request_tracker;
 // T421 independent audit: fresh vectors (parallel sessions, the bind
 // chain, cross-session slot names, reset scoping).
 mod schema_request_tracker_audit;
+// T301: the window chrome fallback (the chrome slot, the announcing
+// spinner, center geometry).
+mod window_chrome_fallback;
+// T301 independent audit: fresh vectors (a 64pt chrome fixture, the
+// narrow window, the no-bar centering, the ring/label channels).
+mod window_chrome_fallback_audit;

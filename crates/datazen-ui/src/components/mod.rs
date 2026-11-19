@@ -20,6 +20,9 @@ pub(crate) mod filter_bar;
 pub(crate) mod filter_editor;
 // T140: the lazy-i18n-domain loading skeleton (page / section variants).
 pub(crate) mod locale_domain_loading;
+// T301: the overlay-window chrome fallback (the registered chrome slot
+// over a centered announcing spinner).
+pub(crate) mod window_chrome_fallback;
 pub(crate) mod history;
 pub(crate) mod query;
 pub(crate) mod schema;
