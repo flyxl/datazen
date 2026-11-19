@@ -67,10 +67,13 @@ pub use platform_shared::{
     WebMcpServerConfig, WebMcpToolInfo, format_call_tool_result, mcp_qualified_name,
 };
 pub use relation_prediction::{
-    ColumnSchema, DeclaredForeignKey, ForeignKeyInfo, IndexInfo, PredictionColumn, PredictionTable,
-    TableSchema, TypeFamily, is_generic_key_name, normalize_data_type, normalize_identifier,
-    singularize, split_identifier_words, to_prediction_table_from_schema,
-    to_prediction_tables_from_schemas, type_family,
+    ColumnPair, ColumnSchema, DEFAULT_AMBIGUITY_MARGIN, DEFAULT_HIGH_THRESHOLD,
+    DEFAULT_MEDIUM_THRESHOLD, DeclaredForeignKey, EVIDENCE_WEIGHTS, EvidenceWeights, ForeignKeyInfo,
+    IndexInfo, PredictionColumn, PredictionEvidence, PredictionEvidenceCode, PredictionOptions,
+    PredictionTable, PredictionTier, RelationCandidate, TableSchema, TypeFamily,
+    is_generic_key_name, normalize_data_type, normalize_identifier, predict_relations, singularize,
+    split_identifier_words, to_prediction_table_from_schema, to_prediction_tables_from_schemas,
+    type_family,
 };
 pub use tabs::{Tab, TabKind, Tabs};
 
