@@ -729,6 +729,11 @@ mod structure_editor_types;
 mod structure_editor_types_audit;
 // T096: WebContextMenu — contract, position math, store, panels, presses.
 mod web_context_menu;
+// T157: the contextMenuStore singleton — normalized opens, hide, reopen.
+mod context_menu_store;
+// T157 independent audit: fresh vectors (empty submenus, disabled rows,
+// predefined separators, cursor overwrite, idempotent hide).
+mod context_menu_store_audit;
 // T096 independent audit: fresh vectors, id'd separators, Copy command.
 mod web_context_menu_audit;
 // T100: QueryContextSelectors + QueryErrorPanel.
