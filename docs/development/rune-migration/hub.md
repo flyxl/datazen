@@ -39,6 +39,12 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+### 执行模型裁决（2026-11-19，用户选 A）
+
+- 依赖分析（`task-dependencies.md` 2722 边）+ 拓扑排序提案（`task-order-topological.md` 203 波）已完成；拓扑 wave 与静态 segment 分段不兼容（每波混段、1602 跨段边）。
+- 用户裁决：**方案 A — 维持现状**（静态 segment + 按号 wave），不改现有流程。理由：大部分反向依赖是假阻塞（Phase-0 基座已落地），少量返工可接受。
+- 拓扑两份文档仅作参考提案保留，`tasklist.md` / `shards/*.md` 仍是唯一真相源，取任务继续用 `--shard N --next-todo`（按 T 编号）。
+
 ### 本机 segment-1 Wave B（2026-11-19，4 轨）
 
 Wave A 全部收口（26/647）后继续，从 `--shard 1 --next-todo` 取前 4 个不同 area：
