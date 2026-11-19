@@ -237,6 +237,8 @@ mod connection_ai_notes;
 // T103: ConnectionFormBody + ConnectionImportFields ports (keys, validation,
 // disabled states, exact i18n and two-window/two-theme geometry).
 mod connection_form_parts;
+// T103 independent audit: observable behaviour, structural parity and coverage gaps.
+mod connection_form_audit;
 // T016: the batch-export dialog port.
 mod batch_export_dialog;
 mod batch_export_audit;
