@@ -34,6 +34,9 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "wasm
 rune = { workspace = true, features = ["native-file-dialog"] }
 
 [dev-dependencies]
+# T043-S1: `futures::executor::block_on` drives the exporter's async
+# `plan_export` in tests (the UI crate is otherwise synchronous).
+futures = "0.3"
 # H8's tofu test reads glyph ids out of a shaped layout; the same version and
 # features rune itself uses, so the graph stays one parley.
 parley = { version = "0.12", default-features = false, features = ["std", "complex-scripts"] }

@@ -176,6 +176,10 @@ mod chart_export_audit;
 mod counters;
 // T034 independent audit: 2^53 gate, branch order, regex-vs-BigInt faithfulness.
 mod counters_audit;
+// T043-S1: platform/blobTablesExporter.ts slice 1 — types, capability
+// gates, DDL resolution and shared planning (planner mirror + exporter seam).
+mod blob_tables_exporter;
+mod export_plan;
 // T039: React stores/activeConnectionStore.ts parity (active-connection store).
 mod active_connection_store;
 // T039 independent audit: markConnected spread semantics, timeout re-arm

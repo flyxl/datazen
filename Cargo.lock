@@ -2759,6 +2759,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "datazen-ui-api",
+ "futures",
  "parley",
  "rune",
  "rune-kit",
