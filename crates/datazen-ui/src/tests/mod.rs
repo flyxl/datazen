@@ -342,6 +342,8 @@ mod platform_web_stub_audit;
 
 // T216: the real filterValues / FilterColumn / filterLabels contracts.
 mod filter_types_labels;
+// T216 independent audit: boundary semantics, formatCell path, source guards.
+mod filter_contracts_audit;
 // T056: the expanded filter condition editor port.
 mod filter_condition_editor;
 // T056 independent audit: ported contracts, dispatch paths, i18n, token events.
