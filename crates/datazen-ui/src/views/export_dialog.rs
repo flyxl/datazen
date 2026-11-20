@@ -274,6 +274,7 @@ impl ExportVm {
     }
 
     /// React's open effect: reset the form state, keeping the supplied columns.
+    #[allow(dead_code)] // consumer: the export-dialog host wiring (not landed); remove when wired.
     pub(crate) fn reset_on_open(&mut self) {
         self.status = ExportStatus::Form;
         self.error.clear();
@@ -284,6 +285,7 @@ impl ExportVm {
     }
 
     /// React `handleExport` state transition before the host runs the command.
+    #[allow(dead_code)] // consumer: the export-dialog host wiring (not landed); remove when wired.
     pub(crate) fn begin_export(&mut self) {
         self.error.clear();
         self.exporting = true;
@@ -293,6 +295,7 @@ impl ExportVm {
     }
 
     /// React's export answer branches.
+    #[allow(dead_code)] // consumer: the export-dialog host result feed (not landed); remove when wired.
     pub(crate) fn apply_result(&mut self, result: ExportResult) {
         self.exporting = false;
         match result {
