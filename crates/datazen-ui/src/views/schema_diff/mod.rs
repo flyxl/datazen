@@ -40,3 +40,9 @@ pub(crate) mod schema_diff_job_status_panel;
 // the schemaDiffTableNames.ts full port rides in its own module).
 pub(crate) mod use_schema_diff_clipboard_feedback;
 pub(crate) mod schema_diff_table_names;
+// T339: the wizard's step rail (SchemaDiffWizardProgress.tsx: the
+// step type, the two step lists, the three-tone progress band) and
+// the bottom navigation bar (SchemaDiffWindowNavigation.tsx: Back +
+// the Deploy/Next branch).
+pub(crate) mod schema_diff_wizard_progress;
+pub(crate) mod schema_diff_window_navigation;
