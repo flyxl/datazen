@@ -416,7 +416,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T397 · commands · 0.30d · commands/structure.ts
 - [ ] T398 · components/DataTable · 3.20d · components/DataTable/VirtualBody.tsx · split
 - [ ] T399 · windows/settings · 0.30d · windows/settings/settingsUi.tsx
-- [ ] T400 · windows/connection · 0.90d · windows/connection/ForeignKeysView.tsx
+- [x] T400 · windows/connection · 0.90d · windows/connection/ForeignKeysView.tsx
 - [ ] T401 · windows/data-sync · 0.90d · windows/data-sync/compareReport.ts
 - [ ] T402 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffJobRestore.ts
 - [ ] T403 · lib · 1.30d · lib/connectionLocator.ts · split
@@ -425,7 +425,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T406 · commands · 1.30d · commands/sync.ts · split
 - [ ] T407 · components/DataTable · 0.90d · components/DataTable/dirtyCellText.ts components/DataTable/editors/activeEditor.ts components/DataTable/fkCellText.ts
 - [ ] T408 · windows/settings · 0.90d · windows/settings/SkillsSection.tsx
-- [ ] T409 · windows/connection · 0.90d · windows/connection/home/ConnectionCardList.tsx
+- [x] T409 · windows/connection · 0.90d · windows/connection/home/ConnectionCardList.tsx
 - [ ] T410 · windows/data-sync · 0.30d · windows/data-sync/dataSyncTypes.ts
 - [ ] T411 · windows/schema-diff · 1.30d · windows/schema-diff/useSchemaDiffSavedSetups.ts · split
 - [ ] T412 · lib · 0.90d · lib/connectionShare.ts
@@ -434,7 +434,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T415 · commands · 0.90d · commands/transfer.ts
 - [ ] T416 · components/DataTable · 0.90d · components/DataTable/fkSelectorText.ts components/DataTable/gridClipboardBridge.ts components/DataTable/rowHeight.ts
 - [ ] T417 · windows/settings · 0.50d · windows/settings/SnippetEditDialog.tsx
-- [ ] T418 · windows/connection · 0.60d · windows/connection/home/HomeHero.tsx windows/connection/home/McpPromoBar.tsx
+- [x] T418 · windows/connection · 0.60d · windows/connection/home/HomeHero.tsx windows/connection/home/McpPromoBar.tsx
 - [ ] T419 · windows/data-sync · 0.90d · windows/data-sync/mappingView.ts
 - [ ] T420 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffUnifiedObjects.ts
 - [ ] T421 · lib · 0.90d · lib/connectionShareError.ts lib/connectionTabContextMenu.ts lib/connectionViews/index.ts

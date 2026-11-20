@@ -74,9 +74,9 @@
 - [x] T372 · windows/connection · 2.20d · windows/connection/ErDiagramView.tsx · split
 - [x] T382 · windows/connection · 0.50d · windows/connection/ExecuteSqlFileDialog.tsx
 - [x] T391 · windows/connection · 1.30d · windows/connection/ExportDialog.tsx · split
-- [ ] T400 · windows/connection · 0.90d · windows/connection/ForeignKeysView.tsx
-- [ ] T409 · windows/connection · 0.90d · windows/connection/home/ConnectionCardList.tsx
-- [ ] T418 · windows/connection · 0.60d · windows/connection/home/HomeHero.tsx windows/connection/home/McpPromoBar.tsx
+- [x] T400 · windows/connection · 0.90d · windows/connection/ForeignKeysView.tsx
+- [x] T409 · windows/connection · 0.90d · windows/connection/home/ConnectionCardList.tsx
+- [x] T418 · windows/connection · 0.60d · windows/connection/home/HomeHero.tsx windows/connection/home/McpPromoBar.tsx
 - [ ] T427 · windows/connection · 0.50d · windows/connection/home/RecentQueriesList.tsx
 - [ ] T435 · windows/connection · 0.90d · windows/connection/home/ShortcutFooter.tsx
 - [ ] T442 · windows/connection · 3.70d · windows/connection/ImportDialog.tsx · split
