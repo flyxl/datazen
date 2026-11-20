@@ -22,16 +22,13 @@
 - [ ] T095 · extensions · 0.80d · extensions/generated.ts
 - [x] T118 · lib · 0.80d · lib/cellEditorKind.ts
 - [x] T152 · lib · 0.60d · lib/dataTypeColors.ts components/DataTable/editors/toEditString.ts
-- [ ] T202 · windows/workflow · 2.00d · windows/workflow/WorkflowYamlEditor.tsx · split
 - [ ] T218 · components/chart · 2.00d · components/chart/renderers/LineChartRenderer.tsx · split
 - [ ] T225 · windows/workflow · 0.60d · windows/workflow/workflowDraftConvert.ts windows/workflow/workflowPanelGuards.ts
 - [ ] T230 · lib · 0.60d · lib/aiMemorySettings.ts lib/aiMessageBlocks.ts
 - [ ] T240 · components/chart · 2.00d · components/chart/renderers/PieChartRenderer.tsx · split
-- [ ] T246 · windows/workflow · 2.00d · windows/workflow/yamlLint.ts · split
 - [ ] T251 · lib · 0.50d · lib/aiProviders.ts
 - [ ] T257 · types · 0.90d · types/settings.ts
 - [ ] T261 · components/chart · 2.00d · components/chart/renderers/ScatterChartRenderer.tsx · split
-- [ ] T267 · windows/workflow · 2.00d · windows/workflow/yamlMode.ts · split
 - [ ] T272 · lib · 0.80d · lib/aiQueryActions.ts
 - [ ] T278 · types · 0.90d · types/theme.ts
 - [ ] T291 · lib · 0.90d · lib/aiSafetyPresets.ts lib/aiSkills.ts lib/anyColumnFilter.ts
@@ -159,6 +156,9 @@
 - [x] T128 · types · 0.90d · types/connection.ts
 - [x] T159 · types · 0.90d · types/dashboard.ts
 - [x] T211 · types · 1.30d · types/index.ts · split
+- [x] T200 · windows/workflow · 2.00d · windows/workflow/WorkflowYamlEditor.tsx · split
+- [x] T244 · windows/workflow · 2.00d · windows/workflow/yamlLint.ts · split
+- [x] T265 · windows/workflow · 2.00d · windows/workflow/yamlMode.ts · split
 - [x] T205 · lib · 0.90d · lib/aiMemoryPatterns.ts
 - [x] T188 · types · 0.30d · types/filters.ts
 - [x] T174 · windows/workflow · 0.30d · windows/workflow/workflowStepResultUtils.tsx
