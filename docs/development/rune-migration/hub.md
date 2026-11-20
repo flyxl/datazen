@@ -39,6 +39,13 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+### 第二段合流 push（2026-11-20，用户设阈值规则后首轮）
+
+- 用户规则：**每个 seg1 wave 完成后检查合计 ahead，>30 commits 才合**。Wave 19 关闭时合计 96（seg1 14+seg2 13+seg3 3+seg4 32+后续增量）→ 触发合流。
+- 4 个真 merge commit：`111dbf9b3`(seg1, f544297b8) → `1bebffd58`(seg2, 3a27e7125) → `b546f20c8`(seg3, e219b7ccf) → `f32675e9f`(seg4, 28af7ea64)；父分支 `ac6770e3f → f32675e9f`（78 commits，fast-forward）。
+- 验证：三 crate check 全 PASS；gate test 步骤又是本机 Apple ld `arm64_b26` 分支范围超限（330 warnings 后链接失败），按用户已授权模式接受风险 push。零冲突、零断言弱化、无遗留孤儿进程。
+- push 后残余 ahead 合计 22（seg1 12 + seg4 10），低于阈值 30，暂不合，下个 wave 后复查。
+
 ### 四段最新合流 push（2026-11-20，用户明确指示 push）
 
 - seg1/2/3/4 最新代码以 4 个真 merge commit 合入父分支：`521af02dd`(seg1, tip c75292a05) → `2c2673de0`(seg2, e392bc177) → `d75c40f17`(seg3, 28856c392 — 首次纳入) → `cd55d8279`(seg4, 1823af18b)；父分支 `44f875d8b → cd55d8279`（122 commits，fast-forward，无覆盖）。
