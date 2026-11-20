@@ -14,12 +14,12 @@
 - [x] T033 · lib/relationPrediction · 0.80d · lib/relationPrediction/fromTableSchema.ts lib/relationPrediction/normalize.ts
 - [x] T040 · stores/ai · 3.00d · stores/ai/sessions.ts · split
 - [x] T042 · types · 0.80d · types/ai.ts
-- [ ] T046 · extensions · 0.30d · extensions/generated-pro.ts
+- [x] T046 · extensions · 0.30d · extensions/generated-pro.ts
 - [ ] T052 · index.ts · 0.90d · index.ts
 - [ ] T060 · components/chart · 0.80d · components/chart/ChartEmptyState.tsx components/chart/ChartToolbar.tsx
 - [x] T078 · lib · 0.80d · lib/cellTypes.ts
 - [ ] T080 · lib/metadata · 0.90d · lib/metadata/identity.ts
-- [ ] T095 · extensions · 0.80d · extensions/generated.ts
+- [x] T095 · extensions · 0.80d · extensions/generated.ts
 - [x] T118 · lib · 0.80d · lib/cellEditorKind.ts
 - [x] T152 · lib · 0.60d · lib/dataTypeColors.ts components/DataTable/editors/toEditString.ts
 - [x] T251 · lib · 0.50d · lib/aiProviders.ts
