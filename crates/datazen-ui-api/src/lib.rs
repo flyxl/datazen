@@ -36,6 +36,8 @@ mod batch_export_job;
 mod backup_progress;
 mod base64;
 mod chart_types;
+mod command_schema;
+mod connection_clipboard;
 mod connection_config;
 mod connection_types;
 mod connection_views;
@@ -217,6 +219,15 @@ pub use base64::{base64_to_bytes, bytes_to_base64, Base64DecodeError};
 pub use chart_types::{
     AggregationType, ChartConfig, ChartDataPoint, ChartDataPointValue, ChartField,
     ChartRecommendation, ChartSortBy, ChartType, InferredFieldType,
+};
+pub use command_schema::{
+    all_privileges, field_label, field_placeholder, get_schema_field, has_command,
+    has_schema_field, privilege_groups, schema_properties, PrivilegeGroup, SchemaField,
+};
+pub use connection_clipboard::{
+    apply_connection_clipboard_fill, apply_matched_clipboard, match_connection_clipboard,
+    parse_generic_connection_url, ClipboardDriverMeta, ConnectionClipboardFill,
+    ConnectionClipboardParser, ConnectionFormOps, MatchedConnectionClipboard,
 };
 pub use connection_config::{
     clone_connection_config_for_ipc, to_ipc_connection_config, PlainConfigAssertion,
