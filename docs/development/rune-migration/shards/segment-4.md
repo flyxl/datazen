@@ -70,7 +70,7 @@
 - [x] T210 · hooks · 0.90d · hooks/useColumnStats.ts
 - [x] T214 · commands · 0.90d · commands/context.ts
 - [x] T220 · components/sql-editor · 2.00d · components/sql-editor/format/formatEditorDocument.ts · split
-- [ ] T222 · windows/settings · 0.90d · windows/settings/AppearanceSection.tsx
+- [x] T222 · windows/settings · 0.90d · windows/settings/AppearanceSection.tsx
 - [x] T224 · windows/workspace · 0.90d · windows/workspace/workspacePages.ts
 - [x] T226 · windows/onboarding · 0.90d · windows/onboarding/steps/SampleStep.tsx
 - [ ] T229 · windows/schema-diff · 0.30d · windows/schema-diff/SchemaDiffSavedSetupDialogs.tsx
