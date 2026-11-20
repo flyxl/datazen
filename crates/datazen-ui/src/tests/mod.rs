@@ -319,3 +319,8 @@ mod workflow_yaml_editor;
 // T014: the export success panel and the filter bar ports.
 mod export_success_panel;
 mod filter_bar;
+
+// T046 + T095: X-class ruling for the two generator products
+// (extensions/generated-pro.ts + extensions/generated.ts) — the equivalent
+// surface is the tracked generator + driver metas, not a Rune port.
+mod generated_driver_surface;
