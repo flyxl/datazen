@@ -106,6 +106,9 @@ mod use_fk_navigation_shortcuts_audit;
 // T279: the driver command gateway (list/execute/stream wire shapes),
 // audited against the driver-sdk source.
 mod commands_driver_audit;
+// T283: the multi-cursor Escape decision (S1's bare collapse, S0's
+// refusal), audited against the command body.
+mod multi_cursor_escape_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;

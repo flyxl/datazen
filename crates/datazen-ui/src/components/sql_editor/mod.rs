@@ -65,6 +65,11 @@ pub(crate) mod fold;
 /// multipleSelections.ts is T320, the registry T335.
 pub(crate) mod create_paste_extensions;
 
+/// `components/sql-editor/paste/multiCursorEscape.ts` (T283, split): the
+/// dedicated Escape leaving the multi-cursor state (S1's collapse to a
+/// bare main-head cursor, S0's refusal).
+pub(crate) mod multi_cursor_escape;
+
 /// `components/sql-editor/format/formatEditorDocument.ts` (T220, split):
 /// the selection-aware beautifier command (the formatter stays
 /// injected — T615's sqlFormat).
