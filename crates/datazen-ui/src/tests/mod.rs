@@ -1076,6 +1076,9 @@ mod data_sync_utils;
 // T500 independent audit: fresh vectors (sort order, branch picks, i18n
 // resolvability of the limitation keys).
 mod data_sync_utils_audit;
+// T417: the mapping view's pure functions (counters/fallbacks, labels,
+// summaries, options-vs-selection, the filter, the two merges).
+mod mapping_view;
 // T293: the tab-closed notification (panelCloseNotifier).
 mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the
