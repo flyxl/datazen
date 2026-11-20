@@ -4,6 +4,12 @@
 //! interface can run before the desktop and HTTP adapters exist.
 
 mod ai_memory_correction;
+mod cell_editor_candidates;
+mod connection_editor;
+mod chart_colors;
+mod bootstrap_icon_resolver;
+mod build_connection_url;
+mod build_editor_schema;
 // T228: the memory-settings normalizers and the message-block parser —
 // pure functions over the persistence JSON and chat markdown.
 mod ai_memory_settings;
@@ -12,13 +18,31 @@ mod ai_message_blocks;
 mod ai_memory_patterns;
 // T251: the provider preset table, its PRD order and the backend normalizer.
 mod ai_providers;
+// T291: the three safety-gate presets and their identity/locality predicates.
+mod ai_safety_presets;
+// T291: the React `lib/aiSkills.ts` surface — its two normalizers already
+// live in `ai_types` (T228/T230); this module re-exports them and pins the
+// file's contract without forking a second implementation.
+mod ai_skills;
+// T291: the Any Column filter expansion (DBR-04) and its narrow cell-type
+// projection (`cellTypes.ts`/`valueSearch.ts` are not ported into this crate).
+mod any_column_filter;
 // T272: the query-error AI action adapters — pure descriptors over raw JSON.
 mod ai_query_actions;
 mod ai_sessions;
 mod ai_store_types;
 mod ai_streaming;
 mod ai_types;
+mod batch_export_job;
+mod backup_progress;
+mod base64;
 mod chart_types;
+mod command_schema;
+mod connection_clipboard;
+mod connection_config;
+mod connection_form_model;
+mod connection_groups;
+mod connection_locator;
 mod connection_types;
 mod connection_views;
 mod context_items;
@@ -61,6 +85,28 @@ pub use ai_memory_correction::{
     AiMemoryCommands, MemoryCorrectionSubmission, SchemaStaleSubmission,
     mark_stale_for_schema_drops, submit_memory_correction_if_needed,
 };
+pub use cell_editor_candidates::{
+    CANDIDATE_VALUE_LIMIT, FETCH_FIRST_ROW_LIMIT, LIMIT_ROW_LIMIT, TOP_ROW_LIMIT,
+    CandidateDialect, DistinctCandidatesArgs, IdentifierQuote, RowLimitPlacement, RowLimitShape,
+    build_distinct_candidates_sql, build_row_limited_select, normalized_limit,
+};
+pub use connection_editor::{
+    ConnectionEditorState, close_new_connection_dialog, open_new_connection_dialog,
+};
+pub use chart_colors::{
+    COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
+};
+pub use bootstrap_icon_resolver::{
+    DbIcon, IconResolverSeed, ResolvedIcon, default_icon_resolver_seed, resolve_icon,
+};
+pub use build_connection_url::{
+    ConnectionMode, ConnectionUrlDriverMeta, build_connection_url,
+};
+pub use build_editor_schema::{
+    BuildEditorSchemaInput, SqlNamespace, build_editor_schema, flat_from_tables,
+    hoist_namespace_child, hoist_namespace_path, hoist_nested_table_leaves,
+    is_leaf, is_namespace_empty, merge_unqualified_tables, overlay_column_map,
+};
 pub use ai_memory_patterns::{
     HistorySort, MemoryPatternCommands, MemoryPatternExtractionInput, MemoryPatternScheduler,
     QueryHistoryPage, QueryHistoryPageParams, SubmitDecision, extract_memory_patterns_if_needed,
@@ -78,6 +124,24 @@ pub use ai_message_blocks::{
 pub use ai_providers::{
     DEEP_SEEK_PROVIDER, LOCAL_CLI_PROVIDER_TYPES, OLLAMA_PROVIDER, PROVIDER_ORDER,
     is_known_provider_type, is_local_cli_provider, normalize_ai_providers, provider_preset,
+};
+// T291: the React `lib/aiSafetyPresets.ts` surface — the three named gates,
+// the default/detection helpers and the local-endpoint predicate.
+pub use ai_safety_presets::{
+    CLOUD_STRICT_PRESET, ENTERPRISE_BALANCED_PRESET, LOCAL_TRUST_PRESET, AiSafetyPresetType,
+    detect_safety_preset, get_default_safety_gate, is_local_endpoint, preset_from_str,
+    safety_preset,
+};
+// T291: the React `lib/aiSkills.ts` surface. `normalize_loaded_skills` is
+// already rooted through `ai_sessions` (T230), so only the settings
+// normalizer is added here — no duplicate root name.
+pub use ai_skills::normalize_ai_skills_settings;
+// T291: the React `lib/anyColumnFilter.ts` surface — the expansion, its
+// options/result and the type-resolution vocabulary it speaks.
+pub use any_column_filter::{
+    DEFAULT_CELL_TYPE_RULES, AnyColumnExpansion, AnyColumnFilterOptions, CellType, CellTypeHints,
+    CellTypeMatch, CellTypeRule, ValueSearchTypeGroup, ValueSearchTypeScope,
+    expand_any_column_filter, resolve_cell_type,
 };
 // T272: the React `lib/aiQueryActions.ts` surface — the guarded context
 // builder, the three action descriptors and their param helpers.
@@ -143,9 +207,54 @@ pub use ai_types::{
     ExplainSuggestion, ModelInfo, PromptTemplate, ProviderListItem, StreamChunkPayload,
     StreamChunkUsage, StreamErrorPayload, DEFAULT_AI_MEMORY_SETTINGS, DEFAULT_AI_SKILLS_SETTINGS,
 };
+pub use batch_export_job::{
+    export_single_table_structure_via_rust, export_single_table_via_rust, run_batch_export_job,
+    BatchExportColumn, BatchExportDataFormat, BatchExportMode, BatchExportOutputMode,
+    BatchExportProgress, BatchExportTableInput, CancelHandle, ExportTableInput, ExportTablesRequest,
+    ExportTablesResult, LoadedTableExportData, RunBatchExportJobOptions, RunBatchExportJobResult,
+    SingleFetchOutcome, SingleTableExportOptions, SingleTableExportResult, SingleTableFetchConfig,
+    SingleTableFetchScope, SingleTableStructureExportOptions, SingleTableStructureExportResult,
+};
+pub use backup_progress::{
+    append_progress_log, backup_progress_ratio, format_backup_progress, format_restore_progress,
+    BackupDumpPhase, BackupProgressPayload, ProgressLogPump, Translate, KEY_LOG_OMITTED,
+    KEY_PROGRESS_OBJECT, KEY_PROGRESS_PREPARING, KEY_PROGRESS_WRITING, KEY_RESTORE_PREPARING,
+    KEY_RESTORE_PROGRESS, KEY_RESTORE_SUCCESS, KEY_RESTORING, KEY_SUCCESS, MAX_PROGRESS_LOG_CHARS,
+    MAX_PROGRESS_LOG_LINES,
+};
+pub use base64::{base64_to_bytes, bytes_to_base64, Base64DecodeError};
 pub use chart_types::{
     AggregationType, ChartConfig, ChartDataPoint, ChartDataPointValue, ChartField,
     ChartRecommendation, ChartSortBy, ChartType, InferredFieldType,
+};
+pub use command_schema::{
+    all_privileges, field_label, field_placeholder, get_schema_field, has_command,
+    has_schema_field, privilege_groups, schema_properties, PrivilegeGroup, SchemaField,
+};
+pub use connection_clipboard::{
+    apply_connection_clipboard_fill, apply_matched_clipboard, match_connection_clipboard,
+    parse_generic_connection_url, ClipboardDriverMeta, ConnectionClipboardFill,
+    ConnectionClipboardParser, ConnectionFormOps, MatchedConnectionClipboard,
+};
+pub use connection_config::{
+    clone_connection_config_for_ipc, to_ipc_connection_config, PlainConfigAssertion,
+};
+pub use connection_form_model::{
+    assert_plain_connection_config, build_connection_config, clone_plain_json,
+    coerce_connection_group, normalize_index_database_field, plain_config_assertion,
+    sanitize_connection_options, BuildConnectionConfigInput, ConnectionFormDriverMeta,
+    ConnectionFormSnapshot, DatabaseFieldType,
+};
+pub use connection_groups::{
+    format_group_label, KEY_GROUP_DEV, KEY_GROUP_PROD, KEY_GROUP_TEST, PRESET_DEVELOPMENT,
+    PRESET_GROUP_OPTIONS, PRESET_PRODUCTION, PRESET_TESTING,
+};
+pub use connection_locator::{
+    connection_expand_key, group_connections_with_recent_sections, normalize,
+    order_connections_for_display, parse_connection_expand_key, rank_connections,
+    ActiveConnectionSlice, ActiveStatus, Candidate, ConnectionLocatorResult,
+    ConnectionLocatorUsageState, ConnectionMatch, ConnectionMatchReason, ConnectionSection,
+    ExpandKey, SchemaSlice, PINNED_GROUP_KEY, RECENT_CONNECTION_LIMIT, RECENT_GROUP_KEY,
 };
 pub use connection_types::{
     ConnectionConfig, ContextEntry, DatabaseObject, DatabaseObjectKind, DatabaseType,

@@ -25,16 +25,16 @@
 - [x] T251 · lib · 0.50d · lib/aiProviders.ts
 - [x] T261 · components/chart · 2.00d · components/chart/renderers/ScatterChartRenderer.tsx · split
 - [x] T272 · lib · 0.80d · lib/aiQueryActions.ts
-- [ ] T291 · lib · 0.90d · lib/aiSafetyPresets.ts lib/aiSkills.ts lib/anyColumnFilter.ts
-- [ ] T310 · lib · 0.80d · lib/backupProgress.ts lib/base64.ts
-- [ ] T326 · lib · 2.00d · lib/batchExportJob.ts · split
-- [ ] T340 · lib · 0.90d · lib/bootstrapIconResolver.ts lib/buildConnectionUrl.ts lib/buildEditorSchema.ts
-- [ ] T352 · lib · 0.60d · lib/cellEditorCandidates.ts lib/chart/colors.ts
-- [ ] T364 · lib · 0.80d · lib/commandSchema.ts lib/connectionClipboard.ts
-- [ ] T375 · lib · 0.30d · lib/connectionConfig.ts
-- [ ] T385 · lib · 0.90d · lib/connectionEditor.ts
-- [ ] T394 · lib · 0.80d · lib/connectionFormModel.ts lib/connectionGroups.ts
-- [ ] T403 · lib · 1.30d · lib/connectionLocator.ts · split
+- [x] T291 · lib · 0.90d · lib/aiSafetyPresets.ts lib/aiSkills.ts lib/anyColumnFilter.ts
+- [x] T310 · lib · 0.80d · lib/backupProgress.ts lib/base64.ts
+- [x] T326 · lib · 2.00d · lib/batchExportJob.ts · split
+- [x] T340 · lib · 0.90d · lib/bootstrapIconResolver.ts lib/buildConnectionUrl.ts lib/buildEditorSchema.ts
+- [x] T352 · lib · 0.60d · lib/cellEditorCandidates.ts lib/chart/colors.ts
+- [x] T364 · lib · 0.80d · lib/commandSchema.ts lib/connectionClipboard.ts
+- [x] T375 · lib · 0.30d · lib/connectionConfig.ts
+- [x] T385 · lib · 0.90d · lib/connectionEditor.ts
+- [x] T394 · lib · 0.80d · lib/connectionFormModel.ts lib/connectionGroups.ts
+- [x] T403 · lib · 1.30d · lib/connectionLocator.ts · split
 - [x] T029 · lib/connectionViews · 0.90d · lib/connectionViews/types.ts lib/contextItems.ts lib/contextMenuPosition.ts
 - [ ] T412 · lib · 0.90d · lib/connectionShare.ts
 - [ ] T421 · lib · 0.90d · lib/connectionShareError.ts lib/connectionTabContextMenu.ts lib/connectionViews/index.ts
