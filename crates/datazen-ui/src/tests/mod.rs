@@ -1112,6 +1112,12 @@ mod data_sync_result_step;
 // T247 independent audit: the status role channel, geometry both sizes,
 // the light-theme committed face.
 mod data_sync_result_step_audit;
+// T226: the Data Sync preview step (the executing overlay, the session
+// gate, the embedded preview).
+mod data_sync_preview_step;
+// T226 independent audit: geometry both sizes/faces, the light-theme
+// required word.
+mod data_sync_preview_step_audit;
 // T293: the tab-closed notification (panelCloseNotifier).
 mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the
