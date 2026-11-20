@@ -487,4 +487,9 @@ mod database_object_view;
 // T305 independent audit: load/message, DDL retry, execute guards, empty schema,
 // null-schema action, visible-rect geometry and real connection-page composition.
 mod database_object_view_audit;
+// T322: DDLView port (branch keys, copy/wake, state machine, slot, geometry).
+mod ddl_view;
+// T322 independent audit: exact 2000ms wake, copied deadline, visible-rect
+// geometry and a whitespace-only DDL probe.
+mod ddl_view_audit;
 
