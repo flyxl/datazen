@@ -84,7 +84,7 @@
 - [x] T253 · lib/valuePresentation · 0.80d · lib/valuePresentation/timestampContribution.ts
 - [x] T254 · hooks · 0.90d · hooks/useConnectionCommand.ts
 - [x] T258 · commands · 1.30d · commands/database.ts · split
-- [ ] T263 · components/sql-editor · 2.00d · components/sql-editor/paste/createPasteExtensions.ts · split
+- [x] T263 · components/sql-editor · 2.00d · components/sql-editor/paste/createPasteExtensions.ts · split
 - [ ] T265 · windows/settings · 0.90d · windows/settings/DriverSettingsSection.tsx
 - [x] T268 · windows/onboarding · 2.00d · windows/onboarding/onboardingGate.ts · split
 - [x] T271 · windows/schema-diff · 0.30d · windows/schema-diff/SchemaDiffTableListPanel.tsx
