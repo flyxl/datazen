@@ -57,8 +57,9 @@ pub(crate) struct DataSyncSqlStatement {
 }
 
 /// The operation filter of the preview toolbar: all, or one operation.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub(crate) enum OpFilter {
+    #[default]
     All,
     Op(DataSyncOperation),
 }

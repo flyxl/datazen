@@ -16,6 +16,7 @@ pub(crate) mod client_sql_preview;
 pub(crate) mod data_sync_options_step;
 pub(crate) mod options_bar;
 pub(crate) mod recordset_editor;
+pub(crate) mod sql_preview;
 
 #[allow(unused_imports)] // the Data Sync window track is the production consumer
 pub(crate) use data_sync_endpoint_step::{DataSyncEndpointStep, DataSyncEndpointStepVm, SyncProfile};
@@ -48,6 +49,9 @@ pub(crate) use client_sql_preview::{
     build_client_sql_preview, filter_statements_by_op, statements_to_preview_text,
     DataSyncSqlStatement, OpFilter,
 };
+
+#[allow(unused_imports)] // the preview step (T226) is the production consumer
+pub(crate) use sql_preview::{SqlPreview, SqlPreviewVm};
 
 #[allow(unused_imports)] // the Data Sync options step (T203) is the production consumer
 pub(crate) use options_bar::OptionsBar;
