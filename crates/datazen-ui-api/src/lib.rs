@@ -4,6 +4,9 @@
 //! interface can run before the desktop and HTTP adapters exist.
 
 mod ai_memory_correction;
+mod bootstrap_icon_resolver;
+mod build_connection_url;
+mod build_editor_schema;
 // T228: the memory-settings normalizers and the message-block parser —
 // pure functions over the persistence JSON and chat markdown.
 mod ai_memory_settings;
@@ -69,6 +72,17 @@ use datazen_driver_api::{ConnectionConfig as DriverConnectionConfig, SslMode as 
 pub use ai_memory_correction::{
     AiMemoryCommands, MemoryCorrectionSubmission, SchemaStaleSubmission,
     mark_stale_for_schema_drops, submit_memory_correction_if_needed,
+};
+pub use bootstrap_icon_resolver::{
+    DbIcon, IconResolverSeed, ResolvedIcon, default_icon_resolver_seed, resolve_icon,
+};
+pub use build_connection_url::{
+    ConnectionMode, ConnectionUrlDriverMeta, build_connection_url,
+};
+pub use build_editor_schema::{
+    BuildEditorSchemaInput, SqlNamespace, build_editor_schema, flat_from_tables,
+    hoist_namespace_child, hoist_namespace_path, hoist_nested_table_leaves,
+    is_leaf, is_namespace_empty, merge_unqualified_tables, overlay_column_map,
 };
 pub use ai_memory_patterns::{
     HistorySort, MemoryPatternCommands, MemoryPatternExtractionInput, MemoryPatternScheduler,
