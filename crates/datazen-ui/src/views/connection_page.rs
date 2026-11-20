@@ -175,6 +175,18 @@ pub(crate) fn connection_content_with_vm(
         .fill(theme.bg)
         .child(crate::views::content_view::build(state, theme, dark, vm))
         .child(slot)
+        // T337: the document browser composes here when a host supplies its VM.
+        .child({
+            let mut doc_slot = row().key("doc-view-host").w_full().min_w(0.0);
+            if let Some(document) = vm.document_vm.as_ref() {
+                let mut layer = Vec::new();
+                crate::views::document_connection_view::build::<AppState>(document, None, dark, &mut layer);
+                doc_slot = doc_slot.grow(1.0).min_h(0.0).children(layer);
+            } else {
+                doc_slot = doc_slot.size(0.0, 0.0);
+            }
+            doc_slot
+        })
 }
 
 /// The title band: React's `titleBarLeft` (back + menu bar), the centred title,
