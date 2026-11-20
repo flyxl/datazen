@@ -1373,3 +1373,13 @@ mod schema_diff_job_status_panel_audit;
 // T372: the clipboard-feedback hook's inline suite (the show/clear
 // window) — the table-names full port rides its existing bridge.
 mod use_schema_diff_clipboard_feedback;
+
+// T046 + T095: X-class ruling for the two generator products
+// (extensions/generated-pro.ts + extensions/generated.ts) — the equivalent
+// surface is the tracked generator + driver metas, not a Rune port.
+mod generated_driver_surface;
+
+// T052 (X-class): the `@datazen/frontend` package entry is a pure re-export
+// barrel; the receipt pins its public surface and each export's Rune
+// equivalent (or its honest single-window / host-owned gap).
+mod index_surface;

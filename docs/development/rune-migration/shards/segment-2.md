@@ -5,7 +5,7 @@
 
 
 - [x] T008 · components/chart · 2.00d · components/chart/ChartCanvas.tsx · split
-- [ ] T014 · components/export · 0.60d · components/export/ExportSuccessPanel.tsx components/FilterBar.tsx
+- [x] T014 · components/export · 0.60d · components/export/ExportSuccessPanel.tsx components/FilterBar.tsx
 - [x] T019 · windows/workflow · 0.80d · windows/workflow/WorkflowEditorActionBar.tsx windows/workflow/WorkflowExecutionResultPanel.tsx
 - [x] T020 · windows/main · 0.90d · windows/main/MainPage.tsx
 - [x] T022 · windows/wapps · 0.90d · windows/wapps/InstallWappDialog.tsx
@@ -14,15 +14,15 @@
 - [x] T033 · lib/relationPrediction · 0.80d · lib/relationPrediction/fromTableSchema.ts lib/relationPrediction/normalize.ts
 - [x] T040 · stores/ai · 3.00d · stores/ai/sessions.ts · split
 - [x] T042 · types · 0.80d · types/ai.ts
-- [ ] T046 · extensions · 0.30d · extensions/generated-pro.ts
-- [ ] T052 · index.ts · 0.90d · index.ts
+- [x] T046 · extensions · 0.30d · extensions/generated-pro.ts
+- [x] T052 · index.ts · 0.90d · index.ts
 - [ ] T060 · components/chart · 0.80d · components/chart/ChartEmptyState.tsx components/chart/ChartToolbar.tsx
 - [x] T078 · lib · 0.80d · lib/cellTypes.ts
 - [ ] T080 · lib/metadata · 0.90d · lib/metadata/identity.ts
-- [ ] T095 · extensions · 0.80d · extensions/generated.ts
+- [x] T095 · extensions · 0.80d · extensions/generated.ts
 - [x] T118 · lib · 0.80d · lib/cellEditorKind.ts
 - [x] T152 · lib · 0.60d · lib/dataTypeColors.ts components/DataTable/editors/toEditString.ts
-- [ ] T251 · lib · 0.50d · lib/aiProviders.ts
+- [x] T251 · lib · 0.50d · lib/aiProviders.ts
 - [ ] T261 · components/chart · 2.00d · components/chart/renderers/ScatterChartRenderer.tsx · split
 - [ ] T272 · lib · 0.80d · lib/aiQueryActions.ts
 - [ ] T291 · lib · 0.90d · lib/aiSafetyPresets.ts lib/aiSkills.ts lib/anyColumnFilter.ts

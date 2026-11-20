@@ -164,7 +164,7 @@ fn the_workflow_yaml_edits_and_undoes_through_the_document_model() {
     runtime.frame(1.0);
     assert!(runtime.find("workflow-edit-panel").is_some(), "the edit pane");
     assert!(
-        runtime.find("yaml-editor").is_none(),
+        runtime.find("workflow-yaml-editor").is_none(),
         "the visual mode mounts no yaml surface yet"
     );
     let (x, y) = runtime.find("workflow-mode-yaml").unwrap();
@@ -173,8 +173,12 @@ fn the_workflow_yaml_edits_and_undoes_through_the_document_model() {
     runtime.frame(1.0);
 
     assert!(
-        runtime.find("yaml-editor").is_some(),
+        runtime.find("workflow-yaml-editor").is_some(),
         "the YAML surface is the editor model"
+    );
+    assert!(
+        runtime.find("yaml-editor").is_none(),
+        "the lite editor's old key is replaced by the real editor surface"
     );
     let doc = runtime.state.workflow_yaml.doc().to_owned();
     assert!(doc.starts_with("name: audit\nsteps:\n"), "{doc}");
