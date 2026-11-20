@@ -49,3 +49,6 @@ pub(crate) mod schema_diff_window_navigation;
 // T420: the unified (non-table) object catalogs (the six-kind walks,
 // the opt-in selection over identity keys, the lifecycle evidence).
 pub(crate) mod use_schema_diff_unified_objects;
+// T402: the wizard's job-result restore (history stays separate;
+// only a locally-submitted job's deploy result is adopted).
+pub(crate) mod use_schema_diff_job_restore;
