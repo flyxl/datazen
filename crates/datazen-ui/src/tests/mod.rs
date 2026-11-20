@@ -33,6 +33,9 @@ mod er_table_node;
 // T361 independent audit: rendered height vs packed metric, dot placement,
 // select/drag ports and wide-node geometry.
 mod er_node_audit;
+// T418: the standalone HomeHero + McpPromoBar ports (keys, counts, real copy
+// wake deadline and two-window/two-theme geometry).
+mod home_hero_promo;
 
 // T004: the column-statistics dialog's four branches, dismissal and bounds.
 mod column_stats_audit;
