@@ -10,6 +10,8 @@ mod ai_memory_settings;
 // T228: the fenced-block splitter and the SQL probe.
 mod ai_message_blocks;
 mod ai_memory_patterns;
+// T251: the provider preset table, its PRD order and the backend normalizer.
+mod ai_providers;
 mod ai_sessions;
 mod ai_store_types;
 mod ai_streaming;
@@ -68,6 +70,12 @@ pub use ai_memory_settings::{
 };
 pub use ai_message_blocks::{
     CodeBlockSegment, MessageSegment, TextSegment, is_sql_code_block, parse_message_segments,
+};
+// T251: the React lib/aiProviders.ts surface — the lookup, the two ordered
+// lists, the const aliases and the three pure helpers.
+pub use ai_providers::{
+    DEEP_SEEK_PROVIDER, LOCAL_CLI_PROVIDER_TYPES, OLLAMA_PROVIDER, PROVIDER_ORDER,
+    is_known_provider_type, is_local_cli_provider, normalize_ai_providers, provider_preset,
 };
 pub use ai_sessions::{
     ActiveConnectionEntry, ActiveConnections, AiSessionBackend, AiSessionStore, ExportFormat,
