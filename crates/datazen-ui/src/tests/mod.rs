@@ -55,6 +55,9 @@ mod ai_settings_section_audit;
 // T185: the useColumnResize hook (DB-12 by-name widths), audited against
 // computeColumnWidths.test.ts + useColumnResize.persist.test.tsx.
 mod use_column_resize_audit;
+// T190: the connection command family + the in-flight connect joiner,
+// audited against commands/__tests__/connection.test.ts.
+mod commands_connection_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;

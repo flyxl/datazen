@@ -96,8 +96,8 @@ impl AuditState {
 
 fn view(s: &AuditState, _cx: &mut rune::Cx<AuditState>) -> El {
     let mut layer = Vec::new();
-    // The host's per-frame resync (React's useEffect dep).
-    let persisted = s.context_dir.clone();
+    // The host's per-frame resync (React's useEffect dep) runs in the
+    // host's update step; the view only reads the projections.
     let section = AiSettingsSection::<AuditState>::new("ai-settings-section", &s.section)
         .settings_config(s.settings_config.as_ref())
         .is_configured(s.is_configured)
