@@ -39,6 +39,15 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+### Wave22 阈值合流 push（2026-11-21）
+
+- 触发：Wave 21 关闭时合计 ahead 49（seg1 11+seg3 18+seg4 20，seg2=0）> 30。
+- 3 个真 merge commit：`b1e45c409`(seg1, 57ddc9da6) → `235096ec0`(seg3, 2a0dbf04e) → `c260ed859`(seg4, f1834779e)；父分支 `b8c97c173 → c260ed859`（52 commits，fast-forward）。
+- 冲突：仅 tests/mod.rs 一处（HEAD 的 generated_driver_surface/index_surface/scatter_chart_renderer + seg4 的 use_grid_clipboard，去重，无断言改动）。三 crate check 全 PASS。
+- gate 本机工具链困局加剧：cc wrapper `-no_compact_unwind` 下测试二进制这次**链接成功**但运行期 `fatal runtime error: failed to initiate panic`（该 flag 破坏 Rust panic unwinding）；ld-classic 则仍 arm64 分支范围超限。两种配置都无法给出可信 gate 结果——纯 toolchain 限制，非代码。按已授权模式接受风险 push。
+- subagent 清理了旧 merge target 目录释放约 83GB（磁盘曾 97% 满），未碰任何源码/其它 worktree。当前磁盘 77Gi 空闲。
+- push 后残余合计 81（seg2 31+seg3 26+seg4 24）——各段在合流期间又推了一批；下个 wave 关闭时按阈值继续合。
+
 ### Wave21 阈值合流 push（2026-11-21）
 
 - 触发：Wave 20 关闭时合计 ahead 43（seg1 26+seg2 7+seg4 10，seg3=0）> 30 阈值。
