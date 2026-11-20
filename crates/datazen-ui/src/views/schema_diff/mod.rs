@@ -55,3 +55,10 @@ pub(crate) mod use_schema_diff_job_restore;
 // T325: the window's job section (the status panel + the window
 // error strip).
 pub(crate) mod schema_diff_window_job_section;
+// T384: the wizard's endpoint state (connections, the two sides, the
+// discovery owner gates, the catalog reads, swap/validate).
+pub(crate) mod use_schema_diff_endpoints;
+/// `lib/endpointIdentity.ts` + `lib/migrationWindowPrefill.ts` +
+/// data-sync `pickDefaultSchema` + the §13 error-code table, carried
+/// for the endpoints port (T384) until their own ledger tasks land.
+pub(crate) mod schema_diff_endpoint_helpers;
