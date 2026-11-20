@@ -803,6 +803,12 @@ mod data_sync_endpoint_step_audit;
 // button mounts + disabled logic + callbacks, window-width geometry).
 mod data_sync_job_status_panel;
 
+// T148 independent audit (tester): the partial banner matrix, the
+// empty-string hydration error, `Number()` edge spellings, the NaN
+// counter printing, the raw wire-state table, row part order by x
+// geometry, five-row stacking, light theme.
+mod data_sync_job_status_panel_audit;
+
 // T125: the persisted-connections store (display helpers over the T403
 // placeholder subset, load/refetch chains, group edits, per-connection moves).
 mod connection_store;
