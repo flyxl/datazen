@@ -362,10 +362,10 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T343 · stores/tableData · 2.00d · stores/tableData/stageEdit.ts · split
 - [ ] T344 · commands · 0.30d · commands/namedViews.ts
 - [ ] T345 · components/DataTable · 0.80d · components/DataTable/GridCell.tsx
-- [ ] T346 · components/connection · 0.90d · components/connection/useConnectionImport.ts
+- [x] T346 · components/connection · 0.90d · components/connection/useConnectionImport.ts
 - [ ] T347 · components/sql-editor · 0.60d · components/sql-editor/snippets/builtinSnippets.ts components/sql-editor/snippets/index.ts
 - [ ] T348 · windows/settings · 1.30d · windows/settings/McpSettingsSection.tsx · split
-- [ ] T349 · windows/connection · 0.30d · windows/connection/er/ErRelationLegend.tsx
+- [x] T349 · windows/connection · 0.30d · windows/connection/er/ErRelationLegend.tsx
 - [ ] T350 · windows/data-sync · 0.90d · windows/data-sync/OptionsBar.tsx
 - [ ] T351 · windows/schema-diff · 0.90d · windows/schema-diff/schemaDiffObjectDiscovery.ts
 - [ ] T352 · lib · 0.60d · lib/cellEditorCandidates.ts lib/chart/colors.ts
