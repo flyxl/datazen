@@ -421,6 +421,8 @@ mod navigator_tree_row;
 mod navigator_tree_row_audit;
 // T485: PanelContentRenderer port (slot routing, KV relay, states, actions, geometry).
 mod panel_content_renderer;
+// T495: PrivilegeView port (grant trees, modes, host actions, empty/loading, geometry).
+mod privilege_view;
 // T144: the React ConnectionWorkspaceHome port (hero counts, card keys,
 // filter, MCP copy feedback with a real wake, KV-slot takeover, geometry).
 mod connection_workspace_home;
