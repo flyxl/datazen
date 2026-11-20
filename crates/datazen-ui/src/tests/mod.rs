@@ -794,6 +794,11 @@ mod data_transfer_terminal_results_audit;
 // derived reason, the nothing-renders branches, the alert role, geometry).
 mod mapping_gate_notice;
 
+// T202: the source filter editor (the update chain, the empty state, the
+// row mounts with the null-pair value rule, the logic switch threshold,
+// the disabled inertness, geometry).
+mod source_filter_editor;
+
 // T176 independent audit: whitespace vectors, the disabled create-new,
 // the empty row list, receipt-over-reason order, banner/text nesting.
 mod mapping_gate_notice_audit;
