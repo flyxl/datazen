@@ -71,13 +71,14 @@ impl DdlViewState {
         self.ddl.clear();
     }
 
-    /// React's answer: a missing/empty result is `ddl.loadFailed`, a rejection
-    /// keeps its message. Both clear the spinner.
+    /// React's answer: `if (!result)` is false for any string, including an
+    /// empty or whitespace-only one, so every `Some(text)` is the DDL. Only a
+    /// missing result (`None`) or a rejection is a failure. Both clear the spinner.
     #[allow(dead_code)] // consumer: the DDL host result feed (not landed); remove when wired.
     pub(crate) fn apply_load(&mut self, result: Result<Option<String>, String>) {
         self.loading = false;
         match result {
-            Ok(Some(text)) if !text.trim().is_empty() => {
+            Ok(Some(text)) => {
                 self.ddl = text;
                 self.error.clear();
             }

@@ -268,3 +268,17 @@ fn the_object_editor_composes_the_real_ddl_view() {
     assert!(has_key(&rt, "db-object-ddl"), "the composed DDL root keeps the pinned key");
     assert!(has_key(&rt, "db-object-ddl-copy"), "the real DDL view's copy control is composed");
 }
+
+#[test]
+fn a_whitespace_only_ddl_is_truthy_like_React() {
+    let mut state = DdlViewState::default();
+    state.apply_load(Ok(Some("   \n  ".to_owned())));
+    assert!(!state.loading);
+    assert!(state.error.is_empty(), "React's !result is false for a whitespace-only string");
+    assert_eq!(state.ddl, "   \n  ");
+
+    // An actually missing result still fails.
+    let mut state = DdlViewState::default();
+    state.apply_load(Ok(None));
+    assert_eq!(state.error, t("ddl.loadFailed"));
+}
