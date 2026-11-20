@@ -1097,6 +1097,56 @@ mod data_sync_utils;
 // T500 independent audit: fresh vectors (sort order, branch picks, i18n
 // resolvability of the limitation keys).
 mod data_sync_utils_audit;
+// T417: the mapping view's pure functions (counters/fallbacks, labels,
+// summaries, options-vs-selection, the filter, the two merges).
+mod mapping_view;
+// T417 independent audit: fresh vectors (mixed counters, NUL page keys,
+// target-keyed merges, idempotent disabling, label-key resolvability).
+mod mapping_view_audit;
+// T497: the Data Sync wizard state (nine cells, the reset composite,
+// the two step arrays).
+mod use_data_sync_wizard_state;
+// T497 independent audit: full wizard walks, reruns after reset, cell
+// independence.
+mod use_data_sync_wizard_state_audit;
+// T336: the mapping panel (empty-row bail, title/summary, row cells,
+// conditional buttons, reason line, expandable editors, callbacks).
+mod mapping_panel;
+// T336 independent audit: two-row geometry at both sizes, composite row
+// keys, the disabled dim, the summary template.
+mod mapping_panel_audit;
+// T177: the Data Sync objects step (three branches, pass-through
+// callbacks, compared=false).
+mod data_sync_objects_step;
+// T177 independent audit: geometry both sizes/branches, inspecting
+// precedence, the disabled-set pass-through, light theme.
+mod data_sync_objects_step_audit;
+// T286: TransferPairingNote + CompareSummary (reason/generic word, five
+// counters, button mounts, the copied word).
+mod compare_summary;
+// T286 independent audit: the disabled channel, geometry both sizes, the
+// light-theme note with its margin.
+mod compare_summary_audit;
+// T247: the Data Sync result step (outcome derivation, verdict branches,
+// the skipped aside, re-compare, the embedded summary).
+mod data_sync_result_step;
+// T247 independent audit: the status role channel, geometry both sizes,
+// the light-theme committed face.
+mod data_sync_result_step_audit;
+// T226: the Data Sync preview step (the executing overlay, the session
+// gate, the embedded preview).
+mod data_sync_preview_step;
+// T226 independent audit: geometry both sizes/faces, the light-theme
+// required word.
+mod data_sync_preview_step_audit;
+// T287: the wizard nav + stepper (back/next gating, the hidden next, the
+// busy spinner, the step chips).
+mod data_sync_wizard_nav;
+// T287 independent audit: geometry both sizes, the color triple through
+// the text channel, light-theme builds.
+mod data_sync_wizard_nav_audit;
+// T408: the wizard-state type alias (dataSyncTypes.ts).
+mod data_sync_types;
 // T293: the tab-closed notification (panelCloseNotifier).
 mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the

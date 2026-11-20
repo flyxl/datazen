@@ -52,11 +52,9 @@
 //!
 //! ## Documented deviations from React
 //!
-//! * **`source_filter` is not modelled on [`DataSyncTableResult`].** The
-//!   step never reads it (it only passes the table through), and the
-//!   structured source filter (`DataSyncSourceFilter`, 22-operator enum +
-//!   recordset) is owned by the source-filter work. T308 re-adds the field
-//!   if `DiffDetail` renders it.
+//! * **`source_filter` was unmodelled at T024** (the step never reads it);
+//!   T336 (MappingPanel) added the field — the first consumer — mirroring
+//!   `DataSyncSourceFilter` as `StructuredSourceFilter`.
 //! * **Empty-string `next` cursor counts as no next page.** React's
 //!   `Boolean(pageCursors[key]?.next)` is falsy for `""` as well as for
 //!   `null`; [`has_next_page`] mirrors that instead of a plain
@@ -79,6 +77,7 @@ use rune_kit::{Button, ButtonVariant, ControlSize, Kit};
 use crate::i18n::t;
 use crate::ui::kit::kit;
 use crate::ui::spinner::{Spinner, SpinnerSize};
+use crate::views::data_transfer::source_filter_editor::StructuredSourceFilter;
 
 /// React `SyncState` (`windows/data-sync/utils.ts:18`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -146,8 +145,7 @@ pub(crate) enum DataSyncMappingStatus {
 /// The interface deliberately spans two projections — the inspect result
 /// (columns/rows, no row counts) and the frozen preview summary (counts
 /// and paging, never row payloads) — so the count/paging fields are
-/// `Option`: absent on the face that does not carry them. `source_filter`
-/// is omitted, see the module docs.
+/// `Option`: absent on the face that does not carry them.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct DataSyncTableResult {
     pub source_table: String,
@@ -167,6 +165,13 @@ pub(crate) struct DataSyncTableResult {
     pub first_cursor: Option<String>,
     pub has_more: Option<bool>,
     pub rows: Vec<DataSyncRowChange>,
+    /// React `sourceFilter?: DataSyncSourceFilter` — the structured filter
+    /// this table's predicate/recordset editors edit. T024 left it
+    /// unmodelled (the compare step never reads it); T336 (MappingPanel)
+    /// is the first consumer, so it lands here. The mirror is
+    /// `StructuredSourceFilter` (`views/data_transfer/source_filter_editor.rs`,
+    /// T202) — the `{filters, logic, recordset}` shape.
+    pub source_filter: Option<StructuredSourceFilter>,
 }
 
 /// React `TableDiffFilter` (`windows/data-sync/mappingView.ts:16`).

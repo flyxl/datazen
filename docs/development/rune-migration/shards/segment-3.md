@@ -57,7 +57,7 @@
 - [x] T167 · components/ai · 2.00d · components/ai/AiMessageContent.tsx · split
 - [x] T169 · components · 0.90d · components/McpApprovalHost.tsx
 - [x] T176 · windows/data-transfer · 0.90d · windows/data-transfer/MappingGateNotice.tsx
-- [ ] T177 · windows/data-sync · 0.90d · windows/data-sync/DataSyncObjectsStep.tsx
+- [x] T177 · windows/data-sync · 0.90d · windows/data-sync/DataSyncObjectsStep.tsx
 - [ ] T180 · lib/chart · 1.00d · lib/chart/transform.ts lib/columnStats.ts
 - [ ] T184 · stores · 0.90d · stores/dashboardStore.ts
 - [x] T185 · stores/tableData · 0.30d · stores/tableData/filterUtils.ts
@@ -73,14 +73,14 @@
 - [ ] T217 · components/ai · 1.30d · components/ai/ContextPicker.tsx · split
 - [ ] T219 · components · 2.00d · components/SqlCodeBlock.tsx · split
 - [x] T225 · windows/data-transfer · 0.90d · windows/data-transfer/TransferExecuteConfirmDialog.tsx
-- [ ] T226 · windows/data-sync · 0.90d · windows/data-sync/DataSyncPreviewStep.tsx
+- [x] T226 · windows/data-sync · 0.90d · windows/data-sync/DataSyncPreviewStep.tsx
 - [ ] T232 · stores · 0.50d · stores/fkNavigationStore.ts
 - [ ] T233 · stores/tableData · 0.80d · stores/tableData/insertLocation.ts stores/tableData/keysetActions.ts
 - [ ] T236 · components/DataTable · 0.80d · components/DataTable/DetailPanel.tsx
 - [ ] T239 · components/ai · 0.90d · components/ai/DiagnosisPanel.tsx
 - [ ] T241 · components · 0.80d · components/SqlEditor.tsx components/SqlSyntaxPreview.tsx
 - [ ] T246 · windows/data-transfer · 0.30d · windows/data-transfer/TransferJobResultPanel.tsx
-- [ ] T247 · windows/data-sync · 0.90d · windows/data-sync/DataSyncResultStep.tsx
+- [x] T247 · windows/data-sync · 0.90d · windows/data-sync/DataSyncResultStep.tsx
 - [ ] T253 · stores · 0.90d · stores/languagePackStore.ts
 - [ ] T254 · stores/tableData · 0.30d · stores/tableData/panelSeed.ts
 - [ ] T257 · components/DataTable · 0.80d · components/DataTable/DetailPanelToggle.tsx components/DataTable/DraftRow.tsx
@@ -93,8 +93,8 @@
 - [ ] T278 · components/DataTable · 0.90d · components/DataTable/EditableCell.tsx components/DataTable/editors/BinaryCellEditor.tsx components/DataTable/editors/BooleanCellEditor.tsx
 - [ ] T280 · components/ai · 0.90d · components/ai/Nl2SqlPanel.tsx
 - [ ] T282 · components · 0.90d · components/ThemeToggle.tsx
-- [ ] T286 · windows/data-transfer · 0.60d · windows/data-transfer/TransferPairingNote.tsx windows/data-sync/CompareSummary.tsx
-- [ ] T287 · windows/data-sync · 0.60d · windows/data-sync/DataSyncWizardNav.tsx windows/data-sync/DataSyncWizardStepper.tsx
+- [x] T286 · windows/data-transfer · 0.60d · windows/data-transfer/TransferPairingNote.tsx windows/data-sync/CompareSummary.tsx
+- [x] T287 · windows/data-sync · 0.60d · windows/data-sync/DataSyncWizardNav.tsx windows/data-sync/DataSyncWizardStepper.tsx
 - [x] T293 · stores · 0.30d · stores/panelCloseNotifier.ts
 - [ ] T294 · stores/tableData · 0.80d · stores/tableData/pendingEditActions.ts
 - [ ] T297 · components/DataTable · 0.80d · components/DataTable/editors/CellEditorHost.tsx
@@ -111,7 +111,7 @@
 - [ ] T328 · stores/tableData · 2.00d · stores/tableData/stageCellValue.ts · split
 - [ ] T330 · components/DataTable · 0.90d · components/DataTable/editors/NumberCellEditor.tsx components/DataTable/editors/TemporalCellEditor.tsx components/DataTable/editors/TextCellEditor.tsx
 - [ ] T332 · components/ai · 1.30d · components/ai/WorkflowPanel.tsx · split
-- [ ] T336 · windows/data-sync · 0.50d · windows/data-sync/MappingPanel.tsx
+- [x] T336 · windows/data-sync · 0.50d · windows/data-sync/MappingPanel.tsx
 - [ ] T340 · stores · 0.90d · stores/panelResultEdit.ts
 - [ ] T341 · stores/tableData · 2.00d · stores/tableData/stageEdit.ts · split
 - [ ] T343 · components/DataTable · 0.80d · components/DataTable/GridCell.tsx
@@ -136,10 +136,10 @@
 - [ ] T399 · windows/data-sync · 0.90d · windows/data-sync/compareReport.ts
 - [ ] T403 · stores · 0.80d · stores/schemaColumnBatcher.ts stores/schemaColumnLoader.ts
 - [x] T405 · components/DataTable · 0.90d · components/DataTable/dirtyCellText.ts components/DataTable/editors/activeEditor.ts components/DataTable/fkCellText.ts
-- [ ] T408 · windows/data-sync · 0.30d · windows/data-sync/dataSyncTypes.ts
+- [x] T408 · windows/data-sync · 0.30d · windows/data-sync/dataSyncTypes.ts
 - [x] T412 · stores · 0.90d · stores/schemaMetadataKeys.ts
 - [ ] T414 · components/DataTable · 0.90d · components/DataTable/fkSelectorText.ts components/DataTable/gridClipboardBridge.ts components/DataTable/rowHeight.ts
-- [ ] T417 · windows/data-sync · 0.90d · windows/data-sync/mappingView.ts
+- [x] T417 · windows/data-sync · 0.90d · windows/data-sync/mappingView.ts
 - [x] T421 · stores · 0.30d · stores/schemaRequestTracker.ts
 - [ ] T423 · components/DataTable · 0.90d · components/DataTable/useDataTableClipboardDom.ts
 - [ ] T426 · windows/data-sync · 0.90d · windows/data-sync/selectionScope.ts
@@ -168,5 +168,5 @@
 - [ ] T488 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncSelection.ts · split
 - [ ] T491 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncSelectionState.ts
 - [ ] T494 · windows/data-sync · 0.30d · windows/data-sync/useDataSyncWizardNavigation.ts
-- [ ] T497 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncWizardState.ts
+- [x] T497 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncWizardState.ts
 - [x] T500 · windows/data-sync · 0.60d · windows/data-sync/utils.ts windows/data-transfer/transferLimitationKeys.ts
