@@ -44,6 +44,21 @@ pub(crate) enum WizardStep {
     Result,
 }
 
+impl WizardStep {
+    /// The wire spelling (`'endpoints'`, …) — the step chip keys and the
+    /// `sync.step.<step>` words ride it.
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Endpoints => "endpoints",
+            Self::Setup => "setup",
+            Self::Objects => "objects",
+            Self::Compare => "compare",
+            Self::Preview => "preview",
+            Self::Result => "result",
+        }
+    }
+}
+
 /// `WIZARD_STEPS`: the full-page layout's six steps, in order.
 pub(crate) const WIZARD_STEPS: [WizardStep; 6] = [
     WizardStep::Endpoints,

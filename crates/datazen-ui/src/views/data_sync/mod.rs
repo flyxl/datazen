@@ -27,6 +27,7 @@ pub(crate) mod data_sync_objects_step;
 pub(crate) mod compare_summary;
 pub(crate) mod data_sync_result_step;
 pub(crate) mod data_sync_preview_step;
+pub(crate) mod data_sync_wizard_nav;
 
 #[allow(unused_imports)] // the Data Sync window track is the production consumer
 pub(crate) use data_sync_endpoint_step::{DataSyncEndpointStep, DataSyncEndpointStepVm, SyncProfile};
