@@ -316,6 +316,10 @@ mod use_connection_form;
 mod use_connection_import;
 // T346 independent audit: stale guard variants, dismissed picker and VM flags.
 mod use_connection_import_audit;
+// T358: useTunnelFormState hook ported as an immediate-mode slice + effects.
+mod use_tunnel_form_state;
+// T358 independent audit: port validity, WebSocket/SSH kinds and reset defaults.
+mod use_tunnel_form_state_audit;
 // T333 independent audit: failed commands, driver validation, file/port rules,
 // derived flags, edit-mode type changes and tunnel auth configs.
 mod use_form_audit;
