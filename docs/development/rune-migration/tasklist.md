@@ -374,10 +374,10 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T355 · stores/tableData · 1.00d · stores/tableData/stagePasteWrites.ts stores/tableData/tableColumnLayoutPreferences.ts
 - [ ] T356 · commands · 0.90d · commands/query.ts
 - [x] T357 · components/DataTable · 0.30d · components/DataTable/GridKeyboardHints.tsx
-- [ ] T358 · components/connection · 1.30d · components/connection/useTunnelFormState.ts · split
+- [x] T358 · components/connection · 1.30d · components/connection/useTunnelFormState.ts · split
 - [ ] T359 · components/sql-editor · 2.00d · components/sql-editor/snippets/snippetCompletionSource.ts · split
 - [ ] T360 · windows/settings · 1.30d · windows/settings/MemorySection.tsx · split
-- [ ] T361 · windows/connection · 2.00d · windows/connection/er/TableNode.tsx · split
+- [x] T361 · windows/connection · 2.00d · windows/connection/er/TableNode.tsx · split
 - [ ] T362 · windows/data-sync · 0.90d · windows/data-sync/RecordsetEditor.tsx
 - [ ] T363 · windows/schema-diff · 0.90d · windows/schema-diff/schemaDiffObjectIdentity.ts
 - [ ] T364 · lib · 0.80d · lib/commandSchema.ts lib/connectionClipboard.ts

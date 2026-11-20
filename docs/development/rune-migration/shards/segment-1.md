@@ -69,8 +69,8 @@
 - [x] T337 · windows/connection · 3.60d · windows/connection/DocumentConnectionView.tsx · split
 - [x] T346 · components/connection · 0.90d · components/connection/useConnectionImport.ts
 - [x] T349 · windows/connection · 0.30d · windows/connection/er/ErRelationLegend.tsx
-- [ ] T358 · components/connection · 1.30d · components/connection/useTunnelFormState.ts · split
-- [ ] T361 · windows/connection · 2.00d · windows/connection/er/TableNode.tsx · split
+- [x] T358 · components/connection · 1.30d · components/connection/useTunnelFormState.ts · split
+- [x] T361 · windows/connection · 2.00d · windows/connection/er/TableNode.tsx · split
 - [ ] T372 · windows/connection · 2.20d · windows/connection/ErDiagramView.tsx · split
 - [ ] T382 · windows/connection · 0.50d · windows/connection/ExecuteSqlFileDialog.tsx
 - [ ] T391 · windows/connection · 1.30d · windows/connection/ExportDialog.tsx · split
