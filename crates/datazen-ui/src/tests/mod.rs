@@ -423,6 +423,9 @@ mod connection_navigator_tree;
 // Independent T067 audit: isolated keyboard branches, active-descendant
 // mounted-row contract, filter trim/case, key preservation and object geometry.
 mod connection_navigator_tree_audit;
+// T465: NavigatorToolbar port (React testids/i18n, host actions, optional
+// buttons, controlled search input and two-size two-theme geometry).
+mod navigator_toolbar;
 
 // T068: MigrationJobFailureNotice (fail-closed refusal notice).
 mod migration_failure_notice;
