@@ -20,6 +20,8 @@ pub(crate) mod schema_diff_table_list_panel;
 // T204: the right review panel (SchemaDiffRightPanel.tsx: tabs + plan /
 // deploy bodies + the generate-plan empty state).
 pub(crate) mod schema_diff_right_panel;
+// T229: the two saved-setup dialogs (import config + profile naming).
+pub(crate) mod schema_diff_saved_setup_dialogs;
 // T075: the wizard's per-step execution surfaces
 // (SchemaDiffExecutionPanels.tsx: compare row, plan step, deploy step).
 pub(crate) mod schema_diff_execution_panels;
