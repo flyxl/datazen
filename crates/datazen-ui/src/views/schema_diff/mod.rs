@@ -25,6 +25,9 @@ pub(crate) mod schema_diff_saved_setup_dialogs;
 // T250: the wizard's two selection steps (endpoints bar + objects
 // step over the unified picker seam).
 pub(crate) mod schema_diff_selection_steps;
+// T290: the unified non-table object picker (two side lists grouped by
+// kind, the cross-dialect lock, the retry/clear escapes).
+pub(crate) mod schema_diff_unified_objects_picker;
 // T075: the wizard's per-step execution surfaces
 // (SchemaDiffExecutionPanels.tsx: compare row, plan step, deploy step).
 pub(crate) mod schema_diff_execution_panels;

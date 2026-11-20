@@ -6,9 +6,9 @@
 //!
 //! `adb.ts` (T047) is first; schema-diff (T377), the AI family (T094),
 //! backup (T163), the connection family (T190), the context family
-//! (T214), the dashboard family (T237) and the database family (T258)
-//! have landed; the remaining command families land with their own
-//! tasks.
+//! (T214), the dashboard family (T237), the database family (T258) and
+//! the driver gateway (T279) have landed; the remaining command
+//! families land with their own tasks.
 
 pub(crate) mod adb;
 /// T130: the artifact export command (one call, the two-arm receipt).
@@ -24,6 +24,8 @@ pub(crate) mod dashboard;
 /// T258: the database family (target-command shapers, the domain-client
 /// rail, the discovery joiner, the legacy privileges face).
 pub(crate) mod database;
+/// T279: the generic driver-command gateway (list / execute / stream).
+pub(crate) mod driver;
 // T377: the schema-diff commands shell (pure helpers, wire folding, the
 // job-observer bus and the submit→poll→resolve machine).
 pub(crate) mod schema_diff;

@@ -2,8 +2,8 @@
 //! machine and a small rendering half (useConfirmDialog, useAiEditorGrant,
 //! then the T124 trio useAiKeyboard/useAutoScroll/useClipboardCopyFeedback;
 //! T158 adds useColumnPresentationSession, T185 useColumnResize, T210
-//! useColumnStats, T233 useCompactToolbar, T254 useConnectionCommand;
-//! the remaining hooks land with their own tasks).
+//! useColumnStats, T233 useCompactToolbar, T254 useConnectionCommand, T275
+//! useFkNavigationShortcuts; the remaining hooks land with their own tasks).
 
 pub(crate) mod confirm_dialog;
 pub(crate) mod use_ai_editor_grant;
@@ -15,3 +15,4 @@ pub(crate) mod use_column_resize;
 pub(crate) mod use_column_stats;
 pub(crate) mod use_compact_toolbar;
 pub(crate) mod use_connection_command;
+pub(crate) mod use_fk_navigation_shortcuts;
