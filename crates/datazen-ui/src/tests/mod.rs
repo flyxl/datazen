@@ -1091,6 +1091,9 @@ mod use_data_sync_wizard_state_audit;
 // T336: the mapping panel (empty-row bail, title/summary, row cells,
 // conditional buttons, reason line, expandable editors, callbacks).
 mod mapping_panel;
+// T336 independent audit: two-row geometry at both sizes, composite row
+// keys, the disabled dim, the summary template.
+mod mapping_panel_audit;
 // T293: the tab-closed notification (panelCloseNotifier).
 mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the
