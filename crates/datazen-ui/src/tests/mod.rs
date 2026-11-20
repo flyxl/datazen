@@ -40,6 +40,9 @@ mod sql_dialect_parameter_policy_audit;
 // T155: the SQL editor context-menu builder + the driver-sdk menu
 // contract, audited against sqlEditorContextMenu.test.ts.
 mod sql_editor_context_menu_audit;
+// T158: the useColumnPresentationSession hook (the memoized session
+// merge), audited against the React hook test.
+mod use_column_presentation_session_hook_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;

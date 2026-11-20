@@ -87,6 +87,15 @@ impl ColumnPresentationSession {
         }
     }
 
+    /// The revision alone — the hook layer's poll key (T158). Cheaper
+    /// than [`Self::state`], which clones the override map for every
+    /// read; every mutation bumps the revision, so "revision moved" is
+    /// exactly "the state object changed" (React's `useSyncExternalStore`
+    /// re-render condition).
+    pub(crate) fn revision(&self) -> u64 {
+        self.revision_counter
+    }
+
     /// Subscribe to change notifications; the handle unsubscribes.
     pub(crate) fn subscribe(&mut self, callback: Box<dyn Fn()>) -> SessionSubscription {
         self.next_token += 1;
