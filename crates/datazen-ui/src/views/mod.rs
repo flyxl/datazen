@@ -20,6 +20,7 @@ pub(crate) mod content_view_drawers;
 pub(crate) mod execute_sql_file_dialog;
 pub(crate) mod home;
 pub(crate) mod import_dialog;
+pub(crate) mod navigator;
 
 mod connections;
 mod connections_home;
