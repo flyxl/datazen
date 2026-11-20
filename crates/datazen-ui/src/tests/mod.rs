@@ -50,6 +50,11 @@ mod global_object_search;
 mod tree_status_dot;
 // T489: the panel tab strip (React keys, roving focus, host actions, 48pt header).
 mod panel_tab_bar;
+// T498: the process-list panel (table rows, kill/refresh host actions, states).
+mod process_list_view;
+// T498 independent audit: cell styling, rendered→base pid mapping, kill guard
+// and visible-rect geometry.
+mod process_list_view_audit;
 // T489 independent audit: context menu, label edges, active underline, locale
 // tablist label and visible-rect geometry of the pinned strip.
 mod panel_tab_bar_audit;
