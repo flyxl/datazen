@@ -36,6 +36,9 @@ pub(crate) mod history;
 /// T344: the saved-views menu's command adapter (the three database
 /// rail calls plus the two JSON file dialogs).
 pub(crate) mod named_views;
+/// T331: the language-pack family (list/read/inspect/install/remove
+/// shapers + the changed-event literal).
+pub(crate) mod language_packs;
 // T377: the schema-diff commands shell (pure helpers, wire folding, the
 // job-observer bus and the submit→poll→resolve machine).
 pub(crate) mod schema_diff;
