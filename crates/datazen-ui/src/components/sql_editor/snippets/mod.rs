@@ -3,12 +3,12 @@
 //!
 //! One module per React file, at the same path:
 //! `snippets/types.ts` → [`types`] (T370), `snippets/builtinSnippets.ts`
-//! → [`builtin`] (T347). The completion source
-//! (`snippetCompletionSource.ts`, T359) lands in its own task; the
-//! React `index.ts` barrel's re-exports grow here as each lands.
+//! → [`builtin`] (T347), `snippets/snippetCompletionSource.ts` →
+//! [`snippet_completion_source`] (T359). The React `index.ts` barrel's
+//! re-exports are mirrored below as each module lands.
 //!
 //! No production consumer yet; the editor assembly wires the
-//! completion source once it lands. Reusable API items carry
+//! completion source into its source list. Reusable API items carry
 //! per-item `#[allow(dead_code)]` until then, like the rest of
 //! `components/sql_editor`.
 
@@ -18,9 +18,26 @@ pub(crate) mod types;
 /// `snippets/builtinSnippets.ts` (T347): the built-in library.
 pub(crate) mod builtin;
 
-// The `index.ts` barrel (T347): `export type { SqlSnippetItem }` +
-// `export { BUILTIN_SQL_SNIPPETS }`.
-#[allow(unused_imports)] // consumers land with T359
+/// `lib/sqlCompletionContext.ts` + extension-points
+/// `completionContext.ts` helpers carried for the snippet source
+/// (T359) until their own ledger tasks land and absorb them.
+pub(crate) mod completion_context_helpers;
+
+/// `snippets/snippetCompletionSource.ts` (T359): the completion
+/// source (context boosts, the dot hard-exclusion, the build
+/// projection).
+pub(crate) mod snippet_completion_source;
+
+// The `index.ts` barrel: `export type { SqlSnippetItem }`,
+// `export { BUILTIN_SQL_SNIPPETS }`, `export { buildSnippetCompletions,
+// createSnippetCompletionSource, type SnippetCompletionOptions }`.
+#[allow(unused_imports)] // consumers land with the editor assembly wiring
 pub(crate) use builtin::builtin_sql_snippets;
-#[allow(unused_imports)] // consumers land with T359
+#[allow(unused_imports)] // consumers land with the editor assembly wiring
+pub(crate) use snippet_completion_source::{
+    BOOST_IDENTIFIER_CONTEXT, BOOST_STATEMENT_CONTEXT, SnippetCompletionOptions,
+    SnippetSourceResult, build_snippet_completions, snippet_completion_source,
+    snippet_completion_valid_for,
+};
+#[allow(unused_imports)] // consumers land with the editor assembly wiring
 pub(crate) use types::SqlSnippetItem;
