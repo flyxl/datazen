@@ -132,7 +132,7 @@
 - [x] T376 · hooks · 0.30d · hooks/useMigrationJobHydration.ts
 - [x] T379 · commands · 0.90d · commands/schemaDiff.ts
 - [x] T381 · windows/settings · 0.30d · windows/settings/SettingHint.tsx
-- [ ] T384 · windows/schema-diff · 1.30d · windows/schema-diff/useSchemaDiffEndpoints.ts · split
+- [x] T384 · windows/schema-diff · 1.30d · windows/schema-diff/useSchemaDiffEndpoints.ts · split
 - [ ] T386 · hooks · 0.90d · hooks/usePlatform.ts
 - [ ] T388 · commands · 0.90d · commands/settings.ts
 - [ ] T390 · windows/settings · 1.30d · windows/settings/SettingsContent.tsx · split
