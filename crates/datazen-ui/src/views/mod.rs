@@ -24,6 +24,7 @@ pub(crate) mod import_dialog;
 pub(crate) mod navigator;
 pub(crate) mod object_browser;
 pub(crate) mod panel_content_renderer;
+pub(crate) mod panel_tab_bar;
 
 mod connections;
 mod connections_home;
