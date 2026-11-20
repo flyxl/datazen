@@ -301,6 +301,12 @@ mod tunnel_fields;
 mod tunnel_fields_audit;
 // T059: the ConnectionAiNotes port (load/save, UTF-8 byte limit, timed feedback, geometry).
 mod connection_ai_notes;
+// T333: useConnectionForm ported as a state slice (defaults, snapshots,
+// validation, test/save ports and the inline/saved tunnel state machine).
+mod use_connection_form;
+// T333 independent audit: failed commands, driver validation, file/port rules,
+// derived flags, edit-mode type changes and tunnel auth configs.
+mod use_form_audit;
 // T103: ConnectionFormBody + ConnectionImportFields ports (keys, validation,
 // disabled states, exact i18n and two-window/two-theme geometry).
 mod connection_form_parts;
