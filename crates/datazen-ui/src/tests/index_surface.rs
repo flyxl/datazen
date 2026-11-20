@@ -189,8 +189,13 @@ fn capability_split_has_no_rune_fork_and_rune_carries_the_desktop_superset() {
 
     // No capability constant is forked inside the single-form UI crate: the
     // form table lives in the host assemblies, never in `datazen-ui`.
+    let rune_code: String = RUNE_LIB
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n");
     assert!(
-        !RUNE_LIB.contains("DESKTOP_CAPABILITIES") && !RUNE_LIB.contains("WEB_CAPABILITIES"),
+        !rune_code.contains("DESKTOP_CAPABILITIES") && !rune_code.contains("WEB_CAPABILITIES"),
         "datazen-ui must not fork a capability table for a single form"
     );
 }
