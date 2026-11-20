@@ -75,7 +75,7 @@
 - [x] T226 · windows/onboarding · 0.90d · windows/onboarding/steps/SampleStep.tsx
 - [x] T229 · windows/schema-diff · 0.30d · windows/schema-diff/SchemaDiffSavedSetupDialogs.tsx
 - [x] T232 · lib/valuePresentation · 0.50d · lib/valuePresentation/timestampConfig.ts
-- [ ] T233 · hooks · 0.30d · hooks/useCompactToolbar.ts
+- [x] T233 · hooks · 0.30d · hooks/useCompactToolbar.ts
 - [ ] T237 · commands · 0.90d · commands/dashboard.ts
 - [x] T242 · components/sql-editor · 0.90d · components/sql-editor/metadata/findRelation.ts components/sql-editor/metadata/metadataCache.ts components/sql-editor/metadata/types.ts
 - [ ] T244 · windows/settings · 0.90d · windows/settings/DataCleanupSection.tsx
