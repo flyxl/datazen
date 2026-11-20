@@ -494,6 +494,9 @@ mod database_object_view;
 mod database_object_view_audit;
 // T337: DocumentConnectionView port (tabs, sidebar, result/editor, query, geometry).
 mod document_connection_view;
+// T337 independent audit: initial DB choice, query index clamp, show_editor,
+// real slot composition, visible-rect geometry, palette underline and id probes.
+mod document_connection_view_audit;
 // T322: DDLView port (branch keys, copy/wake, state machine, slot, geometry).
 mod ddl_view;
 // T322 independent audit: exact 2000ms wake, copied deadline, visible-rect
