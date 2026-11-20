@@ -114,7 +114,7 @@
 - [ ] T335 · components/sql-editor · 2.00d · components/sql-editor/proCompartments.ts · split
 - [ ] T336 · windows/settings · 1.30d · windows/settings/McpClientSection.tsx · split
 - [ ] T339 · windows/schema-diff · 0.60d · windows/schema-diff/SchemaDiffWindowNavigation.tsx windows/schema-diff/SchemaDiffWizardProgress.tsx
-- [ ] T341 · hooks · 0.60d · hooks/useI18n.ts hooks/useKeyboardShortcuts.ts
+- [x] T341 · hooks · 0.60d · hooks/useI18n.ts hooks/useKeyboardShortcuts.ts
 - [x] T344 · commands · 0.30d · commands/namedViews.ts
 - [x] T347 · components/sql-editor · 0.60d · components/sql-editor/snippets/builtinSnippets.ts components/sql-editor/snippets/index.ts
 - [ ] T348 · windows/settings · 1.30d · windows/settings/McpSettingsSection.tsx · split
