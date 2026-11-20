@@ -76,6 +76,9 @@ mod appearance_section_audit;
 // T229: the two saved-setup dialogs (import config + profile naming),
 // audited against the React JSX + the ProfileLoad/Wizard journeys.
 mod schema_diff_saved_setup_dialogs_audit;
+// T233: the compact-toolbar hysteresis + the width estimate, audited
+// against useCompactToolbar.test.tsx.
+mod use_compact_toolbar_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;
