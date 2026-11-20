@@ -310,6 +310,8 @@ mod connection_ai_notes;
 mod use_connection_form;
 // T346: useConnectionImport hook ported as an immediate-mode slice + effects.
 mod use_connection_import;
+// T346 independent audit: stale guard variants, dismissed picker and VM flags.
+mod use_connection_import_audit;
 // T333 independent audit: failed commands, driver validation, file/port rules,
 // derived flags, edit-mode type changes and tunnel auth configs.
 mod use_form_audit;
