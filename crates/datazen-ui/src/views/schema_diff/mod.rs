@@ -26,4 +26,6 @@ pub(crate) mod schema_diff_execution_panels;
 // T391: the wizard's job-tracking hook (useSchemaDiffJobLifecycle.ts:
 // the tracked job, latest apply, cancel/verify outcomes, hydration).
 pub(crate) mod use_schema_diff_job_lifecycle;
+// T115: the wizard's job status strip (SchemaDiffJobStatusPanel.tsx).
+pub(crate) mod schema_diff_job_status_panel;
 pub(crate) mod schema_diff_table_names;

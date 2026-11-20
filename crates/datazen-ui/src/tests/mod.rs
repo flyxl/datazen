@@ -811,3 +811,6 @@ mod schema_diff_execution_panels_audit;
 // T391: the schema-diff job lifecycle hook (tracked job identity,
 // latest apply, hydration + poll, cancel/verify outcomes).
 mod use_schema_diff_job_lifecycle;
+// T115: the schema-diff job status strip (recovery notices, verify
+// journey, cancel journey, last-apply report).
+mod schema_diff_job_status_panel_audit;
