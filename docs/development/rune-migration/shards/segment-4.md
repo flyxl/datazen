@@ -47,7 +47,7 @@
 - [x] T146 · windows/dashboard · 0.90d · windows/dashboard/MonitorScheduleAuthorization.tsx
 - [x] T148 · windows/onboarding · 0.90d · windows/onboarding/steps/AiProviderStep.tsx
 - [x] T151 · windows/schema-diff · 0.30d · windows/schema-diff/SchemaDiffObjectsStep.tsx
-- [ ] T155 · lib/sqlDialects · 0.90d · lib/sqlDialects/sqlite.ts lib/sqlDialects/sqlParameterPolicy.ts lib/sqlEditorContextMenu.ts
+- [x] T155 · lib/sqlDialects · 0.90d · lib/sqlDialects/sqlite.ts lib/sqlDialects/sqlParameterPolicy.ts lib/sqlEditorContextMenu.ts
 - [x] T157 · lib/valuePresentation · 0.80d · lib/valuePresentation/presentationPlan.ts
 - [ ] T158 · hooks · 0.90d · hooks/useColumnPresentationSession.ts
 - [ ] T163 · commands · 0.90d · commands/backup.ts
