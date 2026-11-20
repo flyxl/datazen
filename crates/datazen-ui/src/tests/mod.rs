@@ -112,6 +112,9 @@ mod multi_cursor_escape_audit;
 // T285: the install-language-pack dialog (pick → review → install),
 // audited against InstallLanguagePackDialog.test.tsx.
 mod install_language_pack_dialog_audit;
+// T290: the unified non-table object picker (kind blocks, the
+// cross-dialect lock, the escapes), audited against the React body.
+mod schema_diff_unified_objects_picker_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;
