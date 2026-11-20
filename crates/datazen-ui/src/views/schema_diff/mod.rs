@@ -62,3 +62,6 @@ pub(crate) mod use_schema_diff_endpoints;
 /// data-sync `pickDefaultSchema` + the §13 error-code table, carried
 /// for the endpoints port (T384) until their own ledger tasks land.
 pub(crate) mod schema_diff_endpoint_helpers;
+// T411: the saved setups (profile save/load/delete, the v2 config
+// import/export, the endpoint-preservation rule).
+pub(crate) mod use_schema_diff_saved_setups;
