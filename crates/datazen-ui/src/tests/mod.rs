@@ -37,6 +37,9 @@ mod sql_dialect_identifier_quoting_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;
+// T094: the ai command family shapers (wire keys, stub policy,
+// workflow MethodMap), audited against the React source literal.
+mod ai_commands_audit;
 mod column_stats_dialog;
 // T002: the single DataTable cell — formatting, colour, plan and geometry.
 mod cell_renderer;
