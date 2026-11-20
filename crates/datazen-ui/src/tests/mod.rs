@@ -492,6 +492,8 @@ mod content_view;
 // host pinned keys and the 800-line / no-bare-panic source contract.
 mod content_view_audit;
 
+// T382: ExecuteSqlFileDialog port (keys, validation, host ports, overlay geometry).
+mod execute_sql_file_dialog;
 // T223: ContentViewDialogs host (keys, open gates, callbacks, geometry).
 mod content_view_dialogs;
 // T223 independent audit: cancel/header routing, database fallback, slot
