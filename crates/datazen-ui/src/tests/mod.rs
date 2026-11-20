@@ -542,4 +542,8 @@ mod ddl_view;
 // T322 independent audit: exact 2000ms wake, copied deadline, visible-rect
 // geometry and a whitespace-only DDL probe.
 mod ddl_view_audit;
+// T400: ForeignKeysView port (states, FK rows/chips, navigation, geometry).
+mod foreign_keys_view;
+// T400 independent audit: callback-free composition, header titles, dense rows.
+mod foreign_keys_view_audit;
 
