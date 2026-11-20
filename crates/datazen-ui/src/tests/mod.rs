@@ -835,6 +835,10 @@ mod data_sync_options_bar;
 // the mounted OptionsBar, the callback pass-through, geometry).
 mod data_sync_options_step;
 
+// T203 independent audit: the title-above-bar order, every pass-through
+// callback in one journey, the live skip warning inside the step.
+mod data_sync_options_step_audit;
+
 // T348 independent audit: the delete checkbox's both directions under a
 // live model, an all-off mount, the warning beside the select, the
 // unset-policy abort display.
