@@ -821,6 +821,11 @@ mod data_sync_endpoint_step_audit;
 // button mounts + disabled logic + callbacks, window-width geometry).
 mod data_sync_job_status_panel;
 
+// T360: the Data Sync recordset editor (the pure update chain: toggle,
+// bounds, order, tuple components, the limit validation; the mounted
+// branches; geometry).
+mod data_sync_recordset_editor;
+
 // T148 independent audit (tester): the partial banner matrix, the
 // empty-string hydration error, `Number()` edge spellings, the NaN
 // counter printing, the raw wire-state table, row part order by x

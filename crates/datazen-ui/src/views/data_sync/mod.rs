@@ -6,11 +6,13 @@
 //! | `DataSyncDialogs.tsx` | `data_sync_dialogs` | T074 |
 //! | `DataSyncEndpointStep.tsx` | `data_sync_endpoint_step` | T114 |
 //! | `DataSyncJobStatusPanel.tsx` | `data_sync_job_status_panel` | T148 |
+//! | `RecordsetEditor.tsx` | `recordset_editor` (SyncRecordsetEditor) | T360 |
 
 pub(crate) mod data_sync_compare_step;
 pub(crate) mod data_sync_dialogs;
 pub(crate) mod data_sync_endpoint_step;
 pub(crate) mod data_sync_job_status_panel;
+pub(crate) mod recordset_editor;
 
 #[allow(unused_imports)] // the Data Sync window track is the production consumer
 pub(crate) use data_sync_endpoint_step::{DataSyncEndpointStep, DataSyncEndpointStepVm, SyncProfile};
