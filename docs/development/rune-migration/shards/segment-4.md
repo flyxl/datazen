@@ -29,7 +29,7 @@
 - [x] T084 · lib/sqlDialects · 0.80d · lib/sqlDialects/identifierQuoting.ts lib/sqlDialects/index.ts
 - [x] T086 · lib/valuePresentation · 0.80d · lib/valuePresentation/columnPresentation.ts
 - [x] T087 · hooks · 0.90d · hooks/useAiEditorGrant.ts
-- [ ] T096 · commands · 1.30d · commands/ai.ts · split
+- [x] T096 · commands · 1.30d · commands/ai.ts · split
 - [ ] T101 · components/history · 0.50d · components/history/historyQuery.ts
 - [ ] T107 · components/sql-editor · 2.00d · components/sql-editor/contracts.ts · split
 - [x] T109 · windows/settings · 0.80d · windows/settings/ai/ModelProfileForm.tsx
