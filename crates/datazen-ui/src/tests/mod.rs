@@ -839,6 +839,10 @@ mod data_sync_recordset_editor;
 // the hint, geometry).
 mod data_sync_options_bar;
 
+// T390: the client SQL preview helpers (the statement filter, the
+// preview-text join, the no-wire row projection with its gates).
+mod data_sync_client_sql_preview;
+
 // T203: the Data Sync options step (the card chrome, the title block,
 // the mounted OptionsBar, the callback pass-through, geometry).
 mod data_sync_options_step;
