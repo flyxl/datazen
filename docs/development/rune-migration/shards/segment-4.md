@@ -31,7 +31,7 @@
 - [x] T087 · hooks · 0.90d · hooks/useAiEditorGrant.ts
 - [x] T096 · commands · 1.30d · commands/ai.ts · split
 - [x] T101 · components/history · 0.50d · components/history/historyQuery.ts
-- [ ] T107 · components/sql-editor · 2.00d · components/sql-editor/contracts.ts · split
+- [x] T107 · components/sql-editor · 2.00d · components/sql-editor/contracts.ts · split
 - [x] T109 · windows/settings · 0.80d · windows/settings/ai/ModelProfileForm.tsx
 - [x] T111 · windows/workspace · 0.30d · windows/workspace/WorkspaceDefaultCards.tsx
 - [x] T112 · windows/dashboard · 1.30d · windows/dashboard/DashboardPanel.tsx · split
