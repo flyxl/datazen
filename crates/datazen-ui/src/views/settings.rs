@@ -29,6 +29,8 @@ pub(crate) mod ai_settings_section;
 pub(crate) mod ai_tool_bridge_section;
 // T222: the appearance section (color scheme, theme packs).
 pub(crate) mod appearance_section;
+// T244: the history-data cleanup section.
+pub(crate) mod data_cleanup_section;
 
 /// A6: grouped settings navigation (2 groups, 12 sections) with deep-link
 /// selection by section key. Only the active section's content renders so

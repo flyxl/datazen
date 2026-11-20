@@ -82,6 +82,9 @@ mod use_compact_toolbar_audit;
 // T237: the dashboard domain-client shapers + the legacy dialog faces,
 // audited against the React wrapper literals (contract §6.15).
 mod commands_dashboard_audit;
+// T244: the history-data cleanup section (scope, retention, confirm,
+// purge messages), audited against DataCleanupSection.test.tsx.
+mod data_cleanup_section_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;
