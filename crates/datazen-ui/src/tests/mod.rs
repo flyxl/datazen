@@ -1025,6 +1025,9 @@ mod table_data_grid_selection;
 mod table_data_grid_selection_audit;
 // T185 independent audit: fresh vectors for the filter-draft helpers.
 mod table_data_filter_utils_audit;
+// T412 independent audit: the key decoded back with serde_json and its
+// eight dimensions asserted one by one.
+mod schema_metadata_keys_audit;
 // T167: ConnectionShareDialogHost (state, callback wiring, keys, geometry).
 mod connection_share_host;
 // T167 independent audit: independent i18n formatter pin, exact 1500ms wake +
