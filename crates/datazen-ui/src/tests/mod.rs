@@ -103,6 +103,9 @@ mod driver_settings_section_audit;
 // T275: the FK navigation keyboard (the guarded chord decision),
 // audited against the handler body.
 mod use_fk_navigation_shortcuts_audit;
+// T279: the driver command gateway (list/execute/stream wire shapes),
+// audited against the driver-sdk source.
+mod commands_driver_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;
