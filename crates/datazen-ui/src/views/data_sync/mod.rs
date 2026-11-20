@@ -12,6 +12,7 @@ pub(crate) mod data_sync_compare_step;
 pub(crate) mod data_sync_dialogs;
 pub(crate) mod data_sync_endpoint_step;
 pub(crate) mod data_sync_job_status_panel;
+pub(crate) mod data_sync_options_step;
 pub(crate) mod options_bar;
 pub(crate) mod recordset_editor;
 
@@ -37,6 +38,9 @@ pub(crate) use data_sync_job_status_panel::{
     DataSyncJobDetailsVm, DataSyncJobStatusPanel, DataSyncJobStatusPanelVm, DomainCounter,
     DurableJobView, JobRecoveryVerdict,
 };
+
+#[allow(unused_imports)] // the Data Sync window (T268) is the production consumer
+pub(crate) use data_sync_options_step::DataSyncOptionsStep;
 
 #[allow(unused_imports)] // the Data Sync options step (T203) is the production consumer
 pub(crate) use options_bar::OptionsBar;

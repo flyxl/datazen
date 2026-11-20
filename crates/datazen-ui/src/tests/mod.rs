@@ -831,6 +831,10 @@ mod data_sync_recordset_editor;
 // the hint, geometry).
 mod data_sync_options_bar;
 
+// T203: the Data Sync options step (the card chrome, the title block,
+// the mounted OptionsBar, the callback pass-through, geometry).
+mod data_sync_options_step;
+
 // T348 independent audit: the delete checkbox's both directions under a
 // live model, an all-off mount, the warning beside the select, the
 // unset-policy abort display.
