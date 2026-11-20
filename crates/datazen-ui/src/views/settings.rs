@@ -42,6 +42,9 @@ pub(crate) mod install_language_pack_dialog;
 // T381: the "?" help hint (hover/focus tooltip with the 120ms close
 // grace and the focus-retention rule).
 pub(crate) mod setting_hint;
+// T399: the settings subtree's shared primitives (SectionTitle,
+// SettingRow, ToggleRow).
+pub(crate) mod settings_ui;
 
 /// A6: grouped settings navigation (2 groups, 12 sections) with deep-link
 /// selection by section key. Only the active section's content renders so
