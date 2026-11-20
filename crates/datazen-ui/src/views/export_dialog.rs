@@ -26,15 +26,13 @@
 
 use std::rc::Rc;
 
-use rune::{col, row, text, El, TextEdit};
+use rune::{col, row, text, El};
 use rune_kit::{Button, ButtonVariant, ControlSize};
 
 use crate::components::connection::batch_export_dialog::{DataExportCapability, DataFormat};
 use crate::i18n::t;
-use crate::icons::ICON_CHECK;
 use crate::ui::copyable::CopyableError;
 use crate::ui::dialog::Dialog;
-use crate::ui::field::TextField;
 use crate::ui::kit::kit;
 use crate::ui::select::Select;
 use crate::ui::toggle::Checkbox;
@@ -120,6 +118,9 @@ pub(crate) struct ExportVm {
 
     pub format: DataFormat,
     pub scope: ExportScope,
+    /// Rune's Select needs its open state from the caller; React keeps it inside.
+    pub format_select_open: bool,
+    pub scope_select_open: bool,
     pub selected_cols: Vec<String>,
     pub status: ExportStatus,
     pub exporting: bool,
@@ -248,6 +249,7 @@ impl ExportVm {
             || (!self.columns.is_empty() && self.selected_cols.is_empty())
     }
 
+    #[allow(dead_code)] // consumer: the export-dialog host wiring (not landed); remove when wired.
     pub(crate) fn toggle_column(&mut self, name: &str) {
         if let Some(index) = self.selected_cols.iter().position(|item| item == name) {
             self.selected_cols.remove(index);
@@ -256,14 +258,17 @@ impl ExportVm {
         }
     }
 
+    #[allow(dead_code)] // consumer: the export-dialog host wiring (not landed); remove when wired.
     pub(crate) fn select_all(&mut self) {
         self.selected_cols = self.columns.iter().map(|column| column.name.clone()).collect();
     }
 
+    #[allow(dead_code)] // consumer: the export-dialog host wiring (not landed); remove when wired.
     pub(crate) fn clear_all(&mut self) {
         self.selected_cols.clear();
     }
 
+    #[allow(dead_code)] // consumer: the export-dialog host wiring (not landed); remove when wired.
     pub(crate) fn reset_default(&mut self) {
         self.select_all();
     }
@@ -329,6 +334,9 @@ pub(crate) enum ExportAction {
     ResetDefault,
     Export,
     CancelExport,
+    /// Rune-only: the host owns each Select's open state.
+    FormatSelectOpen(bool),
+    ScopeSelectOpen(bool),
 }
 
 type ActionFn<S> = Rc<dyn Fn(&mut S, ExportAction) + 'static>;
@@ -352,13 +360,16 @@ pub(crate) fn build<S: 'static>(
 ) {
     let k = kit(dark);
     let description = t("export.description").replace("{table}", &vm.table_name);
+    // Build the body first: Select listboxes go to the top-level layer so their
+    // option rows are not clipped by the dialog's scrolling body.
+    let body_el = build_body(vm, &on_action, dark, layer);
     let mut dialog = Dialog::new(ROOT, t("common.exportData"))
         .open(true)
         .fit()
         .width(480.0)
         .body_max_height(320.0)
         .description(description)
-        .child(row().key(format!("{ROOT}-body")).w_full().min_w(0.0).child(build_body(vm, &on_action, dark)));
+        .child(row().key(format!("{ROOT}-body")).w_full().min_w(0.0).child(body_el));
 
     if matches!(vm.status, ExportStatus::Success | ExportStatus::Aborted) {
         dialog = dialog.footer(
@@ -407,6 +418,7 @@ fn build_body<S: 'static>(
     vm: &ExportVm,
     on_action: &Option<ActionFn<S>>,
     dark: bool,
+    layer: &mut Vec<El>,
 ) -> El {
     let k = kit(dark);
     let mut body = col().key(format!("{ROOT}-form")).w_full().min_w(0.0).gap(12.0);
@@ -442,27 +454,35 @@ fn build_body<S: 'static>(
     let options = vm.format_options();
     let labels: Vec<String> = options.iter().map(|option| option.format.label().to_owned()).collect();
     let values: Vec<String> = options.iter().map(|option| option.format.value().to_owned()).collect();
+    // The kit matches `current` against option labels, not wire values.
+    let current_label = options
+        .iter()
+        .find(|option| option.format == vm.format)
+        .map(|option| option.format.label().to_owned())
+        .unwrap_or_else(|| DataFormat::Csv.label().to_owned());
     let mut select = Select::new(format!("{ROOT}-format"), &labels)
         .values(&values)
-        .current(Some(vm.format.value()))
+        .current(Some(current_label.as_str()))
         .label(t("export.format"))
+        .open(vm.format_select_open)
         .on_toggle(move |_s: &mut S| {});
     if let Some(callback) = on_action.clone() {
+        let open = callback.clone();
+        select = select.on_toggle(move |s: &mut S| open(s, ExportAction::FormatSelectOpen(true)));
+        let close = callback.clone();
+        select = select.on_close(move |s: &mut S| close(s, ExportAction::FormatSelectOpen(false)));
         select = select.on_choose(move |s: &mut S, value: &str, _tx: &mut rune::Tx| {
             let format = DataFormat::from_value(value);
             let disabled = options.iter().any(|option| option.format == format && option.disabled);
             if !disabled {
                 callback(s, ExportAction::SetFormat(format));
             }
+            callback(s, ExportAction::FormatSelectOpen(false));
         });
     }
-    let mut layer = Vec::new();
     body = body
         .child(text(t("export.format")).key(format!("{ROOT}-format-label").to_owned()).wrap())
-        .child(select.build(&k, &mut layer));
-    for element in layer {
-        body = body.child(element);
-    }
+        .child(select.build(&k, layer));
     for (index, reason) in vm.disabled_format_reasons().into_iter().enumerate() {
         body = body.child(
             text(t(reason))
@@ -475,23 +495,31 @@ fn build_body<S: 'static>(
     let scopes = vm.scope_labels();
     let scope_labels: Vec<String> = scopes.iter().map(|(_, label, _)| label.clone()).collect();
     let scope_values: Vec<String> = scopes.iter().map(|(scope, _, _)| scope.value().to_owned()).collect();
+    let current_scope = vm.effective_scope();
+    let current_scope_label = scopes
+        .iter()
+        .find(|(scope, _, _)| *scope == current_scope)
+        .map(|(_, label, _)| label.clone())
+        .unwrap_or_else(|| t("export.currentPage").to_owned());
     let mut scope_sel = Select::new(format!("{ROOT}-scope"), &scope_labels)
         .values(&scope_values)
-        .current(Some(vm.effective_scope().value()))
+        .current(Some(current_scope_label.as_str()))
         .label(t("export.range"))
+        .open(vm.scope_select_open)
         .on_toggle(move |_s: &mut S| {});
     if let Some(callback) = on_action.clone() {
+        let open = callback.clone();
+        scope_sel = scope_sel.on_toggle(move |s: &mut S| open(s, ExportAction::ScopeSelectOpen(true)));
+        let close = callback.clone();
+        scope_sel = scope_sel.on_close(move |s: &mut S| close(s, ExportAction::ScopeSelectOpen(false)));
         scope_sel = scope_sel.on_choose(move |s: &mut S, value: &str, _tx: &mut rune::Tx| {
             callback(s, ExportAction::SetScope(ExportScope::from_value(value)));
+            callback(s, ExportAction::ScopeSelectOpen(false));
         });
     }
-    let mut layer = Vec::new();
     body = body
         .child(text(t("export.range")).key(format!("{ROOT}-scope-label").to_owned()).wrap())
-        .child(scope_sel.build(&k, &mut layer));
-    for element in layer {
-        body = body.child(element);
-    }
+        .child(scope_sel.build(&k, layer));
 
     // Column picker.
     body = body.child(build_column_picker(vm, on_action, dark));

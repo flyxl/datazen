@@ -56,7 +56,11 @@ fn view(s: &Scene, _cx: &mut Cx<Scene>) -> El {
     let actions = s.actions.clone();
     let callback: Rc<dyn Fn(&mut Scene, ExportAction)> =
         Rc::new(move |state: &mut Scene, action: ExportAction| {
-            state.actions.borrow_mut().push(action);
+            match action {
+                ExportAction::FormatSelectOpen(open) => state.vm.format_select_open = open,
+                ExportAction::ScopeSelectOpen(open) => state.vm.scope_select_open = open,
+                other => state.actions.borrow_mut().push(other),
+            }
             let _ = &actions;
         });
     build::<Scene>(&s.vm, Some(callback), s.dark, &mut layer);
@@ -306,4 +310,58 @@ fn form_geometry_fits_both_sizes_and_both_palettes() {
             assert_inside(&rt, size, &format!("{size:?} dark={dark}"));
         }
     }
+}
+
+#[test]
+fn format_select_shows_the_option_label_not_the_wire_value() {
+    let mut vm = base_vm();
+    vm.format_select_open = true;
+    let rt = runtime(scene(vm, true), DESIGN);
+    let option0 = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("option0"));
+    assert_eq!(option0.as_ref().and_then(|e| e.label.as_deref()), Some("CSV"), "option-label CSV");
+    assert!(
+        option0.is_some_and(|e| e.item_selected),
+        "option-label CSV is the current selection, not the wire value"
+    );
+}
+
+#[test]
+fn scope_select_shows_the_localized_current_label() {
+    let mut vm = base_vm();
+    vm.scope_select_open = true;
+    let rt = runtime(scene(vm, true), DESIGN);
+    let expected = format!("{} (2 {})", t("export.currentPage"), t("common.rows"));
+    assert_eq!(
+        rt.elements().into_iter().find(|e| e.key.as_deref() == Some("option0")).and_then(|e| e.label).as_deref(),
+        Some(expected.as_str())
+    );
+    assert!(
+        rt.elements().into_iter().find(|e| e.key.as_deref() == Some("option0")).is_some_and(|e| e.item_selected),
+        "the scope select's current value is the localized label"
+    );
+}
+
+#[test]
+fn selects_open_their_option_lists_and_write_back_a_choice() {
+    let mut rt = runtime(scene(base_vm(), true), DESIGN);
+    assert!(!has_key(&rt, "option0"), "closed selects mount no option list");
+    click(&mut rt, &format!("{ROOT}-format-trigger"));
+    assert!(has_key(&rt, "option0"), "the format select must open its option list");
+    assert!(rt.state.vm.format_select_open);
+
+    click(&mut rt, "option1"); // JSON
+    assert!(
+        rt.state.actions.borrow().contains(&ExportAction::SetFormat(DataFormat::Json)),
+        "choosing an option emits the wire-value format back to the host"
+    );
+    assert!(!rt.state.vm.format_select_open, "a choice closes the format list");
+
+    click(&mut rt, &format!("{ROOT}-scope-trigger"));
+    assert!(has_key(&rt, "option0"), "the scope select must open its option list");
+    assert!(rt.state.vm.scope_select_open);
+    click(&mut rt, "option2"); // entire_table (session present)
+    assert!(
+        rt.state.actions.borrow().contains(&ExportAction::SetScope(ExportScope::EntireTable))
+    );
+    assert!(!rt.state.vm.scope_select_open);
 }

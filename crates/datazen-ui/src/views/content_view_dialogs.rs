@@ -145,6 +145,8 @@ pub(crate) fn build_with_export<S: 'static>(
                     | ExportAction::ToggleColumn(_) | ExportAction::SelectAll
                     | ExportAction::ClearAll | ExportAction::ResetDefault
                     | ExportAction::CancelExport => on_action(s, DialogAction::CloseExport),
+                    // Select open/close is VM-local; it is not a host command.
+                    ExportAction::FormatSelectOpen(_) | ExportAction::ScopeSelectOpen(_) => {}
                 })
             };
             build_export::<S>(export_vm, Some(adapter), dark, layer);
