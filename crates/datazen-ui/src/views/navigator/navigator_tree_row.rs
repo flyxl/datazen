@@ -236,7 +236,7 @@ pub(crate) fn navigator_tree_row<S: 'static>(
                         .h(6.0)
                         .radius(3.0)
                         .fill(k.c.success.fg)
-                        .label(t("schemaTree.databaseOpen").to_owned())
+                        .label(t("schemaTree.databaseOpenAria").to_owned())
                         .role("img"),
                 );
             }
@@ -302,9 +302,9 @@ pub(crate) fn navigator_tree_row<S: 'static>(
                 let name = name.clone();
                 el = el.on_press(move |s: &mut S| on_action(s, RowAction::ContextMenu(ContextMenuTarget::Object(name.clone()))));
             }
-            el
+            context(el, host, ContextMenuTarget::Object(name.clone()))
         }
-        RowKind::KvDb { db_name, count, .. } => {
+        RowKind::KvDb { connection_id, db_name, count, .. } => {
             let key = format!("nav-tree-kv-{db_name}");
             let mut el = tree_item(&key, vm, db_name, hover_fill, dark)
                 .child(marker("schema-tree-node"))
@@ -317,6 +317,12 @@ pub(crate) fn navigator_tree_row<S: 'static>(
                         .font(k.ty.text_xsmall)
                         .color(k.c.text_muted),
                 );
+            }
+            if let Some(on_action) = host.on_action.clone() {
+                let (id, db) = (connection_id.clone(), db_name.clone());
+                el = el.on_press(move |s: &mut S| on_action(s, RowAction::SelectKvDb {
+                    connection_id: id.clone(), db_name: db.clone(),
+                }));
             }
             el
         }
@@ -347,8 +353,12 @@ pub(crate) fn navigator_tree_row<S: 'static>(
                         name: n.clone(), schema: None, database: d.clone(),
                     }));
                 }
-                el.child(icon(&ICON_TABLE, 14.0).color(k.c.text_accent))
-                    .child(text(name.clone()).font(k.ty.text_small).color(k.c.text_muted))
+                context(
+                    el.child(icon(&ICON_TABLE, 14.0).color(k.c.text_accent))
+                        .child(text(name.clone()).font(k.ty.text_small).color(k.c.text_muted)),
+                    host,
+                    ContextMenuTarget::Table { name: name.clone(), schema: None },
+                )
             } else {
                 let row_key = format!("nav-tree-namespace-{key}");
                 let mut el = tree_item(&row_key, vm, name, hover_fill, dark)
