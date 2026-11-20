@@ -799,6 +799,11 @@ mod mapping_gate_notice;
 // the disabled inertness, geometry).
 mod source_filter_editor;
 
+// T202 independent audit: the Enter commit chain, the disabled inert
+// remove, the middle-of-three removal, double add, the and default
+// display, the short-drafts defence.
+mod source_filter_editor_audit;
+
 // T176 independent audit: whitespace vectors, the disabled create-new,
 // the empty row list, receipt-over-reason order, banner/text nesting.
 mod mapping_gate_notice_audit;
