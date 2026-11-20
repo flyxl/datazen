@@ -28,6 +28,11 @@ mod tree_rowmath_audit;
 mod er_relation_legend;
 // T349 independent audit: row dimming, count extremes, inert toggle, constants.
 mod er_legend_audit;
+// T361: ER table node port (columns/badges, collapse, handles, host callbacks, geometry).
+mod er_table_node;
+// T361 independent audit: rendered height vs packed metric, dot placement,
+// select/drag ports and wide-node geometry.
+mod er_node_audit;
 
 // T004: the column-statistics dialog's four branches, dismissal and bounds.
 mod column_stats_audit;
