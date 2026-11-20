@@ -353,7 +353,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T334 · components/ai · 1.30d · components/ai/WorkflowPanel.tsx · split
 - [ ] T335 · components/sql-editor · 2.00d · components/sql-editor/proCompartments.ts · split
 - [ ] T336 · windows/settings · 1.30d · windows/settings/McpClientSection.tsx · split
-- [ ] T337 · windows/connection · 3.60d · windows/connection/DocumentConnectionView.tsx · split
+- [x] T337 · windows/connection · 3.60d · windows/connection/DocumentConnectionView.tsx · split
 - [ ] T338 · windows/data-sync · 0.50d · windows/data-sync/MappingPanel.tsx
 - [ ] T339 · windows/schema-diff · 0.60d · windows/schema-diff/SchemaDiffWindowNavigation.tsx windows/schema-diff/SchemaDiffWizardProgress.tsx
 - [ ] T340 · lib · 0.90d · lib/bootstrapIconResolver.ts lib/buildConnectionUrl.ts lib/buildEditorSchema.ts
