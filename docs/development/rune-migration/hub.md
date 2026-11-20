@@ -39,6 +39,14 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+### 三段合流 push（2026-11-20，用户裁决选 1：接受风险）
+
+- seg1（50→59 commits）/seg2（8→24）/seg4（20→40）以 3 个真 merge commit 合入父分支：`96176166b`(seg1) → `79f6c92de`(seg2) → `ef9f18aac`(seg4)，父分支 `ef70b6f11 → ef9f18aac`（81 commits，fast-forward，无覆盖）。
+- 冲突解决（均已按 React parity 核实）：chart mod 加 axis_configurator；connection_page 保留 5-param layer 贯穿 + seg1 T337 document host（单一 modal layer）；3 个测试 call-site 传 throwaway layer；connection_page 测试基准 `workflows-page → workflow-workspace`（T199）；execution_result_panel 移除 reverse（React `steps.map` report order 已核实）。
+- 上一轮记录的 3 个回归已在本轮合流冲突解决中修复：Berlin DST、connection_page Wapps key、workflow 面板 error 行。
+- **验证状态**：`cargo check -p datazen-ui` 与三 crate check 全 PASS；各段 tester 在各自 worktree gate 全绿；但本机全量 gate 的 test 步骤因 2.1GB 测试二进制触发 Apple ld/dyld 崩溃（`__eh_frame` 过大 + 共享缓存映射失败），反复重编（ld-classic symlink / cc wrapper `-no_compact_unwind -s` 两种配置）均无法稳定产出可运行二进制，用户裁决接受风险 push。
+- 本机根因：uptime 53 天 + 构建脏状态；期间清理了 2 个遗留孤儿编译进程（合流 subagent COMPLETED 后残留，非 buildq 串行队列）。环境恢复（重启）后应补跑全量 gate。
+
 ### 风险合流 + 待修回归（2026-11-20，用户裁决选 3）
 
 - 用户明确选择「接受风险直接 push」：seg1/2/4 的 46 commits 合流 `05f4df187` 已 push 到父分支（fast-forward，未覆盖任何人工作）。
