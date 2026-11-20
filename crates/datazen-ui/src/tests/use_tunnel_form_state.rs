@@ -342,3 +342,59 @@ fn reset_and_supports_ssh_defaults() {
     assert_eq!(no_ssh.kind(), Some(TunnelKind::HttpProxy));
     assert!(!no_ssh.ssh().enabled);
 }
+
+#[test]
+fn react_falls_back_for_a_zero_port() {
+    let mut slice = state();
+    let _ = slice.step(TunnelAction::SourceChanged(TunnelSource::Inline), &strings());
+    let _ = slice.step(TunnelAction::KindChanged(Some(TunnelKind::HttpProxy)), &strings());
+    slice.set_http_proxy_host("proxy.example");
+    slice.set_http_proxy_port("0");
+    slice.set_http_proxy_timeout("0");
+    let config = slice.build_inline("Zero").expect("inline config");
+    let proxy = config.http_proxy.expect("http proxy config");
+    assert_eq!(
+        proxy.port, 8080,
+        "React falls back for a zero port; left: {} right: 8080",
+        proxy.port
+    );
+    assert_eq!(proxy.connect_timeout_secs, 30);
+
+    let mut ssh = state();
+    let _ = ssh.step(TunnelAction::SourceChanged(TunnelSource::Inline), &strings());
+    ssh.set_ssh_port("0");
+    ssh.set_ssh_jump_port("0");
+    ssh.set_ssh_host("host");
+    ssh.set_ssh_username("user");
+    let ssh_config = ssh.build_inline("Zero ssh").expect("ssh config");
+    let ssh_leg = ssh_config.ssh.expect("ssh leg");
+    assert_eq!(ssh_leg.port, 22);
+    assert_eq!(ssh_leg.jump, None);
+}
+
+#[test]
+fn react_clears_the_error_on_refill() {
+    let mut slice = state();
+    loaded(&mut slice, vec![summary("tun_ws", "Relay", TunnelKind::WebSocket)]);
+    let _ = slice.step(TunnelAction::SourceChanged(TunnelSource::Saved), &strings());
+
+    let first = slice.step(TunnelAction::Unbind, &strings());
+    assert_eq!(first.effects.len(), 1);
+    let _ = slice.step(TunnelAction::TunnelFetched { result: Ok(None) }, &strings());
+    assert!(slice.error().is_some(), "the first refill failed");
+    assert_eq!(slice.source(), TunnelSource::Saved, "reference kept");
+
+    let second = slice.step(TunnelAction::Unbind, &strings());
+    assert_eq!(second.effects.len(), 1);
+    let _ = slice.step(
+        TunnelAction::TunnelFetched { result: Ok(Some(ssh_tunnel("tun_ws"))) },
+        &strings(),
+    );
+    assert_eq!(
+        slice.error(),
+        None,
+        "React clears the error on refill; left: {:?} right: None",
+        slice.error()
+    );
+    assert_eq!(slice.source(), TunnelSource::Inline);
+}

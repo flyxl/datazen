@@ -387,6 +387,7 @@ impl TunnelFormState {
             TunnelSource::Inline => {
                 if self.source == TunnelSource::Saved && self.tunnel_id.is_some() {
                     self.pending = Some(Pending::EnterInline);
+                    self.error = None;
                     if let Some(id) = self.tunnel_id.clone() {
                         effects.push(TunnelEffect::FetchTunnel { id });
                     }
@@ -407,6 +408,7 @@ impl TunnelFormState {
         };
         if self.source == TunnelSource::Saved && self.tunnel_id.is_some() {
             self.pending = Some(Pending::EnterInlineWithKind(kind));
+            self.error = None;
             if let Some(id) = self.tunnel_id.clone() {
                 effects.push(TunnelEffect::FetchTunnel { id });
             }
@@ -431,6 +433,7 @@ impl TunnelFormState {
         }
         if self.tunnel_id.is_some() {
             self.pending = Some(Pending::EnterInline);
+            self.error = None;
             if let Some(current) = self.tunnel_id.clone() {
                 effects.push(TunnelEffect::FetchTunnel { id: current });
             }
@@ -480,6 +483,7 @@ impl TunnelFormState {
             return;
         }
         self.pending = Some(Pending::EnterInline);
+        self.error = None;
         if let Some(id) = self.tunnel_id.clone() {
             effects.push(TunnelEffect::FetchTunnel { id });
         }
@@ -653,7 +657,12 @@ fn optional(value: &str, keep: bool) -> Option<String> {
 }
 
 fn parse_port(value: &str, fallback: u32) -> u32 {
-    value.trim().parse::<u32>().unwrap_or(fallback)
+    // React's `Number(x) || fallback` uses the fallback for 0 as well as for
+    // non-numeric input; a negative or overflowing value also lands on it here.
+    match value.trim().parse::<u32>() {
+        Ok(0) | Err(_) => fallback,
+        Ok(value) => value,
+    }
 }
 
 /// Translated fallback strings (React calls `t()` directly).
