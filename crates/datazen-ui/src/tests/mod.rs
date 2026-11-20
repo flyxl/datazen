@@ -1176,6 +1176,13 @@ mod data_sync_endpoint_step;
 // id, pre-held name text, the dismissal close path, narrow-window notice).
 mod data_sync_endpoint_step_audit;
 
+// T459: the Data Sync feedback state (four cells, plain-value setters,
+// close-keeps-message).
+mod use_data_sync_feedback;
+// T459 independent audit: interleaved writer sequences, two instances,
+// error round-trip across a progress reset.
+mod use_data_sync_feedback_audit;
+
 // T148: the Data Sync job status panel (loose Number() semantics, verdict
 // label branches, committed fallback chain, banner/list truthiness,
 // button mounts + disabled logic + callbacks, window-width geometry).
