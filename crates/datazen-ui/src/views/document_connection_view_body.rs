@@ -8,7 +8,7 @@ use rune::{col, row, text, El, TextEdit};
 use rune_kit::{Button, ButtonVariant, ControlSize};
 
 use crate::i18n::t;
-use crate::icons::{ICON_CONNECTIONS, ICON_PLUS, ICON_REFRESH, ICON_TABLE, ICON_TRASH, ICON_X};
+use crate::icons::{ICON_PLUS, ICON_REFRESH, ICON_TRASH};
 use crate::ui::copyable::CopyableError;
 use crate::ui::field::TextField;
 use crate::ui::kit::kit;
@@ -56,6 +56,7 @@ pub(crate) fn build_body<S: 'static>(
         "doc-view-tab-documents",
         t("docView.documents"),
         vm.active_tab == DocTab::Documents,
+        dark,
         &on_action,
         DocAction::SelectTab(DocTab::Documents),
     );
@@ -63,6 +64,7 @@ pub(crate) fn build_body<S: 'static>(
         "doc-view-tab-queries",
         t("docView.queries"),
         vm.active_tab == DocTab::Queries,
+        dark,
         &on_action,
         DocAction::SelectTab(DocTab::Queries),
     );
@@ -90,7 +92,8 @@ pub(crate) fn build_body<S: 'static>(
     layer.push(root);
 }
 
-fn tab_button_plain(key: &str, label: &str, selected: bool) -> El {
+fn tab_button_plain(key: &str, label: &str, selected: bool, dark: bool) -> El {
+    let theme = kit(dark);
     row()
         .key(key)
         .role("button")
@@ -105,7 +108,7 @@ fn tab_button_plain(key: &str, label: &str, selected: bool) -> El {
                 .key(format!("{key}-underline"))
                 .h(2.0)
                 .w_full()
-                .fill(if selected { kit(true).c.text_base } else { kit(true).c.border_muted }),
+                .fill(if selected { theme.c.text_base } else { theme.c.border_muted }),
         )
 }
 
@@ -113,10 +116,11 @@ fn tab_button<S: 'static>(
     key: &str,
     label: &str,
     selected: bool,
+    dark: bool,
     on_action: &Option<ActionFn<S>>,
     action: DocAction,
 ) -> El {
-    tab_button_plain(key, label, selected).on_press(emit(on_action, action))
+    tab_button_plain(key, label, selected, dark).on_press(emit(on_action, action))
 }
 
 fn build_documents<S: 'static>(

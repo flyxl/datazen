@@ -269,3 +269,25 @@ fn connection_page_keeps_the_document_slot() {
     rt.frame(0.0);
     assert!(has_key(&rt, "doc-view-host"), "the document view composition slot is stable");
 }
+
+#[test]
+fn tab_underline_follows_the_active_palette() {
+    use crate::ui::kit::kit;
+    let light = runtime(Scene::new(DocTab::Documents, false), DESIGN);
+    let underline = element(&light, "doc-view-tab-documents-underline");
+    assert_eq!(
+        underline.fill,
+        kit(false).c.text_base,
+        "the selected tab underline uses the active theme"
+    );
+    let dark = runtime(Scene::new(DocTab::Documents, true), DESIGN);
+    assert_eq!(element(&dark, "doc-view-tab-documents-underline").fill, kit(true).c.text_base);
+}
+
+#[test]
+fn document_id_keeps_commas_inside_the_string() {
+    use crate::views::document_connection_view::document_id;
+    assert_eq!(document_id("{\"_id\":\"a,b\"}").as_deref(), Some("a,b"));
+    assert_eq!(document_id("{\"_id\":\"abc\",\"x\":1}").as_deref(), Some("abc"));
+    assert_eq!(document_id("{\"_id\":42}").as_deref(), Some("42"));
+}

@@ -29,8 +29,6 @@ use std::rc::Rc;
 
 use rune::El;
 
-use crate::i18n::t;
-
 #[path = "document_connection_view_body.rs"]
 mod body;
 
@@ -130,6 +128,7 @@ impl DocumentViewVm {
     }
 
     /// React `initialDatabase ?? databases[0]` when a database must be picked.
+    #[allow(dead_code)] // consumer: the document-view host wiring (not landed); remove when wired.
     pub(crate) fn initial_database_choice(&self) -> Option<&str> {
         self.initial_database
             .as_deref()
@@ -138,19 +137,26 @@ impl DocumentViewVm {
     }
 }
 
-/// Extract `_id` from a JSON document. A missing/null id is `None`.
-/// The tiny parser handles quoted string ids and numeric ids at top level —
-/// the driver command builder owns the full JSON grammar.
+/// Extract `_id` from a JSON document. A missing/null id is `None`. The whole
+/// string value is returned — commas are part of the id, not a separator.
 pub(crate) fn document_id(json: &str) -> Option<String> {
     let trimmed = json.trim();
     let rest = trimmed.strip_prefix('{')?.trim();
     let after_key = rest.strip_prefix("\"_id\"")?.trim_start().strip_prefix(':')?.trim_start();
-    let (value, _) = after_key.split_once(',').unwrap_or((after_key.trim_end_matches('}'), ""));
-    let value = value.trim();
-    if value == "null" || value.is_empty() {
+    let value = if let Some(quoted) = after_key.strip_prefix('"') {
+        // React `getDocumentId` keeps the full string, commas included.
+        let end = quoted.find('"')?;
+        &quoted[..end]
+    } else {
+        let end = after_key
+            .find(|c: char| c == ',' || c == '}' || c.is_whitespace())
+            .unwrap_or(after_key.len());
+        &after_key[..end]
+    };
+    if value.is_empty() || value == "null" {
         return None;
     }
-    Some(value.trim_matches('"').to_owned())
+    Some(value.to_owned())
 }
 
 /// Host calls the view emits. No SQL is built here.
@@ -186,6 +192,7 @@ pub(crate) enum DocEvent {
 
 impl DocumentViewVm {
     /// React `handleSelectDb` + `handleSelectCollection` reset rules.
+    #[allow(dead_code)] // consumer: the document-view host wiring (not landed); remove when wired.
     pub(crate) fn select_db(&mut self, db: String) {
         self.selected_db = Some(db);
         self.selected_collection = None;
@@ -197,6 +204,7 @@ impl DocumentViewVm {
         self.docs_error.clear();
     }
 
+    #[allow(dead_code)] // consumer: the document-view host wiring (not landed); remove when wired.
     pub(crate) fn select_collection(&mut self, name: String) {
         self.selected_collection = Some(name);
         self.insert_mode = false;
@@ -204,6 +212,7 @@ impl DocumentViewVm {
         self.edit_error.clear();
     }
 
+    #[allow(dead_code)] // consumer: the document-view host wiring (not landed); remove when wired.
     pub(crate) fn open_insert(&mut self) {
         self.selected_row_idx = None;
         self.insert_mode = true;
@@ -211,6 +220,7 @@ impl DocumentViewVm {
         self.edit_error.clear();
     }
 
+    #[allow(dead_code)] // consumer: the document-view host wiring (not landed); remove when wired.
     pub(crate) fn close_editor(&mut self) {
         self.selected_row_idx = None;
         self.insert_mode = false;
@@ -219,6 +229,7 @@ impl DocumentViewVm {
     }
 
     /// A load answer. React classifies filter-JSON failures separately.
+    #[allow(dead_code)] // consumer: the document-view host result feed (not landed); remove when wired.
     pub(crate) fn apply_documents(&mut self, answer: Result<Option<DocResult>, String>) {
         self.docs_loading = false;
         self.filter_error.clear();
@@ -243,6 +254,7 @@ impl DocumentViewVm {
     }
 
     /// Resolve any host event into the next VM state.
+    #[allow(dead_code)] // consumer: the document-view host result feed (not landed); remove when wired.
     pub(crate) fn apply_event(&mut self, event: DocEvent) {
         match event {
             DocEvent::SchemaLoaded(Ok(databases)) => {
