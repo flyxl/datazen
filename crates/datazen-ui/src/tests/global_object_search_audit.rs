@@ -132,6 +132,30 @@ fn rename_with_a_valid_name_fires_rename_then_close() {
 }
 
 #[test]
+fn rename_fires_even_when_the_old_name_is_empty() {
+    // React NavigatorDialogs.tsx:108 gates only on `renamingGroup !== null`
+    // and a trimmed new value; `Some("")` is a valid rename in progress.
+    let mut vm = NavigatorDialogsVm::default();
+    vm.renaming_group = Some(String::new());
+    vm.rename_value = rune::TextEdit::new("  new  ".to_owned());
+    let scene = DialogScene { vm, actions: Rc::new(RefCell::new(Vec::new())) };
+    let mut rt = Runtime::new(scene, dialog_view, DESIGN, Env { system_dark: true, scale: 1.0 });
+    rt.frame(0.0);
+    let (x, y) = rt.find("navigator-rename-group-dialog-ok").unwrap_or_else(|| panic!("ok laid out"));
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(
+        rt.state.actions.borrow().as_slice(),
+        &[
+            NavigatorDialogsAction::RenameGroup { old: String::new(), new: "new".to_owned() },
+            NavigatorDialogsAction::CloseRename,
+        ],
+        "React's renamingGroup !== null gate still fires renameGroup for an empty old name"
+    );
+}
+
+#[test]
 fn both_surfaces_stay_inside_via_visible_rects() {
     for size in [MIN, DESIGN] {
         for dark in [true, false] {

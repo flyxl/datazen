@@ -273,9 +273,10 @@ fn add_group_action(name: &str) -> Option<NavigatorDialogsAction> {
     }
 }
 
-/// React: rename only when both the old name and the trimmed new value exist.
+/// React: the gate is `renamingGroup !== null && renameValue.trim()` — a
+/// rename in progress with an empty old name (`Some("")`) still fires.
 fn rename_group_action(old: &str, new: &str) -> Option<NavigatorDialogsAction> {
-    if old.is_empty() || new.is_empty() {
+    if new.is_empty() {
         None
     } else {
         Some(NavigatorDialogsAction::RenameGroup {
