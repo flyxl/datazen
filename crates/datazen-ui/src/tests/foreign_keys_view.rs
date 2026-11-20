@@ -142,6 +142,31 @@ fn loading_error_and_empty_states_are_exclusive() {
 }
 
 #[test]
+fn error_state_uses_copyable_error_with_an_alert_role() {
+    let mut probe = Probe::default();
+    probe.state.error = "disk gone".to_owned();
+    let mut rt = runtime(probe, (960.0, 640.0));
+    rt.frame(0.0);
+    let error = rt
+        .elements()
+        .into_iter()
+        .find(|element| element.key.as_deref() == Some(ERROR_KEY))
+        .expect("error branch mounted");
+    assert_eq!(
+        error.role, "alert",
+        "React's CopyableError message carries role=alert; left: {:?} right: \"alert\"",
+        error.role
+    );
+    assert!(
+        rt.elements().iter().any(|element| {
+            element.key.as_deref() == Some("foreign-keys-error-text")
+                && element.text.as_deref() == Some("disk gone")
+        }),
+        "the exact error message is preserved on the selectable text node"
+    );
+}
+
+#[test]
 fn header_and_fk_rows_are_composed_with_local_and_reference_chips() {
     let mut probe = Probe::default();
     probe.state.foreign_keys = vec![fk("fk_orders_user"), fk("fk_orders_tenant")];

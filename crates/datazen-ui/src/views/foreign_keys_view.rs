@@ -30,6 +30,7 @@ use rune_kit::Kit;
 
 use crate::i18n::t;
 use crate::relation_metadata::ForeignKeyInfo;
+use crate::ui::copyable::CopyableError;
 use crate::ui::kit::kit;
 use crate::ui::spinner::{Spinner, SpinnerSize};
 use crate::ui::table::Column;
@@ -144,21 +145,16 @@ pub(crate) fn build<S: 'static>(
         return;
     }
     if !state.error.is_empty() {
+        // React uses `CopyableError` here: its message node is `role="alert"`
+        // and selectable. Reuse the Rune port rather than a plain text node.
         layer.push(
-            col()
-                .key(ERROR_KEY)
+            CopyableError::new(ERROR_KEY, state.error.clone())
+                .build::<S>(k)
                 .w_full()
                 .grow(1.0)
                 .min_h(0.0)
                 .center()
-                .padding(16.0)
-                .child(
-                    text(state.error.clone())
-                        .key("foreign-keys-error-text")
-                        .font(k.ty.text_small)
-                        .color(k.c.danger.fg)
-                        .wrap_anywhere(),
-                ),
+                .padding(16.0),
         );
         return;
     }
