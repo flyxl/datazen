@@ -48,6 +48,9 @@ mod import_dialog;
 mod global_object_search;
 // T475: the navigator status pip (colour/aria mapping, idle no-op, geometry).
 mod tree_status_dot;
+// T475 independent audit: help tooltip, full-round radius, exact parsing and
+// visible-rect containment of every drawn pip.
+mod tree_status_dot_audit;
 // T460 independent audit: result cap, sort, match reason, empty-old rename and
 // visible-rect geometry.
 mod global_object_search_audit;
