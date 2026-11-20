@@ -40,6 +40,7 @@ mod chart_types;
 mod command_schema;
 mod connection_clipboard;
 mod connection_config;
+mod connection_locator;
 mod connection_types;
 mod connection_views;
 mod context_items;
@@ -235,6 +236,13 @@ pub use connection_clipboard::{
 };
 pub use connection_config::{
     clone_connection_config_for_ipc, to_ipc_connection_config, PlainConfigAssertion,
+};
+pub use connection_locator::{
+    connection_expand_key, group_connections_with_recent_sections, normalize,
+    order_connections_for_display, parse_connection_expand_key, rank_connections,
+    ActiveConnectionSlice, ActiveStatus, Candidate, ConnectionLocatorResult,
+    ConnectionLocatorUsageState, ConnectionMatch, ConnectionMatchReason, ConnectionSection,
+    ExpandKey, SchemaSlice, PINNED_GROUP_KEY, RECENT_CONNECTION_LIMIT, RECENT_GROUP_KEY,
 };
 pub use connection_types::{
     ConnectionConfig, ContextEntry, DatabaseObject, DatabaseObjectKind, DatabaseType,
