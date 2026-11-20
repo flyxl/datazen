@@ -39,6 +39,17 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+### 风险合流 + 待修回归（2026-11-20，用户裁决选 3）
+
+- 用户明确选择「接受风险直接 push」：seg1/2/4 的 46 commits 合流 `05f4df187` 已 push 到父分支（fast-forward，未覆盖任何人工作）。
+- **验证状态**：`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` 三 crate 全过；但 gate 测试步骤因本机 dyld 共享缓存映射崩溃（`map cache into shared region failed` + SIGSEGV/SIGABRT）无法稳定验证，`DYLD_SHARED_REGION=private` 下曾跑出一次结果。
+- **已知未修回归**（健康二进制跑出 4920 passed / 3 failed，待后续修复）：
+  1. `support::formatters::tests::last_connected_resolves_berlin_dst_at_the_instant` — Berlin DST 时区
+  2. `tests::connection_page::every_section_stays_reachable_after_the_port` — Wapps key 期望
+  3. `tests::workflow_execution_panel::the_workflows_page_mounts_the_panel_over_a_real_run` — workflow 面板
+- 这 3 个是合流叠加产生（各段单独 gate 全绿），**不是**弱化/删除断言所致。环境恢复后须优先修复并重跑全量 gate。
+- dyld 崩溃已排除代码/路径/target/负载因素，疑似本机 uptime 52 天的系统态，重启 Mac 可根治。
+
 ### 合流方向裁决（2026-11-19，用户指示）
 
 - **合流方向维持子→父单向**：主会话只把各 segment 合到父分支，`merge-to-parent` 后不再把父分支快进/回灌到各 segment。
