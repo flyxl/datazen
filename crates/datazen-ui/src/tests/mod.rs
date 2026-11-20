@@ -88,6 +88,9 @@ mod data_cleanup_section_audit;
 // T250: the wizard's two selection steps (endpoints bar + objects step
 // over the picker seam), audited against the React JSX.
 mod schema_diff_selection_steps_audit;
+// T254: the connection driver-command lookup hooks (the epoch-guarded
+// effect machine), audited against the hook bodies.
+mod use_connection_command_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;
