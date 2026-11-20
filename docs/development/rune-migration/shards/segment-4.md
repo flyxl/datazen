@@ -51,7 +51,7 @@
 - [x] T157 · lib/valuePresentation · 0.80d · lib/valuePresentation/presentationPlan.ts
 - [x] T158 · hooks · 0.90d · hooks/useColumnPresentationSession.ts
 - [x] T163 · commands · 0.90d · commands/backup.ts
-- [ ] T170 · components/sql-editor · 0.60d · components/sql-editor/extensions/executionState.ts components/sql-editor/extensions/types.ts
+- [x] T170 · components/sql-editor · 0.60d · components/sql-editor/extensions/executionState.ts components/sql-editor/extensions/types.ts
 - [ ] T172 · windows/settings · 0.90d · windows/settings/AiSettingsSection.tsx
 - [x] T174 · windows/workspace · 0.90d · windows/workspace/WorkspaceTabBar.tsx
 - [x] T175 · windows/dashboard · 0.90d · windows/dashboard/RunHistoryDrawer.tsx
