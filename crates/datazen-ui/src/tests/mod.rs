@@ -250,6 +250,9 @@ mod table_session;
 mod table_session_audit;
 // T311: lib/session/targetCommand.ts port (target derivation + admission).
 mod target_command;
+// T311 independent audit: recover-without-view, undefined error code, rows
+// shape filtering and schema columns validation.
+mod target_command_audit;
 
 
 // Independent re-audit of merged T0-07 menu base.
