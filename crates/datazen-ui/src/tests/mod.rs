@@ -802,3 +802,6 @@ mod schema_diff_objects_step_audit;
 // T178: the schema-diff plan panel (options row, requirements,
 // type suggestions, rollback status, statement cards).
 mod schema_diff_plan_panel_audit;
+// T204: the schema-diff right review panel (tabs, threaded panels,
+// generate-plan empty state).
+mod schema_diff_right_panel_audit;

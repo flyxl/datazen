@@ -17,4 +17,7 @@ pub(crate) mod schema_diff_objects_step;
 pub(crate) mod schema_diff_plan_panel;
 // T269: the wizard's table list rail (SchemaDiffTableListPanel.tsx).
 pub(crate) mod schema_diff_table_list_panel;
+// T204: the right review panel (SchemaDiffRightPanel.tsx: tabs + plan /
+// deploy bodies + the generate-plan empty state).
+pub(crate) mod schema_diff_right_panel;
 pub(crate) mod schema_diff_table_names;
