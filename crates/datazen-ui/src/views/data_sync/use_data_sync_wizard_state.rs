@@ -77,7 +77,7 @@ pub(crate) const NARROW_WIZARD_STEPS: [WizardStep; 3] = [
 ];
 
 /// The hook's state: the wizard's whole mutable surface.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 #[allow(dead_code)] // consumers: the Data Sync window track (T268, not landed yet)
 pub(crate) struct DataSyncWizardState {
     /// The sync options the setup step edits (`DEFAULT_SYNC_OPTIONS` seed).
@@ -181,3 +181,10 @@ impl Default for DataSyncWizardState {
         Self::new()
     }
 }
+
+/// React `dataSyncTypes.ts`'s whole content: `DataSyncWizardState =
+/// ReturnType<typeof useDataSyncWizardState>` — the wizard state type,
+/// named the way the window track's props spell it (T408). Rust already
+/// has the concrete type (this module's [`DataSyncWizardState`]); the
+/// alias keeps the React-side name reachable without a second mirror.
+pub(crate) type DataSyncWizardStateOfHook = DataSyncWizardState;

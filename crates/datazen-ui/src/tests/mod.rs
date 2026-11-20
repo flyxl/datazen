@@ -1124,6 +1124,8 @@ mod data_sync_wizard_nav;
 // T287 independent audit: geometry both sizes, the color triple through
 // the text channel, light-theme builds.
 mod data_sync_wizard_nav_audit;
+// T408: the wizard-state type alias (dataSyncTypes.ts).
+mod data_sync_types;
 // T293: the tab-closed notification (panelCloseNotifier).
 mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the
