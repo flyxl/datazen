@@ -57,11 +57,21 @@ fn tree_node<S: 'static>(
     node: &PrivilegeNode,
     expanded: &std::collections::BTreeSet<String>,
     revoke_user: Option<&str>,
+    by_object: bool,
     supports_drop_user: bool,
     host: &PrivilegeHostPort<S>,
     dark: bool,
 ) -> El {
     let k = kit(dark);
+    // React's ByObject view gives each user leaf its own revoke, keyed by the
+    // object stored on the leaf; role-level grants have no revoke handler.
+    let effective_user = if node.key == "role-level" || node.label == "privileges.roleLevel" {
+        None
+    } else if by_object && node.key.starts_with("user-") {
+        Some(node.label.as_str())
+    } else {
+        revoke_user
+    };
     let open = expanded.contains(&node.key);
     let has_children = !node.children.is_empty();
     let mut header = row()
@@ -98,7 +108,7 @@ fn tree_node<S: 'static>(
     if let Some(count) = node.count {
         header = header.child(text(format!("({count})")).font(k.ty.text_xsmall).color(k.c.text_muted));
     }
-    if supports_drop_user && node.key.starts_with("user-") {
+    if supports_drop_user && !by_object && node.key.starts_with("user-") {
         if let Some(on_action) = host.on_action.clone() {
             let user = node.label.clone();
             header = header.child(
@@ -115,7 +125,7 @@ fn tree_node<S: 'static>(
     }
     let mut root = col().key(format!("priv-tree-{}", node.key)).w_full().gap(2.0).child(header);
     for (privilege, object) in &node.leaves {
-        let revoke = revoke_user.map(|user| {
+        let revoke = effective_user.map(|user| {
             (user.to_owned(), vec![privilege.clone()], object.clone().unwrap_or_default())
         });
         root = root.child(
@@ -128,7 +138,7 @@ fn tree_node<S: 'static>(
     }
     if open {
         for child in &node.children {
-            root = root.child(tree_node(child, expanded, revoke_user, supports_drop_user, host, dark));
+            root = root.child(tree_node(child, expanded, revoke_user, by_object, supports_drop_user, host, dark));
         }
     }
     root
@@ -168,14 +178,15 @@ pub(crate) fn privilege_tree<S: 'static>(
                 .color(k.c.text_muted),
         );
     }
-    let supports_drop_user = vm.supports_drop_user;
+    let by_object = vm.view_mode == ViewMode::ByObject;
+    let supports_drop_user = vm.supports_drop_user && !by_object;
     for node in nodes {
-        let revoke_user = if vm.view_mode == ViewMode::ByUser {
+        let revoke_user = if !by_object {
             Some(node.label.as_str())
         } else {
             None
         };
-        root = root.child(tree_node(&node, &vm.expanded, revoke_user, supports_drop_user, host, dark));
+        root = root.child(tree_node(&node, &vm.expanded, revoke_user, by_object, supports_drop_user, host, dark));
     }
     root
 }

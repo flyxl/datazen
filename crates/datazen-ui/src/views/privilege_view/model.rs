@@ -135,14 +135,17 @@ fn schema_node(
     let count = tables.len();
     let children: Vec<PrivilegeNode> = tables
         .into_iter()
-        .map(|(table, privileges)| PrivilegeNode {
+        .map(|(table, privileges)| {
+            let object = table.clone();
+            PrivilegeNode {
             key: format!("table-{table}"),
             label: if table == "*" { "privileges.allTables".to_owned() } else { table },
             depth: depth + 1,
             count: None,
-            leaves: privileges.into_iter().map(|p| (p, None)).collect(),
+            leaves: privileges.into_iter().map(|p| (p, Some(object.clone()))).collect(),
             children: Vec::new(),
             default_open: false,
+            }
         })
         .collect();
     PrivilegeNode {
@@ -192,6 +195,7 @@ pub(crate) fn build_object_tree(grants: &[PrivilegeGrantVm]) -> Vec<PrivilegeNod
                     let children: Vec<PrivilegeNode> = tables
                         .into_iter()
                         .map(|(table, users)| {
+                            let object = if table == "*" { schema.clone() } else { table.clone() };
                             let user_children: Vec<PrivilegeNode> = users
                                 .into_iter()
                                 .map(|(user, privileges)| PrivilegeNode {
@@ -199,7 +203,10 @@ pub(crate) fn build_object_tree(grants: &[PrivilegeGrantVm]) -> Vec<PrivilegeNod
                                     label: user,
                                     depth: 3,
                                     count: None,
-                                    leaves: privileges.into_iter().map(|p| (p, None)).collect(),
+                                    leaves: privileges
+                                        .into_iter()
+                                        .map(|p| (p, Some(object.clone())))
+                                        .collect(),
                                     children: Vec::new(),
                                     default_open: false,
                                 })
