@@ -15,3 +15,6 @@ pub(crate) use history_filter_bar::{
 pub(crate) mod global_query_history_dialog;
 pub(crate) mod history_entry_card;
 pub(crate) mod history_filter_bar;
+// T099: the pure helpers behind the dialog (range cut, arg bag, status
+// filter, truncation reports, .sql export).
+pub(crate) mod history_query;

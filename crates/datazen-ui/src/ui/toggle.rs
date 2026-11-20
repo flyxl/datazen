@@ -105,6 +105,7 @@ pub(crate) struct Switch {
     control_size: ControlSize,
     web: bool,
     standard: bool,
+    hide_label: bool,
     binds: Vec<SwitchBind>,
 }
 
@@ -119,12 +120,20 @@ impl Switch {
             control_size: ControlSize::Mini,
             web: false,
             standard: false,
+            hide_label: false,
             binds: Vec::new(),
         }
     }
 
     pub(crate) fn label(mut self, label: impl Into<String>) -> Switch {
         self.label = Some(label.into());
+        self
+    }
+
+    /// Keep the label for accessibility only (the kit's `hide_label`):
+    /// the row already shows it, as React's `aria-label`-only switches do.
+    pub(crate) fn hide_label(mut self) -> Switch {
+        self.hide_label = true;
         self
     }
 
@@ -171,6 +180,9 @@ impl Switch {
         }
         if self.standard {
             kit = kit.standard();
+        }
+        if self.hide_label {
+            kit = kit.hide_label();
         }
         if let Some(label) = self.label.as_deref() {
             kit = kit.label(label);

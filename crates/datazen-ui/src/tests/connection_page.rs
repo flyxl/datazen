@@ -1,0 +1,287 @@
+//! T110: the `windows/connection/ConnectionPage.tsx` port.
+//!
+//! These tests pin the container page at the composition level: the shell keys
+//! React's page owns, all Sections staying reachable through the composed body,
+//! the tab/toolbar behaviour of the content workspace, the settings-back glue,
+//! and a two-size × two-theme runtime-rect sweep for horizontal overflow. All
+//! observations come from the laid-out element tree (`rt.elements()`), not from
+//! any component's self-report.
+
+use super::*;
+
+/// The keys the connection page shell must compose. Split into "always" (the
+/// window chrome, rail, navigator, toolbar and status bar are present on every
+/// section) and "workspace only" (the tab strip follows React's `ContentView`).
+const SHELL_KEYS: &[&str] = &[
+    "datazen-root",
+    "rune-connection-page",
+    "datazen-titlebar",
+    "datazen-titlebar-label",
+    "datazen-theme-toggle",
+    "rune-titlebar-left",
+    "menu-bar-host",
+    "datazen-body",
+    "datazen-rail",
+    "datazen-navigator",
+    "navigator-connections",
+    "navigator-filter-input",
+    "datazen-page",
+    "content-toolbar",
+    "content-status-bar",
+    "status-connection-label",
+    "status-context",
+    "status-shortcuts",
+];
+
+fn key_set(rt: &Runtime<AppState>) -> std::collections::HashSet<String> {
+    // Rune keeps exiting nodes in `elements()` for animation; they are inert
+    // and stale. A key-presence assertion after a transition must ignore them
+    // or it passes whether or not the new state actually mounted the key.
+    rt.elements()
+        .into_iter()
+        .filter(|e| !e.exiting)
+        .filter_map(|e| e.key)
+        .collect()
+}
+
+#[test]
+fn the_port_composes_the_connection_page_shell() {
+    let mut rt = runtime();
+    rt.frame(0.0);
+    let keys = key_set(&rt);
+
+    for key in SHELL_KEYS {
+        assert!(
+            keys.contains(*key),
+            "connection page shell is missing composed key {key:?}; keys: {keys:?}"
+        );
+    }
+
+    // The default section is Connections: its home body rides the page, and
+    // the tab strip is absent (React only mounts tabs inside ContentView).
+    assert!(
+        keys.contains("connection-list"),
+        "the default section composes the connections home body"
+    );
+    assert!(
+        keys.contains("tab-strip-absent"),
+        "Connections has no tab strip (ContentView tab mount is Workspace-only)"
+    );
+    assert!(
+        !keys.contains("tab-strip"),
+        "Connections must not mount the Workspace tab strip"
+    );
+
+    // The dialog hosts are part of the page even when no dialog is open: the
+    // modal layer simply mounts nothing. Opening one proves the host is wired.
+    assert!(
+        rt.find("connection-new").is_some(),
+        "the new-connection trigger that opens the dialog host is composed"
+    );
+    let (x, y) = rt
+        .find("connection-new")
+        .expect("the new-connection press is on the page");
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    rt.frame(0.0);
+    rt.frame(0.0);
+    let keys = key_set(&rt);
+    for key in ["connection-dialog", "connection-dialog-title", "connection-form"] {
+        assert!(
+            keys.contains(key),
+            "the dialog host mounts {key:?}: {keys:?}"
+        );
+    }
+}
+
+#[test]
+fn every_section_stays_reachable_after_the_port() {
+    // Wiring the page must not strand any Section: the composed body still
+    // dispatches each one to its own keyed page.
+    let bodies: &[(Section, &str)] = &[
+        (Section::Connections, "connection-list"),
+        (Section::Workspace, "workspace-empty"),
+        (Section::Settings, "settings-page"),
+        (Section::Tools, "tools-page"),
+        (Section::Dashboards, "dashboards-page"),
+        // T199/WorkflowPage port: the workflows section now mounts the real
+        // workflow page (`workflow-workspace`), not the old placeholder.
+        (Section::Workflows, "workflow-workspace"),
+        // T072 ported the real WappManagementPage, so the old C4
+        // "wapps-page" placeholder is gone: the section's body is the
+        // ported page's own testid root.
+        (Section::Wapps, "extension-management-page"),
+    ];
+    for (section, body_key) in bodies {
+        let mut rt = runtime();
+        rt.state.active = *section;
+        rt.invalidate();
+        rt.frame(0.0);
+        let keys = key_set(&rt);
+        assert!(
+            keys.contains(*body_key),
+            "{section:?} must still dispatch to {body_key:?}; keys: {keys:?}"
+        );
+        let title = rt
+            .elements()
+            .into_iter()
+            .filter(|e| !e.exiting)
+            .find(|e| e.key.as_deref() == Some("datazen-titlebar-label"))
+            .expect("the title band is composed on every section");
+        assert_eq!(
+            title.text.as_deref(),
+            Some(section.label()),
+            "{section:?}: the titlebar follows the dispatched section"
+        );
+    }
+
+    // And the rail can actually move between them after the port.
+    let mut rt = runtime();
+    rt.frame(0.0);
+    let (x, y) = rt
+        .find(&format!("rail-{}", Section::Workspace.key()))
+        .expect("workspace rail item");
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    rt.frame(0.0);
+    assert_eq!(
+        rt.state.active,
+        Section::Workspace,
+        "the composed rail still selects a section"
+    );
+    assert!(
+        key_set(&rt).contains("tab-strip"),
+        "Workspace now mounts the tab strip"
+    );
+}
+
+#[test]
+fn tabs_and_toolbar_follow_the_content_workspace_contract() {
+    let mut rt = runtime();
+    rt.state.active = Section::Workspace;
+    let first = rt
+        .state
+        .tabs
+        .open(TabKind::Table, "customers")
+        .expect("first tab");
+    let second = rt
+        .state
+        .tabs
+        .open(TabKind::Table, "orders")
+        .expect("second tab");
+    rt.invalidate();
+    rt.frame(0.0);
+
+    let strip = rt
+        .elements()
+        .into_iter()
+        .filter(|e| !e.exiting)
+        .find(|e| e.key.as_deref() == Some("tab-strip"))
+        .expect("tab strip is mounted on Workspace");
+    assert_eq!(strip.role, "tablist", "the tab strip keeps its tablist role");
+    let keys = key_set(&rt);
+    for key in [
+        format!("tab-{first}"),
+        format!("tab-close-{first}"),
+        format!("tab-{second}"),
+        format!("tab-close-{second}"),
+    ] {
+        assert!(keys.contains(&key), "tab key {key:?} is composed: {keys:?}");
+    }
+
+    // The content toolbar's new-query action still opens a query tab.
+    let (x, y) = rt
+        .find("toolbar-new-query")
+        .expect("the workspace new-query action");
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    rt.frame(0.0);
+    rt.frame(0.0);
+    let keys = key_set(&rt);
+    assert!(
+        keys.contains("query-tab"),
+        "new-query opens the query workspace: {keys:?}"
+    );
+    assert!(
+        keys.contains("query-toolbar"),
+        "the query workspace carries its toolbar"
+    );
+
+    // A tab's close control removes that tab without taking the other one.
+    let (x, y) = rt
+        .find(&format!("tab-close-{first}"))
+        .expect("the first tab's close control");
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    rt.frame(0.0);
+    assert!(
+        !rt.state.tabs.tabs().iter().any(|t| t.id == first),
+        "closing a tab removes it"
+    );
+    assert!(
+        rt.state.tabs.tabs().iter().any(|t| t.id == second),
+        "closing one tab leaves the other"
+    );
+}
+
+#[test]
+fn the_settings_back_button_returns_to_connections() {
+    let mut rt = runtime();
+    rt.state.active = Section::Settings;
+    rt.invalidate();
+    rt.frame(0.0);
+    assert!(
+        rt.find("settings-back").is_some(),
+        "the settings view carries the React page's back arrow"
+    );
+    let (x, y) = rt
+        .find("settings-back")
+        .expect("the settings back arrow is on the title band");
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    rt.frame(0.0);
+    assert_eq!(
+        rt.state.active,
+        Section::Connections,
+        "back leaves settings for the connections page"
+    );
+    assert!(
+        rt.find("settings-back").is_none(),
+        "the back arrow is settings-only"
+    );
+}
+
+#[test]
+fn the_connection_page_fits_both_windows_in_both_themes() {
+    // Runtime rects are the observation channel: nothing here trusts a
+    // component's own bounds report. Vertical overflow is allowed (the page
+    // scrolls); horizontal overflow is not.
+    for (width, height) in [(960.0, 640.0), (1440.0, 816.0)] {
+        for dark in [true, false] {
+            let env = Env {
+                system_dark: dark,
+                scale: 1.0,
+            };
+            let mut rt = Runtime::new(AppState::default(), view, (width, height), env);
+            rt.frame(0.0);
+
+            let keys = key_set(&rt);
+            for key in ["rune-connection-page", "datazen-body", "content-status-bar"] {
+                assert!(
+                    keys.contains(key),
+                    "{width}x{height} dark={dark}: shell key {key:?} missing"
+                );
+            }
+
+            for element in rt.elements() {
+                let [x, _, w, _] = element.rect;
+                assert!(
+                    x >= -0.5 && x + w <= width + 0.5,
+                    "{width}x{height} dark={dark}: {:?} {:?} hangs past the window horizontally",
+                    element.key,
+                    element.rect
+                );
+            }
+        }
+    }
+}

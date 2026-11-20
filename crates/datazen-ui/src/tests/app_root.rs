@@ -5,7 +5,7 @@
 //! real `crate::view` — the single entry both the demo `run()` and the
 //! host's `run_with_adapter` hand the window to. The routed output IS the
 //! main window's composition, so the router's own wiring is pinned against
-//! the sources the way the i18n call-site guards pin `t("...")` call sites.
+//! the sources the way the i18n call-site guards pin `t("common.save")` call sites.
 
 use super::*;
 

@@ -17,13 +17,39 @@ datazen-ui-api = { workspace = true }
 rune = { workspace = true }
 rune-kit = { workspace = true }
 serde_json = { workspace = true }
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
+base64 = { workspace = true }
+chrono = { version = "0.4", default-features = false, features = ["clock", "wasmbind"] }
+# T043-S2: `formatRowsAsXlsx`'s minimal mirror builds the workbook in
+# memory with rust_xlsxwriter (the same writer the Rust export kernel
+# uses); the workspace pins 0.102 with `constant_memory` for the kernel,
+# and this crate uses the default in-memory worksheet — provided rows are
+# already loaded, so there is nothing to stream.
+rust_xlsxwriter = { workspace = true }
+# valuePresentation persisted shapes (TimestampOptions and friends) serialize
+# with React's exact JSON field names.
+serde = { workspace = true }
+# valuePresentationRules (T291): restricted-regex matching. The crate's
+# engine is non-backtracking (linear time) — strictly safer than the JS
+# engine the restricted subset was designed to fence in.
+regex = { workspace = true }
+# lib/valuePresentation (issue-32 T02): the temporal core needs the full IANA
+# zone table with historical offsets (1850 Asia/Shanghai LMT +08:05:43) — the
+# same data Intl's `timeZone` option reads. Pure Rust, works on wasm too.
+chrono-tz = "0.10"
+# The `{ kind: 'local' }` display-zone spec needs the machine's IANA name
+# (already in the graph via chrono); same purpose as Intl resolvedOptions().
+iana-time-zone = "0.1"
+# T054-S2: rule-name matching for the dialog's plan (`match_name_pattern`):
+# the restricted regex subset the TS validator accepts (literals, classes,
+# groups, quantifiers — no lookaround / backreferences) is exactly what the
+# `regex` crate evaluates, so a validated `regex` pattern is matched with
+# it; an unvalidated one that fails to compile matches nothing (the TS
+# defensive catch in `matchNamePattern`).
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { workspace = true }
 # `Local` falls back to UTC without `wasmbind`; the hosted build needs the
 # browser's zone for formatLastConnected, so the wasm target opts in here.
-chrono = { version = "0.4", default-features = false, features = ["clock", "wasmbind"] }
 
 # T2: native Open/Save dialogs — rfd on macOS and Windows, the XDG desktop
 # portal over zbus on Linux. The wasm target keeps the scripted-only surface
@@ -33,12 +59,17 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "wasm
 rune = { workspace = true, features = ["native-file-dialog"] }
 
 [dev-dependencies]
+# T043-S1: `futures::executor::block_on` drives the exporter's async
+# `plan_export` in tests (the UI crate is otherwise synchronous).
+futures = "0.3"
+# T043-S2: the XLSX test reads the emitted workbook back out of its zip
+# container (structural parity, the way React's exportFormat test does).
+zip = { workspace = true }
 # H8's tofu test reads glyph ids out of a shaped layout; the same version and
 # features rune itself uses, so the graph stays one parley.
 parley = { version = "0.12", default-features = false, features = ["std", "complex-scripts"] }
 # C2's a11y test reads the tree `Runtime::accessibility_json` builds; the same
 # version the workspace pins, so the graph stays one serde_json.
-serde_json = { workspace = true }
 
 [lints]
 workspace = true

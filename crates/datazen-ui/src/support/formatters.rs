@@ -269,8 +269,9 @@ fn split_offset(text: &str) -> Option<(&str, i32)> {
     Some((&text[..text.len() - offset_len], signed))
 }
 
-/// `YYYY-MM-DDTHH:MM:SS.sssZ` for an epoch-milliseconds instant.
-fn iso_from_epoch_millis(millis: i64) -> String {
+/// `YYYY-MM-DDTHH:MM:SS.sssZ` for an epoch-milliseconds instant
+/// (JS `new Date(ms).toISOString()`, the exact shape).
+pub(crate) fn iso_from_epoch_millis(millis: i64) -> String {
     let (year, month, day, hour, minute, second) = civil_from_epoch(millis);
     format!(
         "{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis_rem:03}Z",

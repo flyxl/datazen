@@ -12,7 +12,7 @@
 //!
 //! Long text truncates and the badge should not force a constrained parent wider.
 
-use rune::{row, text, El};
+use rune::{row, text, El, TextStyle};
 
 #[allow(dead_code)] // reusable base; remove when view callers land
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -30,6 +30,12 @@ pub(crate) struct Badge {
     key: String,
     label: String,
     tone: BadgeTone,
+    /// Caller padding override (React's `className` utilities over the base
+    /// box; `None` keeps the base's `px-2 py-0.5`).
+    pad: Option<(f32, f32)>,
+    /// Caller font override (React's `className` `text-*`/`font-*`
+    /// utilities; `None` keeps the base's `text-[11px] font-semibold`).
+    font: Option<TextStyle>,
 }
 
 #[allow(dead_code)] // reusable base; remove when view callers land
@@ -39,11 +45,28 @@ impl Badge {
             key: key.into(),
             label: label.into(),
             tone: BadgeTone::Neutral,
+            pad: None,
+            font: None,
         }
     }
 
     pub(crate) fn tone(mut self, tone: BadgeTone) -> Self {
         self.tone = tone;
+        self
+    }
+
+    /// Padding override: `(px, py)` in points, for React callers that pass
+    /// `className` padding utilities over the badge (T067's shell chip:
+    /// `px-1.5 py-0`).
+    pub(crate) fn pad(mut self, px: f32, py: f32) -> Self {
+        self.pad = Some((px, py));
+        self
+    }
+
+    /// Font override, for React callers that pass `className` text utilities
+    /// over the badge (T067's shell chip: `text-[10px] font-normal`).
+    pub(crate) fn font(mut self, font: TextStyle) -> Self {
+        self.font = Some(font);
         self
     }
 
@@ -74,6 +97,8 @@ impl Badge {
         };
 
         let key = self.key;
+        let (px, py) = self.pad.unwrap_or((8.0, 2.0));
+        let font = self.font.unwrap_or(k.ty.small_medium);
         row()
             .key(key.clone())
             .role("status")
@@ -81,15 +106,15 @@ impl Badge {
             .center_y()
             .shrink()
             .min_w(0.0)
-            .px(8.0)
-            .py(2.0)
+            .px(px)
+            .py(py)
             .radius(9.0)
             .fill(fill)
             .border(1.0, border)
             .child(
                 text(self.label)
                     .key(format!("{key}-text"))
-                    .font(k.ty.small_medium)
+                    .font(font)
                     .color(fg)
                     .grow(1.0)
                     .min_w(0.0)

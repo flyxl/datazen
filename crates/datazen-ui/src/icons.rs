@@ -89,6 +89,12 @@ pub(crate) static ICON_CHEVRON_DOWN: rune::Icon = rune::Icon {
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m6 9 6 6 6-6\"/>",
 };
+pub(crate) static ICON_FILE: rune::Icon = rune::Icon {
+    name: "file",
+    view: 24.0,
+    // lucide-react 0.487.0 `File` (verified against lucide-static@0.487.0).
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M14 2v4a2 2 0 0 0 2 2h4\"/>",
+};
 pub(crate) static ICON_FOLDER: rune::Icon = rune::Icon {
     name: "folder",
     view: 24.0,
@@ -108,6 +114,14 @@ pub(crate) static ICON_REFRESH: rune::Icon = rune::Icon {
     name: "refresh-cw",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 3v5h-5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M8 16H3v5\"/>",
+};
+/// T067: lucide `rotate-cw`, the reload/retry glyph in `WappPageShell`'s
+/// failure rows (`WappPageShell.tsx` uses `RotateCw`; the registry forbids a
+/// second copy). Body verified against lucide-react 0.487.0's `rotate-cw`.
+pub(crate) static ICON_ROTATE_CW: rune::Icon = rune::Icon {
+    name: "rotate-cw",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 3v5h-5\"/>",
 };
 pub(crate) static ICON_LAYOUT: rune::Icon = rune::Icon {
     name: "layout",
@@ -135,6 +149,101 @@ pub(crate) static ICON_SPARKLES: rune::Icon = rune::Icon {
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275Z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5 3v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M19 17v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 5h4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M17 19h4\"/>",
 };
 
+/// T198: lucide `bot`, the AI tool bridge's plugins header glyph
+/// (`AiToolBridgeSection.tsx` uses `Bot`). Paths verified against
+/// lucide-react@0.487.0's bot icon.
+pub(crate) static ICON_BOT: rune::Icon = rune::Icon {
+    name: "bot",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 8V4H8\"/><rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"16\" height=\"12\" x=\"4\" y=\"8\" rx=\"2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M2 14h2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 14h2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 13v2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9 13v2\"/>",
+};
+
+pub(crate) static ICON_SEND: rune::Icon = rune::Icon {
+    name: "send",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m22 2-7 20-4-9-9-4Z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M22 2 11 13\"/>",
+};
+/// T009-S2: lucide `book-open`, the memory chip / remember button glyph in
+/// `ChatBubble` (`AiChatPanel.tsx` uses `BookOpen`). Paths verified against
+/// the repo's installed `lucide-react@0.487.0`
+/// (`node_modules/lucide-react/dist/esm/icons/book-open.js`).
+pub(crate) static ICON_BOOK_OPEN: rune::Icon = rune::Icon {
+    name: "book-open",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 7v14\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z\"/>",
+};
+/// T009-S3: lucide `message-square`, the chat tab glyph in `AiChatPanel`
+/// (`AiChatPanel.tsx` uses `MessageSquare`). Paths verified against the
+/// repo's installed `lucide-react@0.487.0`
+/// (`node_modules/lucide-react/dist/esm/icons/message-square.js`).
+pub(crate) static ICON_MESSAGE_SQUARE: rune::Icon = rune::Icon {
+    name: "message-square",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z\"/>",
+};
+/// T009-S3: lucide `wand-sparkles` (imported as `Wand2` in `AiChatPanel.tsx`;
+/// in `lucide-react@0.487.0` `wand-2.js` is an alias re-exporting
+/// `wand-sparkles.js`). Paths verified against that package.
+pub(crate) static ICON_WAND_SPARKLES: rune::Icon = rune::Icon {
+    name: "wand-sparkles",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m14 7 3 3\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5 6v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M19 14v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M10 2v2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M7 8H3\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 16h-4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M11 3H9\"/>",
+};
+/// T009-S3: lucide `history`, the session-history toggle glyph in
+/// `AiChatPanel` (`AiChatPanel.tsx` uses `History`). Paths verified against
+/// the repo's installed `lucide-react@0.487.0`
+/// (`node_modules/lucide-react/dist/esm/icons/history.js`).
+pub(crate) static ICON_HISTORY: rune::Icon = rune::Icon {
+    name: "history",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 3v5h5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 7v5l4 2\"/>",
+};
+/// T009-S3: lucide `shield`, the profile-row safety glyph in `AiChatPanel`
+/// (`AiChatPanel.tsx` uses `Shield`). Paths verified against the repo's
+/// installed `lucide-react@0.487.0`
+/// (`node_modules/lucide-react/dist/esm/icons/shield.js`).
+pub(crate) static ICON_SHIELD: rune::Icon = rune::Icon {
+    name: "shield",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\"/>",
+};
+/// T012: lucide `shield-alert`, the production-protected glyph in
+/// `AiWriteProposalHost` (`AiWriteProposalHost.tsx` uses `ShieldAlert`).
+/// Paths verified against the repo's installed `lucide-react@0.487.0`
+/// (`node_modules/lucide-react/dist/esm/icons/shield-alert.js`).
+pub(crate) static ICON_SHIELD_ALERT: rune::Icon = rune::Icon {
+    name: "shield-alert",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 8v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 16h.01\"/>",
+};
+/// T012: lucide `shield-check`, the unprotected glyph in
+/// `AiWriteProposalHost` (`AiWriteProposalHost.tsx` uses `ShieldCheck`).
+/// Paths verified against the repo's installed `lucide-react@0.487.0`
+/// (`node_modules/lucide-react/dist/esm/icons/shield-check.js`).
+pub(crate) static ICON_SHIELD_CHECK: rune::Icon = rune::Icon {
+    name: "shield-check",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m9 12 2 2 4-4\"/>",
+};
+/// T026-S2: lucide `hard-drive`, the group-header glyph in
+/// `BackupWindow` (`BackupWindow.tsx` uses `HardDrive`). Paths
+/// verified against the repo's installed `lucide-react@0.487.0`
+/// (`node_modules/lucide-react/dist/esm/icons/hard-drive.js`).
+pub(crate) static ICON_HARD_DRIVE: rune::Icon = rune::Icon {
+    name: "hard-drive",
+    view: 24.0,
+    body: "<line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"22\" x2=\"2\" y1=\"12\" y2=\"12\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"6\" x2=\"6.01\" y1=\"16\" y2=\"16\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"10\" x2=\"10.01\" y1=\"16\" y2=\"16\"/>",
+};
+/// T026-S2: lucide `triangle-alert`, the warning glyph in the
+/// restore confirm dialog (`ConfirmDialog` renders `AlertTriangle`
+/// for `kind: 'warning'`). Paths verified against the repo's
+/// installed `lucide-react@0.487.0`
+/// (`node_modules/lucide-react/dist/esm/icons/triangle-alert.js`).
+pub(crate) static ICON_ALERT_TRIANGLE: rune::Icon = rune::Icon {
+    name: "triangle-alert",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 9v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 17h.01\"/>",
+};
 pub(crate) static ICON_CHEVRON_LEFT: rune::Icon = rune::Icon {
     name: "chevron-left",
     view: 24.0,
@@ -160,10 +269,28 @@ pub(crate) static ICON_CHECK: rune::Icon = rune::Icon {
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 6 9 17l-5-5\"/>",
 };
+/// T177: the done step's own inline check glyph — `DoneStep.tsx` renders a
+/// hand-drawn 24-view check (`<path d="m4 12.5 5 5L20 6.5" />` at
+/// stroke-width 2.4), slightly bolder and lower-anchored than lucide's
+/// `check` above. Body verbatim from the React file (its own SVG, not a
+/// lucide icon).
+pub(crate) static ICON_DONE_CHECK: rune::Icon = rune::Icon {
+    name: "done-check",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2.4\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m4 12.5 5 5L20 6.5\"/>",
+};
 pub(crate) static ICON_STAR: rune::Icon = rune::Icon {
     name: "star",
     view: 24.0,
     body: "<polygon stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2\"/>",
+};
+/// T141: lucide `star` with `fill-current` — the model-profile list item's
+/// default badge renders `<Star className="h-2.5 w-2.5 fill-current" />`, the
+/// same 24-view outline with its polygon filled by the ink.
+pub(crate) static ICON_STAR_FILLED: rune::Icon = rune::Icon {
+    name: "star-filled",
+    view: 24.0,
+    body: "<polygon stroke=\"currentColor\" stroke-width=\"2\" fill=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2\"/>",
 };
 pub(crate) static ICON_EXTERNAL_LINK: rune::Icon = rune::Icon {
     name: "external-link",
@@ -175,6 +302,38 @@ pub(crate) static ICON_TRASH: rune::Icon = rune::Icon {
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 6h18\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"10\" x2=\"10\" y1=\"11\" y2=\"17\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"14\" x2=\"14\" y1=\"11\" y2=\"17\"/>",
 };
+// Lucide "pencil" 0.487.0 (T015's edit affordance, the registry addition of
+// that port; body data from the pinned lucide-static package).
+pub(crate) static ICON_PENCIL: rune::Icon = rune::Icon {
+    name: "pencil",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m15 5 4 4\"/>",
+};
+/// T107: lucide `settings-2`, the basic-tab glyph in `ModelProfileForm`
+/// (`ModelProfileForm.tsx` uses `Settings2`). Body from the pinned
+/// lucide-react@0.487.0 icon set.
+pub(crate) static ICON_SETTINGS_2: rune::Icon = rune::Icon {
+    name: "settings-2",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 7h-9\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M14 17H5\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"17\" cy=\"17\" r=\"3\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"7\" cy=\"7\" r=\"3\"/>",
+};
+/// T107: lucide `layers`, the enterprise-balanced preset glyph in
+/// `ModelProfileForm` (`ModelProfileForm.tsx` uses `Layers`). Body from the
+/// pinned lucide-react@0.487.0 icon set.
+pub(crate) static ICON_LAYERS: rune::Icon = rune::Icon {
+    name: "layers",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65\"/>",
+};
+/// T107: lucide `circle-check-big` (the icon React 0.487 exports as
+/// `CheckCircle2`), the validated badge in `ModelProfileForm` and the
+/// active mark in `ModelProfileListItem` (T141). Body from the pinned
+/// lucide-react@0.487.0 icon set.
+pub(crate) static ICON_CIRCLE_CHECK: rune::Icon = rune::Icon {
+    name: "circle-check-big",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21.801 10A10 10 0 1 1 17 3.335\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m9 11 3 3L22 4\"/>",
+};
 
 pub(crate) static ICON_LOADER2: rune::Icon = rune::Icon {
     name: "loader-2",
@@ -185,6 +344,15 @@ pub(crate) static ICON_RING_ARC: rune::Icon = rune::Icon {
     name: "spinner-ring-arc",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2.5\" fill=\"none\" stroke-linecap=\"round\" d=\"M12 3a9 9 0 1 1-9 9\"/>",
+};
+/// T009-S5: lucide `square`, the stop button glyph in `AiInput`
+/// (`AiInput.tsx` uses `Square`). The single rect is the whole icon;
+/// geometry verified against the lucide `square` icon (18×18 rect at
+/// 3,3 with rx 2, same rect the square-family icons share).
+pub(crate) static ICON_SQUARE: rune::Icon = rune::Icon {
+    name: "square",
+    view: 24.0,
+    body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/>",
 };
 
 // T019 (workflow result panel): the React panel's ⏭/⏱ status marks are text
@@ -199,11 +367,6 @@ pub(crate) static ICON_BAR_CHART_3: rune::Icon = rune::Icon {
     name: "bar-chart-3",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 3v18h18\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M18 17V9\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M13 17V5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M8 17v-3\"/>",
-};
-pub(crate) static ICON_ALERT_TRIANGLE: rune::Icon = rune::Icon {
-    name: "alert-triangle",
-    view: 24.0,
-    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 9v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 17h.01\"/>",
 };
 
 // T059 (chart toolbar/empty state): lucide-react 0.487.0 aliases the chart
@@ -239,6 +402,17 @@ pub(crate) static ICON_TRENDING_UP: rune::Icon = rune::Icon {
     view: 24.0,
     body: "<polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"22 7 13.5 15.5 8.5 10.5 2 17\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"16 7 22 7 22 13\"/>",
 };
+/// T060: lucide `code-2`, the language-label glyph in `AiCodeBlock`
+/// (`AiCodeBlock.tsx` uses `Code2`). The two chevrons are the whole icon;
+/// geometry verified against the lucide `code-2` icon (polylines
+/// `16 18 22 12 16 6` and `8 6 2 12 8 18`).
+pub(crate) static ICON_CODE: rune::Icon = rune::Icon {
+    name: "code-2",
+    view: 24.0,
+    body: "<polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"16 18 22 12 16 6\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"8 6 2 12 8 18\"/>",
+};
+/// T060: lucide `maximize-2`, the enter-fullscreen glyph in `AiCodeBlock`
+/// (`AiCodeBlock.tsx` uses `Maximize2`).
 pub(crate) static ICON_MAXIMIZE_2: rune::Icon = rune::Icon {
     name: "maximize-2",
     view: 24.0,
@@ -265,25 +439,6 @@ pub(crate) static ICON_ARROW_DOWN_UP: rune::Icon = rune::Icon {
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m3 16 4 4 4-4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M7 20V4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m21 8-4-4-4 4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M17 4v16\"/>",
 };
-pub(crate) static ICON_BOOK_OPEN: rune::Icon = rune::Icon {
-    // lucide-react 0.487.0 `BookOpen` (the docs-window button).
-    name: "book-open",
-    view: 24.0,
-    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 7v14\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z\"/>",
-};
-pub(crate) static ICON_HISTORY: rune::Icon = rune::Icon {
-    // lucide-react 0.487.0 `History` (the sidebar's history side tab).
-    name: "history",
-    view: 24.0,
-    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 3v5h5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 7v5l4 2\"/>",
-};
-pub(crate) static ICON_PENCIL: rune::Icon = rune::Icon {
-    // lucide-react 0.487.0 `Pencil` (the list rows' edit affordance and the
-    // edit panel's tab glyph).
-    name: "pencil",
-    view: 24.0,
-    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m15 5 4 4\"/>",
-};
 pub(crate) static ICON_TABLE_PROPERTIES: rune::Icon = rune::Icon {
     // lucide-react 0.487.0 `TableProperties` (the step detail's table-view
     // toggle glyph — the same icon the React page imports for it).
@@ -291,19 +446,84 @@ pub(crate) static ICON_TABLE_PROPERTIES: rune::Icon = rune::Icon {
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 3v18\"/><rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 9H3\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 15H3\"/>",
 };
-pub(crate) static ICON_WAND_SPARKLES: rune::Icon = rune::Icon {
-    // lucide-react 0.487.0 `Wand2` → `wand-sparkles` (the workflow rows' glyph,
-    // the run panels' tab mark and the empty state's wand).
-    name: "wand-sparkles",
-    view: 24.0,
-    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m14 7 3 3\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5 6v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M19 14v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M10 2v2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M7 8H3\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 16h-4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M11 3H9\"/>",
-};
 
 pub(crate) static ICON_PACKAGE_OPEN: rune::Icon = rune::Icon {
     // lucide-react 0.487.0's `PackageOpen` node (the wapps page's empty state).
     name: "package-open",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 22v-9\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15.17 2.21a1.67 1.67 0 0 1 1.63 0L21 4.57a1.93 1.93 0 0 1 0 3.36L8.82 14.79a1.655 1.655 0 0 1-1.64 0L3 12.43a1.93 1.93 0 0 1 0-3.36z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 13v3.87a2.06 2.06 0 0 1-1.11 1.83l-6 3.08a1.93 1.93 0 0 1-1.78 0l-6-3.08A2.06 2.06 0 0 1 4 16.87V13\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 12.43a1.93 1.93 0 0 0 0-3.36L8.83 2.2a1.64 1.64 0 0 0-1.63 0L3 4.57a1.93 1.93 0 0 0 0 3.36l12.18 6.86a1.636 1.636 0 0 0 1.63 0z\"/>",
+};
+
+/// T100: lucide `lightbulb`, the explain-error glyph in `QueryErrorPanel`
+/// (`QueryErrorPanel.tsx` uses `Lightbulb`). Paths verified against
+/// `lucide-static@0.487.0/icons/lightbulb.svg`.
+pub(crate) static ICON_LIGHTBULB: rune::Icon = rune::Icon {
+    name: "lightbulb",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9 18h6\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M10 22h4\"/>",
+};
+/// T100: lucide `rotate-ccw`, the retry glyph in `QueryErrorPanel`
+/// (`QueryErrorPanel.tsx` uses `RotateCcw`). Paths verified against
+/// `lucide-static@0.487.0/icons/rotate-ccw.svg`.
+pub(crate) static ICON_ROTATE_CCW: rune::Icon = rune::Icon {
+    name: "rotate-ccw",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 3v5h5\"/>",
+};
+/// T100: lucide `stethoscope`, the diagnose glyph in `QueryErrorPanel`
+/// (`QueryErrorPanel.tsx` uses `Stethoscope`). Paths verified against
+/// `lucide-static@0.487.0/icons/stethoscope.svg`.
+pub(crate) static ICON_STETHOSCOPE: rune::Icon = rune::Icon {
+    name: "stethoscope",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M11 2v2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5 2v2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5 3H4a2 2 0 0 0-2 2v4a6 6 0 0 0 12 0V5a2 2 0 0 0-2-2h-1\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M8 15a6 6 0 0 0 12 0v-3\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"20\" cy=\"10\" r=\"2\"/>",
+};
+
+/// T112: lucide `pause`, the monitor-pause glyph in the dashboard panel's
+/// toolbar (`DashboardPanel.tsx` uses `Pause`; `Play` above is its resume
+/// twin). Body verified against lucide-react 0.487.0's `pause` node (two
+/// rounded 4×16 bars at x=6 and x=14).
+pub(crate) static ICON_PAUSE: rune::Icon = rune::Icon {
+    name: "pause",
+    view: 24.0,
+    body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"4\" height=\"16\" x=\"6\" y=\"4\" rx=\"1\"/><rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"4\" height=\"16\" x=\"14\" y=\"4\" rx=\"1\"/>",
+};
+/// T112: lucide `upload`, the import glyph in the dashboard panel's tab-bar
+/// actions (`DashboardPanel.tsx` uses `Upload`; it is `download`'s mirror).
+pub(crate) static ICON_UPLOAD: rune::Icon = rune::Icon {
+    name: "upload",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"7 8 12 3 17 8\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"12\" x2=\"12\" y1=\"3\" y2=\"15\"/>",
+};
+
+/// T148: lucide `info`, the security-note glyph in the onboarding journey's
+/// AI provider step (`AiProviderStep.tsx` uses `Info`). Body verified
+/// against lucide-react 0.487.0's `info` node (a 10-radius circle with the
+/// stem and the dot of the "i").
+pub(crate) static ICON_INFO: rune::Icon = rune::Icon {
+    name: "info",
+    view: 24.0,
+    body: "<circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"12\" cy=\"12\" r=\"10\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 16v-4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 8h.01\"/>",
+};
+
+/// T247: lucide `arrow-right`, the trailing glyph on the onboarding journey's
+/// three S0 entry cards (`WelcomeStep.tsx` uses `ArrowRight`). Body verified
+/// against lucide-react 0.487.0's `arrow-right` (a west-east stem plus the
+/// east chevron).
+pub(crate) static ICON_ARROW_RIGHT: rune::Icon = rune::Icon {
+    name: "arrow-right",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5 12h14\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m12 5 7 7-7 7\"/>",
+};
+
+/// T247: lucide `flask-conical`, the sample-dataset glyph on the onboarding
+/// journey's third S0 entry card (`WelcomeStep.tsx` uses `FlaskConical`).
+/// Body verified against lucide-react 0.487.0's `flask-conical` (the conical
+/// flask outline, its fill line and the neck cap).
+pub(crate) static ICON_FLASK_CONICAL: rune::Icon = rune::Icon {
+    name: "flask-conical",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M6.453 15h11.094\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M8.5 2h7\"/>",
 };
 
 pub(crate) fn section_icon(section: Section) -> &'static rune::Icon {

@@ -20,10 +20,47 @@ use rune::{col, row, text, Color, Cx, El};
 use crate::ui::palette;
 use rune::{FileDialogOptions, TextEdit, Tx};
 
-pub(crate) fn page_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+// The windows/workspace subtree ports. One mod line per ported React file;
+// the workspace/ directory mirrors the React layout (WappIcon.tsx is its
+// first port — the manifest-icon-or-puzzle glyph the wapp page shell,
+// default cards, navigator and tab bar reuse).
+pub(crate) mod wapp_icon;
+// T067: the host-side shell around a sandboxed wapp page — the lazy entry
+// resolve with its per-wapp cache, the 10s load watchdog, the reload/retry
+// recovery and the loading/missing/ready body branches.
+pub(crate) mod wapp_page_shell;
+// T111: the workspace mode's default right-hand view — the wapp-page card
+// grid (icon well, title, description, version byline) and the empty
+// state's jump-to-extensions shortcut.
+pub(crate) mod workspace_default_cards;
+// T145: the workspace mode's left rail — one item per page contributed by
+// an enabled wapp (icon, title, description) with the active tab tinted,
+// and the empty state's jump-to-extensions escape hatch.
+pub(crate) mod workspace_navigator;
+// T174: the workspace tab strip — one entry per open wapp page tab (icon,
+// truncated title, hover-revealed close) with the active tab's accent
+// underline; renders nothing while no tab is open.
+pub(crate) mod workspace_tab_bar;
+// T200: the workspace mode's capstone layout — the navigator rail, the
+// resize seam, the tab strip over the default card grid or the stacked
+// preserved shells, plus the three host effects (the initial wapp load,
+// the external-refresh diff-close, the `wapps:open-page` deep link).
+pub(crate) mod workspace_view;
+// T224: the workspace pages derivation — the flattened enabled-wapp ×
+// contributed-page rows (install order, per-page title fallback) plus the
+// `wapps:open-page` event name/payload, the tab key builder and the
+// resolve-then-open `openWappPage` the navigator, cards and deep link share.
+pub(crate) mod workspace_pages;
+
+pub(crate) fn page_body(
+    state: &AppState,
+    theme: tok::Theme,
+    dark: bool,
+    layer: &mut Vec<El>,
+) -> El {
     match state.active {
         Section::Connections => connection_list(state, theme, dark),
-        Section::Workspace => workspace_body(state, theme, dark),
+        Section::Workspace => workspace_body(state, theme, dark, layer),
         Section::Settings => settings_page(state, theme, dark),
         Section::Tools => tools_page(state, theme, dark),
         Section::Dashboards => dashboards_page(state, theme, dark),
@@ -39,17 +76,41 @@ pub(crate) fn page_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
 /// The workspace is driven by the tabs: a query tab shows the SQL editor above the
 /// results, a loaded table page shows the grid, and anything else is an empty state.
 /// The old standalone editor and demo-grid sections are no longer product pages.
-pub(crate) fn workspace_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
-    if query_selected(state) {
-        return query_workspace(state, theme, dark);
+pub(crate) fn workspace_body(
+    state: &AppState,
+    theme: tok::Theme,
+    dark: bool,
+    layer: &mut Vec<El>,
+) -> El {
+    let content = if query_selected(state) {
+        query_workspace(state, theme, dark)
+    } else if let Some((database, schema)) = &state.er_schema {
+        er_view(state, database, schema, theme, dark)
+    } else if state.grid.has_page() {
+        table_workspace(state, theme, dark)
+    } else {
+        workspace_empty(theme)
+    };
+    if !state.ai_chat_open {
+        return content;
     }
-    if let Some((database, schema)) = &state.er_schema {
-        return er_view(state, database, schema, theme, dark);
-    }
-    if state.grid.has_page() {
-        return table_workspace(state, theme, dark);
-    }
-    workspace_empty(theme)
+    // T009-S7: the AI assistant aside (React `ContentViewDrawers`'s
+    // right-hand `<aside>`) rides beside the workspace content; the
+    // content takes the leftover width and the panel's header selects
+    // push their listboxes into the root-level `layer`.
+    row()
+        .key("workspace-with-ai-chat")
+        .w_full()
+        .h_full()
+        .child(
+            col()
+                .key("workspace-content")
+                .grow(1.0)
+                .min_w(0.0)
+                .min_h(0.0)
+                .child(content),
+        )
+        .child(ai_chat_aside(state, theme, dark, layer))
 }
 
 /// The ER page: one box per table of the open schema. Wide tables (more than 12

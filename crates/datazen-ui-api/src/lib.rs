@@ -626,6 +626,25 @@ pub trait DesktopAdapter {
     /// how many landed. One edit is (row, column name, new value).
     fn commit_cells(&mut self, table: &str, edits: &[(u32, String, String)]) -> Result<u32, String>;
 
+    /// The unified unbound driver-command entry (the frontend's
+    /// `execute_driver_command(driverType, …)` IPC): runs a driver command
+    /// that needs no connection session (ADB helpers over `sqlite`, and any
+    /// future driver command the commands layer routes the same way). The
+    /// default answers the fixed error; adapters with a live driver registry
+    /// dispatch by (driver_type, command) and answer the command's JSON
+    /// payload. Commands that declare a saveDialog return
+    /// `{ fileName, dataBase64 }` here — the host thin shell pops the native
+    /// dialog, writes the bytes and replaces the payload with
+    /// `{ savedPath }` (null when cancelled) before the caller sees it.
+    fn execute_driver_command(
+        &mut self,
+        _driver_type: &str,
+        _command: &str,
+        _input: &serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.to_string())
+    }
+
     /// Offer real work to the host. `true` = the host took the job and its
     /// answer arrives later through [`poll_jobs`](DesktopAdapter::poll_jobs);
     /// `false` = this adapter serves the synchronous methods only and the

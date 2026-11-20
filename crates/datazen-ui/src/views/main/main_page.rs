@@ -16,7 +16,7 @@
 //! |---|---|
 //! | `if (!connectionsLoaded) return null` | degenerate: the bootstrap consults the adapter before the first frame (`app.rs`'s `init_state` / `app_with_adapter` both run `sync_desktop_connections` at init), so no frame exists with the first load still in flight. The never-synced state keeps the memory port's list, exactly as `AppState::default()` always has. |
 //! | `connections.length === 0 && loadError` → the `main-load-error` screen with `main-load-retry` | [`main_load_failed`]: the store's list fetch failed with a real error ([`AppState::connections_load_error`], written by `sync_desktop_connections`) and the store's list is empty. The store keeps its previous list when a fetch fails — React's zustand `connectionStore` writes only the error on failure — so an empty list means the list never answered. |
-//! | `<ConnectionPage />` + the two dialog hosts + `RunningExecutionCloseHost` | [`main_shell_body`]: the titlebar, the rail + navigator + page row, the root modal layer (the two dialog hosts) and the running-execution close host's layer ([`running_execution_close_host`], ported in its own module). The failure branch mounts only the two dialog hosts — React's early return (`MainPage.tsx:112-133`) has no `RunningExecutionCloseHost`. |
+//! | `<ConnectionPage />` + the two dialog hosts + `RunningExecutionCloseHost` | [`connection_page`] composes the window shell (titlebar, rail, navigator, page body) and mounts the dialog layer at its root; this module appends [`running_execution_close_host`] beside it — React's three siblings (`MainPage.tsx:135-142`). The failure branch mounts only the two dialog hosts — React's early return (`MainPage.tsx:112-133`) has no `RunningExecutionCloseHost`. |
 //!
 //! The failure branch keeps the same chrome slot and the same two dialog
 //! hosts as React (`MainPage.tsx:115-131`): the titlebar names the app
@@ -41,10 +41,11 @@
 //!   T639.
 //! - `hideSplash(...)` — `lib/splash.ts` is T603; the Rune process owns no
 //!   splash layer to hide.
-//! - `ConnectionPage` itself is the partially-ported body (`windows/connection/
-//!   ConnectionPage.tsx` is T110, split) and the two dialog hosts are the
-//!   existing root modal layer (`views/modals.rs`; the React
-//!   `NewConnectionDialog` is T239 and `ConnectionShareDialogHost` is T167).
+//! - The two dialog hosts are the existing root modal layer (`views/modals.rs`;
+//!   the React `NewConnectionDialog` is T239 and `ConnectionShareDialogHost`
+//!   is T167). `ConnectionPage` itself is now ported (`T110`) in
+//!   `views/connection_page.rs` and mounted here, exactly where React renders
+//!   `<ConnectionPage />`; it is a sub-page, not the app root.
 //!
 //! ## Keys
 //!
@@ -62,10 +63,8 @@ use crate::types::Section;
 use crate::ui::kit::kit;
 use crate::ui::palette;
 use crate::views::{
-    content_status_bar, content_toolbar, modal_layer, navigator_panel, page_body, query_selected,
-    rail_view, running_execution_close_host, tab_strip,
+    connection_page, modal_layer, query_selected, running_execution_close_host,
 };
-use crate::splitter;
 use datazen_ui_api::Setting;
 use rune::tok::{self, type_};
 use rune::{col, row, text, Align, Cx, El};
@@ -86,55 +85,41 @@ pub(crate) fn main_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
     .unwrap_or(system_dark);
     let theme = tok::theme(dark);
 
-    let load_failed = main_load_failed(state);
-    // React's two chrome titles: the failure branch names the app
-    // (`t('menu.appName')`, `MainPage.tsx:116`); the healthy branch carries
-    // the connection page's `titleBarTitle` — the section label.
-    let title_label = if load_failed {
-        t("menu.appName").to_owned()
-    } else {
-        state.active.label().to_owned()
-    };
-    let titlebar = main_titlebar(dark, cx, title_label);
-    let body = if load_failed {
-        main_load_error_body(state, dark)
-    } else {
-        main_shell_body(state, theme, dark)
-    };
+    // React `MainPage.tsx:112-133`: the early return renders the chrome, the
+    // centered failure screen and the two connection dialog hosts — no
+    // `ConnectionPage` and no `RunningExecutionCloseHost`. The gate belongs to
+    // MainPage, not to the page it replaces, so it stays here.
+    if main_load_failed(state) {
+        let layer = modal_layer(state, theme, dark);
+        return col()
+            .key("datazen-root")
+            .w_full()
+            .h_full()
+            .fill(theme.bg)
+            .on_paste(|state: &mut AppState, text, _| {
+                if state.active == Section::Workspace
+                    && !query_selected(state)
+                    && state.grid.has_page()
+                    && state.grid.is_editable()
+                {
+                    state.grid.paste_tsv(text);
+                } else if query_selected(state) && state.sql.focused() {
+                    state.sql.insert(text);
+                }
+            })
+            .child(main_titlebar(dark, cx, t("menu.appName").to_owned()))
+            .child(main_load_error_body(state, dark))
+            .children(layer);
+    }
 
-    col()
-        .key("datazen-root")
-        .w_full()
-        .h_full()
-        .fill(theme.bg)
-        .on_paste(|state: &mut AppState, text, _| {
-            // T1: OS paste lands here when no platform text field is focused
-            // (the grid's inline editor and every plain input keep their own
-            // paste path). The editable table grid takes TSV at the focus
-            // cell; the focused editor takes the text.
-            if state.active == Section::Workspace
-                && !query_selected(state)
-                && state.grid.has_page()
-                && state.grid.is_editable()
-            {
-                state.grid.paste_tsv(text);
-            } else if query_selected(state) && state.sql.focused() {
-                state.sql.insert(text);
-            }
-        })
-        .child(titlebar)
-        .child(body)
-        .children(modal_layer(state, theme, dark))
-        // React's fourth fragment child (`MainPage.tsx:140`): the
-        // running-execution close host, after the two dialog hosts. The
-        // failure branch returns without it (`:112-133`), so it mounts only
-        // on the healthy branch — the load-error screen has no connection
-        // whose query could be running.
-        .children(if load_failed {
-            Vec::new()
-        } else {
-            running_execution_close_host(state, dark)
-        })
+    // React `MainPage.tsx:135-142`: `<ConnectionPage />` followed by the two
+    // connection dialog hosts and `RunningExecutionCloseHost`. Rune's T110
+    // `ConnectionPage` port composes the window shell and mounts the dialog
+    // layer at its own root; appending the close host there keeps a single
+    // `datazen-root` (no nested second window) and mounts that host exactly
+    // once, beside the dialogs — React's sibling order.
+    let page = connection_page(state, cx);
+    page.children(running_execution_close_host(state, dark))
 }
 
 /// React's load-failure gate (`MainPage.tsx:112`): an empty store list plus
@@ -242,47 +227,4 @@ fn main_load_error_body(state: &AppState, dark: bool) -> El {
         )
 }
 
-/// The healthy branch: React's `<ConnectionPage />` — the rail, navigator and
-/// page column the shell already composes, plus the root modal layer's two
-/// dialog hosts (mounted by [`main_page`]).
-fn main_shell_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
-    let rail = rail_view(state, dark);
-    let navigator = navigator_panel(state, theme, dark);
-    let nav_splitter = splitter::splitter_handle(
-        state,
-        NAVIGATOR_WIDTH_KEY,
-        splitter::SplitAxis::Vertical,
-        NAVIGATOR_WIDTH_MIN,
-        NAVIGATOR_WIDTH_MAX,
-        NAVIGATOR_WIDTH_DEFAULT,
-    );
 
-    let page = col()
-        .key("datazen-page")
-        .grow(1.0)
-        .min_w(0.0)
-        .h_full()
-        .px(24.0)
-        .py(24.0)
-        .gap(16.0)
-        .fill(theme.bg)
-        .child(content_toolbar(state, theme))
-        .child(if state.active == Section::Workspace {
-            tab_strip(state, theme)
-        } else {
-            row().key("tab-strip-absent").h(0.0)
-        })
-        .child(page_body(state, theme, dark))
-        .child(content_status_bar(state, theme));
-
-    row()
-        .key("datazen-body")
-        .w_full()
-        .grow(1.0)
-        .min_h(0.0)
-        .min_w(0.0)
-        .child(rail)
-        .child(navigator)
-        .child(nav_splitter)
-        .child(page)
-}

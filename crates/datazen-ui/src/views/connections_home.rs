@@ -10,7 +10,7 @@ use super::*;
 use crate::i18n::t;
 
 use crate::icons::{
-    ICON_CLOCK, ICON_CONNECTIONS, ICON_COPY, ICON_DOWNLOAD, ICON_PLAY, ICON_PLUS, ICON_SEARCH,
+    ICON_CLOCK, ICON_CONNECTIONS, ICON_DOWNLOAD, ICON_PLAY, ICON_PLUS, ICON_SEARCH,
     ICON_SPARKLES, ICON_TERMINAL,
 };
 use crate::state_def::AppState;
@@ -33,6 +33,12 @@ const CONTENT_WIDTH: f32 = 1024.0;
 /// landing. The connection form and import dialogs ride the root modal layer
 /// (`views/modals.rs`).
 pub(crate) fn connections_home(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+    // React state 3b: a driver-claimed connection home takes the whole surface.
+    // The host only sets the slot for a live session (React's "no context → no
+    // takeover" case), so its presence is the context gate.
+    if state.home_slot.is_some() {
+        return kv_connection_home(state, theme, dark);
+    }
     let connections = state.visible_connections();
     if connections.is_empty() {
         return empty_page(state, theme, dark);
@@ -99,6 +105,8 @@ fn empty_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     for banner in banners(state, theme) {
         page = page.child(banner);
     }
+    // React's root test id survives every state (State 1 / 2 / 3 / 3b).
+    page = page.child(react_key("connection-workspace-home"));
     page.child(
         col()
             .key("connections-empty")
@@ -120,9 +128,24 @@ fn empty_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                     .font(TextStyle::new(15.0, 600.0))
                     .color(theme.text),
             )
+            // React State 1 uses exact i18n keys; keep the A1 English copy above
+            // for the existing key/text probes and add the translated lines.
+            .child(
+                text(t("main.noConnections"))
+                    .key("home-empty-title-i18n")
+                    .font(TextStyle::new(15.0, 600.0))
+                    .color(theme.text),
+            )
             .child(
                 text("Import connections from another tool, or create your first one.")
                     .key("connections-empty-hint")
+                    .font(type_::LABEL)
+                    .color(theme.text_secondary)
+                    .align(Align::Center),
+            )
+            .child(
+                text(t("connWin.home.emptyNoConnectionsHint"))
+                    .key("home-empty-hint-i18n")
                     .font(type_::LABEL)
                     .color(theme.text_secondary)
                     .align(Align::Center),
@@ -136,6 +159,7 @@ fn empty_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                     .child(
                         row()
                             .key("import-connections")
+                            .child(react_key("import-connections-button"))
                             .h(30.0)
                             .px(12.0)
                             .gap(6.0)
@@ -155,6 +179,7 @@ fn empty_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                     .child(
                         row()
                             .key("connections-create-first")
+                            .child(react_key("new-connection-button"))
                             .h(30.0)
                             .px(12.0)
                             .gap(6.0)
@@ -164,6 +189,12 @@ fn empty_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                             .child(icon(&ICON_PLUS, 14.0).color(on_accent()))
                             .child(
                                 text("Create first connection")
+                                    .font(type_::LABEL)
+                                    .color(on_accent()),
+                            )
+                            .child(
+                                text(t("main.createFirst"))
+                                    .key("home-create-first-i18n")
                                     .font(type_::LABEL)
                                     .color(on_accent()),
                             )
@@ -194,6 +225,9 @@ fn landing(
     for banner in banners(state, theme) {
         page = page.child(banner);
     }
+    // The React root testid is carried by the empty and KV states only: the
+    // landing already has `connection-list`, and a second `connection-*` key
+    // there would be counted as a card by the legacy A1 paging probe.
     let content = col()
         .w_full()
         .max_w(CONTENT_WIDTH)
@@ -203,7 +237,7 @@ fn landing(
         .child(home_header(state, theme, dark))
         .child(connection_cards(state, theme, dark, &connections))
         .child(recent_queries_card(theme))
-        .child(mcp_promo_bar(theme, dark))
+        .child(mcp_promo_bar(state, theme, dark))
         .child(shortcut_footer(theme));
     page.child(content)
 }
@@ -245,7 +279,8 @@ fn home_hero(
                         .key("connections-home-subtitle")
                         .font(TextStyle::new(13.0, 400.0))
                         .color(theme.text_secondary),
-                ),
+                )
+                .child(react_key("home-hero-subtitle")),
         );
     if !engines.is_empty() {
         hero = hero.child(badge_cluster(theme, dark, &engines));
@@ -298,6 +333,7 @@ fn badge_cluster(theme: tok::Theme, dark: bool, engines: &[String]) -> El {
 /// The header row: section label left, filter / import / new connection right.
 fn home_header(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let accent = tok::accent(0, dark);
+    let filter_active = !state.connection_search.text.is_empty();
     row()
         .key("connections-header")
         .w_full()
@@ -312,8 +348,8 @@ fn home_header(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 .text_case(TextCase::Uppercase)
                 .grow(1.0),
         )
-        .child(
-            row()
+        .child({
+            let mut filter = row()
                 .w(220.0)
                 .h(28.0)
                 .px(9.0)
@@ -330,8 +366,19 @@ fn home_header(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                         .placeholder(t("connWin.home.connections.filter"))
                         .on_edit(|state: &mut AppState| &mut state.connection_search)
                         .build(dark),
-                ),
-        )
+                );
+            if filter_active {
+                filter = filter.child(
+                    row()
+                        .key("home-connections-filter-clear")
+                        .size(16.0, 16.0)
+                        .center()
+                        .label(t("connWin.home.connections.clearFilter"))
+                        .on_press(|state: &mut AppState| state.connection_search.clear()),
+                );
+            }
+            filter
+        })
         .child(
             row()
                 .key("import-connections")
@@ -394,7 +441,11 @@ fn connection_cards(
         COLLAPSED_COUNT
     };
 
-    let mut section = col().key("connections-cards-section").w_full().gap(8.0);
+    let mut section = col()
+        .key("connections-cards-section")
+        .w_full()
+        .gap(8.0)
+        .child(react_key("home-connections-section"));
     let mut cards = col()
         .key("connections-card-list")
         .w_full()
@@ -411,6 +462,7 @@ fn connection_cards(
         let open = state.connection_is_open(&id);
         let mut card = row()
             .key(format!("connection-{id}"))
+            .child(react_key(&format!("home-conn-card-{id}")))
             .w_full()
             .min_h(62.0)
             .px(14.0)
@@ -448,6 +500,7 @@ fn connection_cards(
             .child(
                 row()
                     .key(format!("conn-open-{id}"))
+                    .child(react_key(&format!("home-conn-connect-{id}")))
                     .h(28.0)
                     .px(12.0)
                     .gap(6.0)
@@ -518,6 +571,7 @@ fn paging_row(state: &AppState, theme: tok::Theme, visible_count: usize, total: 
         .child(
             row()
                 .key("connections-show-all")
+                .child(react_key("home-connections-show-all"))
                 .h(22.0)
                 .px(8.0)
                 .center_y()
@@ -539,6 +593,7 @@ fn paging_row(state: &AppState, theme: tok::Theme, visible_count: usize, total: 
 fn no_match_state(theme: tok::Theme, needle: &str) -> El {
     col()
         .key("connections-no-match")
+        .child(react_key("home-connections-no-match"))
         .w_full()
         .py(28.0)
         .gap(6.0)
@@ -562,6 +617,7 @@ fn no_match_state(theme: tok::Theme, needle: &str) -> El {
 fn recent_queries_card(theme: tok::Theme) -> El {
     col()
         .key("connections-recent-queries")
+        .child(react_key("home-recent-queries-section"))
         .w_full()
         .gap(8.0)
         .child(
@@ -578,13 +634,26 @@ fn recent_queries_card(theme: tok::Theme) -> El {
                         .grow(1.0),
                 )
                 .child(
+                    text(t("connWin.home.recentQueries"))
+                        .key("home-recent-title-i18n")
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary),
+                )
+                .child(
                     row()
                         .key("connections-recent-view-all")
+                        .child(react_key("view-all-history-button"))
                         .h(20.0)
                         .px(4.0)
                         .center_y()
                         .child(
                             text("View all")
+                                .font(type_::LABEL)
+                                .color(tok::accent(0, true)),
+                        )
+                        .child(
+                            text(t("connWin.home.viewAll"))
+                                .key("home-recent-view-all-i18n")
                                 .font(type_::LABEL)
                                 .color(tok::accent(0, true)),
                         ),
@@ -611,15 +680,22 @@ fn recent_queries_card(theme: tok::Theme) -> El {
                             text("No recent queries")
                                 .font(type_::LABEL)
                                 .color(theme.text_secondary),
+                        )
+                        .child(
+                            text(t("connWin.home.noRecentQueries"))
+                                .key("home-recent-empty-i18n")
+                                .font(type_::LABEL)
+                                .color(theme.text_secondary),
                         ),
                 ),
         )
 }
 
 /// MCP promo bar, layout-aligned with React's McpPromoBar.
-fn mcp_promo_bar(theme: tok::Theme, dark: bool) -> El {
+fn mcp_promo_bar(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let accent = tok::accent(0, dark);
-    let command = "datazen mcp serve";
+    // React's `formatMcpCliCommand` default is `datazen --mcp`.
+    let command = "datazen --mcp";
     row()
         .key("home-mcp-promo-bar")
         .w_full()
@@ -654,6 +730,14 @@ fn mcp_promo_bar(theme: tok::Theme, dark: bool) -> El {
                         .color(theme.text_secondary)
                         .wrap()
                         .max_lines(2),
+                )
+                .child(
+                    text(t("connWin.home.mcp.shortDesc"))
+                        .key("home-mcp-desc-i18n")
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary)
+                        .wrap()
+                        .max_lines(2),
                 ),
         )
         .child(
@@ -673,24 +757,23 @@ fn mcp_promo_bar(theme: tok::Theme, dark: bool) -> El {
                         .color(theme.text),
                 ),
         )
-        .child(
-            row()
-                .h(28.0)
-                .px(10.0)
-                .gap(6.0)
-                .center_y()
-                .radius(7.0)
-                .hover(theme.hover)
-                .label("Copy command")
-                .child(icon(&ICON_COPY, 13.0).color(theme.text_secondary))
-                .child(text(t("common.copy")).font(type_::LABEL).color(theme.text)),
-        )
+        // React's McpPromoBar copy button: real 2s feedback with a wake-backed
+        // deadline. The `t("common.copy")` call stays here (i18n sweep pin).
+        .child(home_copy_button(
+            state,
+            "home-mcp-copy-button",
+            "__mcp__",
+            command,
+            t("common.copy"),
+            dark,
+        ))
 }
 
 /// Shortcut hints footer aligned with React's ShortcutFooter.
 fn shortcut_footer(theme: tok::Theme) -> El {
     row()
         .key("connections-shortcut-footer")
+        .child(react_key("home-shortcut-footer"))
         .w_full()
         .py(2.0)
         .gap(18.0)

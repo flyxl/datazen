@@ -11,72 +11,72 @@
 - [x] T016 · windows/connection · 2.00d · windows/connection/BatchExportDialog.tsx · split
 - [x] T032 · lib/relationMetadata · 0.80d · lib/relationMetadata/metadataCache.ts
 - [x] T034 · lib/session · 0.90d · lib/session/counters.ts
-- [ ] T036 · lib/structureEditor · 0.90d · lib/structureEditor/buildStructureChangeRequest.ts lib/structureEditor/canOpenStructureEditor.ts lib/structureEditor/controlHints.ts
-- [ ] T045 · platform/web · 0.30d · platform/web/index.ts
-- [ ] T049 · ai · 0.80d · ai/grantState.ts
-- [ ] T053 · shell.ts · 0.90d · shell.ts
-- [ ] T056 · components/filter · 0.90d · components/filter/FilterConditionEditor.tsx
-- [ ] T059 · components/connection · 0.90d · components/connection/ConnectionAiNotes.tsx
+- [x] T036 · lib/structureEditor · 0.90d · lib/structureEditor/buildStructureChangeRequest.ts lib/structureEditor/canOpenStructureEditor.ts lib/structureEditor/controlHints.ts
+- [x] T045 · platform/web · 0.30d · platform/web/index.ts
+- [x] T049 · ai · 0.80d · ai/grantState.ts
+- [x] T053 · shell.ts · 0.90d · shell.ts
+- [x] T056 · components/filter · 0.90d · components/filter/FilterConditionEditor.tsx
+- [x] T059 · components/connection · 0.90d · components/connection/ConnectionAiNotes.tsx
 - [x] T062 · components/migration · 0.50d · components/migration/MigrationJobFailureNotice.tsx
-- [ ] T067 · windows/connection · 1.30d · windows/connection/ConnectionNavigatorTree.tsx · split
-- [ ] T081 · lib/relationMetadata · 0.90d · lib/relationMetadata/sessionConfig.ts lib/relationMetadata/types.ts lib/relationPrediction/fromRelationMetadata.ts
-- [ ] T083 · lib/session · 2.00d · lib/session/EditorSessionController.ts · split
-- [ ] T085 · lib/structureEditor · 0.90d · lib/structureEditor/ddlApplyWarnings.ts lib/structureEditor/draftDefaults.ts lib/structureEditor/draftIds.ts
-- [ ] T094 · platform/web · 0.90d · platform/web/stub.ts
-- [ ] T097 · ai · 2.00d · ai/sessionCancel.ts · split
+- [x] T067 · windows/connection · 1.30d · windows/connection/ConnectionNavigatorTree.tsx · split
+- [x] T081 · lib/relationMetadata · 0.90d · lib/relationMetadata/sessionConfig.ts lib/relationMetadata/types.ts lib/relationPrediction/fromRelationMetadata.ts
+- [x] T083 · lib/session · 2.00d · lib/session/EditorSessionController.ts · split
+- [x] T085 · lib/structureEditor · 0.90d · lib/structureEditor/ddlApplyWarnings.ts lib/structureEditor/draftDefaults.ts lib/structureEditor/draftIds.ts
+- [x] T094 · platform/web · 0.90d · platform/web/stub.ts
+- [x] T097 · ai · 2.00d · ai/sessionCancel.ts · split
 - [x] T100 · components/filter · 0.30d · components/filter/FilterConnectorToggle.tsx
-- [ ] T103 · components/connection · 1.00d · components/connection/ConnectionFormBody.tsx components/connection/ConnectionImportFields.tsx
-- [ ] T106 · components/migration · 1.30d · components/migration/MigrationJobVerdictPanel.tsx · split
-- [ ] T110 · windows/connection · 1.30d · windows/connection/ConnectionPage.tsx · split
-- [ ] T122 · lib/session · 0.90d · lib/session/ExecutionProjection.ts
-- [ ] T124 · lib/structureEditor · 0.90d · lib/structureEditor/isControlEnabled.ts lib/structureEditor/resolveCreateTableSchema.ts lib/structureEditor/schemaToDraft.ts
-- [ ] T133 · ai · 2.00d · ai/streamRegistry.ts · split
-- [ ] T135 · components/filter · 0.90d · components/filter/FilterSqlPreviewDialog.tsx
-- [ ] T137 · components/connection · 0.90d · components/connection/ConnectionShareDialog.tsx
-- [ ] T140 · components/migration · 0.90d · components/migration/MigrationRunHistoryDialog.tsx
-- [ ] T144 · windows/connection · 1.30d · windows/connection/ConnectionWorkspaceHome.tsx · split
-- [ ] T154 · lib/session · 0.30d · lib/session/pageUnload.ts
-- [ ] T156 · lib/structureEditor · 0.30d · lib/structureEditor/types.ts
-- [ ] T164 · ai · 2.00d · ai/targetClaim.ts · split
-- [ ] T166 · components/filter · 0.80d · components/filter/FilterTokenInput.tsx components/filter/FilterValueInput.tsx
-- [ ] T167 · components/connection · 0.90d · components/connection/ConnectionShareDialogHost.tsx
-- [ ] T173 · windows/connection · 0.80d · windows/connection/ContentStatusBar.tsx windows/connection/ContentToolbar.tsx
-- [ ] T183 · lib/session · 0.90d · lib/session/QueryPanelSession.ts
-- [ ] T192 · components/filter · 0.80d · components/filter/NamedViewMenu.tsx
-- [ ] T193 · components/connection · 0.90d · components/connection/FileConnectionFields.tsx
-- [ ] T199 · windows/connection · 1.30d · windows/connection/ContentView.tsx · split
-- [ ] T208 · lib/session · 0.90d · lib/session/queryPanelSessionRoot.ts
-- [ ] T216 · components/filter · 0.90d · components/filter/filterLabels.ts components/filter/filterValues.ts components/filter/types.ts
-- [ ] T217 · components/connection · 0.60d · components/connection/HttpProxyTunnelFields.tsx components/connection/IndexConnectionFields.tsx
-- [ ] T223 · windows/connection · 0.90d · windows/connection/ContentViewDialogs.tsx
-- [ ] T231 · lib/session · 0.30d · lib/session/runEditorExplain.ts
-- [ ] T239 · components/connection · 0.90d · components/connection/NewConnectionDialog.tsx
-- [ ] T245 · windows/connection · 1.30d · windows/connection/ContentViewDrawers.tsx · split
-- [ ] T252 · lib/session · 0.90d · lib/session/runEditorQuery.ts
-- [ ] T260 · components/connection · 0.90d · components/connection/ObjectFilterDialog.tsx components/connection/SaveTunnelDialog.tsx components/connection/shared.tsx
-- [ ] T266 · windows/connection · 0.60d · windows/connection/CreateDatabaseDialog.tsx windows/connection/CreateSchemaDialog.tsx
-- [ ] T273 · lib/session · 0.90d · lib/session/sessionPrompts.ts
-- [ ] T281 · components/connection · 0.80d · components/connection/SshTunnelFields.tsx components/connection/StandardConnectionFields.tsx
-- [ ] T286 · windows/connection · 0.90d · windows/connection/CreateUserDialog.tsx
-- [ ] T292 · lib/session · 0.90d · lib/session/tableSession.ts
-- [ ] T300 · components/connection · 0.80d · components/connection/WebSocketTunnelFields.tsx components/chart/AxisConfigurator.tsx
-- [ ] T305 · windows/connection · 0.90d · windows/connection/DatabaseObjectView.tsx
-- [ ] T311 · lib/session · 0.90d · lib/session/targetCommand.ts
-- [ ] T318 · components/connection · 0.60d · components/connection/tunnelFieldContracts.ts components/connection/useConnectionClipboardFill.ts
-- [ ] T322 · windows/connection · 0.50d · windows/connection/DDLView.tsx
-- [ ] T327 · lib/session · 0.60d · lib/session/targetCommandPhase.ts lib/settingsExport.ts
-- [ ] T333 · components/connection · 1.30d · components/connection/useConnectionForm.ts · split
-- [ ] T337 · windows/connection · 3.60d · windows/connection/DocumentConnectionView.tsx · split
-- [ ] T346 · components/connection · 0.90d · components/connection/useConnectionImport.ts
-- [ ] T349 · windows/connection · 0.30d · windows/connection/er/ErRelationLegend.tsx
-- [ ] T358 · components/connection · 1.30d · components/connection/useTunnelFormState.ts · split
-- [ ] T361 · windows/connection · 2.00d · windows/connection/er/TableNode.tsx · split
-- [ ] T372 · windows/connection · 2.20d · windows/connection/ErDiagramView.tsx · split
-- [ ] T382 · windows/connection · 0.50d · windows/connection/ExecuteSqlFileDialog.tsx
-- [ ] T391 · windows/connection · 1.30d · windows/connection/ExportDialog.tsx · split
-- [ ] T400 · windows/connection · 0.90d · windows/connection/ForeignKeysView.tsx
-- [ ] T409 · windows/connection · 0.90d · windows/connection/home/ConnectionCardList.tsx
-- [ ] T418 · windows/connection · 0.60d · windows/connection/home/HomeHero.tsx windows/connection/home/McpPromoBar.tsx
+- [x] T103 · components/connection · 1.00d · components/connection/ConnectionFormBody.tsx components/connection/ConnectionImportFields.tsx
+- [x] T106 · components/migration · 1.30d · components/migration/MigrationJobVerdictPanel.tsx · split
+- [x] T110 · windows/connection · 1.30d · windows/connection/ConnectionPage.tsx · split
+- [x] T122 · lib/session · 0.90d · lib/session/ExecutionProjection.ts
+- [x] T124 · lib/structureEditor · 0.90d · lib/structureEditor/isControlEnabled.ts lib/structureEditor/resolveCreateTableSchema.ts lib/structureEditor/schemaToDraft.ts
+- [x] T133 · ai · 2.00d · ai/streamRegistry.ts · split
+- [x] T135 · components/filter · 0.90d · components/filter/FilterSqlPreviewDialog.tsx
+- [x] T137 · components/connection · 0.90d · components/connection/ConnectionShareDialog.tsx
+- [x] T140 · components/migration · 0.90d · components/migration/MigrationRunHistoryDialog.tsx
+- [x] T144 · windows/connection · 1.30d · windows/connection/ConnectionWorkspaceHome.tsx · split
+- [x] T154 · lib/session · 0.30d · lib/session/pageUnload.ts
+- [x] T156 · lib/structureEditor · 0.30d · lib/structureEditor/types.ts
+- [x] T164 · ai · 2.00d · ai/targetClaim.ts · split
+- [x] T166 · components/filter · 0.80d · components/filter/FilterTokenInput.tsx components/filter/FilterValueInput.tsx
+- [x] T167 · components/connection · 0.90d · components/connection/ConnectionShareDialogHost.tsx
+- [x] T173 · windows/connection · 0.80d · windows/connection/ContentStatusBar.tsx windows/connection/ContentToolbar.tsx
+- [x] T183 · lib/session · 0.90d · lib/session/QueryPanelSession.ts
+- [x] T192 · components/filter · 0.80d · components/filter/NamedViewMenu.tsx
+- [x] T193 · components/connection · 0.90d · components/connection/FileConnectionFields.tsx
+- [x] T199 · windows/connection · 1.30d · windows/connection/ContentView.tsx · split
+- [x] T208 · lib/session · 0.90d · lib/session/queryPanelSessionRoot.ts
+- [x] T216 · components/filter · 0.90d · components/filter/filterLabels.ts components/filter/filterValues.ts components/filter/types.ts
+- [x] T217 · components/connection · 0.60d · components/connection/HttpProxyTunnelFields.tsx components/connection/IndexConnectionFields.tsx
+- [x] T223 · windows/connection · 0.90d · windows/connection/ContentViewDialogs.tsx
+- [x] T231 · lib/session · 0.30d · lib/session/runEditorExplain.ts
+- [x] T239 · components/connection · 0.90d · components/connection/NewConnectionDialog.tsx
+- [x] T245 · windows/connection · 1.30d · windows/connection/ContentViewDrawers.tsx · split
+- [x] T252 · lib/session · 0.90d · lib/session/runEditorQuery.ts
+- [x] T260 · components/connection · 0.90d · components/connection/ObjectFilterDialog.tsx components/connection/SaveTunnelDialog.tsx components/connection/shared.tsx
+- [x] T266 · windows/connection · 0.60d · windows/connection/CreateDatabaseDialog.tsx windows/connection/CreateSchemaDialog.tsx
+- [x] T273 · lib/session · 0.90d · lib/session/sessionPrompts.ts
+- [x] T281 · components/connection · 0.80d · components/connection/SshTunnelFields.tsx components/connection/StandardConnectionFields.tsx
+- [x] T286 · windows/connection · 0.90d · windows/connection/CreateUserDialog.tsx
+- [x] T292 · lib/session · 0.90d · lib/session/tableSession.ts
+- [x] T300 · components/connection · 0.80d · components/connection/WebSocketTunnelFields.tsx components/chart/AxisConfigurator.tsx
+- [x] T305 · windows/connection · 0.90d · windows/connection/DatabaseObjectView.tsx
+- [x] T311 · lib/session · 0.90d · lib/session/targetCommand.ts
+- [x] T318 · components/connection · 0.60d · components/connection/tunnelFieldContracts.ts components/connection/useConnectionClipboardFill.ts
+- [x] T322 · windows/connection · 0.50d · windows/connection/DDLView.tsx
+- [x] T327 · lib/session · 0.60d · lib/session/targetCommandPhase.ts lib/settingsExport.ts
+- [x] T333 · components/connection · 1.30d · components/connection/useConnectionForm.ts · split
+- [x] T337 · windows/connection · 3.60d · windows/connection/DocumentConnectionView.tsx · split
+- [x] T346 · components/connection · 0.90d · components/connection/useConnectionImport.ts
+- [x] T349 · windows/connection · 0.30d · windows/connection/er/ErRelationLegend.tsx
+- [x] T358 · components/connection · 1.30d · components/connection/useTunnelFormState.ts · split
+- [x] T361 · windows/connection · 2.00d · windows/connection/er/TableNode.tsx · split
+- [x] T372 · windows/connection · 2.20d · windows/connection/ErDiagramView.tsx · split
+- [x] T382 · windows/connection · 0.50d · windows/connection/ExecuteSqlFileDialog.tsx
+- [x] T391 · windows/connection · 1.30d · windows/connection/ExportDialog.tsx · split
+- [x] T400 · windows/connection · 0.90d · windows/connection/ForeignKeysView.tsx
+- [x] T409 · windows/connection · 0.90d · windows/connection/home/ConnectionCardList.tsx
+- [x] T418 · windows/connection · 0.60d · windows/connection/home/HomeHero.tsx windows/connection/home/McpPromoBar.tsx
 - [ ] T427 · windows/connection · 0.50d · windows/connection/home/RecentQueriesList.tsx
 - [ ] T435 · windows/connection · 0.90d · windows/connection/home/ShortcutFooter.tsx
 - [ ] T442 · windows/connection · 3.70d · windows/connection/ImportDialog.tsx · split

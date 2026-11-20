@@ -307,8 +307,20 @@ pub(crate) fn extract_step_column_names(result: &Value) -> Vec<StepColumn> {
 pub(crate) fn step_to_statement_result(step: &StepExecutionResult) -> Option<StatementResult> {
     // React: `const r = step.result; if (!r?.rows) return null`.
     let result = step.result.as_ref()?;
-    let raw_rows = result.get("rows")?.as_array()?;
-    let cols = extract_step_column_names(result);
+    // A host may deliver the statement result nested under `rows` (the
+    // `{ rows: [...], rows_count }` shape), instead of putting its array
+    // directly in `result.rows`. Accept both: the nested object becomes the
+    // view we read columns, rows and the reported count from.
+    let rows_slot = result.get("rows")?;
+    let view = if rows_slot.is_array() {
+        result
+    } else if rows_slot.is_object() {
+        rows_slot
+    } else {
+        return None;
+    };
+    let raw_rows = view.get("rows")?.as_array()?;
+    let cols = extract_step_column_names(view);
     if cols.is_empty() {
         return None;
     }
@@ -334,7 +346,7 @@ pub(crate) fn step_to_statement_result(step: &StepExecutionResult) -> Option<Sta
         columns,
         rows: statement_rows(raw_rows, &cols)?,
         // React: `(r.execution_time_ms as number) ?? step.executionTimeMs`.
-        execution_time_ms: result
+        execution_time_ms: view
             .get("execution_time_ms")
             .and_then(Value::as_u64)
             .unwrap_or(step.execution_time_ms),
@@ -393,10 +405,16 @@ fn statement_rows(raw_rows: &[Value], cols: &[StepColumn]) -> Option<Vec<Vec<Opt
 /// the count is read here, not carried by the statement result.
 pub(crate) fn step_to_statement_preview(step: &StepExecutionResult) -> Option<StatementPreview> {
     let statement = step_to_statement_result(step)?;
+    // A nested `{ rows: [...], rows_count }` host shape keeps the count on
+    // the `rows` object; the flat shape keeps it on `result`. Read both.
     let rows_count = step
         .result
         .as_ref()
-        .and_then(|result| result.get("rows_count"))
+        .and_then(|result| {
+            result
+                .get("rows")
+                .and_then(|slot| if slot.is_object() { slot.get("rows_count") } else { result.get("rows_count") })
+        })
         .and_then(Value::as_u64)
         .map_or_else(|| statement.rows.len(), |count| count as usize);
     Some(StatementPreview {

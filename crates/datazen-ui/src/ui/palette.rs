@@ -299,6 +299,98 @@ pub(crate) fn danger_text(dark: bool) -> Color {
     c.danger.fg
 }
 
+/// Dashboard tile alert glyph (T069, `ChartWidgetTile.tsx`'s
+/// `text-amber-500` on the fired-alert triangle). Tailwind amber-500
+/// (oklch 0.769 0.164 70.08) verbatim — the same hue `ai_amber_border`
+/// carries at 30%.
+pub(crate) fn alert_amber(_dark: bool) -> Color {
+    // kit 无对应 token: dashboard alert amber
+    rune::oklch(0.769, 0.164, 70.08)
+}
+
+/// Dashboard tile run-timeout ink (T069, `ChartWidgetTile.tsx`'s
+/// `text-amber-400` on the timeout line). Tailwind amber-400
+/// (oklch 0.828 0.189 84.429) verbatim.
+pub(crate) fn timeout_amber(_dark: bool) -> Color {
+    // kit 无对应 token: dashboard timeout amber
+    rune::oklch(0.828, 0.189, 84.429)
+}
+
+/// Run-history ok-status ink (T175, `RunHistoryDrawer.tsx`'s
+/// `text-emerald-500` on an ok index entry — the `statusClass` table's ok
+/// arm). Tailwind emerald-500 (oklch 0.696 0.17 162.48) verbatim, the
+/// sibling of the tile's `alert_amber` / `timeout_amber`.
+pub(crate) fn run_ok_emerald(_dark: bool) -> Color {
+    // kit 无对应 token: dashboard run-status emerald
+    rune::oklch(0.696, 0.17, 162.48)
+}
+
+/// AI profile shield tint per safety preset (T009-S3, `AiChatPanel.tsx`:
+/// `text-emerald-400` / `text-amber-400` / `text-blue-400`). Exact Tailwind
+/// sRGB values, so the laid-out shield reports the same hue React paints.
+pub(crate) fn ai_shield_local_trust(_dark: bool) -> Color {
+    rune::color::hex("#34d399").unwrap_or(Color::WHITE)
+}
+
+pub(crate) fn ai_shield_enterprise_balanced(_dark: bool) -> Color {
+    rune::color::hex("#fbbf24").unwrap_or(Color::WHITE)
+}
+
+pub(crate) fn ai_shield_cloud_strict(_dark: bool) -> Color {
+    rune::color::hex("#60a5fa").unwrap_or(Color::WHITE)
+}
+
+/// AI input-area amber (T009-S5): the egress notice and the draft-conflict
+/// bar use Tailwind's amber-500 / amber-200 verbatim (`AiEgressNotice.tsx`
+/// and `AiChatPanel.tsx:900` — `border-amber-500/30 bg-amber-500/10
+/// text-amber-200`), as oklch literals in this module only. The database
+/// line is the same amber-200 text at 70% opacity, applied by the caller
+/// through `kit.alpha`.
+pub(crate) fn ai_amber_border(_dark: bool) -> Color {
+    // Tailwind amber-500 (oklch 0.769 0.164 70.08) at 30% — `/30`.
+    rune::oklcha(0.769, 0.164, 70.08, 0.30)
+}
+
+pub(crate) fn ai_amber_fill(_dark: bool) -> Color {
+    // Tailwind amber-500 at 10% — `/10`.
+    rune::oklcha(0.769, 0.164, 70.08, 0.10)
+}
+
+pub(crate) fn ai_amber_text(_dark: bool) -> Color {
+    // Tailwind amber-200 (oklch 0.924 0.12 95.08).
+    rune::oklch(0.924, 0.12, 95.08)
+}
+
+/// AI preset-button borders (T107, `ModelProfileForm.tsx`'s safety-preset
+/// buttons: `border-blue-500` / `border-amber-500` / `border-emerald-500`).
+/// Exact Tailwind sRGB values so the active preset reports the hue React
+/// paints; the `-400` label inks are the `ai_shield_*` helpers above.
+pub(crate) fn ai_preset_blue_border(_dark: bool) -> Color {
+    rune::color::hex("#3b82f6").unwrap_or(Color::WHITE)
+}
+
+pub(crate) fn ai_preset_amber_border(_dark: bool) -> Color {
+    rune::color::hex("#f59e0b").unwrap_or(Color::WHITE)
+}
+
+pub(crate) fn ai_preset_emerald_border(_dark: bool) -> Color {
+    rune::color::hex("#10b981").unwrap_or(Color::WHITE)
+}
+
+/// AI preset-badge purple (T141, `ModelProfileListItem.tsx`'s custom-preset
+/// badge: `bg-purple-500/10` — the 500-hue fill the other three presets
+/// take from the `ai_preset_*_border` helpers above, at 10% via `Kit::alpha`).
+pub(crate) fn ai_preset_purple_border(_dark: bool) -> Color {
+    rune::color::hex("#a855f7").unwrap_or(Color::WHITE)
+}
+
+/// The custom-preset badge's purple-400 ink (T141, `text-purple-400`), the
+/// `ai_shield_*` naming of the T009-S3/T107 400-hue label inks.
+pub(crate) fn ai_shield_custom(_dark: bool) -> Color {
+    rune::color::hex("#c084fc").unwrap_or(Color::WHITE)
+}
+
+
 /// ER diagram box background.
 pub(crate) fn er_box_fill(dark: bool) -> Color {
     if dark {
@@ -307,5 +399,56 @@ pub(crate) fn er_box_fill(dark: bool) -> Color {
     } else {
         // kit 无对应 token: ER box surface
         rune::oklch(0.96, 0.01, 250.0)
+    }
+}
+
+/// The onboarding brand sidebar's fixed dark vertical gradient (React
+/// `linear-gradient(180deg,#0e131c,#0a0e15)` — an always-dark brand anchor
+/// regardless of the app theme), as `(top, bottom)`.
+pub(crate) fn brand_sidebar_gradient() -> (Color, Color) {
+    // kit 无对应 token: brand sidebar anchor #0e131c / #0a0e15
+    (rune::oklch(0.186, 0.020, 262.0), rune::oklch(0.163, 0.016, 262.0))
+}
+
+/// The brand sidebar's radial accent tint (React
+/// `rgba(79,195,247,0.13)` — #4fc3f7 at 13% — fading to transparent at 55%,
+/// centred on the sidebar's top-left corner).
+pub(crate) fn brand_sidebar_radial_tint() -> Color {
+    // kit 无对应 token: brand radial tint #4fc3f7 @ 13%
+    rune::oklcha(0.773, 0.127, 231.0, 0.13)
+}
+
+/// The onboarding S0 entry cards' dark-mode vertical gradient
+/// (`WelcomeStep.tsx`'s `dark:bg-[linear-gradient(180deg,#121824,#0f131c)]`;
+/// the light theme paints the flat `bg-surface` instead), as `(top, bottom)`.
+/// React's opaque `bg-edge` surface (themes.css `--c-edge`: the future
+/// step-dot pin and other solid edge fills — NOT the kit's translucent
+/// border ink).
+pub(crate) fn edge_solid(dark: bool) -> Color {
+    if dark {
+        rune::color::hex("#1e2534").unwrap_or(Color::WHITE)
+    } else {
+        rune::color::hex("#e1e8f1").unwrap_or(Color::WHITE)
+    }
+}
+
+pub(crate) fn welcome_card_gradient() -> (Color, Color) {
+    // kit 无对应 token: the entry cards' dark pair #121824 / #0f131c
+    (
+        rune::color::hex("#121824").unwrap_or(Color::BLACK),
+        rune::color::hex("#0f131c").unwrap_or(Color::BLACK),
+    )
+}
+
+/// The onboarding S0 entry cards' hover fill: dark is React's
+/// `dark:hover:bg-[#141a26]`, light is `hover:bg-accent-dim` — the
+/// `--c-accent-dim` token, #4fc3f7 at 12%.
+pub(crate) fn welcome_card_hover(dark: bool) -> Color {
+    if dark {
+        // kit 无对应 token: the entry cards' dark hover #141a26
+        rune::color::hex("#141a26").unwrap_or(Color::BLACK)
+    } else {
+        // kit 无对应 token: bg-accent-dim = #4fc3f7 @ 12%
+        rune::color::hex("#4fc3f7").unwrap_or(Color::WHITE).alpha(0.12)
     }
 }

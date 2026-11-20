@@ -58,9 +58,11 @@ pub(crate) struct TextField<'a> {
     placeholder: Option<String>,
     ink: Option<Color>,
     secure: bool,
-    disabled: bool,
     label: Option<String>,
     bound: bool,
+    /// A disabled field keeps its box and text but cannot take a caret. Used by
+    /// forms that disable an input while an async action is in flight.
+    disabled: bool,
     on_edit_act: Option<Box<dyn FnOnce(rune_kit::TextInput) -> rune_kit::TextInput>>,
     on_submit_act: Option<Box<dyn FnOnce(rune_kit::TextInput) -> rune_kit::TextInput>>,
     on_key_act: Option<Box<dyn FnOnce(rune_kit::TextInput) -> rune_kit::TextInput>>,
@@ -90,9 +92,9 @@ impl<'a> TextField<'a> {
             placeholder: None,
             ink: None,
             secure: false,
-            disabled: false,
             label: None,
             bound: false,
+            disabled: false,
             on_edit_act: None,
             on_submit_act: None,
             on_key_act: None,
@@ -189,7 +191,8 @@ impl<'a> TextField<'a> {
 
     /// Refuse input and focus (React's `disabled`): the box is neither a
     /// tab stop nor editable and dims. T070's workflow form disables the id
-    /// field while editing a saved workflow.
+    /// field while editing a saved workflow. T023-S1's column-mapping rows
+    /// also honour it; the kit renders the disabled state and takes no caret.
     pub(crate) fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
@@ -252,7 +255,10 @@ impl<'a> TextField<'a> {
         // Rune focuses a text box only when it can reach the `TextEdit` it
         // edits (`can_focus` asks the input for its accessor), and that comes
         // from `on_edit`: a field without it never takes a caret.
-        debug_assert!(self.bound, "a text field without on_edit cannot take focus");
+        debug_assert!(
+            self.bound || self.disabled,
+            "a text field without on_edit cannot take focus"
+        );
 
         // A caller-specified ink colour must reach the editor text; kit's
         // TextInput owns the inner element colour, so use the direct
@@ -275,10 +281,8 @@ impl<'a> TextField<'a> {
         let mut ti = rune_kit::TextInput::new(self.edit)
             .text_style(self.style)
             .height(self.height)
-            .width(self.width);
-        if self.disabled {
-            ti = ti.disabled(true);
-        }
+            .width(self.width)
+            .disabled(self.disabled);
         if embedded {
             ti = ti.plain();
         }
@@ -291,19 +295,27 @@ impl<'a> TextField<'a> {
         if let Some(label) = self.label {
             ti = ti.label(label);
         }
-        if let Some(act) = self.on_edit_act {
-            ti = act(ti);
-        }
-        if let Some(act) = self.on_submit_act {
-            ti = act(ti);
-        }
-        if let Some(act) = self.on_key_act {
-            ti = act(ti);
+        // A disabled field must not bind `on_edit`: that accessor is what makes
+        // a rune text box focusable, so leaving it on would keep a "disabled"
+        // field editable from the keyboard.
+        if !self.disabled {
+            if let Some(act) = self.on_edit_act {
+                ti = act(ti);
+            }
+            if let Some(act) = self.on_submit_act {
+                ti = act(ti);
+            }
+            if let Some(act) = self.on_key_act {
+                ti = act(ti);
+            }
         }
         if let Some(act) = self.on_change_act {
             ti = act(ti);
         }
         let mut e = ti.build(k).key(self.key);
+        if self.disabled {
+            e = e.disabled(true);
+        }
 
         // Kit gives a default shell; callers' explicit chrome wins. For a
         // plain/embedded field there is no shell to fight, so only the
@@ -342,6 +354,7 @@ impl<'a> TextField<'a> {
             .grow(1.0)
             .shrink()
             .min_w(0.0)
+            .disabled(self.disabled)
             .single_line();
         if let Some(text) = self.placeholder {
             // No caller-specified placeholder colour in the kit-delegated
@@ -358,14 +371,16 @@ impl<'a> TextField<'a> {
         if let Some(label) = self.label {
             input = input.label(label);
         }
-        if let Some(act) = self.on_edit_el {
-            input = act(input);
-        }
-        if let Some(act) = self.on_submit_el {
-            input = act(input);
-        }
-        if let Some(act) = self.on_key_el {
-            input = act(input);
+        if !self.disabled {
+            if let Some(act) = self.on_edit_el {
+                input = act(input);
+            }
+            if let Some(act) = self.on_submit_el {
+                input = act(input);
+            }
+            if let Some(act) = self.on_key_el {
+                input = act(input);
+            }
         }
         if let Some(act) = self.on_change_el {
             input = act(input);
@@ -406,6 +421,9 @@ impl<'a> TextField<'a> {
         }
         if let Some((width, color)) = self.border {
             e = e.border(width, color);
+        }
+        if self.disabled {
+            e = e.disabled(true);
         }
         e
     }

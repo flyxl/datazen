@@ -1,25 +1,57 @@
 //! Root view and application bootstrap.
+//!
+//! Port of `@datazen/frontend/app` (`packages/frontend/src/app.ts`, T049).
+//! That file is a one-line barrel — it only re-exports `startSharedApp` and
+//! `StartSharedAppOptions` from `./bootstrap/startSharedApp` — and it is
+//! separate from the light `.` entry on purpose: `startSharedApp` transitively
+//! owns the whole shared app graph (App, stores, PRO host-module table,
+//! global CSS), while the desktop platform adapters consume only the light
+//! surface (ports, contracts, capability bits). Keeping the bootstrap out of
+//! `.` means a light consumer's test graph never has to know the app graph
+//! exists. The same split holds here: the launch surface below is re-exported
+//! at the crate root and nothing else in the crate needs it to render.
+//!
+//! The barrel dissolves into this module (an X-category pure re-export shell
+//! — there is no `bootstrap` module to forward to yet):
+//!
+//! * `startSharedApp` itself has **no** Rune equivalent yet. Its port is
+//!   T047 (`bootstrap/startSharedApp.tsx`, segment-4, split): the settings
+//!   preload, locale/icon/PRO init, E2E store bridge and React-root mounting
+//!   it performs do not exist in Rune. Do not invent a `start_shared_app`
+//!   here; when T047 lands, this doc points at it.
+//! * `StartSharedAppOptions` likewise arrives with T047. Its host half
+//!   already exists in another shape: `configureHost` (backend binding,
+//!   platform port injection, chrome registration) is the host building a
+//!   [`datazen_ui_api::DesktopAdapter`] and handing it to
+//!   [`run_with_adapter`] / [`app_with_adapter`]; `onSettingsPreloaded`
+//!   (the settings preload settling before first paint) is T047's bootstrap
+//!   step, not a launch-surface option.
+//! * The crate-root re-exports in `lib.rs` (`run`, `run_with_adapter`,
+//!   `app_with_adapter`) are this barrel's Rune counterpart: the shared-app
+//!   launch surface, kept apart from the light port/contract surface.
 
 use crate::constants::{APP_FONTS, APP_FONT_FAMILIES};
 use crate::state_def::AppState;
 use crate::types::Section;
 use crate::sql_editor;
-use crate::views::{self, query_selected};
+use crate::views::query_selected;
 
-use datazen_ui_api::UnimplementedAdapter;
 #[cfg(not(target_arch = "wasm32"))]
 use datazen_ui_api::UseCaseAdapter;
 use datazen_ui_api::DesktopAdapter;
 use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, Titlebar, Tx};
 
-/// The app's single view entry: the root component (T051, React `App.tsx`) —
-/// the window router the host's one window is handed through. The router
-/// composes the main window's root (T020) directly; the layers React wraps
-/// it in (lazy/Suspense, the error boundary, the global hosts) are the
-/// documented seams in `views/app_root.rs`.
+/// The app's one view entry is the root router (React `App.tsx`: `App` →
+/// `WindowContent` → `MainPage`). The router's reachable arm composes
+/// `MainPage`, which mounts the T110 `ConnectionPage` port as its sub-page
+/// together with the connection dialog hosts and the running-execution close
+/// host. `ConnectionPage` is *not* the app root: React's `MainPage.tsx:137`
+/// renders `<ConnectionPage />` beside those hosts, and owns the load-failure
+/// branch the router has to be able to show.
 pub(crate) fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
-    views::app_root(state, cx)
+    crate::views::app_root(state, cx)
 }
+
 
 /// The app's window chrome (L3): self-drawn 40pt titlebar and a minimum size
 /// aligned with the React/Tauri main window.
@@ -66,12 +98,7 @@ pub fn app_with_adapter(adapter: Box<dyn DesktopAdapter>) -> App<AppState> {
     .titlebar(Titlebar::new(TITLEBAR_HEIGHT))
     // The spec's `init` is a plain fn pointer; `App::init` takes the closure
     // that captured the host's adapter instead.
-    .init(move || {
-        let mut state = AppState::default();
-        state.desktop = adapter;
-        state.sync_desktop_connections();
-        state
-    })
+    .init(move || crate::bootstrap::start_shared_app_state(Some(adapter)))
     .on_ime(app_ime)
 }
 
@@ -81,13 +108,16 @@ pub fn app_with_adapter(adapter: Box<dyn DesktopAdapter>) -> App<AppState> {
 /// the connection use case, over the adapter's in-memory store; the wasm
 /// host starts on the unwired adapter and the port answers.
 pub(crate) fn init_state() -> AppState {
-    let mut state = AppState::default();
     #[cfg(not(target_arch = "wasm32"))]
     {
-        state.desktop = Box::new(UseCaseAdapter::with_demo_connections());
+        crate::bootstrap::start_shared_app_state(Some(Box::new(
+            UseCaseAdapter::with_demo_connections(),
+        )))
     }
-    state.sync_desktop_connections();
-    state
+    #[cfg(target_arch = "wasm32")]
+    {
+        crate::bootstrap::start_shared_app_state(None)
+    }
 }
 
 pub(crate) fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
@@ -129,15 +159,24 @@ pub(crate) fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool 
     false
 }
 
-pub(crate) fn app_poll(state: &mut AppState, _: f64, _: &mut Tx) -> bool {
+pub(crate) fn app_poll(state: &mut AppState, now: f64, tx: &mut Tx) -> bool {
+    // T144: the home's per-row copy marker carries a real deadline; when the
+    // runtime wakes at expiry the label must revert on the next frame.
+    let mut dirty = crate::views::home_copy_tick(state, now);
     // N1: the host's finished jobs land first, whatever section is showing;
     // a delivery redraws (it wrote state or cleared its marker), and stale
     // generations were dropped inside `deliver_host_job`.
-    let mut dirty = false;
     for delivery in state.desktop.poll_jobs() {
         state.deliver_host_job(delivery);
         dirty = true;
     }
+    // T009-S7: the AI panel's host sync runs on every section — its
+    // mount tracking has to see the workspace being left, so the
+    // unmount cancel fires on the transition.
+    dirty = state.sync_ai_chat_panel(tx) || dirty;
+    // T012: the write-proposal host's expiry tick runs on every section —
+    // the dialog is mounted at the app root, not inside a section.
+    dirty = state.sync_ai_write_proposals() || dirty;
     if state.active != Section::Workspace {
         return dirty;
     }

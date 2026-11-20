@@ -6,3 +6,14 @@
 //! reusable API is `pub(crate)` and silences `dead_code` per item.
 
 pub(crate) mod counters;
+pub(crate) mod editor_session_controller;
+pub(crate) mod execution_projection;
+pub(crate) mod page_unload;
+pub(crate) mod query_panel_session;
+pub(crate) mod query_panel_session_root;
+pub(crate) mod run_editor_explain;
+pub(crate) mod run_editor_query;
+pub(crate) mod session_prompts;
+pub(crate) mod table_session;
+pub(crate) mod target_command;
+pub(crate) mod settings_export;

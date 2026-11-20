@@ -39,6 +39,73 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+### 第二段合流 push（2026-11-20，用户设阈值规则后首轮）
+
+- 用户规则：**每个 seg1 wave 完成后检查合计 ahead，>30 commits 才合**。Wave 19 关闭时合计 96（seg1 14+seg2 13+seg3 3+seg4 32+后续增量）→ 触发合流。
+- 4 个真 merge commit：`111dbf9b3`(seg1, f544297b8) → `1bebffd58`(seg2, 3a27e7125) → `b546f20c8`(seg3, e219b7ccf) → `f32675e9f`(seg4, 28af7ea64)；父分支 `ac6770e3f → f32675e9f`（78 commits，fast-forward）。
+- 验证：三 crate check 全 PASS；gate test 步骤又是本机 Apple ld `arm64_b26` 分支范围超限（330 warnings 后链接失败），按用户已授权模式接受风险 push。零冲突、零断言弱化、无遗留孤儿进程。
+- push 后残余 ahead 合计 22（seg1 12 + seg4 10），低于阈值 30，暂不合，下个 wave 后复查。
+
+### 四段最新合流 push（2026-11-20，用户明确指示 push）
+
+- seg1/2/3/4 最新代码以 4 个真 merge commit 合入父分支：`521af02dd`(seg1, tip c75292a05) → `2c2673de0`(seg2, e392bc177) → `d75c40f17`(seg3, 28856c392 — 首次纳入) → `cd55d8279`(seg4, 1823af18b)；父分支 `44f875d8b → cd55d8279`（122 commits，fast-forward，无覆盖）。
+- 冲突解决：seg2 tests/mod.rs 双方 mod 声明合并去重；seg4 ai/mod.rs/view/mod.rs/tests/mod.rs 合并 + 可见性 union；target_claim.rs add/add 保留 seg1 T162 无重复 API + 追加 seg4 内联测试；基线修复仍在（workflow-workspace、无 ordered.reverse）。零断言弱化，零冲突标记。
+- **验证**：三 crate `cargo check` 全 PASS；各段 tester 在各自 worktree gate 全绿；本轮 gate test 步骤编译完成（293 warnings、无 error）但 Apple ld 在链接 ~818MB __TEXT 二进制时报分支范围超限（`B/BL out of range`），ld-classic 同样失败、opt-level=z 被 OOM kill——纯本机 toolchain 尺寸限制，非代码/测试失败。用户明确指示接受风险 push。
+- 各段仍在活跃推进（合流为快照），seg3/seg4 合流后又有新提交，后续按节奏再合。环境恢复（重启/换工具链）后应补跑全量 gate。
+
+### 三段合流 push（2026-11-20，用户裁决选 1：接受风险）
+
+- seg1（50→59 commits）/seg2（8→24）/seg4（20→40）以 3 个真 merge commit 合入父分支：`96176166b`(seg1) → `79f6c92de`(seg2) → `ef9f18aac`(seg4)，父分支 `ef70b6f11 → ef9f18aac`（81 commits，fast-forward，无覆盖）。
+- 冲突解决（均已按 React parity 核实）：chart mod 加 axis_configurator；connection_page 保留 5-param layer 贯穿 + seg1 T337 document host（单一 modal layer）；3 个测试 call-site 传 throwaway layer；connection_page 测试基准 `workflows-page → workflow-workspace`（T199）；execution_result_panel 移除 reverse（React `steps.map` report order 已核实）。
+- 上一轮记录的 3 个回归已在本轮合流冲突解决中修复：Berlin DST、connection_page Wapps key、workflow 面板 error 行。
+- **验证状态**：`cargo check -p datazen-ui` 与三 crate check 全 PASS；各段 tester 在各自 worktree gate 全绿；但本机全量 gate 的 test 步骤因 2.1GB 测试二进制触发 Apple ld/dyld 崩溃（`__eh_frame` 过大 + 共享缓存映射失败），反复重编（ld-classic symlink / cc wrapper `-no_compact_unwind -s` 两种配置）均无法稳定产出可运行二进制，用户裁决接受风险 push。
+- 本机根因：uptime 53 天 + 构建脏状态；期间清理了 2 个遗留孤儿编译进程（合流 subagent COMPLETED 后残留，非 buildq 串行队列）。环境恢复（重启）后应补跑全量 gate。
+
+### 风险合流 + 待修回归（2026-11-20，用户裁决选 3）
+
+- 用户明确选择「接受风险直接 push」：seg1/2/4 的 46 commits 合流 `05f4df187` 已 push 到父分支（fast-forward，未覆盖任何人工作）。
+- **验证状态**：`cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline` 三 crate 全过；但 gate 测试步骤因本机 dyld 共享缓存映射崩溃（`map cache into shared region failed` + SIGSEGV/SIGABRT）无法稳定验证，`DYLD_SHARED_REGION=private` 下曾跑出一次结果。
+- **已知未修回归**（健康二进制跑出 4920 passed / 3 failed，待后续修复）：
+  1. `support::formatters::tests::last_connected_resolves_berlin_dst_at_the_instant` — Berlin DST 时区
+  2. `tests::connection_page::every_section_stays_reachable_after_the_port` — Wapps key 期望
+  3. `tests::workflow_execution_panel::the_workflows_page_mounts_the_panel_over_a_real_run` — workflow 面板
+- 这 3 个是合流叠加产生（各段单独 gate 全绿），**不是**弱化/删除断言所致。环境恢复后须优先修复并重跑全量 gate。
+- dyld 崩溃已排除代码/路径/target/负载因素，疑似本机 uptime 52 天的系统态，重启 Mac 可根治。
+
+### 合流方向裁决（2026-11-19，用户指示）
+
+- **合流方向维持子→父单向**：主会话只把各 segment 合到父分支，`merge-to-parent` 后不再把父分支快进/回灌到各 segment。
+- **各段落后父分支时，由该段机器自己 merge 父分支并自行解冲突**，主会话不代劳、不强推（曾把 seg4 快进到父分支被用户纠正，已 force-push 回退到 seg4 自己的 `c8fff490f`；seg4 机器本地与远端重新一致）。
+- seg4 机器操作：`git fetch origin && git merge origin/feat/rune-native-ui-migration`，解决 `ui/dialog.rs`/`views/modals.rs`/`Cargo.toml`/`tests/mod.rs` 等共享文件冲突后提交并 push 自己分支；确认 `gate: PASS` 后再由主会话合回父分支。
+- 其余段（seg1/2/3）同规则：落后时各自 merge 父分支、自己解冲突。seg1 由本机 coordinator 处理。
+
+### 全量合流到父分支（2026-11-19，主会话执行）
+
+- 4 个 segment 成果首次全量合入 `feat/rune-native-ui-migration`：
+  - seg1 `836ce3b94`（Wave A/B） / seg2 `0e6c4d095`（15 task）/ seg3 `c271ba598`（10 task）/ seg4 `007380f87`（9 task）。
+  - 合流冲突已全部解决：app.rs（保留 `views::app_root` 委托，删除 seg3 过时内联 view）、state_def.rs（running_close_* + ai_* 字段加法）、views/mod.rs（双方 mod 行全保留）、ui/field.rs（disabled 语义合并）、icons.rs（三方重复 `ICON_ALERT_TRIANGLE` 去重）、workspace.rs（page_body 4 参数签名统一）、main_page.rs（补 layer 参数 + children）。
+  - 合流后 gate 最终 PASS（check 103 / 三 crate 120 / test 103 warnings）。第一次后台 gate 的 17 failed 是竞态（在冲突解决中途启动读到中间态），稳定后重跑全绿。
+  - 父分支已 push `836ce3b94..007380f87`。
+- segment-1 已 reset 到含全部 4 段成果的基线 `836ce3b94`，交给独立 coordinator `ses_e0e4dc6ad…` 自治推进（用户指令）。主会话不再操作 segment-1 分支，只做全局合流/协调。
+
+### 执行模型裁决（2026-11-19，用户选 A）
+
+- 依赖分析（`task-dependencies.md` 2722 边）+ 拓扑排序提案（`task-order-topological.md` 203 波）已完成；拓扑 wave 与静态 segment 分段不兼容（每波混段、1602 跨段边）。
+- 用户裁决：**方案 A — 维持现状**（静态 segment + 按号 wave），不改现有流程。理由：大部分反向依赖是假阻塞（Phase-0 基座已落地），少量返工可接受。
+- 拓扑两份文档仅作参考提案保留，`tasklist.md` / `shards/*.md` 仍是唯一真相源，取任务继续用 `--shard N --next-todo`（按 T 编号）。
+
+### 本机 segment-1 Wave B（2026-11-19，4 轨）
+
+Wave A 全部收口（26/647）后继续，从 `--shard 1 --next-todo` 取前 4 个不同 area：
+- `ses_e0e824cd7ffe2bhaM7yQk2Dma6` — T036 structureEditor helpers（rune-s1b-struct，lib/structureEditor，3 小 .ts）
+- `ses_e0e824cd7ffdGwpgzBsgczDML6` — T045 platform/web（rune-s1b-web，14 行，可能 re-export 壳）
+- `ses_e0e824cd7ffbu1bH7fKxhB7r79` — T049 ai/grantState（rune-s1b-grant，281 行）
+- `ses_e0e824cd5ffeIN0Q47Vwwj2hhd` — T053 shell.ts（rune-s1b-shell，17 行，可能 re-export 壳）→ `70633e1a8` X-class 壳判定，tester `ses_e0e71b2b…` 审计中
+- T036 struct `938c89192`（21 tests）tester `ses_e0e6e658…` 审计中；T045 web `3e0215bff` X-class 壳判定 tester `ses_e0e6e389…` 审计中；T049 grant coder 运行中
+- 依赖分析文档 `task-dependencies.md`（5938 行 / 2722 边）已提交 `22e87ebfa`；拓扑排序新划分 `ses_e0e71e552…` 进行中（输出到 `task-order-topological.md`，不改现有 tasklist/shards）
+
+队列 worker pid 38092（目录 `.../T/rune-buildq`，与 coder 的 `${TMPDIR}/rune-buildq` 一致）。合流路径同 Wave A：先合 segment-1 + 翻 shard-1 + push，整波收口后 merge-to-parent 1 + refresh 其余段。
+
 ### 本机 segment-1 Wave A（2026-11-18，4 轨）
 
 从 `feat/rune-native-ui-migration-segment-1` 的 `--shard 1 --next-todo` 取前 4 个不同 area task，worktree 已 bootstrap、队列绑定已配：

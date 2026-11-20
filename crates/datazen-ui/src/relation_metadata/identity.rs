@@ -83,6 +83,12 @@ pub(crate) enum EditorRelationKind {
     View,
 }
 
+/// React's `EditorRelationSourceKind` is an alias of `SqlRelationSourceKind`
+/// (`relationMetadata/types.ts` re-exports it unchanged); the alias keeps the
+/// editor contract name addressable from Rust.
+#[allow(dead_code)] // T081: remove with the T032 reusable-API allow stage.
+pub(crate) type EditorRelationSourceKind = SqlRelationSourceKind;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FoldCase {
     Lower,
