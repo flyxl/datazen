@@ -397,6 +397,8 @@ mod recent_queries_list_audit;
 // T454: DatabaseValueSearchDialog port (keys, scope/type rules, answers, host
 // actions, two-window/two-palette geometry).
 mod database_value_search_dialog;
+// T454 independent audit: Enter-to-start, rounded seconds, resume, picker, busy.
+mod value_search_audit;
 // T144: the React ConnectionWorkspaceHome port (hero counts, card keys,
 // filter, MCP copy feedback with a real wake, KV-slot takeover, geometry).
 mod connection_workspace_home;
