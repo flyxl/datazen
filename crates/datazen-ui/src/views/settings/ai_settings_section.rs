@@ -692,8 +692,8 @@ impl<'a, S: 'static> AiSettingsSection<'a, S> {
 
 /// React's SectionTitle stand-in (settingsUi.tsx is T399's): 13/600
 /// muted, the hint as a "?" tooltip trigger — the `ai_context_settings`
-/// precedent, verbatim.
-fn section_title(
+/// precedent, verbatim. Shared by the settings subtree's sections.
+pub(crate) fn section_title(
     k: &Kit,
     layer: &mut Vec<El>,
     key: String,

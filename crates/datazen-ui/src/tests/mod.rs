@@ -61,6 +61,9 @@ mod commands_connection_audit;
 // T196: the fold compartment's host gate (codeFolding on the shared
 // bag), audited against foldCompartment.test.ts's setting-gate group.
 mod fold_compartment_audit;
+// T198: the AI tool bridge switches (plugins + workflows), audited
+// against the React JSX.
+mod ai_tool_bridge_section_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;
