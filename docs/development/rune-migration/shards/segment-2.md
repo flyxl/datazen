@@ -26,7 +26,7 @@
 - [x] T261 · components/chart · 2.00d · components/chart/renderers/ScatterChartRenderer.tsx · split
 - [x] T272 · lib · 0.80d · lib/aiQueryActions.ts
 - [x] T291 · lib · 0.90d · lib/aiSafetyPresets.ts lib/aiSkills.ts lib/anyColumnFilter.ts
-- [ ] T310 · lib · 0.80d · lib/backupProgress.ts lib/base64.ts
+- [x] T310 · lib · 0.80d · lib/backupProgress.ts lib/base64.ts
 - [x] T326 · lib · 2.00d · lib/batchExportJob.ts · split
 - [x] T340 · lib · 0.90d · lib/bootstrapIconResolver.ts lib/buildConnectionUrl.ts lib/buildEditorSchema.ts
 - [ ] T352 · lib · 0.60d · lib/cellEditorCandidates.ts lib/chart/colors.ts
