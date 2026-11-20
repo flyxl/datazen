@@ -82,7 +82,7 @@
 - [x] T247 · windows/onboarding · 1.00d · windows/onboarding/steps/WelcomeStep.tsx windows/onboarding/WizardFooter.tsx
 - [x] T250 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffSelectionSteps.tsx
 - [x] T253 · lib/valuePresentation · 0.80d · lib/valuePresentation/timestampContribution.ts
-- [ ] T254 · hooks · 0.90d · hooks/useConnectionCommand.ts
+- [x] T254 · hooks · 0.90d · hooks/useConnectionCommand.ts
 - [ ] T258 · commands · 1.30d · commands/database.ts · split
 - [ ] T263 · components/sql-editor · 2.00d · components/sql-editor/paste/createPasteExtensions.ts · split
 - [ ] T265 · windows/settings · 0.90d · windows/settings/DriverSettingsSection.tsx
