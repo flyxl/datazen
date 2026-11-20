@@ -193,51 +193,60 @@ pub(crate) fn execute_sql_file_dialog<S: 'static>(
         .width(672.0)
         .on_close({
             let on_close = host.on_close.clone();
+            // React guards `onClose` with `if (!running)`: the header X, Escape
+            // and backdrop dismissal are inert while a file is executing.
+            let running = vm.state.running;
             move |s: &mut S| {
+                if running {
+                    return;
+                }
                 if let Some(on_close) = &on_close {
                     on_close(s);
                 }
             }
         });
 
-    let kind = vm.state.status_kind;
-    let mut status = col()
-        .key(STATUS_KEY)
-        .role("status")
-        .label(kind.as_str())
-        .w_full()
-        .gap(4.0);
-    let icon_el = match kind {
-        SqlFileStatusKind::Error => Some(icon(&ICON_X, 14.0).color(k.c.danger.fg)),
-        SqlFileStatusKind::Success => Some(icon(&ICON_CHECK, 14.0).color(k.c.success.fg)),
-        // The kit registry has no spinner glyph; the message carries the
-        // running state instead of inventing one.
-        _ => None,
-    };
-    if let Some(glyph) = icon_el {
-        status = status.child(glyph);
-    }
-    status = status.child(
-        text(vm.state.status_message.clone())
-            .key(format!("{STATUS_KEY}-text"))
-            .font(k.ty.text_xsmall)
-            .color(match kind {
-                SqlFileStatusKind::Error => k.c.danger.fg,
-                SqlFileStatusKind::Success => k.c.success.fg,
-                _ => k.c.text_muted,
-            })
-            .wrap(),
-    );
-    for (index, line) in vm.state.progress_log.iter().enumerate() {
+    // React renders the banner only when `statusMessage` is truthy.
+    if !vm.state.status_message.is_empty() {
+        let kind = vm.state.status_kind;
+        let mut status = col()
+            .key(STATUS_KEY)
+            .role("status")
+            .label(kind.as_str())
+            .w_full()
+            .gap(4.0);
+        let icon_el = match kind {
+            SqlFileStatusKind::Error => Some(icon(&ICON_X, 14.0).color(k.c.danger.fg)),
+            SqlFileStatusKind::Success => Some(icon(&ICON_CHECK, 14.0).color(k.c.success.fg)),
+            // The kit registry has no spinner glyph; the message carries the
+            // running state instead of inventing one.
+            _ => None,
+        };
+        if let Some(glyph) = icon_el {
+            status = status.child(glyph);
+        }
         status = status.child(
-            text(line.clone())
-                .key(format!("{STATUS_KEY}-log-{index}"))
+            text(vm.state.status_message.clone())
+                .key(format!("{STATUS_KEY}-text"))
                 .font(k.ty.text_xsmall)
-                .color(k.c.text_muted)
+                .color(match kind {
+                    SqlFileStatusKind::Error => k.c.danger.fg,
+                    SqlFileStatusKind::Success => k.c.success.fg,
+                    _ => k.c.text_muted,
+                })
                 .wrap(),
         );
+        for (index, line) in vm.state.progress_log.iter().enumerate() {
+            status = status.child(
+                text(line.clone())
+                    .key(format!("{STATUS_KEY}-log-{index}"))
+                    .font(k.ty.text_xsmall)
+                    .color(k.c.text_muted)
+                    .wrap(),
+            );
+        }
+        dialog = dialog.child(status);
     }
-    dialog = dialog.child(status);
 
     let mut cancel = Button::new(t("common.close"))
         .variant(ButtonVariant::Ghost)

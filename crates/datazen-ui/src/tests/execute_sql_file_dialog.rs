@@ -86,7 +86,10 @@ fn click<S>(rt: &mut Runtime<S>, key: &str) {
 
 #[test]
 fn dialog_mounts_the_react_and_slot_keys() {
-    let rt = runtime(probe(Some("postgres")), (1440.0, 816.0));
+    // React mounts the status banner only for a non-empty message.
+    let mut p = probe(Some("postgres"));
+    p.vm.state.status_message = "ready".to_owned();
+    let rt = runtime(p, (1440.0, 816.0));
     for key in [
         DIALOG_KEY,
         &format!("{DIALOG_KEY}-title"),

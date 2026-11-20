@@ -152,7 +152,9 @@ fn each_open_dialog_mounts_its_react_keys() {
         assert!(has_key(&rt, &format!("{key}-confirm")), "confirm: {key}");
     }
     assert!(has_key(&rt, "sql-file-execute"), "React SQL file testid");
-    assert!(has_key(&rt, "sql-file-status"), "React SQL file status testid");
+    // The real T382 dialog follows React: the status banner is conditional on
+    // a non-empty message, so a freshly opened dialog has no status element.
+    assert!(!has_key(&rt, "sql-file-status"), "no status banner for an empty message");
     assert!(has_key(&rt, "import-summary"), "React import summary testid");
     assert_eq!(
         element(&rt, "content-view-sql-file-dialog-title").text.as_deref(),
