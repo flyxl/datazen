@@ -139,7 +139,7 @@
 - [x] T393 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffJobLifecycle.ts
 - [ ] T395 · hooks · 0.90d · hooks/useQueryExec.ts
 - [x] T397 · commands · 0.30d · commands/structure.ts
-- [ ] T399 · windows/settings · 0.30d · windows/settings/settingsUi.tsx
+- [x] T399 · windows/settings · 0.30d · windows/settings/settingsUi.tsx
 - [ ] T402 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffJobRestore.ts
 - [ ] T404 · hooks · 0.80d · hooks/useResizable.ts hooks/useSettings.ts
 - [ ] T406 · commands · 1.30d · commands/sync.ts · split
