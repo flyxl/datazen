@@ -790,6 +790,10 @@ mod data_transfer_terminal_results;
 // gate, the fixed uncompleted attribute set, stale identities, copy path).
 mod data_transfer_terminal_results_audit;
 
+// T176: the mapping gate notice (the message chain visible / gateLost /
+// derived reason, the nothing-renders branches, the alert role, geometry).
+mod mapping_gate_notice;
+
 // T114: the Data Sync endpoint step (scope reconfirmation, profile
 // controls: name input, profile select, save/load/delete gates).
 mod data_sync_endpoint_step;
