@@ -848,6 +848,11 @@ mod data_sync_client_sql_preview;
 // case, geometry).
 mod data_sync_sql_preview;
 
+// T371 independent audit: the copy-text projection, the selected chip
+// face, an error alongside statements, the substring size-limit match,
+// two-chip order.
+mod data_sync_sql_preview_audit;
+
 // T390 independent audit: mixed update forms, a composite pk, each
 // filter face, the both-empty statement line, the no-match placeholder.
 mod data_sync_client_sql_preview_audit;
