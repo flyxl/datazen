@@ -89,9 +89,9 @@
 - [x] T480 · windows/connection · 0.90d · windows/connection/ObjectBrowser.tsx
 - [x] T485 · windows/connection · 1.30d · windows/connection/PanelContentRenderer.tsx · split
 - [x] T489 · windows/connection · 0.90d · windows/connection/PanelTabBar.tsx
-- [ ] T492 · windows/connection · 0.30d · windows/connection/PendingPlanDialog.tsx
-- [ ] T495 · windows/connection · 1.30d · windows/connection/PrivilegeView.tsx · split
-- [ ] T498 · windows/connection · 0.90d · windows/connection/ProcessListView.tsx
+- [x] T492 · windows/connection · 0.30d · windows/connection/PendingPlanDialog.tsx
+- [x] T495 · windows/connection · 1.30d · windows/connection/PrivilegeView.tsx · split
+- [x] T498 · windows/connection · 0.90d · windows/connection/ProcessListView.tsx
 - [ ] T501 · windows/connection · 0.30d · windows/connection/query/ExecutionStrategyAskModal.tsx
 - [ ] T504 · windows/connection · 0.90d · windows/connection/query/QueryBuilderHostAdapter.tsx
 - [ ] T506 · windows/connection · 1.30d · windows/connection/query/QueryEditorSection.tsx · split
