@@ -2,12 +2,13 @@
 //!
 //! One module per React file, at the same path:
 //! `components/sql-editor/SqlEditor.tsx` → `components/sql_editor/sql_editor.rs`.
-//! The pure helpers it ports from `lib/sqlPathPrefix.ts` and
-//! `lib/sqlEditorContextMenu.ts` live in `lib_helpers` until those ledger
-//! tasks land and absorb them. The `sql-editor/metadata/` directory is
-//! ported as [`metadata`] (T242), and the editor schema tree shape
-//! (`lib/sqlNamespace.ts`) is carried as [`sql_namespace`] until T617
-//! absorbs it.
+//! The pure helpers it ports from `lib/sqlPathPrefix.ts` live in
+//! `lib_helpers` until that ledger task lands and absorbs them;
+//! `lib/sqlEditorContextMenu.ts` ported as
+//! [`sql_editor_context_menu`] (T155) and took `toggleSqlLineComments`
+//! home. The `sql-editor/metadata/` directory is ported as [`metadata`]
+//! (T242), and the editor schema tree shape (`lib/sqlNamespace.ts`) is
+//! carried as [`sql_namespace`] until T617 absorbs it.
 //!
 //! No production consumer yet; the workspace view track will wire this
 //! component (today the workspace renders the engine demo panel directly).
@@ -37,7 +38,15 @@ pub(crate) mod editor_extensions;
 
 pub(crate) mod lib_helpers;
 #[allow(unused_imports)] // re-exports keep the module boundary flat for callers
-pub(crate) use lib_helpers::{parse_qualified_path_parents, toggle_sql_line_comments};
+pub(crate) use lib_helpers::parse_qualified_path_parents;
+
+/// `lib/sqlEditorContextMenu.ts` (T155): the SQL editor's context-menu
+/// builder (OS edit block, run/format/comment/favorite items) plus the
+/// driver-sdk menu item contract and the carried `Platform` /
+/// `formatModKey` seams.
+pub(crate) mod sql_editor_context_menu;
+#[allow(unused_imports)] // `toggle_sql_line_comments` keeps its pre-T155 path stable
+pub(crate) use sql_editor_context_menu::toggle_sql_line_comments;
 
 pub(crate) mod completion;
 #[allow(unused_imports)] // consumers land with the S2/S3 slices

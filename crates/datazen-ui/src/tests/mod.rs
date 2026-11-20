@@ -34,6 +34,12 @@ mod sql_dialects_audit;
 // T083: identifierQuoting + the index registry (builtin strategies),
 // audited against the React sources and dialects.test.ts.
 mod sql_dialect_identifier_quoting_audit;
+// T155: sqlParameterPolicy (bind-placeholder resolution), audited against
+// the React source and sqlParameterPolicy.test.ts (policy halves).
+mod sql_dialect_parameter_policy_audit;
+// T155: the SQL editor context-menu builder + the driver-sdk menu
+// contract, audited against sqlEditorContextMenu.test.ts.
+mod sql_editor_context_menu_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;
