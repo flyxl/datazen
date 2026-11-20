@@ -117,6 +117,7 @@ use rune::{col, row, text, Color, El, Key, KeyEvent, ScrollSpec, TextEdit, Tx};
 use rune_kit::{IconButton, IconButtonVariant};
 
 use super::ai_chat_message_list_state::AiChatMessageListState;
+use super::ai_message_content::AiMessageCodeWiring;
 use super::chat_bubble::{AiChatMessage, AiChatRole, ChatBubble, ChatBubbleState};
 use crate::i18n::t;
 use crate::icons::{ICON_ARROW_DOWN, ICON_BOOK_OPEN, ICON_X};
@@ -146,6 +147,17 @@ pub(crate) struct AiChatMessageList<'a, S: 'static> {
     on_dismiss_remember_notice: Option<Rc<dyn Fn(&mut S)>>,
     on_jump_to_bottom: Option<Rc<dyn Fn(&mut S, &mut Tx)>>,
     on_at_bottom: Option<Rc<dyn Fn(&mut S, bool)>>,
+    /// T167: a per-message `AiMessageCodeWiring` factory — the factory
+    /// takes the message index and returns that message's code-block
+    /// event wiring (the host's closures know where the slots live).
+    /// Without it bubbles render the plain placeholder content.
+    code_wiring: Option<Rc<dyn Fn(usize) -> AiMessageCodeWiring<S>>>,
+    /// The host's clipboard write starter for a code segment's copy
+    /// button: `(message index, code, request)`.
+    on_copy_code: Option<Rc<dyn Fn(&mut S, usize, String, u64)>>,
+    /// A markdown link press in a message's content: `(message index,
+    /// url)`.
+    on_open_link: Option<Rc<dyn Fn(&mut S, usize, String)>>,
 }
 
 impl<'a, S: 'static> AiChatMessageList<'a, S> {
@@ -168,6 +180,9 @@ impl<'a, S: 'static> AiChatMessageList<'a, S> {
             on_dismiss_remember_notice: None,
             on_jump_to_bottom: None,
             on_at_bottom: None,
+            code_wiring: None,
+            on_copy_code: None,
+            on_open_link: None,
         }
     }
 
@@ -294,7 +309,40 @@ impl<'a, S: 'static> AiChatMessageList<'a, S> {
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    /// T167: the per-message code-block wiring factory — the factory
+    /// receives the message index and returns that message's
+    /// `AiMessageCodeWiring`. With this set (and only then) message
+    /// bubbles render their assistant content through
+    /// `AiMessageContent` instead of the plain placeholder.
+    pub(crate) fn code_wiring(
+        mut self,
+        factory: impl Fn(usize) -> AiMessageCodeWiring<S> + 'static,
+    ) -> Self {
+        self.code_wiring = Some(Rc::new(factory));
+        self
+    }
+
+    /// The host's clipboard write starter for a code segment's copy
+    /// button: `(message index, code, request)`.
+    pub(crate) fn on_copy_code(
+        mut self,
+        f: impl Fn(&mut S, usize, String, u64) + 'static,
+    ) -> Self {
+        self.on_copy_code = Some(Rc::new(f));
+        self
+    }
+
+    /// A markdown link press in a message's content: `(message index,
+    /// url)`.
+    pub(crate) fn on_open_link(
+        mut self,
+        f: impl Fn(&mut S, usize, String) + 'static,
+    ) -> Self {
+        self.on_open_link = Some(Rc::new(f));
+        self
+    }
+
+    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let state = self.state;
         let mut root = col()
             .key("ai-chat-message-list")
@@ -305,7 +353,7 @@ impl<'a, S: 'static> AiChatMessageList<'a, S> {
         if state.memory_candidate_count().is_some() || state.remember_notice().is_some() {
             root = root.child(self.toasts(dark));
         }
-        root = root.child(self.message_viewport(dark));
+        root = root.child(self.message_viewport(dark, layer));
         if state.show_jump_to_bottom() {
             root = root.child(self.jump_pill(dark));
         }
@@ -408,7 +456,7 @@ impl<'a, S: 'static> AiChatMessageList<'a, S> {
     /// state, one [`ChatBubble`] per message, the streaming bubble or
     /// thinking row, and the `messages-end` anchor. `stick_bottom`
     /// carries React's auto-scroll-while-pinned effect (see module docs).
-    fn message_viewport(&self, dark: bool) -> El {
+    fn message_viewport(&self, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let state = self.state;
         let mut list = col()
@@ -435,10 +483,10 @@ impl<'a, S: 'static> AiChatMessageList<'a, S> {
             );
         }
         for index in 0..state.messages().len() {
-            list = list.child(self.message_row(dark, index));
+            list = list.child(self.message_row(dark, index, layer));
         }
         if state.show_streaming_bubble() {
-            list = list.child(self.streaming_bubble(dark));
+            list = list.child(self.streaming_bubble(dark, layer));
         } else if state.show_thinking_row() {
             list = list.child(self.thinking_row(dark));
         }
@@ -449,7 +497,7 @@ impl<'a, S: 'static> AiChatMessageList<'a, S> {
     /// One message row: the bubble for the effective message, wrapped so
     /// the panel slice can locate it by index. `isLastAssistant` is
     /// `role == assistant && last && !streaming` (`AiChatPanel.tsx:719–723`).
-    fn message_row(&self, dark: bool, index: usize) -> El {
+    fn message_row(&self, dark: bool, index: usize, layer: &mut Vec<El>) -> El {
         let state = self.state;
         let Some(message) = state.effective_message(index) else {
             return col().min_w(0.0);
@@ -497,6 +545,20 @@ impl<'a, S: 'static> AiChatMessageList<'a, S> {
             bubble =
                 bubble.on_remember(move |state: &mut S, message: &AiChatMessage| f(state, message));
         }
+        if let Some(factory) = &self.code_wiring {
+            let wiring = factory(index);
+            bubble = bubble.code_wiring(wiring);
+        }
+        if let Some(on_copy_code) = &self.on_copy_code {
+            let f = Rc::clone(on_copy_code);
+            bubble = bubble.on_copy_code(move |state: &mut S, code: String, request: u64| {
+                f(state, index, code, request);
+            });
+        }
+        if let Some(on_open_link) = &self.on_open_link {
+            let f = Rc::clone(on_open_link);
+            bubble = bubble.on_open_link(move |state: &mut S, url: String| f(state, index, url));
+        }
         if is_last_assistant && ChatBubbleState::has_questions(&message, false) {
             if let (Some(on_toggle), Some(on_custom_edit), Some(on_submit)) = (
                 self.on_toggle_question.as_ref(),
@@ -519,12 +581,12 @@ impl<'a, S: 'static> AiChatMessageList<'a, S> {
             .key(format!("ai-chat-message-{index}"))
             .w_full()
             .min_w(0.0)
-            .child(bubble.build(dark))
+            .child(bubble.build(dark, layer))
     }
 
     /// The streaming bubble (`AiChatPanel.tsx:727–740`): no callbacks —
     /// React passes only the message, the dialect and `isStreaming`.
-    fn streaming_bubble(&self, dark: bool) -> El {
+    fn streaming_bubble(&self, dark: bool, layer: &mut Vec<El>) -> El {
         let state = self.state;
         let message = state.streaming_message();
         let bubble_state = state.streaming_bubble_state();
@@ -539,7 +601,7 @@ impl<'a, S: 'static> AiChatMessageList<'a, S> {
             .key("ai-chat-streaming-bubble")
             .w_full()
             .min_w(0.0)
-            .child(bubble.build(dark))
+            .child(bubble.build(dark, layer))
     }
 
     /// The thinking row (`AiChatPanel.tsx:741–755`): an `md` spinner plus

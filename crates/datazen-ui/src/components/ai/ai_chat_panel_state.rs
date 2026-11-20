@@ -346,6 +346,14 @@ impl AiChatPanelState {
     }
 
     pub(crate) fn set_sql_dialect(&mut self, sql_dialect: Option<String>) {
+        // T167: the list state's code-block slots seed from this dialect
+        // when their message arrives, so the seed value follows the
+        // change (React's `useState(sqlDialect)` seed at mount).
+        let seed = sql_dialect
+            .as_deref()
+            .unwrap_or("postgresql")
+            .to_string();
+        self.list_mut().set_sql_dialect(seed);
         self.sql_dialect = sql_dialect;
     }
 

@@ -246,6 +246,7 @@ fn audit_probe() -> AuditProbe {
 }
 
 fn list_view(state: &AuditProbe, _cx: &mut Cx<AuditProbe>) -> El {
+    let mut layer = Vec::new();
     let mut list = AiChatMessageList::<AuditProbe>::new(&state.list)
         .sql_dialect("mysql")
         .on_insert_sql(|s: &mut AuditProbe, sql: &str| s.inserts.push(sql.to_string()))
@@ -308,7 +309,7 @@ fn list_view(state: &AuditProbe, _cx: &mut Cx<AuditProbe>) -> El {
             .w_full()
             .h_full()
             .padding(16.0)
-            .child(list.build(state.dark)),
+            .child(list.build(state.dark, &mut layer)),
         Vec::new(),
     )
 }

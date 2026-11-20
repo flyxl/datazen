@@ -9,6 +9,8 @@
 //! [`super::ai_code_block`] only builds the tree from these and the
 //! host's callbacks.
 
+use std::rc::Rc;
+
 /// How long the copied confirmation stays up before reverting to the copy
 /// icon (React `COPIED_FEEDBACK_MS`).
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
@@ -343,26 +345,28 @@ pub(crate) fn apply_dialect_choice<S>(
     close_dialect(s);
 }
 
-/// Reads the block's state out of the app's `S`.
+/// Reads the block's state out of the app's `S` (a clone: the message
+/// wiring addresses one slot per rendered block, which a bare fn pointer
+/// cannot express — see `ai_message_content.rs`).
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) type ReadCodeBlockStateFn<S> = fn(&S) -> &AiCodeBlockState;
+pub(crate) type ReadCodeBlockStateFn<S> = Rc<dyn Fn(&S) -> AiCodeBlockState>;
 
 /// Flips `fullscreen` on the app's `S`.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) type ToggleFullscreenFn<S> = fn(&mut S);
+pub(crate) type ToggleFullscreenFn<S> = Rc<dyn Fn(&mut S)>;
 
 /// Picks a dialect on the app's `S`.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) type SetDialectFn<S> = fn(&mut S, SqlDialect);
+pub(crate) type SetDialectFn<S> = Rc<dyn Fn(&mut S, SqlDialect)>;
 
 /// Opens or closes the dialect listbox on the app's `S`.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) type ToggleDialectOpenFn<S> = fn(&mut S);
+pub(crate) type ToggleDialectOpenFn<S> = Rc<dyn Fn(&mut S)>;
 
 /// Closes the dialect listbox on the app's `S`.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) type CloseDialectFn<S> = fn(&mut S);
+pub(crate) type CloseDialectFn<S> = Rc<dyn Fn(&mut S)>;
 
 /// The optimistic copy mark on the app's `S`; returns the request id.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) type CopyPressedFn<S> = fn(&mut S) -> u64;
+pub(crate) type CopyPressedFn<S> = Rc<dyn Fn(&mut S) -> u64>;

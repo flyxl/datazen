@@ -36,27 +36,24 @@
 //!
 //! # Deliberate boundaries
 //!
-//! * **Content is a plain-text placeholder for the assistant role.**
-//!   React renders assistant content through `AiMessageContent`
-//!   (`AiMessageContent.tsx`, T169 — not ported yet): GFM Markdown via
-//!   `marked`, fenced SQL blocks via `AiCodeBlock`, and `[M1]`-style memory
-//!   citations linked to `#memory-M1`. Until T169 lands, the assistant
-//!   content renders as raw text under `chat-bubble-content-placeholder`
-//!   and the three SQL callbacks (`onInsertSql` / `onRunCode` /
-//!   `onNewQuery`, plus `sqlDialect`) are accepted and stored only, so the
-//!   call site can pass them today and T169 wires them without an API
-//!   change. No SQL rendering is faked. The user role is final: React
-//!   renders user content as a plain `<pre>`, which is what the
-//!   placeholder shows for it.
-//! * **Memory citations have no clickable link yet.** React links `[M1]`
-//!   inside the rendered Markdown and the bubble's click handler expands
-//!   the memory list and scrolls the item into view. The placeholder has
-//!   no links, so there is nothing to click; the equivalent state
-//!   transition lives in
-//!   [`ChatBubbleState::open_memory_citation`] (expand the list + mark the
-//!   item selected), which the future `AiMessageContent` wiring will call
-//!   through `ChatBubble::on_cite_memory`. Tests pin the transition and
-//!   the focused-item rendering, not a click that does not exist yet.
+//! * **Assistant content renders through `AiMessageContent` when the code
+//!   wiring is set (T167).** React renders assistant content through
+//!   `AiMessageContent` (`AiMessageContent.tsx`): GFM Markdown, fenced
+//!   SQL blocks via `AiCodeBlock`, and `[M1]`-style memory citations. The
+//!   port lives in [`super::ai_message_content`]; the bubble takes it
+//!   through [`ChatBubble::code_wiring`] and renders the caller-owned
+//!   code-block slot snapshot under `chat-bubble-content-ai`. An un-wired
+//!   bubble keeps the pre-T167 plain-text placeholder under
+//!   `chat-bubble-content-placeholder` exactly (no SQL rendering is faked
+//!   for callers that have not wired the state slots). The user role is
+//!   final: React renders user content as a plain `<pre>`, which is what
+//!   the bubble shows for it.
+//! * **Memory citations route through `on_cite_memory` (T167).** React
+//!   links `[M1]` inside the rendered Markdown and the bubble's click
+//!   handler expands the memory list and scrolls the item into view. The
+//!   port's citation link dispatches [`ChatBubble::on_cite_memory`], whose
+//!   caller drives [`ChatBubbleState::open_memory_citation`] (expand the
+//!   list + mark the item selected).
 //!   Rune has no DOM `scrollIntoView`/`focus()`; the selected item is
 //!   expressed with `focus_selected` (observed as `item_selected` on the
 //!   laid-out element) plus an accent wash fill, the same channel S1 uses
@@ -104,6 +101,8 @@ use rune::{col, row, text, Color, El, Key, KeyEvent, LoopSpec, TextEdit, Tx};
 use rune_kit::{Button, ButtonVariant, ControlSize};
 
 use super::ai_chat_panel::{AiQuestion, QuestionBlock, QuestionBlockState};
+use super::ai_message_content::{AiMessageCodeWiring, AiMessageContent};
+use crate::components::ai::ai_code_block_state::AiCodeBlockState;
 use crate::i18n::t;
 use crate::icons::{ICON_BOOK_OPEN, ICON_SPARKLES, ICON_TOOLS};
 use crate::ui::kit::kit;
@@ -224,6 +223,11 @@ pub(crate) struct ChatBubbleState {
     tool_collapsed: bool,
     memory_open: bool,
     memory_focused: Option<String>,
+    /// The `AiCodeBlock` state slots of this bubble's message content,
+    /// one per fenced code segment (T167). Seeded / kept in length with
+    /// the message by [`ChatBubbleState::sync_code_blocks`]; the panel
+    /// wiring owns the mutations the code-block events drive.
+    code_blocks: Vec<AiCodeBlockState>,
 }
 
 impl Default for ChatBubbleState {
@@ -234,11 +238,42 @@ impl Default for ChatBubbleState {
             tool_collapsed: true,
             memory_open: false,
             memory_focused: None,
+            code_blocks: Vec::new(),
         }
     }
 }
 
 impl ChatBubbleState {
+    /// The code-block state slots (one per fenced code segment).
+    pub(crate) fn code_blocks(&self) -> &[AiCodeBlockState] {
+        &self.code_blocks
+    }
+
+    /// The code-block state slots, mutable: the panel wiring routes the
+    /// `AiCodeBlock` events here (T167). A missing slot (a lagging seed)
+    /// makes the event a no-op, matching the conservative default the
+    /// render falls back to.
+    pub(crate) fn code_blocks_mut(&mut self) -> &mut [AiCodeBlockState] {
+        &mut self.code_blocks
+    }
+
+    /// Brings the code-block slots in step with the message content:
+    /// grows to the fenced-code segment count (seeding each slot's
+    /// dialect from `sql_dialect`) and keeps existing slots otherwise —
+    /// a slot's fullscreen / dialect / copy feedback belongs to its
+    /// block alone (the `AiCodeBlock` docs), so slots are never reused
+    /// across a re-split.
+    pub(crate) fn sync_code_blocks(&mut self, content: &str, sql_dialect: &str) {
+        let needed = crate::components::ai::ai_message_content::parse_message_segments(content)
+            .iter()
+            .filter(|segment| matches!(segment, crate::components::ai::ai_message_content::MessageSegment::Code { .. }))
+            .count();
+        while self.code_blocks.len() < needed {
+            self.code_blocks.push(AiCodeBlockState::new(sql_dialect));
+        }
+        self.code_blocks.truncate(needed);
+    }
+
     pub(crate) fn reasoning_open(&self) -> bool {
         self.reasoning_open
     }
@@ -357,6 +392,16 @@ pub(crate) struct ChatBubble<'a, S: 'static> {
     on_cite_memory: Option<Rc<dyn Fn(&mut S, &str)>>,
     on_remember: Option<Rc<dyn Fn(&mut S, &AiChatMessage)>>,
     questions: Option<ChatBubbleQuestions<'a, S>>,
+    /// T167: the `AiCodeBlock` event wiring for the message content's
+    /// code segments. Without it the assistant content stays the plain
+    /// placeholder (the panel wiring provides it in production).
+    code_wiring: Option<AiMessageCodeWiring<S>>,
+    /// The host's clipboard write starter for a code segment's copy
+    /// button; forwarded to `AiMessageContent`'s `on_copy_code`.
+    on_copy_code: Option<Rc<dyn Fn(&mut S, String, u64)>>,
+    /// A markdown link press in the content; React's browser navigates
+    /// the `href`, the host decides here.
+    on_open_link: Option<Rc<dyn Fn(&mut S, String)>>,
 }
 
 impl<'a, S: 'static> ChatBubble<'a, S> {
@@ -376,6 +421,9 @@ impl<'a, S: 'static> ChatBubble<'a, S> {
             on_cite_memory: None,
             on_remember: None,
             questions: None,
+            code_wiring: None,
+            on_copy_code: None,
+            on_open_link: None,
         }
     }
 
@@ -452,6 +500,34 @@ impl<'a, S: 'static> ChatBubble<'a, S> {
         self
     }
 
+    /// T167: the `AiCodeBlock` event wiring for the content's code
+    /// segments (`AiMessageCodeWiring`). With this set, the assistant
+    /// content renders through `AiMessageContent` (the placeholder goes
+    /// away); without it the placeholder stays, so un-wired callers
+    /// keep the exact pre-T167 rendering.
+    pub(crate) fn code_wiring(mut self, wiring: AiMessageCodeWiring<S>) -> Self {
+        self.code_wiring = Some(wiring);
+        self
+    }
+
+    /// The host's clipboard write starter for a code segment's copy
+    /// button (React's `navigator.clipboard`); without it the copy button
+    /// renders but does nothing.
+    pub(crate) fn on_copy_code(
+        mut self,
+        f: impl Fn(&mut S, String, u64) + 'static,
+    ) -> Self {
+        self.on_copy_code = Some(Rc::new(f));
+        self
+    }
+
+    /// A markdown link press in the content (React's browser navigates
+    /// the `href`; the host opens it).
+    pub(crate) fn on_open_link(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+        self.on_open_link = Some(Rc::new(f));
+        self
+    }
+
     /// Wire S1's `QuestionBlock` under the bubble. The caller supplies the
     /// block's state and the three callbacks its builder needs; submit
     /// should drive [`QuestionBlockState::submit`] and forward the payload
@@ -493,11 +569,11 @@ impl<'a, S: 'static> ChatBubble<'a, S> {
         )
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         if ChatBubbleState::is_tool_bubble(self.message) {
             return self.build_tool(dark);
         }
-        self.build_message(dark)
+        self.build_message(dark, layer)
     }
 
     /// React's tool early return: the toggle plus, when expanded, the tool
@@ -557,7 +633,7 @@ impl<'a, S: 'static> ChatBubble<'a, S> {
         root
     }
 
-    fn build_message(self, dark: bool) -> El {
+    fn build_message(self, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let message = self.message;
         let is_user = message.role == AiChatRole::User;
@@ -594,7 +670,7 @@ impl<'a, S: 'static> ChatBubble<'a, S> {
         }
 
         if !message.content.is_empty() {
-            body = body.child(self.content_section(dark));
+            body = body.child(self.content_section(dark, layer));
         }
 
         if !is_user && !message.memory_used.is_empty() {
@@ -710,13 +786,13 @@ impl<'a, S: 'static> ChatBubble<'a, S> {
         section
     }
 
-    /// The message content. The user role is final (React renders a plain
-    /// `<pre>`); the assistant role renders the same raw text only as a
-    /// placeholder until `AiMessageContent` (T169) lands — see the module
-    /// docs. The `onInsertSql` / `onRunCode` / `onNewQuery` hooks and
-    /// `sqlDialect` are stored on the builder for that slice and not used
-    /// here.
-    fn content_section(&self, dark: bool) -> El {
+    /// The message body. The user role is final (React renders a plain
+    /// `<pre>`); the assistant role renders through `AiMessageContent`
+    /// when the T167 code wiring is set — text segments as structured GFM
+    /// blocks, code segments as `AiCodeBlock`s with the wiring's event
+    /// routing and this state's slot snapshot — and stays the plain-text
+    /// placeholder for un-wired callers (the exact pre-T167 rendering).
+    fn content_section(&self, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let is_user = self.message.role == AiChatRole::User;
         let content = text(self.message.content.clone())
@@ -729,13 +805,59 @@ impl<'a, S: 'static> ChatBubble<'a, S> {
             })
             .wrap();
         if is_user {
-            content
-        } else {
-            col()
-                .key("chat-bubble-content-placeholder")
-                .min_w(0.0)
-                .child(content)
+            return content;
         }
+        if let Some(wiring) = self.code_wiring.clone() {
+            let mut builder = AiMessageContent::<S>::new(self.message.content.clone(), wiring)
+                .is_streaming(self.is_streaming)
+                .key("chat-bubble-content-ai");
+            if let Some(dialect) = self.sql_dialect.clone() {
+                builder = builder.sql_dialect(dialect);
+            }
+            let references: Vec<String> = self
+                .message
+                .memory_used
+                .iter()
+                .map(|memory| memory.reference.clone())
+                .collect();
+            if !references.is_empty() {
+                builder = builder.memory_references(references);
+            }
+            if let Some(on_insert_sql) = self.on_insert_sql.clone() {
+                builder =
+                    builder.on_insert_sql(move |s: &mut S, code: String| on_insert_sql(s, &code));
+            }
+            if let Some(on_run_code) = self.on_run_code.clone() {
+                builder = builder.on_run_code(move |s: &mut S, code: String, language: String| {
+                    on_run_code(s, &code, &language);
+                });
+            }
+            if let Some(on_new_query) = self.on_new_query.clone() {
+                builder =
+                    builder.on_new_query(move |s: &mut S, code: String| on_new_query(s, &code));
+            }
+            if let Some(on_copy_code) = self.on_copy_code.clone() {
+                builder =
+                    builder.on_copy_code(move |s: &mut S, code: String, request: u64| {
+                        on_copy_code(s, code, request);
+                    });
+            }
+            if let Some(on_cite_memory) = self.on_cite_memory.clone() {
+                builder =
+                    builder.on_cite_memory(move |s: &mut S, reference: String| {
+                        on_cite_memory(s, &reference);
+                    });
+            }
+            if let Some(on_open_link) = self.on_open_link.clone() {
+                builder =
+                    builder.on_open_link(move |s: &mut S, url: String| on_open_link(s, url));
+            }
+            return builder.build(self.state.code_blocks(), dark, layer);
+        }
+        col()
+            .key("chat-bubble-content-placeholder")
+            .min_w(0.0)
+            .child(content)
     }
 
     /// The memory chip + expanded memory list. The chip label formats

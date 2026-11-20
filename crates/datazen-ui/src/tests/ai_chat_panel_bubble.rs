@@ -260,7 +260,8 @@ fn bubble_el(state: &Probe) -> El {
             },
         );
     }
-    bubble.build(state.dark)
+    let mut layer = Vec::new();
+    bubble.build(state.dark, &mut layer)
 }
 
 fn bubble_view(state: &Probe, _cx: &mut Cx<Probe>) -> El {

@@ -45,6 +45,11 @@ pub(crate) struct AiChatMessageListState {
     remember_notice: Option<String>,
     at_bottom: bool,
     unread_count: u32,
+    /// The dialect the code-block slots seed from (T167): React's
+    /// `sqlDialect` prop, kept here because a slot seeds when its message
+    /// arrives (React's `useState(sqlDialect)`), not when the block
+    /// renders.
+    sql_dialect: String,
 }
 
 impl Default for AiChatMessageListState {
@@ -68,6 +73,7 @@ impl Default for AiChatMessageListState {
             // `useAutoScroll`: `useState(true)`.
             at_bottom: true,
             unread_count: 0,
+            sql_dialect: "postgresql".to_string(),
         }
     }
 }
@@ -238,11 +244,17 @@ impl AiChatMessageListState {
 
     /// Seed the message list. Per-message bubble and question states are
     /// (re)created to match — answers do not survive a re-seed, so the
-    /// panel slice seeds once per session, not per frame.
+    /// panel slice seeds once per session, not per frame. Code-block
+    /// slots seed with the recorded `sql_dialect` (T167).
     pub(crate) fn set_messages(&mut self, messages: Vec<AiChatMessage>) {
+        let dialect = self.sql_dialect.clone();
         self.bubble_states = messages
             .iter()
-            .map(|_| ChatBubbleState::default())
+            .map(|message| {
+                let mut state = ChatBubbleState::default();
+                state.sync_code_blocks(&message.content, &dialect);
+                state
+            })
             .collect();
         self.question_states = messages
             .iter()
@@ -251,12 +263,24 @@ impl AiChatMessageListState {
         self.messages = messages;
     }
 
+    /// The dialect new code-block slots seed from (T167). A change only
+    /// affects slots that arrive after it, as React's `useState`
+    /// `sqlDialect` seed does.
+    pub(crate) fn set_sql_dialect(&mut self, dialect: impl Into<String>) {
+        self.sql_dialect = dialect.into();
+    }
+
     pub(crate) fn set_streaming(&mut self, is_streaming: bool) {
         self.is_streaming = is_streaming;
     }
 
     pub(crate) fn set_stream_content(&mut self, content: impl Into<String>) {
-        self.stream_content = content.into();
+        let content = content.into();
+        // Streaming code blocks arrive as they close: the slot count
+        // follows the closed-fence count (T167), keeping existing slots.
+        self.streaming_bubble_state
+            .sync_code_blocks(&content, &self.sql_dialect.clone());
+        self.stream_content = content;
     }
 
     pub(crate) fn set_stream_reasoning(&mut self, reasoning: impl Into<String>) {

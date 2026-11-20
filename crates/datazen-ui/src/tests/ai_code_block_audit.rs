@@ -62,7 +62,7 @@ fn view(scene: &Scene, _cx: &mut Cx<Scene>) -> El {
     let mut layer = Vec::new();
     let page = AiCodeBlock::<Scene>::new(
         scene.props.clone(),
-        |s: &Scene| &s.state,
+        |s: &Scene| s.state.clone(),
         |s: &mut Scene| s.state.toggle_fullscreen(),
         |s: &mut Scene, dialect| s.state.set_dialect(dialect),
         |s: &mut Scene| s.state.toggle_dialect_open(),

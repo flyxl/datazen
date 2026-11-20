@@ -113,6 +113,7 @@ use super::ai_code_block_state::{
     SqlDialect, ToggleDialectOpenFn, ToggleFullscreenFn,
 };
 use crate::i18n::t;
+use std::rc::Rc;
 use crate::icons::{
     ICON_CHECK, ICON_CODE, ICON_COPY, ICON_MAXIMIZE_2, ICON_MINIMIZE_2, ICON_PLAY, ICON_PLUS,
 };
@@ -121,21 +122,21 @@ use crate::ui::select::Select;
 
 /// React `onInsertSql`: insert `code` into the editor.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) type InsertSqlFn<S> = fn(&mut S, String);
+pub(crate) type InsertSqlFn<S> = Rc<dyn Fn(&mut S, String)>;
 
 /// React `onRunCode`: run `code` as `language`.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) type RunCodeFn<S> = fn(&mut S, String, String);
+pub(crate) type RunCodeFn<S> = Rc<dyn Fn(&mut S, String, String)>;
 
 /// React `onNewQuery`: open a new query tab with `code`.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) type NewQueryFn<S> = fn(&mut S, String);
+pub(crate) type NewQueryFn<S> = Rc<dyn Fn(&mut S, String)>;
 
 /// The host's clipboard write starter: write `code`, report a failure with
 /// [`AiCodeBlockState::fail_copy`] and the timer expiry with
 /// [`AiCodeBlockState::expire_copy_feedback`], both keyed by `request`.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) type CopyCodeFn<S> = fn(&mut S, String, u64);
+pub(crate) type CopyCodeFn<S> = Rc<dyn Fn(&mut S, String, u64)>;
 
 /// The code block. `read_state` and the five state functions locate the
 /// state slot in the app's `S`; the four `on_*` callbacks are the host's
@@ -162,24 +163,27 @@ pub(crate) struct AiCodeBlock<S: 'static> {
 
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
 impl<S: 'static> AiCodeBlock<S> {
+    /// `read_state` returns a clone of the block's state slot (the message
+    /// wiring addresses one slot per rendered block by index — see
+    /// `ai_message_content.rs`); the five mutators locate that same slot.
     pub(crate) fn new(
         props: AiCodeBlockProps,
-        read_state: ReadCodeBlockStateFn<S>,
-        toggle_fullscreen: ToggleFullscreenFn<S>,
-        set_dialect: SetDialectFn<S>,
-        toggle_dialect_open: ToggleDialectOpenFn<S>,
-        close_dialect: CloseDialectFn<S>,
-        copy_pressed: CopyPressedFn<S>,
+        read_state: impl Fn(&S) -> AiCodeBlockState + 'static,
+        toggle_fullscreen: impl Fn(&mut S) + 'static,
+        set_dialect: impl Fn(&mut S, SqlDialect) + 'static,
+        toggle_dialect_open: impl Fn(&mut S) + 'static,
+        close_dialect: impl Fn(&mut S) + 'static,
+        copy_pressed: impl Fn(&mut S) -> u64 + 'static,
     ) -> Self {
         Self {
             key: "ai-code-block".to_string(),
             props,
-            read_state,
-            toggle_fullscreen,
-            set_dialect,
-            toggle_dialect_open,
-            close_dialect,
-            copy_pressed,
+            read_state: Rc::new(read_state),
+            toggle_fullscreen: Rc::new(toggle_fullscreen),
+            set_dialect: Rc::new(set_dialect),
+            toggle_dialect_open: Rc::new(toggle_dialect_open),
+            close_dialect: Rc::new(close_dialect),
+            copy_pressed: Rc::new(copy_pressed),
             on_insert_sql: None,
             on_run_code: None,
             on_new_query: None,
@@ -196,27 +200,36 @@ impl<S: 'static> AiCodeBlock<S> {
     }
 
     /// React `onInsertSql`; without it the insert button is not rendered.
-    pub(crate) fn on_insert_sql(mut self, on_insert_sql: InsertSqlFn<S>) -> Self {
-        self.on_insert_sql = Some(on_insert_sql);
+    pub(crate) fn on_insert_sql(
+        mut self,
+        on_insert_sql: impl Fn(&mut S, String) + 'static,
+    ) -> Self {
+        self.on_insert_sql = Some(Rc::new(on_insert_sql));
         self
     }
 
     /// React `onRunCode`; without it the run button is not rendered.
-    pub(crate) fn on_run_code(mut self, on_run_code: RunCodeFn<S>) -> Self {
-        self.on_run_code = Some(on_run_code);
+    pub(crate) fn on_run_code(
+        mut self,
+        on_run_code: impl Fn(&mut S, String, String) + 'static,
+    ) -> Self {
+        self.on_run_code = Some(Rc::new(on_run_code));
         self
     }
 
     /// React `onNewQuery`; without it the new-query button is not rendered.
-    pub(crate) fn on_new_query(mut self, on_new_query: NewQueryFn<S>) -> Self {
-        self.on_new_query = Some(on_new_query);
+    pub(crate) fn on_new_query(
+        mut self,
+        on_new_query: impl Fn(&mut S, String) + 'static,
+    ) -> Self {
+        self.on_new_query = Some(Rc::new(on_new_query));
         self
     }
 
     /// The host's clipboard write starter; without it the copy button
     /// renders but does nothing, so it never claims a copy it did not make.
-    pub(crate) fn on_copy(mut self, on_copy: CopyCodeFn<S>) -> Self {
-        self.on_copy = Some(on_copy);
+    pub(crate) fn on_copy(mut self, on_copy: impl Fn(&mut S, String, u64) + 'static) -> Self {
+        self.on_copy = Some(Rc::new(on_copy));
         self
     }
 
@@ -224,8 +237,21 @@ impl<S: 'static> AiCodeBlock<S> {
     /// `state.fullscreen` is set. `layer` takes the dialect listbox while
     /// it is open (the same two-part build as `ui/select.rs`).
     pub(crate) fn build(self, s: &S, dark: bool, layer: &mut Vec<El>) -> El {
-        let k = kit(dark);
         let state = (self.read_state)(s);
+        self.build_with_state(&state, dark, layer)
+    }
+
+    /// The state-snapshot build: the caller renders from a slot it
+    /// already holds (the message content wiring passes the message's
+    /// code-block slots), while the event closures still route through
+    /// `S` when they fire.
+    pub(crate) fn build_with_state(
+        self,
+        state: &AiCodeBlockState,
+        dark: bool,
+        layer: &mut Vec<El>,
+    ) -> El {
+        let k = kit(dark);
         let is_sql = is_sql_code_block(&self.props.language, &self.props.code);
         if state.fullscreen {
             self.fullscreen_tree(k, state, is_sql, layer)
@@ -349,18 +375,20 @@ impl<S: 'static> AiCodeBlock<S> {
     ) -> El {
         let labels: Vec<&str> = SqlDialect::ALL.iter().map(|d| d.label()).collect();
         let values: Vec<&str> = SqlDialect::ALL.iter().map(|d| d.value()).collect();
-        let set_dialect = self.set_dialect;
-        let close_dialect = self.close_dialect;
+        let set_dialect = self.set_dialect.clone();
+        let close_dialect = self.close_dialect.clone();
+        let close_dialect_for_close = self.close_dialect.clone();
+        let toggle_dialect_open = self.toggle_dialect_open.clone();
         let mut select = Select::new(format!("{}-dialect-field", self.key), &labels)
             .values(&values)
             .current(Some(state.selected_dialect.value()))
             .label(t("chat.selectDialect"))
             .width(if fullscreen { 128.0 } else { 112.0 })
             .open(state.dialect_open);
-        select = select.on_toggle(self.toggle_dialect_open);
-        select = select.on_close(self.close_dialect);
+        select = select.on_toggle(move |s: &mut S| toggle_dialect_open(s));
+        select = select.on_close(move |s: &mut S| close_dialect_for_close(s));
         select = select.on_choose(move |s: &mut S, value: &str, _tx: &mut Tx| {
-            apply_dialect_choice(set_dialect, close_dialect, s, value);
+            apply_dialect_choice(set_dialect.clone(), close_dialect.clone(), s, value);
         });
         select.build(k, layer)
     }
@@ -378,7 +406,7 @@ impl<S: 'static> AiCodeBlock<S> {
         // Run (SQL only): React `text-emerald-400`, icon-only inline,
         // icon + `chat.runCode` fullscreen.
         if is_sql {
-            if let Some(on_run_code) = self.on_run_code {
+            if let Some(on_run_code) = self.on_run_code.clone() {
                 let code = self.props.code.clone();
                 let language = run_language(&self.props.language).to_owned();
                 let mut run = self.tiny_button(
@@ -398,7 +426,7 @@ impl<S: 'static> AiCodeBlock<S> {
 
         // Insert to Editor (SQL only): React text-only in both modes.
         if is_sql {
-            if let Some(on_insert_sql) = self.on_insert_sql {
+            if let Some(on_insert_sql) = self.on_insert_sql.clone() {
                 let code = self.props.code.clone();
                 let mut insert = self.tiny_button(
                     k,
@@ -417,7 +445,7 @@ impl<S: 'static> AiCodeBlock<S> {
 
         // New Query (SQL only): icon-only inline, icon + text fullscreen.
         if is_sql {
-            if let Some(on_new_query) = self.on_new_query {
+            if let Some(on_new_query) = self.on_new_query.clone() {
                 let code = self.props.code.clone();
                 let mut new_query = self.tiny_button(
                     k,
@@ -455,9 +483,9 @@ impl<S: 'static> AiCodeBlock<S> {
             k.c.text_muted,
             copy_text,
         );
-        if let Some(on_copy) = self.on_copy {
+        if let Some(on_copy) = self.on_copy.clone() {
             let code = self.props.code.clone();
-            let copy_pressed = self.copy_pressed;
+            let copy_pressed = self.copy_pressed.clone();
             copy = copy.on_press(move |s: &mut S| {
                 let request = copy_pressed(s);
                 on_copy(s, code.clone(), request);
@@ -473,7 +501,7 @@ impl<S: 'static> AiCodeBlock<S> {
             (&ICON_MAXIMIZE_2, t("chat.fullscreen"))
         };
         let toggle_text = fullscreen.then(|| toggle_label.to_owned());
-        let toggle_fullscreen = self.toggle_fullscreen;
+        let toggle_fullscreen = self.toggle_fullscreen.clone();
         let toggle = self
             .tiny_button(
                 k,
