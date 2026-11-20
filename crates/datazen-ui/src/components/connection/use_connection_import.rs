@@ -306,10 +306,10 @@ impl ImportState {
                 }
             }
             ImportInput::ImportOk(result) => {
+                // React only clears `submitting` in `finally`; the password and
+                // selected file survive until `enabled` goes false.
                 self.submitting = false;
                 events.push(ImportEvent::Success(result.clone()));
-                self.selected_file = None;
-                self.password.clear();
             }
             ImportInput::ImportFailed(raw) => {
                 self.submitting = false;

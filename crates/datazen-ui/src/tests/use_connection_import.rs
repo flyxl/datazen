@@ -252,6 +252,37 @@ fn app_submit_sends_password_and_path_then_reports_success() {
 }
 
 #[test]
+fn react_keeps_the_password_and_file_on_import_success() {
+    let mut state = file_state();
+    state.set_password("secret");
+    let _ = state.step(ImportInput::FilePicked(Some("f.json".to_owned())), &strings());
+    let _ = state.step(ImportInput::Submit, &strings());
+    let done = state.step(ImportInput::ImportOk(result()), &strings());
+
+    assert_eq!(done.events, vec![ImportEvent::Success(result())]);
+    assert!(!state.submitting(), "only submitting is cleared in finally");
+    assert_eq!(
+        state.password(),
+        "secret",
+        "React keeps the password on success; left: {:?} right: \"secret\"",
+        state.password()
+    );
+    assert_eq!(state.selected_file(), Some("f.json"));
+    assert_eq!(
+        state.primary_action_label(&strings()),
+        "导入",
+        "the primary action stays on the import label"
+    );
+
+    // Only disabling the hook clears what React's effect clears.
+    let disabled = state.step(ImportInput::Enabled(false), &strings());
+    assert!(disabled.effects.is_empty());
+    assert_eq!(state.password(), "");
+    assert_eq!(state.selected_file(), None);
+    assert_eq!(state.primary_action_label(&strings()), "选择文件…");
+}
+
+#[test]
 fn import_failure_maps_the_raw_error_and_notifies_the_caller() {
     let mut state = app_state();
     state.set_data_path("/data");
