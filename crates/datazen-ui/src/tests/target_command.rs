@@ -381,3 +381,32 @@ fn failed_terminal_and_dispose_failure_keep_their_messages() {
     );
     assert_eq!(step.phases, ["dispose"]);
 }
+
+#[test]
+fn react_rejects_a_falsy_empty_connection_id() {
+    let error = metadata_target("db-session", None, None, None, Some(""), &[])
+        .err()
+        .expect("React rejects a falsy (empty) connection id");
+    assert_eq!(error, TargetCommandError::MetadataOwnerUnavailable);
+    assert_eq!(error.message(), "Metadata owner unavailable");
+}
+
+#[test]
+fn react_resolves_with_null_for_a_commandResult_chunk_without_data() {
+    let (mut run, _) = TargetRun::new(target(), call(), ResponseKind::CommandResult);
+    let _ = drive_to_admission(&mut run);
+    let _ = run.step(TargetCommandInput::Execute {
+        result: Ok(receipt()),
+        now_ms: 0,
+    });
+    let step = run.step(TargetCommandInput::Recovered {
+        view: Some(view(ExecutionState::Succeeded)),
+        chunks: vec![chunk(json!({ "output": { "kind": "commandResult" } }))],
+    });
+    assert_eq!(
+        step.outcome,
+        Some(TargetCommandOutcome::Value(Value::Null)),
+        "React resolves with undefined for a commandResult chunk without data"
+    );
+    assert_eq!(step.effects, vec![TargetCommandEffect::Dispose]);
+}

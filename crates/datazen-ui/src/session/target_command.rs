@@ -144,7 +144,10 @@ pub(crate) fn metadata_target(
             .find(|connection| connection.db_session_id == db_session_id)
     };
     let owner = connection_id.or_else(|| entry.map(|connection| connection.connection_id.as_str()));
-    let owner = owner.ok_or(TargetCommandError::MetadataOwnerUnavailable)?;
+    // React's `if (!owner)` rejects the empty string too, not just null.
+    let owner = owner
+        .filter(|value| !value.is_empty())
+        .ok_or(TargetCommandError::MetadataOwnerUnavailable)?;
     let resolved_database = database
         .or_else(|| entry.and_then(|connection| connection.current_database.as_deref()));
     Ok(ExecutionTarget {
@@ -437,17 +440,26 @@ impl TargetRun {
                             .collect(),
                     )),
                     ResponseKind::CommandResult => {
-                        let data = chunks.iter().find_map(|chunk| {
-                            let output = chunk.payload.get("output")?;
-                            if output.get("kind").and_then(|kind| kind.as_str())
-                                != Some("commandResult")
-                            {
-                                return None;
-                            }
-                            output.get("data").cloned()
+                        // React returns `payload.output.data` for ANY
+                        // commandResult chunk — an absent `data` is undefined
+                        // (Null here). Only the absence of such a chunk throws.
+                        let command_chunk = chunks.iter().find(|chunk| {
+                            chunk
+                                .payload
+                                .get("output")
+                                .and_then(|output| output.get("kind"))
+                                .and_then(|kind| kind.as_str())
+                                == Some("commandResult")
                         });
-                        match data {
-                            Some(data) => TargetCommandOutcome::Value(data),
+                        match command_chunk {
+                            Some(chunk) => TargetCommandOutcome::Value(
+                                chunk
+                                    .payload
+                                    .get("output")
+                                    .and_then(|output| output.get("data"))
+                                    .cloned()
+                                    .unwrap_or(Value::Null),
+                            ),
                             None => return self.failed(TargetCommandError::TypedResultUnavailable),
                         }
                     }
