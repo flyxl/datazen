@@ -138,8 +138,19 @@ pub(crate) fn export_editor_settings(settings: &EditorSettings, exported_at: &st
 pub(crate) fn import_editor_settings(json_str: &str) -> Result<EditorSettingsPatch, SettingsImportError> {
     let parsed: Value = serde_json::from_str(json_str)
         .map_err(|_| SettingsImportError::InvalidJson)?;
-    let Some(root) = parsed.as_object() else {
-        return Err(SettingsImportError::RootMustBeObject);
+    // React's guard is `!parsed || typeof parsed !== 'object'`: arrays pass
+    // (`typeof [] === 'object'`, `![] === false`) and simply have no named
+    // fields. null/false/0/string still fail, as an empty object cannot stand
+    // in for those.
+    // React's guard is `!parsed || typeof parsed !== 'object'`: arrays pass
+    // (`typeof [] === 'object'`, `![] === false`) and simply have no named
+    // fields. null/false/0/string still fail, as an empty object cannot stand
+    // in for those.
+    let empty_root = Map::new();
+    let root = match &parsed {
+        Value::Object(map) => map,
+        Value::Array(_) => &empty_root,
+        _ => return Err(SettingsImportError::RootMustBeObject),
     };
 
     let mut patch = EditorSettingsPatch::default();

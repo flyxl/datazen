@@ -134,6 +134,23 @@ fn rejects_invalid_json_and_a_non_object_root() {
         SettingsImportError::RootMustBeObject.message(),
         "Root must be an object"
     );
+    for falsy in ["null", "false", "0", "\"text\""] {
+        assert_eq!(
+            import_editor_settings(falsy).err(),
+            Some(SettingsImportError::RootMustBeObject),
+            "{falsy} is not an object root"
+        );
+    }
+}
+
+#[test]
+fn react_accepts_an_array_root_and_returns_an_empty_patch() {
+    let patch = import_editor_settings("[]").expect("React accepts an array root and returns an empty patch");
+    assert_eq!(
+        patch,
+        crate::session::settings_export::EditorSettingsPatch::default(),
+        "an array root has no named editor/snippet fields"
+    );
 }
 
 #[test]
