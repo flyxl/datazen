@@ -26,6 +26,10 @@ use rune_kit::{Button, ButtonVariant, ControlSize, Kit};
 use crate::i18n::t;
 use crate::ui::dialog::Dialog;
 use crate::ui::kit::kit;
+use crate::views::execute_sql_file_dialog::{
+    execute_sql_file_dialog, ExecuteSqlFileHostPort, ExecuteSqlFileState, ExecuteSqlFileVm,
+    SqlFileRequest,
+};
 use crate::views::create_database_dialog::{
     build_snapshot as build_db_snapshot, AdminCreateAction, AdminCreateState, DB_SPEC,
 };
@@ -201,31 +205,27 @@ pub(crate) fn build<S: 'static>(
         );
     }
 
+    // T382: the real ExecuteSqlFileDialog replaces T223's structural stand-in.
+    // The host port maps its close/execute requests onto T223's existing
+    // `DialogAction` surface so callers keep their contract.
     if vm.sql_file_open {
-        let body = format!(
-            "{} · {} · {}",
-            ctx.connection_name,
-            database_of(vm),
-            ctx.db_session_id
-        );
-        shell(
-            k,
-            layer,
-            "content-view-sql-file-dialog",
-            t("common.executeSqlFile"),
-            on_action,
-            &body,
-            Some("sql-file-status"),
-            row().child(
-                Button::new(t("sqlFile.selectAndRun"))
-                    .variant(ButtonVariant::Contrast)
-                    .control_size(ControlSize::ExtraLarge)
-                    .on_press(close(on_action, DialogAction::Executed))
-                    .build(k)
-                    .key("sql-file-execute"),
-            ),
-            dark,
-        );
+        let close_action = on_action.clone();
+        let execute_action = on_action.clone();
+        let host = ExecuteSqlFileHostPort {
+            on_close: Some(Rc::new(move |s: &mut S| close_action(s, DialogAction::CloseSqlFile))),
+            on_execute: Some(Rc::new(move |s: &mut S, _request: SqlFileRequest| {
+                execute_action(s, DialogAction::Executed)
+            })),
+            ..ExecuteSqlFileHostPort::default()
+        };
+        let sql_vm = ExecuteSqlFileVm {
+            open: true,
+            connection_name: ctx.connection_name.clone(),
+            database: vm.current_database.clone().or_else(|| vm.initial_database.clone()),
+            db_session_id: ctx.db_session_id.clone(),
+            state: ExecuteSqlFileState::default(),
+        };
+        execute_sql_file_dialog(&sql_vm, dark, layer, host);
     }
 
     // T266: the real create dialogs replace the structural shells. The host

@@ -15,6 +15,7 @@ pub(crate) mod create_schema_dialog;
 pub(crate) mod create_user_dialog;
 pub(crate) mod content_view_dialogs;
 pub(crate) mod content_view_drawers;
+pub(crate) mod execute_sql_file_dialog;
 
 mod connections;
 mod connections_home;
