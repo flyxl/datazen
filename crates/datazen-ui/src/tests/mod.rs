@@ -790,3 +790,6 @@ mod schema_diff_object_discovery;
 // schemaDiffTableNames.ts merge the discovery run returns; T374 owns the
 // rest of that React file).
 mod schema_diff_table_names;
+// T377: the commands/schemaDiff.ts port — pure helpers, wire payload
+// shapes, tagged-enum folding and the submit→poll→resolve machine.
+mod commands_schema_diff;

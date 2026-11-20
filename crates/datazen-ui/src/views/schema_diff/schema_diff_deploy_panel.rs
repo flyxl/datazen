@@ -9,13 +9,15 @@
 //!
 //! - The wire vocabulary (`SchemaDiffPlan`, `PlanStatement`,
 //!   `SchemaDiffDeployResult`, …) lives in `@datazen/backend-client`; the
-//!   Rust host converts it into the `*Vm` projections here (the
-//!   `PromptTemplateVm` pattern of the AI settings port) because
-//!   `datazen-ui` does not depend on the client crate. `commands/schemaDiff.ts`
-//!   (the IPC shell, this segment's T379) absorbs the helpers when it lands.
+//!   Rust host converts it into the `*Vm` projections in
+//!   `commands/schema_diff` (the `PromptTemplateVm` pattern of the AI
+//!   settings port) because `datazen-ui` does not depend on the client
+//!   crate. That module (this segment's T377) absorbed the panel's former
+//!   seam types and helpers — its single source — and this panel re-exports
+//!   them so the audit's import path keeps resolving.
 //! - `planHasDestructive` / `dialectSupportsTransactionalDdl` /
 //!   `DESTRUCTIVE_CONFIRM_TOKEN` are 1:1 copies of
-//!   `commands/schemaDiff.ts`'s pure helpers (the T379 seam).
+//!   `commands/schemaDiff.ts`'s pure helpers (the T377 seam).
 //! - `canConfirmDestructiveDeploy` / `canRunDeploy` are 1:1 copies of
 //!   `lib/schemaDiffConfirm.ts` — that file is another segment's task
 //!   (T591), so the seam re-points when it lands.
@@ -67,126 +69,23 @@ use crate::ui::field::TextField;
 use crate::ui::kit::kit;
 use crate::ui::toggle::Checkbox;
 
-/// React `DESTRUCTIVE_CONFIRM_TOKEN` ('DEPLOY').
-#[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
-pub(crate) const DESTRUCTIVE_CONFIRM_TOKEN: &str = "DEPLOY";
+// The wire vocabulary + the two pure helpers live in `commands/schema_diff`
+// (T377, their single source) — re-exported here so the audit's import path
+// from the panel module keeps resolving. Test-tree-consumed: the lib build
+// alone sees them unused.
+#[allow(unused_imports)]
+pub(crate) use crate::commands::schema_diff::wire::{
+    DeployStatusVm, PlanRequirementKindVm, PlanRequirementVm, PlanStatementVm, RollbackCompletenessVm,
+    SchemaDiffDeployResultVm, SchemaDiffPlanVm, StatementRiskVm,
+};
+#[allow(unused_imports)]
+pub(crate) use crate::commands::schema_diff::{
+    DESTRUCTIVE_CONFIRM_TOKEN, dialect_supports_transactional_ddl, plan_has_destructive,
+};
 
-// ---- the wire projections (the host converts; T379 absorbs) ----------------
-
-/// React `StatementRisk`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
-pub(crate) enum StatementRiskVm {
-    Additive,
-    Destructive,
-    Rewrite,
-}
-
-/// React `PlanStatement`, the fields the panel reads.
-#[derive(Clone, Debug, PartialEq)]
-#[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
-pub(crate) struct PlanStatementVm {
-    pub(crate) sql: String,
-    pub(crate) risk: StatementRiskVm,
-    /// `rollbackSql: string | null` — unused here but part of the plan shape.
-    pub(crate) rollback_sql: Option<String>,
-    pub(crate) summary: String,
-    pub(crate) requires_transaction: bool,
-}
-
-/// React `PlanRequirement.kind`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
-pub(crate) enum PlanRequirementKindVm {
-    Backfill,
-    Unsupported,
-}
-
-/// React `PlanRequirement` — only `kind` is read (`Unsupported` makes the
-/// plan deployless; `Backfill` is a post-deploy follow-up).
-#[derive(Clone, Debug, PartialEq)]
-#[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
-pub(crate) struct PlanRequirementVm {
-    pub(crate) kind: PlanRequirementKindVm,
-    pub(crate) table: String,
-    pub(crate) column: String,
-    pub(crate) reason: String,
-}
-
-/// React `RollbackCompleteness`.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-#[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
-pub(crate) struct RollbackCompletenessVm {
-    pub(crate) complete: bool,
-    pub(crate) missing: Vec<String>,
-}
-
-/// React `SchemaDiffPlan`, the fields the panel reads.
-#[derive(Clone, Debug, Default, PartialEq)]
-#[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
-pub(crate) struct SchemaDiffPlanVm {
-    pub(crate) tables: Vec<String>,
-    pub(crate) target_dialect: String,
-    pub(crate) statements: Vec<PlanStatementVm>,
-    pub(crate) requirements: Vec<PlanRequirementVm>,
-    pub(crate) rollback_completeness: RollbackCompletenessVm,
-}
-
-/// React `DeployStatus` (rendered as its wire string).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
-pub(crate) enum DeployStatusVm {
-    Committed,
-    Unknown,
-    RolledBack,
-    Mixed,
-    Failed,
-    Cancelled,
-}
-
-#[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
-impl DeployStatusVm {
-    /// The wire string React interpolates into the status line.
-    pub(crate) fn wire_str(self) -> &'static str {
-        match self {
-            DeployStatusVm::Committed => "committed",
-            DeployStatusVm::Unknown => "unknown",
-            DeployStatusVm::RolledBack => "rolled_back",
-            DeployStatusVm::Mixed => "mixed",
-            DeployStatusVm::Failed => "failed",
-            DeployStatusVm::Cancelled => "cancelled",
-        }
-    }
-}
-
-/// React `SchemaDiffDeployResult`, the fields the panel reads.
-#[derive(Clone, Debug, PartialEq)]
-#[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
-pub(crate) struct SchemaDiffDeployResultVm {
-    pub(crate) status: DeployStatusVm,
-    pub(crate) executed_count: usize,
-    pub(crate) statement_count: usize,
-    pub(crate) errors: Vec<String>,
-}
-
-// ---- the pure helpers (1:1 from commands/schemaDiff.ts, the T379 seam) ------
-
-/// React `planHasDestructive`: any statement whose risk is `destructive` or
-/// `rewrite`.
-#[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
-pub(crate) fn plan_has_destructive(plan: &SchemaDiffPlanVm) -> bool {
-    plan.statements.iter().any(|s| {
-        matches!(s.risk, StatementRiskVm::Destructive | StatementRiskVm::Rewrite)
-    })
-}
-
-/// React `dialectSupportsTransactionalDdl`: postgresql / postgres / sqlite
-/// (case-insensitive).
-#[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
-pub(crate) fn dialect_supports_transactional_ddl(dialect: &str) -> bool {
-    let d = dialect.to_lowercase();
-    d == "postgresql" || d == "postgres" || d == "sqlite"
-}
+// ---- the wire projections' single source: commands/schema_diff (T377) ----
+// (The panel's former local seam types moved there; the re-exports above
+// keep this module's and the audit's paths valid.)
 
 // ---- the pure helpers (1:1 from lib/schemaDiffConfirm.ts, the T591 seam) ----
 
@@ -245,7 +144,10 @@ pub(crate) fn deploy_readiness(
 ) -> DeployReadiness {
     let has_destructive = plan_has_destructive(plan);
     let tx_supported = dialect_supports_transactional_ddl(&plan.target_dialect);
-    let transaction_required = plan.statements.iter().any(|s| s.requires_transaction);
+    let transaction_required = plan
+        .statements
+        .iter()
+        .any(|s| s.requires_transaction.unwrap_or(false));
     let transaction_enabled = transaction_required || (use_transaction && tx_supported);
     // Same rule as the wizard footer: `Backfill` is a post-deploy follow-up,
     // only `Unsupported` makes the plan deployless.

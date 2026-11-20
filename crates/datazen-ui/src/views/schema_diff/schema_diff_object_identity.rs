@@ -45,6 +45,10 @@
 //! later tasks of this window's track and must keep calling this one
 //! function, never a re-derived format.
 
+// The serde derives ride the clipboard-config wire (T377's
+// SchemaDiffConfigJson carries identity lists).
+use serde::{Deserialize, Serialize};
+
 /// React `SchemaDiffObjectKind` = `'view' | DatabaseObjectKind` — the
 /// object categories a unified plan can address beyond tables (tables
 /// themselves travel as the plan's `tables` string list, not identities).
@@ -57,6 +61,20 @@ pub(crate) enum SchemaDiffObjectKindVm {
     Trigger,
     Sequence,
     Type,
+}
+
+impl serde::Serialize for SchemaDiffObjectKindVm {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.wire_str())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for SchemaDiffObjectKindVm {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        Self::from_wire_str(&value)
+            .ok_or_else(|| serde::de::Error::custom(format!("unknown schema-diff object kind: {value}")))
+    }
 }
 
 #[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
@@ -72,13 +90,27 @@ impl SchemaDiffObjectKindVm {
             Self::Type => "type",
         }
     }
+
+    /// The wire spelling's parse twin (serde + host conversion use it).
+    pub(crate) fn from_wire_str(value: &str) -> Option<Self> {
+        match value {
+            "view" => Some(Self::View),
+            "function" => Some(Self::Function),
+            "procedure" => Some(Self::Procedure),
+            "trigger" => Some(Self::Trigger),
+            "sequence" => Some(Self::Sequence),
+            "type" => Some(Self::Type),
+            _ => None,
+        }
+    }
 }
 
 /// React `SchemaDiffObjectIdentity` (= backend-client's
 /// `SchemaDiffDatabaseObject`), the six fields the key reads. The
 /// optionals are React's `?: string | null`; absent and explicit `null`
 /// are the same value after the key's `?? null` normalization.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 #[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
 pub(crate) struct SchemaDiffObjectIdentityVm {
     pub(crate) kind: SchemaDiffObjectKindVm,

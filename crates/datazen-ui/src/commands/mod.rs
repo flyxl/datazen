@@ -8,3 +8,6 @@
 //! their own tasks.
 
 pub(crate) mod adb;
+// T377: the schema-diff commands shell (pure helpers, wire folding, the
+// job-observer bus and the submit→poll→resolve machine).
+pub(crate) mod schema_diff;
