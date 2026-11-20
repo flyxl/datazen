@@ -66,6 +66,7 @@ pub(crate) use ai_write_proposal_host_view::AiWriteProposalHost;
 pub(crate) mod ai_chat_header;
 pub(crate) mod ai_code_block;
 pub(crate) mod ai_code_block_state;
+pub(crate) mod ai_message_content;
 pub(crate) mod ai_chat_input_area;
 pub(crate) mod ai_chat_input_area_state;
 pub(crate) mod ai_chat_message_list;
@@ -82,3 +83,5 @@ pub(crate) mod ai_egress_notice;
 pub(crate) mod ai_input;
 
 pub(crate) use ai_egress_notice::{AiEgressNotice, ContextItem, ContextKind};
+#[allow(unused_imports)] // the panel shell / state wiring are the consumers
+pub(crate) use ai_message_content::{AiMessageCodeWiring, AiMessageContent, MessageSegment};

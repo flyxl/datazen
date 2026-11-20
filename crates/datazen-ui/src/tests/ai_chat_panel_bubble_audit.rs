@@ -333,7 +333,8 @@ fn bubble_el(state: &AuditProbe) -> El {
             },
         );
     }
-    bubble.build(state.dark)
+    let mut layer = Vec::new();
+    bubble.build(state.dark, &mut layer)
 }
 
 fn bubble_view(state: &AuditProbe, _cx: &mut Cx<AuditProbe>) -> El {

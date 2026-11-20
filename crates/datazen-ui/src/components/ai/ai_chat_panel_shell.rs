@@ -79,6 +79,8 @@ use super::ai_chat_header::{AiChatHeader, AiChatTab};
 use super::ai_chat_input_area::AiChatInputArea;
 use super::ai_chat_message_list::AiChatMessageList;
 use super::ai_chat_panel_state::AiChatPanelState;
+use super::ai_message_content::AiMessageCodeWiring;
+use crate::components::ai::ai_code_block_state::SqlDialect;
 use crate::i18n::t;
 use crate::icons::{ICON_SETTINGS, ICON_SPARKLES};
 use crate::ui::kit::kit;
@@ -185,7 +187,7 @@ impl<'a, S: 'static> AiChatPanel<'a, S> {
         if self.state.header().tab() == AiChatTab::Workflows {
             root = root.child(self.workflows());
         } else {
-            root = root.child(self.message_list(dark));
+            root = root.child(self.message_list(dark, layer));
             root = root.child(self.input_area(dark));
         }
         root
@@ -320,7 +322,7 @@ impl<'a, S: 'static> AiChatPanel<'a, S> {
         header.build(dark, layer)
     }
 
-    fn message_list(&self, dark: bool) -> El {
+    fn message_list(&self, dark: bool, layer: &mut Vec<El>) -> El {
         let mut list = AiChatMessageList::new(self.state.list());
         if let Some(dialect) = self.state.sql_dialect() {
             list = list.sql_dialect(dialect.to_string());
@@ -406,8 +408,77 @@ impl<'a, S: 'static> AiChatPanel<'a, S> {
             list = list.on_at_bottom(move |state: &mut S, at: bool| {
                 at_bottom(state).list_mut().set_at_bottom(at);
             });
+            // T167: the per-message `AiCodeBlock` wiring — the slots live
+            // on each message's bubble state and the panel's closures
+            // locate them. The clipboard write and URL open hosts are the
+            // shell's pipes (not in this slice: the copy button renders
+            // but never claims a copy it did not make, and a link press
+            // does nothing until the host pipes exist).
+            let access = Rc::clone(access);
+            list = list.code_wiring(move |index: usize| {
+                let toggle_fullscreen = Rc::clone(&access);
+                let set_dialect = Rc::clone(&access);
+                let toggle_dialect_open = Rc::clone(&access);
+                let close_dialect = Rc::clone(&access);
+                let copy_pressed = Rc::clone(&access);
+                AiMessageCodeWiring {
+                    toggle_fullscreen: Rc::new(move |code_idx: usize, state: &mut S| {
+                        if let Some(slot) = toggle_fullscreen(state)
+                            .list_mut()
+                            .bubble_state_mut(index)
+                            .code_blocks_mut()
+                            .get_mut(code_idx)
+                        {
+                            slot.toggle_fullscreen();
+                        }
+                    }),
+                    set_dialect: Rc::new(
+                        move |code_idx: usize, state: &mut S, dialect: SqlDialect| {
+                            if let Some(slot) = set_dialect(state)
+                                .list_mut()
+                                .bubble_state_mut(index)
+                                .code_blocks_mut()
+                                .get_mut(code_idx)
+                            {
+                                slot.set_dialect(dialect);
+                            }
+                        },
+                    ),
+                    toggle_dialect_open: Rc::new(move |code_idx: usize, state: &mut S| {
+                        if let Some(slot) = toggle_dialect_open(state)
+                            .list_mut()
+                            .bubble_state_mut(index)
+                            .code_blocks_mut()
+                            .get_mut(code_idx)
+                        {
+                            slot.toggle_dialect_open();
+                        }
+                    }),
+                    close_dialect: Rc::new(move |code_idx: usize, state: &mut S| {
+                        if let Some(slot) = close_dialect(state)
+                            .list_mut()
+                            .bubble_state_mut(index)
+                            .code_blocks_mut()
+                            .get_mut(code_idx)
+                        {
+                            slot.close_dialect();
+                        }
+                    }),
+                    copy_pressed: Rc::new(move |code_idx: usize, state: &mut S| {
+                        match copy_pressed(state)
+                            .list_mut()
+                            .bubble_state_mut(index)
+                            .code_blocks_mut()
+                            .get_mut(code_idx)
+                        {
+                            Some(slot) => slot.copy_pressed(),
+                            None => 0,
+                        }
+                    }),
+                }
+            });
         }
-        list.build(dark)
+        list.build(dark, layer)
     }
 
     fn input_area(&self, dark: bool) -> El {

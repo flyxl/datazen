@@ -732,6 +732,8 @@ mod ai_chat_panel;
 mod ai_chat_panel_audit;
 // T009-S2: AiChatPanel ChatBubble (tool/reasoning/content/memory/remember/streaming/cancelled/questions).
 mod ai_chat_panel_bubble;
+mod ai_message_content;
+mod ai_message_content_audit;
 // T009-S2 independent audit: fresh vectors, dual-channel geometry, settle_all reproduction.
 mod ai_chat_panel_bubble_audit;
 // T009-S3: AiChatPanel header (tabs, migration banners, agent-mode row + template select, profile row, share-editor row).
@@ -1000,6 +1002,32 @@ mod data_transfer_terminal_results;
 // gate, the fixed uncompleted attribute set, stale identities, copy path).
 mod data_transfer_terminal_results_audit;
 
+// T176: the mapping gate notice (the message chain visible / gateLost /
+// derived reason, the nothing-renders branches, the alert role, geometry).
+mod mapping_gate_notice;
+
+// T202: the source filter editor (the update chain, the empty state, the
+// row mounts with the null-pair value rule, the logic switch threshold,
+// the disabled inertness, geometry).
+mod source_filter_editor;
+
+// T225: the transfer execute-confirm dialog (the write-mode intro, the
+// plan list, the footer buttons, the close/confirm callbacks, geometry).
+mod data_transfer_execute_confirm_dialog;
+
+// T225 independent audit: the epoch restamp, the same-name pair key, the
+// vertical containment with eight plans, the missing-callback mount.
+mod data_transfer_execute_confirm_dialog_audit;
+
+// T202 independent audit: the Enter commit chain, the disabled inert
+// remove, the middle-of-three removal, double add, the and default
+// display, the short-drafts defence.
+mod source_filter_editor_audit;
+
+// T176 independent audit: whitespace vectors, the disabled create-new,
+// the empty row list, receipt-over-reason order, banner/text nesting.
+mod mapping_gate_notice_audit;
+
 // T114: the Data Sync endpoint step (scope reconfirmation, profile
 // controls: name input, profile select, save/load/delete gates).
 mod data_sync_endpoint_step;
@@ -1007,6 +1035,63 @@ mod data_sync_endpoint_step;
 // T114 independent audit: fresh vectors (empty profile list, pre-selected
 // id, pre-held name text, the dismissal close path, narrow-window notice).
 mod data_sync_endpoint_step_audit;
+
+// T148: the Data Sync job status panel (loose Number() semantics, verdict
+// label branches, committed fallback chain, banner/list truthiness,
+// button mounts + disabled logic + callbacks, window-width geometry).
+mod data_sync_job_status_panel;
+
+// T360: the Data Sync recordset editor (the pure update chain: toggle,
+// bounds, order, tuple components, the limit validation; the mounted
+// branches; geometry).
+mod data_sync_recordset_editor;
+
+// T348: the sync options bar (the operation checkboxes with the
+// delete confirm-first split, the conflict-policy select and warnings,
+// the hint, geometry).
+mod data_sync_options_bar;
+
+// T390: the client SQL preview helpers (the statement filter, the
+// preview-text join, the no-wire row projection with its gates).
+mod data_sync_client_sql_preview;
+
+// T371: the Data Sync SQL preview (the toolbar, the filter chips, the
+// conditional spinner, the statement projection, the size-limit error
+// case, geometry).
+mod data_sync_sql_preview;
+
+// T371 independent audit: the copy-text projection, the selected chip
+// face, an error alongside statements, the substring size-limit match,
+// two-chip order.
+mod data_sync_sql_preview_audit;
+
+// T390 independent audit: mixed update forms, a composite pk, each
+// filter face, the both-empty statement line, the no-match placeholder.
+mod data_sync_client_sql_preview_audit;
+
+// T203: the Data Sync options step (the card chrome, the title block,
+// the mounted OptionsBar, the callback pass-through, geometry).
+mod data_sync_options_step;
+
+// T203 independent audit: the title-above-bar order, every pass-through
+// callback in one journey, the live skip warning inside the step.
+mod data_sync_options_step_audit;
+
+// T348 independent audit: the delete checkbox's both directions under a
+// live model, an all-off mount, the warning beside the select, the
+// unset-policy abort display.
+mod data_sync_options_bar_audit;
+
+// T360 independent audit: limit boundary integers, the toggle's editor
+// unmount, the sibling-preserving all-empty deletion, the scalar→tuple
+// switch on the first tuple edit, the limit error paragraph.
+mod data_sync_recordset_editor_audit;
+
+// T148 independent audit (tester): the partial banner matrix, the
+// empty-string hydration error, `Number()` edge spellings, the NaN
+// counter printing, the raw wire-state table, row part order by x
+// geometry, five-row stacking, light theme.
+mod data_sync_job_status_panel_audit;
 
 // T125: the persisted-connections store (display helpers over the T403
 // placeholder subset, load/refetch chains, group edits, per-connection moves).
@@ -1023,6 +1108,17 @@ mod table_data_dirty_index;
 // T127 independent audit: fresh vectors (composite keys, nested identity
 // values, anchor under ambiguity, expressions, the delete-mark flip).
 mod table_data_dirty_index_audit;
+
+// T158: the new-row draft transitions + the enum-candidate cache
+// (draft id minting, read helpers, every transition's effect and no-op
+// branch, the plan-trio reset, the pending_changes invariant).
+mod table_data_draft_inserts;
+
+// T158 independent audit: base-36 boundaries, order authority under a
+// manual order, duplicate-id appends, self-duplication, sibling order
+// preservation, typed JSON writes, drafts surviving the reset, empty
+// enum-candidate list semantics.
+mod table_data_draft_inserts_audit;
 
 // T129: the platform port contracts (updater wire types, window routing,
 // the exporter port, the §7.4 binding registry).

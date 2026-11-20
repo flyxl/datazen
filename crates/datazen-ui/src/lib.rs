@@ -52,6 +52,10 @@ pub(crate) mod table_data_connection_state;
 pub(crate) mod table_data_count_strategy;
 // T127: the dirty-state index of one table panel (dirtyIndex.ts).
 pub(crate) mod table_data_dirty_index;
+// T158: the new-row draft transitions (draftInserts.ts).
+pub(crate) mod table_data_draft_inserts;
+// T158: the enum-candidate cache transitions (enumCandidates.ts).
+pub(crate) mod table_data_enum_candidates;
 pub(crate) mod table_data_filter_utils;
 // T210: the grid-selection geometry and state transitions (gridSelection.ts).
 pub(crate) mod table_data_grid_selection;

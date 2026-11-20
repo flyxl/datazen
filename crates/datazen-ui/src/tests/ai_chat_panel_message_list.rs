@@ -166,6 +166,7 @@ fn probe() -> Probe {
 }
 
 fn list_view(state: &Probe, _cx: &mut Cx<Probe>) -> El {
+    let mut layer = Vec::new();
     let mut list = AiChatMessageList::<Probe>::new(&state.list)
         .sql_dialect("postgres")
         .on_insert_sql(|s: &mut Probe, sql: &str| s.inserts.push(sql.to_string()))
@@ -229,7 +230,7 @@ fn list_view(state: &Probe, _cx: &mut Cx<Probe>) -> El {
             .w_full()
             .h_full()
             .padding(16.0)
-            .child(list.build(state.dark)),
+            .child(list.build(state.dark, &mut layer)),
         Vec::new(),
     )
 }
@@ -244,13 +245,14 @@ fn runtime(probe: Probe, w: f32, h: f32) -> Runtime<Probe> {
 /// The same list with no callbacks wired at all: the dismiss buttons and
 /// the jump pill render unwired, covering the `None` branches.
 fn bare_view(state: &Probe, _cx: &mut Cx<Probe>) -> El {
+    let mut layer = Vec::new();
     rune_kit::root(
         col()
             .key("probe-page")
             .w_full()
             .h_full()
             .padding(16.0)
-            .child(AiChatMessageList::<Probe>::new(&state.list).build(state.dark)),
+            .child(AiChatMessageList::<Probe>::new(&state.list).build(state.dark, &mut layer)),
         Vec::new(),
     )
 }

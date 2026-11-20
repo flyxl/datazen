@@ -56,7 +56,7 @@ fn view(scene: &Scene, _cx: &mut Cx<Scene>) -> El {
     let mut layer = Vec::new();
     let page = AiCodeBlock::<Scene>::new(
         scene.props.clone(),
-        |s: &Scene| &s.state,
+        |s: &Scene| s.state.clone(),
         |s: &mut Scene| s.state.toggle_fullscreen(),
         |s: &mut Scene, dialect| s.state.set_dialect(dialect),
         |s: &mut Scene| s.state.toggle_dialect_open(),
@@ -75,7 +75,7 @@ fn view_no_callbacks(scene: &Scene, _cx: &mut Cx<Scene>) -> El {
     let mut layer = Vec::new();
     let page = AiCodeBlock::<Scene>::new(
         scene.props.clone(),
-        |s: &Scene| &s.state,
+        |s: &Scene| s.state.clone(),
         |s: &mut Scene| s.state.toggle_fullscreen(),
         |s: &mut Scene, dialect| s.state.set_dialect(dialect),
         |s: &mut Scene| s.state.toggle_dialect_open(),
@@ -90,7 +90,7 @@ fn view_custom_key(scene: &Scene, _cx: &mut Cx<Scene>) -> El {
     let mut layer = Vec::new();
     let page = AiCodeBlock::<Scene>::new(
         scene.props.clone(),
-        |s: &Scene| &s.state,
+        |s: &Scene| s.state.clone(),
         |s: &mut Scene| s.state.toggle_fullscreen(),
         |s: &mut Scene, dialect| s.state.set_dialect(dialect),
         |s: &mut Scene| s.state.toggle_dialect_open(),
@@ -390,8 +390,8 @@ fn dialect_choice_applies_known_values_and_ignores_unknown_ones() {
     let mut scene = Scene::sql();
     scene.state.toggle_dialect_open();
     apply_dialect_choice(
-        |s: &mut Scene, dialect| s.state.set_dialect(dialect),
-        |s: &mut Scene| s.state.close_dialect(),
+        std::rc::Rc::new(|s: &mut Scene, dialect| s.state.set_dialect(dialect)),
+        std::rc::Rc::new(|s: &mut Scene| s.state.close_dialect()),
         &mut scene,
         "mysql",
     );
@@ -400,8 +400,8 @@ fn dialect_choice_applies_known_values_and_ignores_unknown_ones() {
 
     scene.state.toggle_dialect_open();
     apply_dialect_choice(
-        |s: &mut Scene, dialect| s.state.set_dialect(dialect),
-        |s: &mut Scene| s.state.close_dialect(),
+        std::rc::Rc::new(|s: &mut Scene, dialect| s.state.set_dialect(dialect)),
+        std::rc::Rc::new(|s: &mut Scene| s.state.close_dialect()),
         &mut scene,
         "postgres",
     );

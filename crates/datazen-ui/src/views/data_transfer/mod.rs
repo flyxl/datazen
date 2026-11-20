@@ -12,6 +12,9 @@
 //! | `hooks/useTransferJobRun.ts` — the Job run machine | `transfer_job_run` | T147-S2 |
 //! | `DataTransferWindow.tsx` — state model | `data_transfer_window_state` | T147-S1 |
 //! | `DataTransferWindow.tsx` — rendering | `data_transfer_window` | T147-S3 |
+//! | `MappingGateNotice.tsx` | `mapping_gate_notice` | T176 |
+//! | `SourceFilterEditor.tsx` | `source_filter_editor` | T202 |
+//! | `TransferExecuteConfirmDialog.tsx` | `transfer_execute_confirm_dialog` | T225 |
 
 pub(crate) mod column_mapping_editor;
 pub(crate) mod column_mapping_row;
@@ -19,7 +22,10 @@ pub(crate) mod data_transfer_attached_jobs;
 pub(crate) mod data_transfer_terminal_results;
 pub(crate) mod data_transfer_window;
 pub(crate) mod data_transfer_window_state;
+pub(crate) mod mapping_gate_notice;
 pub(crate) mod recordset_editor;
+pub(crate) mod source_filter_editor;
+pub(crate) mod transfer_execute_confirm_dialog;
 pub(crate) mod transfer_job_run;
 pub(crate) mod transfer_mapping_view;
 pub(crate) mod transfer_pairing_vm;
@@ -67,6 +73,16 @@ pub(crate) use data_transfer_window_state::{
 pub(crate) use data_transfer_window::{
     DataTransferWindow, DataTransferWindowEdits, MigrationJobsHydration,
 };
+#[allow(unused_imports)] // the Data Transfer window (T147) is the production consumer
+pub(crate) use mapping_gate_notice::MappingGateNotice;
+#[allow(unused_imports)] // the mapping editors (T023 shell + T336) are the production consumers
+pub(crate) use source_filter_editor::{
+    rebuild_filter, SourceFilterEditor, SourceFilterSelect, StructuredSourceFilter, ValueDrafts,
+    OPERATORS,
+};
+
+#[allow(unused_imports)] // the Data Transfer window is the production consumer
+pub(crate) use transfer_execute_confirm_dialog::TransferExecuteConfirmDialog;
 #[allow(unused_imports)] // the Data Transfer window (T147) is the production consumer
 pub(crate) use transfer_job_run::{
     classify_transfer_run_failure, is_ambiguous_apply_submission_error, TransferApplyInput,

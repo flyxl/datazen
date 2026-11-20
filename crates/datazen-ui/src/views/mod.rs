@@ -24,7 +24,7 @@ pub(crate) mod execute_sql_file_dialog;
 mod connections;
 mod connections_home;
 mod dashboards_workflows;
-mod data_sync;
+pub(crate) mod data_sync;
 mod data_transfer;
 mod main;
 // The windows/dashboard subtree ports (T018: AddToDashboardDialog is its
