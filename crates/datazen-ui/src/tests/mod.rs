@@ -366,6 +366,8 @@ mod batch_export_audit;
 // T016 fix retest: independent D1/D2 verification.
 mod batch_export_retest;
 
+// T409: ConnectionCardList port (cards, sorting/filter, paging, host ports, geometry).
+mod connection_card_list;
 // T144: the React ConnectionWorkspaceHome port (hero counts, card keys,
 // filter, MCP copy feedback with a real wake, KV-slot takeover, geometry).
 mod connection_workspace_home;

@@ -15,6 +15,7 @@ pub(crate) mod create_schema_dialog;
 pub(crate) mod create_user_dialog;
 pub(crate) mod content_view_dialogs;
 pub(crate) mod content_view_drawers;
+pub(crate) mod home;
 
 mod connections;
 mod connections_home;
