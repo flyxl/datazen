@@ -123,7 +123,7 @@
 - [ ] T364 · stores · 0.50d · stores/panelTypes.ts
 - [ ] T365 · stores/tableData · 0.30d · stores/tableData/tableSortPreferences.ts
 - [x] T367 · components/DataTable · 0.80d · components/DataTable/Pagination.tsx
-- [ ] T371 · windows/data-sync · 0.90d · windows/data-sync/SqlPreview.tsx
+- [x] T371 · windows/data-sync · 0.90d · windows/data-sync/SqlPreview.tsx
 - [ ] T375 · stores · 0.90d · stores/queryExecActions.ts
 - [ ] T376 · stores/tableData · 0.90d · stores/tableData/types.ts
 - [ ] T378 · components/DataTable · 0.90d · components/DataTable/QuickLookDialog.tsx
