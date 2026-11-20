@@ -46,3 +46,6 @@ pub(crate) mod schema_diff_table_names;
 // the Deploy/Next branch).
 pub(crate) mod schema_diff_wizard_progress;
 pub(crate) mod schema_diff_window_navigation;
+// T420: the unified (non-table) object catalogs (the six-kind walks,
+// the opt-in selection over identity keys, the lifecycle evidence).
+pub(crate) mod use_schema_diff_unified_objects;
