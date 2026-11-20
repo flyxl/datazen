@@ -15,7 +15,7 @@
 - [x] T040 · stores/ai · 3.00d · stores/ai/sessions.ts · split
 - [x] T042 · types · 0.80d · types/ai.ts
 - [x] T046 · extensions · 0.30d · extensions/generated-pro.ts
-- [ ] T052 · index.ts · 0.90d · index.ts
+- [x] T052 · index.ts · 0.90d · index.ts
 - [ ] T060 · components/chart · 0.80d · components/chart/ChartEmptyState.tsx components/chart/ChartToolbar.tsx
 - [x] T078 · lib · 0.80d · lib/cellTypes.ts
 - [ ] T080 · lib/metadata · 0.90d · lib/metadata/identity.ts
