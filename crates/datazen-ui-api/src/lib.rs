@@ -5,6 +5,7 @@
 
 mod ai_memory_correction;
 mod cell_editor_candidates;
+mod connection_editor;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -85,6 +86,9 @@ pub use cell_editor_candidates::{
     CANDIDATE_VALUE_LIMIT, FETCH_FIRST_ROW_LIMIT, LIMIT_ROW_LIMIT, TOP_ROW_LIMIT,
     CandidateDialect, DistinctCandidatesArgs, IdentifierQuote, RowLimitPlacement, RowLimitShape,
     build_distinct_candidates_sql, build_row_limited_select, normalized_limit,
+};
+pub use connection_editor::{
+    ConnectionEditorState, close_new_connection_dialog, open_new_connection_dialog,
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
