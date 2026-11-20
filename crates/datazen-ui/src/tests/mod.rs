@@ -94,6 +94,9 @@ mod use_connection_command_audit;
 // T258: the database family (target shapers, validations, projections,
 // the discovery joiner), audited against the React source literal.
 mod commands_database_audit;
+// T263: the paste compartment's host factory (the ungated base + the
+// enhanced EP's forwarded half), audited against the factory body.
+mod create_paste_extensions_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;

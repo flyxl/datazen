@@ -59,6 +59,12 @@ pub(crate) mod extensions;
 /// shared settings bag). The registry itself is T335.
 pub(crate) mod fold;
 
+/// `components/sql-editor/paste/createPasteExtensions.ts` (T263, split):
+/// the paste/drop/multiple-selection compartment's host factory (the
+/// always-mounted multi-selection base plus the enhanced EP's half).
+/// multipleSelections.ts is T320, the registry T335.
+pub(crate) mod create_paste_extensions;
+
 /// `components/sql-editor/format/formatEditorDocument.ts` (T220, split):
 /// the selection-aware beautifier command (the formatter stays
 /// injected — T615's sqlFormat).
