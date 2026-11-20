@@ -826,6 +826,11 @@ mod data_sync_job_status_panel;
 // branches; geometry).
 mod data_sync_recordset_editor;
 
+// T360 independent audit: limit boundary integers, the toggle's editor
+// unmount, the sibling-preserving all-empty deletion, the scalar→tuple
+// switch on the first tuple edit, the limit error paragraph.
+mod data_sync_recordset_editor_audit;
+
 // T148 independent audit (tester): the partial banner matrix, the
 // empty-string hydration error, `Number()` edge spellings, the NaN
 // counter printing, the raw wire-state table, row part order by x
