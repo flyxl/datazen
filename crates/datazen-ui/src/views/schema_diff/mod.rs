@@ -23,4 +23,7 @@ pub(crate) mod schema_diff_right_panel;
 // T075: the wizard's per-step execution surfaces
 // (SchemaDiffExecutionPanels.tsx: compare row, plan step, deploy step).
 pub(crate) mod schema_diff_execution_panels;
+// T391: the wizard's job-tracking hook (useSchemaDiffJobLifecycle.ts:
+// the tracked job, latest apply, cancel/verify outcomes, hydration).
+pub(crate) mod use_schema_diff_job_lifecycle;
 pub(crate) mod schema_diff_table_names;

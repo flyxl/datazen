@@ -805,3 +805,9 @@ mod schema_diff_plan_panel_audit;
 // T204: the schema-diff right review panel (tabs, threaded panels,
 // generate-plan empty state).
 mod schema_diff_right_panel_audit;
+// T075: the schema-diff execution panels (compare row, plan step,
+// deploy step threading).
+mod schema_diff_execution_panels_audit;
+// T391: the schema-diff job lifecycle hook (tracked job identity,
+// latest apply, hydration + poll, cancel/verify outcomes).
+mod use_schema_diff_job_lifecycle;

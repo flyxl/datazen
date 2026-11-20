@@ -226,9 +226,10 @@ pub(crate) struct SchemaDiffJobAcceptedVm {
 }
 
 /// The fields of `JobDetails.details.job` (`JobView`) the schema-diff UI
-/// reads: identity, state, stage, cancellation, error and the P5 progress
-/// buckets. The unread projection (execution/artifact ids, timestamps,
-/// effect outcome) is not modelled.
+/// reads: identity, state, stage, cancellation, error, the P5 progress
+/// buckets, the update stamp (the lifecycle's latest-first ordering) and
+/// the pending-verification flag (the hydration's selection). The unread
+/// projection (execution/artifact ids, effect outcome) is not modelled.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct SchemaDiffJobViewVm {
     pub(crate) job_id: String,
@@ -238,6 +239,63 @@ pub(crate) struct SchemaDiffJobViewVm {
     pub(crate) cancel_requested: bool,
     pub(crate) error: Option<String>,
     pub(crate) progress: JobProgress,
+    /// `updatedAt` — epoch milliseconds; the lifecycle sorts by it,
+    /// latest first.
+    pub(crate) updated_at: i64,
+    /// Why the job is pending verification (e.g. `outcomeUnknown`), else
+    /// null.
+    pub(crate) pending_verification_reason: Option<String>,
+}
+
+/// React `JobRecoveryVerdict` (`jobs.ts`): the recovery receipt's verdict.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum JobRecoveryVerdictVm {
+    NotExecuted,
+    PendingVerification,
+    ResumeAfterVerify,
+    Reject,
+    RequireManualReview,
+}
+
+impl JobRecoveryVerdictVm {
+    /// The wire spelling.
+    pub(crate) fn wire_str(self) -> &'static str {
+        match self {
+            Self::NotExecuted => "notExecuted",
+            Self::PendingVerification => "pendingVerification",
+            Self::ResumeAfterVerify => "resumeAfterVerify",
+            Self::Reject => "reject",
+            Self::RequireManualReview => "requireManualReview",
+        }
+    }
+
+    /// The wire spelling's parse twin.
+    pub(crate) fn from_wire_str(value: &str) -> Option<Self> {
+        match value {
+            "notExecuted" => Some(Self::NotExecuted),
+            "pendingVerification" => Some(Self::PendingVerification),
+            "resumeAfterVerify" => Some(Self::ResumeAfterVerify),
+            "reject" => Some(Self::Reject),
+            "requireManualReview" => Some(Self::RequireManualReview),
+            _ => None,
+        }
+    }
+}
+
+/// React `JobRecoveryResult` — the safe recovery receipt; `reasonCode` is
+/// a stable code, never handler text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct JobRecoveryResultVm {
+    pub(crate) verdict: JobRecoveryVerdictVm,
+    pub(crate) reason_code: Option<String>,
+}
+
+/// React `JobRecoveryTarget` — a stable target identity for an explicit
+/// fresh-session recovery verifier (read for presence only).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct JobRecoveryTargetVm {
+    pub(crate) connection_id: String,
+    pub(crate) object_ids: Vec<String>,
 }
 
 /// React `SchemaDiffJobDetails` — the durable detail query's envelope.
@@ -248,6 +306,10 @@ pub(crate) struct SchemaDiffJobDetailsVm {
     pub(crate) prepared: Option<SchemaDiffPrepareEnvelopeVm>,
     pub(crate) plan_unavailable_after_restart: bool,
     pub(crate) deploy_result: Option<SchemaDiffDeployResultVm>,
+    /// The recovery receipt, when one was derived.
+    pub(crate) recovery: Option<JobRecoveryResultVm>,
+    /// The explicit recovery verifier's targets (presence matters).
+    pub(crate) recovery_targets: Vec<JobRecoveryTargetVm>,
 }
 
 impl SchemaDiffJobDetailsVm {
@@ -667,6 +729,29 @@ struct SchemaDiffJobViewWire {
     error: Option<String>,
     #[serde(default)]
     progress: Option<JobProgressWire>,
+    /// Epoch milliseconds.
+    #[serde(default)]
+    updated_at: i64,
+    #[serde(default)]
+    pending_verification_reason: Option<String>,
+}
+
+/// React `JobRecoveryResultWire`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JobRecoveryResultWire {
+    verdict: String,
+    #[serde(default)]
+    reason_code: Option<String>,
+}
+
+/// React `JobRecoveryTargetWire`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JobRecoveryTargetWire {
+    connection_id: String,
+    #[serde(default)]
+    object_ids: Vec<String>,
 }
 
 /// React `JobDetailsWire` (the `details` field).
@@ -675,6 +760,10 @@ struct SchemaDiffJobViewWire {
 struct SchemaDiffJobDetailsInnerWire {
     job: SchemaDiffJobViewWire,
     state_version: i64,
+    #[serde(default)]
+    recovery: Option<JobRecoveryResultWire>,
+    #[serde(default)]
+    recovery_targets: Vec<JobRecoveryTargetWire>,
 }
 
 /// React `SchemaDiffJobDetailsWire` — the outer envelope with the tagged
@@ -740,6 +829,22 @@ pub(crate) fn normalize_job_details(
             })
         })
         .transpose()?;
+    let recovery = wire.details.recovery.map(|recovery| {
+        Ok::<JobRecoveryResultVm, String>(JobRecoveryResultVm {
+            verdict: JobRecoveryVerdictVm::from_wire_str(&recovery.verdict)
+                .ok_or_else(|| format!("unknown recovery verdict: {}", recovery.verdict))?,
+            reason_code: recovery.reason_code,
+        })
+    }).transpose()?;
+    let recovery_targets = wire
+        .details
+        .recovery_targets
+        .into_iter()
+        .map(|target| JobRecoveryTargetVm {
+            connection_id: target.connection_id,
+            object_ids: target.object_ids,
+        })
+        .collect();
     Ok(SchemaDiffJobDetailsVm {
         details: SchemaDiffJobViewVm {
             job_id: job.job_id,
@@ -750,12 +855,40 @@ pub(crate) fn normalize_job_details(
             cancel_requested: job.cancel_requested,
             error: job.error,
             progress: job.progress.map(JobProgress::from).unwrap_or_default(),
+            updated_at: job.updated_at,
+            pending_verification_reason: job.pending_verification_reason,
         },
         state_version: wire.details.state_version,
         prepared,
         plan_unavailable_after_restart: wire.plan_unavailable_after_restart,
         deploy_result,
+        recovery,
+        recovery_targets,
     })
+}
+
+/// Parse a `listSchemaDiffJobs` answer (a `JobView[]`) into the view
+/// projections the lifecycle hydrates from.
+pub(crate) fn parse_job_views(value: serde_json::Value) -> Result<Vec<SchemaDiffJobViewVm>, String> {
+    let wires: Vec<SchemaDiffJobViewWire> = serde_json::from_value(value)
+        .map_err(|error| format!("schema-diff jobs list wire: {error}"))?;
+    wires
+        .into_iter()
+        .map(|job| {
+            Ok(SchemaDiffJobViewVm {
+                job_id: job.job_id,
+                kind: job.kind,
+                state: JobState::from_str(&job.state)
+                    .ok_or_else(|| format!("unknown job state: {}", job.state))?,
+                stage: job.stage,
+                cancel_requested: job.cancel_requested,
+                error: job.error,
+                progress: job.progress.map(JobProgress::from).unwrap_or_default(),
+                updated_at: job.updated_at,
+                pending_verification_reason: job.pending_verification_reason,
+            })
+        })
+        .collect()
 }
 
 /// Deserialize one accepted receipt (`prepareSchemaDiffPlan` /
