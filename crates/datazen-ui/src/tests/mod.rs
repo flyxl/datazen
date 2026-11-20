@@ -300,6 +300,13 @@ mod bar_chart_renderer;
 // pipeline, hit-band routing and the tooltips).
 mod line_chart_renderer;
 
+// T223 (the ledger's older numbering says T225): the workflow draft
+// conversion pair + the panel guards (the definition → draft field map with
+// its kind folds, the save path's trims and the command step's
+// input.database carry, the 30-second floor, the guards' narrowing and the
+// tab label's clock reads).
+mod workflow_draft_convert;
+
 // T200: the workflow yaml editor chrome pins (the host, the line-number
 // gutter, the lint gutter flag).
 mod workflow_yaml_editor;
