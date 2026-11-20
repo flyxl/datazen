@@ -93,7 +93,7 @@
 - [ ] T278 · components/DataTable · 0.90d · components/DataTable/EditableCell.tsx components/DataTable/editors/BinaryCellEditor.tsx components/DataTable/editors/BooleanCellEditor.tsx
 - [ ] T280 · components/ai · 0.90d · components/ai/Nl2SqlPanel.tsx
 - [ ] T282 · components · 0.90d · components/ThemeToggle.tsx
-- [ ] T286 · windows/data-transfer · 0.60d · windows/data-transfer/TransferPairingNote.tsx windows/data-sync/CompareSummary.tsx
+- [x] T286 · windows/data-transfer · 0.60d · windows/data-transfer/TransferPairingNote.tsx windows/data-sync/CompareSummary.tsx
 - [ ] T287 · windows/data-sync · 0.60d · windows/data-sync/DataSyncWizardNav.tsx windows/data-sync/DataSyncWizardStepper.tsx
 - [x] T293 · stores · 0.30d · stores/panelCloseNotifier.ts
 - [ ] T294 · stores/tableData · 0.80d · stores/tableData/pendingEditActions.ts
