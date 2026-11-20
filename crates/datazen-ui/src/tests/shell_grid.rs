@@ -227,7 +227,7 @@ use rune::{Env, Runtime};
     }
 
     #[test]
-    fn the_unmigrated_areas_say_not_yet_migrated_and_keep_the_react_pages() {
+    fn the_migrated_wapps_area_mounts_the_extension_page_without_the_pending_copy() {
         use crate::app_key;
         use serde_json::Value;
 
@@ -259,26 +259,38 @@ use rune::{Env, Runtime};
         assert_eq!(nav["role"], "tab");
         assert_eq!(nav["name"], crate::i18n::t("nav.extensions"));
 
-        let page = find(&tree, "wapps-page").expect("the page is in the tree");
-        assert!(find(&tree, "wapps-pending").is_some(), "the WAPPS entry is mounted");
-        assert!(find(&tree, "onboarding-pending").is_some(), "the onboarding entry is mounted");
+        let page = find(&tree, "extension-management-page")
+            .expect("the migrated extension page is in the tree");
+        assert!(
+            find(&tree, "extension-page-header").is_some(),
+            "the real page header is mounted"
+        );
+        assert!(
+            find(&tree, "extension-install-button").is_some(),
+            "the install action is mounted"
+        );
+        assert!(
+            find(&tree, "wapps-pending").is_none(),
+            "the old 'not yet migrated' placeholder is gone"
+        );
 
-        // It says the status, and says where each area still lives.
+        // The migrated page carries its own copy, and none of the stale
+        // "still in React" wording survives the port.
         let mut texts = Vec::new();
         names(page, &mut texts);
         let joined = texts.join(" | ");
-        assert!(joined.contains("Not yet migrated"), "the page says it: {joined}");
         assert!(
-            joined.contains("The React page is still there"),
-            "extensions entry points at React: {joined}"
+            joined.contains(&crate::i18n::t("extensions.page.title")),
+            "the page shows its real title: {joined}"
         );
-        assert!(joined.contains("The React wizard is still there"), "onboarding points at React: {joined}");
-        assert!(joined.contains("do not go into Rune"), "WAPP iframes stay out: {joined}");
-
-        // And nowhere does the page claim a replacement or a removal.
-        let lowered = joined.to_lowercase();
-        assert!(!lowered.contains("replaced"), "no claim of replacement: {joined}");
-        assert!(!lowered.contains("removed"), "no claim of removal: {joined}");
+        assert!(
+            !joined.contains("Not yet migrated"),
+            "no stale 'not yet migrated' copy: {joined}"
+        );
+        assert!(
+            !joined.contains("The React page is still there"),
+            "no stale 'React page is still there' copy: {joined}"
+        );
     }
 
     #[test]
