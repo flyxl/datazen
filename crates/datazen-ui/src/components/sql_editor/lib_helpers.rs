@@ -1,9 +1,11 @@
 //! Pure helpers ported 1:1 from the React lib layer for the SqlEditor port.
 //!
-//! These belong to `lib/sqlPathPrefix.ts` and `lib/sqlEditorContextMenu.ts`
-//! (other segments/tasks per the ledger); the component port carries the
-//! functions it needs until those files land and absorb them. Kept in a
-//! sibling module so the component file stays under the 800-line limit.
+//! These belong to `lib/sqlPathPrefix.ts` (another segment per the
+//! ledger); the component port carries the functions it needs until that
+//! file lands and absorbs them. `toggleSqlLineComments` lived here too
+//! until T155: `lib/sqlEditorContextMenu.ts` ported as
+//! [`super::sql_editor_context_menu`] and absorbed it. Kept in a sibling
+//! module so the component file stays under the 800-line limit.
 
 /// `isInsideQuotes` from `lib/sqlPathPrefix.ts`.
 pub(crate) fn is_inside_quotes(text: &str, pos: usize) -> bool {
@@ -171,34 +173,4 @@ pub(crate) fn parse_qualified_path_parents(text: &str, cursor: usize) -> Vec<Str
     segments[..segments.len() - 1].to_vec()
 }
 
-/// `toggleSqlLineComments` from `lib/sqlEditorContextMenu.ts`.
-#[allow(dead_code)] // reusable port; wired by the workspace view wiring
-pub(crate) fn toggle_sql_line_comments(text: &str) -> String {
-    let lines: Vec<&str> = text.split('\n').collect();
-    let non_empty: Vec<&str> = lines.iter().copied().filter(|l| !l.trim().is_empty()).collect();
-    let all_commented =
-        !non_empty.is_empty() && non_empty.iter().all(|l| l.trim_start().starts_with("--"));
-    if all_commented {
-        return lines
-            .iter()
-            .map(|l| {
-                let indent_end = l.len() - l.trim_start().len();
-                let rest = l[indent_end..].strip_prefix("--").unwrap_or(&l[indent_end..]);
-                let rest = rest.strip_prefix(' ').unwrap_or(rest);
-                format!("{}{}", &l[..indent_end], rest)
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-    }
-    lines
-        .iter()
-        .map(|l| {
-            if l.trim().is_empty() {
-                String::from(*l)
-            } else {
-                format!("-- {l}")
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
+

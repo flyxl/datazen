@@ -59,6 +59,72 @@ mod sql_dialects_audit;
 // T083: identifierQuoting + the index registry (builtin strategies),
 // audited against the React sources and dialects.test.ts.
 mod sql_dialect_identifier_quoting_audit;
+// T155: sqlParameterPolicy (bind-placeholder resolution), audited against
+// the React source and sqlParameterPolicy.test.ts (policy halves).
+mod sql_dialect_parameter_policy_audit;
+// T155: the SQL editor context-menu builder + the driver-sdk menu
+// contract, audited against sqlEditorContextMenu.test.ts.
+mod sql_editor_context_menu_audit;
+// T158: the useColumnPresentationSession hook (the memoized session
+// merge), audited against the React hook test.
+mod use_column_presentation_session_hook_audit;
+// T163: the app-data backup/import shapers, audited against the React
+// source literal (command names, payload keys, the merged-IPC decisions).
+mod commands_backup_audit;
+// T170: the extensions execution-state machine + frame rules, audited
+// against extensions/__tests__/executionState.test.ts.
+mod sql_editor_extensions_audit;
+// T172: the AI settings section shell (context dir, models block,
+// strict-egress safeguard), audited against the React JSX.
+mod ai_settings_section_audit;
+// T185: the useColumnResize hook (DB-12 by-name widths), audited against
+// computeColumnWidths.test.ts + useColumnResize.persist.test.tsx.
+mod use_column_resize_audit;
+// T190: the connection command family + the in-flight connect joiner,
+// audited against commands/__tests__/connection.test.ts.
+mod commands_connection_audit;
+// T196: the fold compartment's host gate (codeFolding on the shared
+// bag), audited against foldCompartment.test.ts's setting-gate group.
+mod fold_compartment_audit;
+// T198: the AI tool bridge switches (plugins + workflows), audited
+// against the React JSX.
+mod ai_tool_bridge_section_audit;
+// T210: the useColumnStats lifecycle (the revision-guarded stream state
+// machine + the carried columnStats pure functions).
+mod use_column_stats_audit;
+// T220: the selection-aware beautifier command (reindent, statement
+// cursor anchoring, the rejection guard), audited against the React suite.
+mod format_editor_document_audit;
+// T222: the appearance section (color scheme, theme packs, the orphan
+// hint), audited against AppearanceSection.test.tsx.
+mod appearance_section_audit;
+// T229: the two saved-setup dialogs (import config + profile naming),
+// audited against the React JSX + the ProfileLoad/Wizard journeys.
+mod schema_diff_saved_setup_dialogs_audit;
+// T233: the compact-toolbar hysteresis + the width estimate, audited
+// against useCompactToolbar.test.tsx.
+mod use_compact_toolbar_audit;
+// T237: the dashboard domain-client shapers + the legacy dialog faces,
+// audited against the React wrapper literals (contract §6.15).
+mod commands_dashboard_audit;
+// T244: the history-data cleanup section (scope, retention, confirm,
+// purge messages), audited against DataCleanupSection.test.tsx.
+mod data_cleanup_section_audit;
+// T250: the wizard's two selection steps (endpoints bar + objects step
+// over the picker seam), audited against the React JSX.
+mod schema_diff_selection_steps_audit;
+// T254: the connection driver-command lookup hooks (the epoch-guarded
+// effect machine), audited against the hook bodies.
+mod use_connection_command_audit;
+// T258: the database family (target shapers, validations, projections,
+// the discovery joiner), audited against the React source literal.
+mod commands_database_audit;
+// T263: the paste compartment's host factory (the ungated base + the
+// enhanced EP's forwarded half), audited against the factory body.
+mod create_paste_extensions_audit;
+// T265: the driver settings section (merge, the saved window, the
+// entry arms), audited against the React body.
+mod driver_settings_section_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;

@@ -33,10 +33,11 @@
 //!   [`SqlEditorState::format_document`] as an injected-formatter seam and
 //!   [`SqlEditorState::insert_snippet`] inserts the template without a
 //!   tabstop session; those tasks will deepen both.
-//! - `parseQualifiedPathParents` / `toggleSqlLineComments` live in
-//!   `lib/sqlPathPrefix.ts` and `lib/sqlEditorContextMenu.ts` (other
-//!   segments/tasks); the pure functions are ported 1:1 below and will be
-//!   absorbed when those files land.
+//! - `parseQualifiedPathParents` lives in `lib/sqlPathPrefix.ts` (another
+//!   segment); the pure function is ported 1:1 in `lib_helpers` and will
+//!   be absorbed when that file lands. `toggleSqlLineComments` already
+//!   was: `lib/sqlEditorContextMenu.ts` ported as
+//!   `sql_editor_context_menu` (T155) and took the function home.
 //! - `metadataSnapshot`, `schema`, `onNavigateTo*`, `onDropTable`,
 //!   `onContextMenu` props feed completion/hover/paste extensions that do not
 //!   exist in the engine yet; they are deliberately absent from
@@ -61,7 +62,8 @@ use rune::{col, row, text, tok, El, Ime, KeyEvent, Span, Tx};
 
 #[allow(unused_imports)] // re-export keeps the pre-T105 paths (mod.rs, completion) stable
 pub(crate) use super::contracts::{CompletionQuotePolicy, ExecutionStatus};
-use super::lib_helpers::{parse_qualified_path_parents, toggle_sql_line_comments};
+use super::lib_helpers::parse_qualified_path_parents;
+use super::sql_editor_context_menu::toggle_sql_line_comments;
 use crate::sql_editor::{self, SqlEditor};
 use crate::ui::palette;
 use crate::ui::spinner::{Spinner, SpinnerVariant};
@@ -257,24 +259,41 @@ impl SqlEditorState {
     }
 
     /// `formatDocument`: format the selection, or the whole document when
-    /// nothing is selected. The formatter is injected (T220's
-    /// `formatEditorDocument` port will supply it); without one the host
-    /// skips the call, which the return value distinguishes.
+    /// nothing is selected. The formatter is injected; the
+    /// selection-reindent and statement-anchored cursor mapping are
+    /// T220's `format_editor_document` port (this method is the
+    /// infallible-formatter shorthand — a formatter that cannot reject).
     pub(crate) fn format_document(&mut self, formatter: &dyn Fn(&str) -> String) -> bool {
+        self.format_document_with(None, super::format_editor_document::PartialSqlFormatOptions::default(), &|sql, _database_type, _options| {
+            Ok(formatter(sql))
+        })
+    }
+
+    /// The full `formatEditorDocument` seam: the dialect, the partial
+    /// options overlay and a formatter that may reject (sql-formatter
+    /// throws on syntax it cannot parse; the buffer stays untouched).
+    pub(crate) fn format_document_with(
+        &mut self,
+        database_type: Option<&str>,
+        options: super::format_editor_document::PartialSqlFormatOptions,
+        format_sql: super::format_editor_document::FormatSql<'_>,
+    ) -> bool {
         let sel = self.editor.selection().main();
-        let doc = self.editor.doc();
-        let (from, to) = if sel.from() == sel.to() {
-            (0, doc.len())
-        } else {
-            (sel.from(), sel.to())
-        };
-        let original = doc[from..to].to_string();
-        let formatted = formatter(&original);
-        if formatted == original {
+        let cursor = self.editor.main_head();
+        let doc = self.editor.doc().to_string();
+        let Some(edit) = super::format_editor_document::format_editor_document(
+            &doc,
+            sel.from(),
+            sel.to(),
+            cursor,
+            database_type,
+            options,
+            format_sql,
+        ) else {
             return false;
-        }
-        self.editor.replace_range(from, to, &formatted);
-        self.editor.set_main_selection(from, from + formatted.len());
+        };
+        self.editor.replace_range(edit.from, edit.to, &edit.insert);
+        self.editor.set_main_selection(edit.anchor, edit.head);
         true
     }
 

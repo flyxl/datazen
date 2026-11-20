@@ -22,6 +22,18 @@ use rune::{FileDialogOptions, TextEdit, Tx};
 // The windows/settings/ai subtree port (T015: AiContextSettings). One mod
 // line per ported React file; the ai/ directory mirrors the React layout.
 pub(crate) mod ai;
+// T172: the AI settings section shell (context dir, models block,
+// strict-egress safeguard).
+pub(crate) mod ai_settings_section;
+// T198: the AI tool bridge switches (plugins + workflows).
+pub(crate) mod ai_tool_bridge_section;
+// T222: the appearance section (color scheme, theme packs).
+pub(crate) mod appearance_section;
+// T244: the history-data cleanup section.
+pub(crate) mod data_cleanup_section;
+// T265: the driver settings section (per-driver blocks over the
+// generated entries seam).
+pub(crate) mod driver_settings_section;
 
 /// A6: grouped settings navigation (2 groups, 12 sections) with deep-link
 /// selection by section key. Only the active section's content renders so

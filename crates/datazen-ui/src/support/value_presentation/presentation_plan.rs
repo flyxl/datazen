@@ -195,7 +195,10 @@ pub(crate) fn resolve_presentation_environment(
 /// The in-memory presentation snapshot (immutable; revision identifies
 /// the configuration generation). Rules ride the same revision as the
 /// global config (one save bumps one revision — see the cache key).
-#[derive(Clone, Debug)]
+/// `PartialEq` is the hook layer's memo key (T158: React's `useMemo`
+/// deps are the base object's identity; equal content is the ownership
+/// world's faithful stand-in — an equal base yields an equal merge).
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ValuePresentationSnapshot {
     pub(crate) revision: u64,
     pub(crate) environment: PresentationEnvironmentSnapshot,

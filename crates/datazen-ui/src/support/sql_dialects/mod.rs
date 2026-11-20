@@ -2,7 +2,8 @@
 //! editor, the Visual Query Builder and the host's strategy registry share
 //! (dialectProfile and extra landed first; T123 adds the strategy types,
 //! the base table-SQL generator, rowLimit and the postgresql/mysql/sqlite
-//! dialects; identifierQuoting and the index registry land with T084).
+//! dialects; identifierQuoting and the index registry land with T084;
+//! T155 adds sqlParameterPolicy, the bind-placeholder resolution).
 //!
 //! [`get_builtin_dialect_strategy`] is this module's `index.ts` half: the
 //! `BUILTIN_DIALECTS` table React's `getSqlDialect` reads after the
@@ -20,6 +21,7 @@ pub(crate) mod identifier_quoting;
 pub(crate) mod mysql;
 pub(crate) mod postgresql;
 pub(crate) mod row_limit;
+pub(crate) mod sql_parameter_policy;
 pub(crate) mod sqlite;
 pub(crate) mod strategy;
 
@@ -35,6 +37,10 @@ pub(crate) use identifier_quoting::{
 pub(crate) use mysql::MYSQL_DIALECT;
 pub(crate) use postgresql::POSTGRESQL_DIALECT;
 pub(crate) use row_limit::{build_row_limited_select, RowLimitedSelectParts, LIMIT_ROW_LIMIT};
+pub(crate) use sql_parameter_policy::{
+    resolve_sql_parameter_policy, SqlParameterMeta, SqlParameterOccurrence, SqlParameterRegistry,
+    SqlParameterStrategy, SqlParamDialectPolicy, SqlParamSyntax, GENERIC_SQL_PARAMETER_POLICY,
+};
 pub(crate) use sqlite::SQLITE_DIALECT;
 pub(crate) use strategy::{
     BackupOption, CreateIndexOptions, DdlQuery, DialectDdl, DialectIndex, GeneratedSqlType,
