@@ -151,12 +151,6 @@ mod value_presentation_save;
 mod tree;
 // T0-09 audit: virtual staging, page height, edges and the selected a11y state.
 mod tree_audit;
-// T0-04: chrome icons come from one 24-view lucide registry.
-mod icon_registry;
-// T0-11 audit: independent wrap and placement probes.
-mod tooltip_text_audit;
-// T0-11 row math: external selection reveal and page arithmetic.
-mod tree_rowmath_audit;
 // T004: the column-statistics dialog's four branches, dismissal and bounds.
 // T015: the AI context settings section — budgets, editor rejections, flows.
 // T017: the WappIcon port (manifest icon or puzzle, the onError cycle).
@@ -1127,3 +1121,7 @@ mod onboarding_window_audit;
 // T114: the onboarding wizard port (the step host: the step seats, the
 // footer wiring + seat, the completion handlers' seams).
 mod onboarding_wizard_audit;
+
+// T192: the bar chart engine port (the shared log-hint pipeline, bar
+// rectangle geometry, the LabelList, hit-band routing and the tooltips).
+mod bar_chart_renderer;

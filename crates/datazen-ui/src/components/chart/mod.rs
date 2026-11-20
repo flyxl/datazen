@@ -26,7 +26,10 @@
 //! `AreaChartRenderer.tsx` (T166) is the first engine on the `ChartRenderer`
 //! seam — the log-hint pipeline, the area/grid/axis shapes, the legend toggle
 //! and the tooltip mount — and the canvas's renderer factory replaces the
-//! Area placeholder with it.
+//! Area placeholder with it. `BarChartRenderer.tsx` (T192) is the second:
+//! the same log-hint pipeline (the area engine's lean slices, imported), bar
+//! rectangle geometry, the `LabelList` the `showValues` toggle mounts, and
+//! the Bar placeholder's replacement.
 #[allow(dead_code)]
 pub(crate) mod chart_view;
 

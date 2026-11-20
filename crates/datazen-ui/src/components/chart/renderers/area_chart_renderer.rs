@@ -207,8 +207,10 @@ fn js_number(s: &str) -> f64 {
     }
 }
 
-/// JS `String(n)` for the representable forms.
-fn js_string(n: f64) -> String {
+/// JS `String(n)` for the representable forms. Shared with the bar engine
+/// (T192) — the plain-tooltip and `LabelList` value displays read the same
+/// coercion, so the slice is `pub(crate)` and both engines import it.
+pub(crate) fn js_string(n: f64) -> String {
     if n.is_nan() {
         "NaN".to_string()
     } else if n.is_infinite() {
@@ -226,8 +228,10 @@ fn js_string(n: f64) -> String {
 
 /// `transform.ts`'s `toNumber`: numbers pass (NaN included — JS
 /// `typeof NaN === 'number'`), strings parse (a finite parse is the number,
-/// a NaN parse is null), null → null.
-fn to_number(v: &ChartValue) -> Option<f64> {
+/// a NaN parse is null), null → null. Shared with the bar engine (T192):
+/// `computeLogScaleHint`/`mapToLogScale` are one seam family, so the bar
+/// engine reads series slots through the same coercion rather than forking it.
+pub(crate) fn to_number(v: &ChartValue) -> Option<f64> {
     match v {
         ChartValue::Number(n) => Some(*n),
         ChartValue::Text(s) => {
@@ -556,7 +560,9 @@ fn lean_format_axis_tick(v: &ChartValue) -> String {
 /// palettes): one kit-token series palette for every scheme name — the same
 /// "series colours are data, chrome is CSS variables" split React's file
 /// documents, read from kit semantic colours so no new raw colour is spelled.
-fn series_palette(k: &Kit) -> [rune::Color; 5] {
+/// Shared with the bar engine (T192): both engines' `colors[i % colors.length]`
+/// read the same five-colour kit palette, so the slice is `pub(crate)`.
+pub(crate) fn series_palette(k: &Kit) -> [rune::Color; 5] {
     [
         k.c.info.fg,
         k.c.success.fg,
@@ -625,8 +631,10 @@ pub(crate) struct AreaChartPlan {
 
 /// The recharts default domain, lean: `[0, max]` for non-negative data,
 /// `[min, 0]` for non-positive, `[min, max]` across zero; flat data widens by
-/// one; no data is an honest `[0, 1]` frame.
-fn lean_y_domain(values: &[f64]) -> [f64; 2] {
+/// one; no data is an honest `[0, 1]` frame. Shared with the bar engine
+/// (T192): both charts ride recharts' default Y domain, so the slice is
+/// `pub(crate)` and the bar engine imports it instead of forking it.
+pub(crate) fn lean_y_domain(values: &[f64]) -> [f64; 2] {
     if values.is_empty() {
         return [0.0, 1.0];
     }
