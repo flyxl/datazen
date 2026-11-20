@@ -324,3 +324,8 @@ mod filter_bar;
 // (extensions/generated-pro.ts + extensions/generated.ts) — the equivalent
 // surface is the tracked generator + driver metas, not a Rune port.
 mod generated_driver_surface;
+
+// T052 (X-class): the `@datazen/frontend` package entry is a pure re-export
+// barrel; the receipt pins its public surface and each export's Rune
+// equivalent (or its honest single-window / host-owned gap).
+mod index_surface;
