@@ -23,7 +23,6 @@
 - [x] T118 · lib · 0.80d · lib/cellEditorKind.ts
 - [x] T152 · lib · 0.60d · lib/dataTypeColors.ts components/DataTable/editors/toEditString.ts
 - [ ] T202 · windows/workflow · 2.00d · windows/workflow/WorkflowYamlEditor.tsx · split
-- [ ] T213 · types · 1.30d · types/index.ts · split
 - [ ] T218 · components/chart · 2.00d · components/chart/renderers/LineChartRenderer.tsx · split
 - [ ] T225 · windows/workflow · 0.60d · windows/workflow/workflowDraftConvert.ts windows/workflow/workflowPanelGuards.ts
 - [ ] T230 · lib · 0.60d · lib/aiMemorySettings.ts lib/aiMessageBlocks.ts
@@ -159,6 +158,7 @@
 - [x] T119 · lib/relationPrediction · 0.90d · lib/relationPrediction/relatedTables.ts lib/relationPrediction/types.ts lib/relativeTime.ts
 - [x] T128 · types · 0.90d · types/connection.ts
 - [x] T159 · types · 0.90d · types/dashboard.ts
+- [x] T211 · types · 1.30d · types/index.ts · split
 - [x] T205 · lib · 0.90d · lib/aiMemoryPatterns.ts
 - [x] T188 · types · 0.30d · types/filters.ts
 - [x] T174 · windows/workflow · 0.30d · windows/workflow/workflowStepResultUtils.tsx
