@@ -26,6 +26,8 @@ mod tooltip_text_audit;
 mod tree_rowmath_audit;
 // T349: ER relation legend port (labels/counts, swatch strokes, toggle, geometry).
 mod er_relation_legend;
+// T349 independent audit: row dimming, count extremes, inert toggle, constants.
+mod er_legend_audit;
 
 // T004: the column-statistics dialog's four branches, dismissal and bounds.
 mod column_stats_audit;
