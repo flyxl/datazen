@@ -64,6 +64,9 @@ mod fold_compartment_audit;
 // T198: the AI tool bridge switches (plugins + workflows), audited
 // against the React JSX.
 mod ai_tool_bridge_section_audit;
+// T210: the useColumnStats lifecycle (the revision-guarded stream state
+// machine + the carried columnStats pure functions).
+mod use_column_stats_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;
