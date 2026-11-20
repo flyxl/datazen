@@ -22,7 +22,6 @@ pub(crate) mod home;
 
 mod connections;
 mod connections_home;
-pub(crate) mod home;
 mod dashboards_workflows;
 mod modals;
 mod navigation;
