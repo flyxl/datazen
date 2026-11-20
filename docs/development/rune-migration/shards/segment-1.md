@@ -64,7 +64,7 @@
 - [x] T311 · lib/session · 0.90d · lib/session/targetCommand.ts
 - [x] T318 · components/connection · 0.60d · components/connection/tunnelFieldContracts.ts components/connection/useConnectionClipboardFill.ts
 - [x] T322 · windows/connection · 0.50d · windows/connection/DDLView.tsx
-- [ ] T327 · lib/session · 0.60d · lib/session/targetCommandPhase.ts lib/settingsExport.ts
+- [x] T327 · lib/session · 0.60d · lib/session/targetCommandPhase.ts lib/settingsExport.ts
 - [x] T333 · components/connection · 1.30d · components/connection/useConnectionForm.ts · split
 - [x] T337 · windows/connection · 3.60d · windows/connection/DocumentConnectionView.tsx · split
 - [ ] T346 · components/connection · 0.90d · components/connection/useConnectionImport.ts

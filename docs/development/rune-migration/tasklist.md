@@ -343,7 +343,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T324 · windows/data-sync · 0.60d · windows/data-sync/EndpointsBar.tsx windows/data-sync/ExecuteBar.tsx
 - [ ] T325 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffWindowJobSection.tsx
 - [ ] T326 · lib · 2.00d · lib/batchExportJob.ts · split
-- [ ] T327 · lib/session · 0.60d · lib/session/targetCommandPhase.ts lib/settingsExport.ts
+- [x] T327 · lib/session · 0.60d · lib/session/targetCommandPhase.ts lib/settingsExport.ts
 - [ ] T328 · hooks · 1.30d · hooks/useGridSelection.ts · split
 - [ ] T329 · stores · 0.90d · stores/panelQueryContext.ts
 - [ ] T330 · stores/tableData · 2.00d · stores/tableData/stageCellValue.ts · split
