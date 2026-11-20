@@ -24,6 +24,8 @@ mod icon_registry;
 mod tooltip_text_audit;
 // T0-11 row math: external selection reveal and page arithmetic.
 mod tree_rowmath_audit;
+// T349: ER relation legend port (labels/counts, swatch strokes, toggle, geometry).
+mod er_relation_legend;
 
 // T004: the column-statistics dialog's four branches, dismissal and bounds.
 mod column_stats_audit;

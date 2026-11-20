@@ -9,6 +9,7 @@ pub(crate) mod content_view;
 pub(crate) mod database_object_view;
 pub(crate) mod document_connection_view;
 pub(crate) mod ddl_view;
+pub(crate) mod er;
 pub(crate) mod create_database_dialog;
 pub(crate) mod create_schema_dialog;
 pub(crate) mod create_user_dialog;
