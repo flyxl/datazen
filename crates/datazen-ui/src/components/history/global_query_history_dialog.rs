@@ -692,29 +692,21 @@ impl<'a, S: 'static> GlobalQueryHistoryDialog<'a, S> {
     }
 }
 
-/// The status filter is the only predicate the backend cannot evaluate, so it
-/// is applied here exactly as React's `applyStatusFilter` does.
+/// The status filter is the only predicate the backend cannot evaluate, so
+/// it is applied here — delegated to `history_query::apply_status_filter`
+/// (the React helper's single source, T099).
 fn visible_entries(vm: &GlobalHistoryVm) -> Vec<&GlobalHistoryEntry> {
-    match vm.query.status {
-        HistoryStatus::All => vm.page.entries.iter().collect(),
-        HistoryStatus::Success => vm
-            .page
-            .entries
-            .iter()
-            .filter(|row| row.entry.success)
-            .collect(),
-        HistoryStatus::Failed => vm
-            .page
-            .entries
-            .iter()
-            .filter(|row| !row.entry.success)
-            .collect(),
-    }
+    super::history_query::apply_status_filter(
+        &vm.page.entries,
+        vm.query.status,
+        |row| row.entry.success,
+    )
 }
 
-/// React's `truncationNotice`: the backend had more matches than it returned.
+/// React's `truncationNotice`: the backend had more matches than it returned
+/// (`history_query::truncation_notice`, T099's single source).
 fn truncation(page: &HistoryPageVm) -> Option<(usize, usize)> {
-    (page.total > page.entries.len()).then_some((page.entries.len(), page.total))
+    super::history_query::truncation_notice(page.entries.len(), page.total)
 }
 
 fn connection_names(options: &[HistoryConnectionOption]) -> std::collections::HashMap<&str, String> {
