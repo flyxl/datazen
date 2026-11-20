@@ -39,6 +39,13 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+### Wave23 阈值合流 push（2026-11-21）
+
+- 触发：Wave 22 关闭时合计 ahead 92（seg1 11+seg2 31+seg3 26+seg4 24，四段全有）> 30。
+- 4 个真 merge commit：`23613d1a4`(seg1, de4c48b4b) → `0f236f0e7`(seg2, 6637c94b0) → `ff36390d9`(seg3, 5be1f3500) → `456ab407a`(seg4, 7e664274c)；父分支 `7de5c34a1 → 456ab407a`（96 commits，fast-forward）。
+- 零冲突（全加性）；三 crate check 全 PASS；gate 仍本机 ld `arm64_b26` 分支范围超限（~900MB __TEXT），按已授权模式接受风险 push。无遗留孤儿，未删 target（磁盘充足）。
+- **push 后残余 ahead = 0**——四段全部合入，父分支与各段 tip 对齐。
+
 ### Wave22 阈值合流 push（2026-11-21）
 
 - 触发：Wave 21 关闭时合计 ahead 49（seg1 11+seg3 18+seg4 20，seg2=0）> 30。
