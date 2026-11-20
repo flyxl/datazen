@@ -34,6 +34,9 @@ mod sql_dialects_audit;
 // T083: identifierQuoting + the index registry (builtin strategies),
 // audited against the React sources and dialects.test.ts.
 mod sql_dialect_identifier_quoting_audit;
+// T086: the useAiEditorGrant hook + targetClaim seam, audited
+// against the React sources with an injected clock.
+mod ai_editor_grant_hook_audit;
 mod column_stats_dialog;
 // T002: the single DataTable cell — formatting, colour, plan and geometry.
 mod cell_renderer;
