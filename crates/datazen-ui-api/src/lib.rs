@@ -4,6 +4,8 @@
 //! interface can run before the desktop and HTTP adapters exist.
 
 mod ai_memory_correction;
+mod cell_editor_candidates;
+mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
 mod build_editor_schema;
@@ -75,6 +77,14 @@ use datazen_driver_api::{ConnectionConfig as DriverConnectionConfig, SslMode as 
 pub use ai_memory_correction::{
     AiMemoryCommands, MemoryCorrectionSubmission, SchemaStaleSubmission,
     mark_stale_for_schema_drops, submit_memory_correction_if_needed,
+};
+pub use cell_editor_candidates::{
+    CANDIDATE_VALUE_LIMIT, FETCH_FIRST_ROW_LIMIT, LIMIT_ROW_LIMIT, TOP_ROW_LIMIT,
+    CandidateDialect, DistinctCandidatesArgs, IdentifierQuote, RowLimitPlacement, RowLimitShape,
+    build_distinct_candidates_sql, build_row_limited_select, normalized_limit,
+};
+pub use chart_colors::{
+    COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
 };
 pub use bootstrap_icon_resolver::{
     DbIcon, IconResolverSeed, ResolvedIcon, default_icon_resolver_seed, resolve_icon,
