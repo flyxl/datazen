@@ -1094,6 +1094,9 @@ mod mapping_panel;
 // T336 independent audit: two-row geometry at both sizes, composite row
 // keys, the disabled dim, the summary template.
 mod mapping_panel_audit;
+// T177: the Data Sync objects step (three branches, pass-through
+// callbacks, compared=false).
+mod data_sync_objects_step;
 // T293: the tab-closed notification (panelCloseNotifier).
 mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the
