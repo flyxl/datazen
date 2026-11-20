@@ -1349,3 +1349,89 @@ fn data_shrinking_under_a_hover_unmounts_the_tooltip_and_the_active_dots() {
         has_key(&rt, DOTS_KEY),
         "the per-point dot layer is not hover state: it re-mounts on the rows that remain"
     );
+}
+
+// ==== T216 audit round ==========================================================
+//
+// Every test below pins a seam the port's first 31 tests missed; each one was
+// found by a probe mutation that survived the trimmed suite, and every probe
+// now dies on its pin. The React positions cite
+// `packages/frontend/src/components/chart/renderers/LineChartRenderer.tsx`.
+
+// ---- The X-tick stride's cap (React 66's recharts auto-interval) ----------------
+
+#[test]
+fn nine_rows_still_thin_their_x_ticks_to_every_second_band() {
+    // MAX_X_TICKS = 8: nine rows take stride ceil(9/8) = 2, the first band of
+    // every stride — the count where a cap of 9 would stop thinning (the
+    // probe mutation MAX_X_TICKS 8→9 survived the suite red-handed).
+    let data: Vec<ChartDataPoint> = (0..9)
+        .map(|i| point(&format!("r{i}"), i as f64, 8.0 - i as f64))
+        .collect();
+    let plan = line_chart_plan(
+        &data,
+        &config(&["a", "b"]),
+        &BTreeSet::new(),
+        true,
+        &FormatSeams::default(),
+    );
+    let rows: Vec<usize> = plan.x_ticks.iter().map(|t| t.row).collect();
+    assert_eq!(rows, vec![0, 2, 4, 6, 8]);
+}
+
+// ---- The tooltip's anchor (the module docs' coarser-anchor deviation) -----------
+
+#[test]
+fn the_plain_tooltip_anchors_at_the_bucket_with_the_declared_inset() {
+    // The floating content anchors at the hovered bucket's top-left with the
+    // engine's declared 2pt/8pt inset (TOOLTIP_DX/TOOLTIP_DY — the probe
+    // mutation DY 8→0 survived the suite: the bucket-containment check alone
+    // could not see the vertical inset).
+    let mut rt = runtime(line_scenario(near_data()), (960.0, 640.0));
+    hover_key_center(&mut rt, &format!("{HIT_CELL_PREFIX}0"));
+    let cell = element(&rt, &format!("{HIT_CELL_PREFIX}0")).rect;
+    let tip = element(&rt, TOOLTIP_KEY).rect;
+    assert!(
+        (tip[0] - (cell[0] + 2.0)).abs() <= 0.5,
+        "the 2pt horizontal inset: {tip:?} in {cell:?}"
+    );
+    assert!(
+        (tip[1] - (cell[1] + 8.0)).abs() <= 0.5,
+        "the 8pt vertical inset: {tip:?} in {cell:?}"
+    );
+}
+
+// ---- The LabelList's position="top" anchor (React 121) ---------------------------
+
+#[test]
+fn the_value_labels_ride_the_bands_top_stacked_in_series_order() {
+    // `position="top"` mounts the labels at the top of their band column,
+    // stacked per series in declaration order (the probe mutation
+    // justify_start→justify_end survived the suite: the horizontal-centring
+    // check could not see which end of the band column the stack rode).
+    let mut sc = line_scenario(near_data());
+    sc.config.show_values = true;
+    let rt = runtime(sc, (960.0, 640.0));
+
+    let plot = element(&rt, PLOT_KEY).rect;
+    let value_a = element(&rt, "line-chart-value-0-a").rect;
+    let value_b = element(&rt, "line-chart-value-0-b").rect;
+    assert!(
+        (value_a[1] - plot[1]).abs() <= 2.0,
+        "series a's label rides the plot's top: {value_a:?} vs {plot:?}"
+    );
+    assert!(
+        value_b[1] > value_a[1],
+        "series b's label stacks below series a's (declaration order): {value_b:?} vs {value_a:?}"
+    );
+    assert!(
+        value_b[1] - value_a[1] < value_a[3] + 2.0,
+        "the stack is one label tall per series: {value_b:?} vs {value_a:?}"
+    );
+
+    // The equivalents documented instead of pinned (the canvas interior is
+    // not tree-observable — T166's class): DOT_R/ACTIVE_DOT_R/STROKE_W and
+    // the grid's 0.3 alpha live in the view-box shape ops; the dot layers'
+    // hidden-series filter and the line's present-run cut read the pinned
+    // plan, and the legend gap literals match the area engine's own pin set.
+}
