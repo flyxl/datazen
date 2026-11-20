@@ -814,3 +814,6 @@ mod use_schema_diff_job_lifecycle;
 // T115: the schema-diff job status strip (recovery notices, verify
 // journey, cancel journey, last-apply report).
 mod schema_diff_job_status_panel_audit;
+// T372: the clipboard-feedback hook's inline suite (the show/clear
+// window) — the table-names full port rides its existing bridge.
+mod use_schema_diff_clipboard_feedback;

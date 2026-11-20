@@ -28,4 +28,7 @@ pub(crate) mod schema_diff_execution_panels;
 pub(crate) mod use_schema_diff_job_lifecycle;
 // T115: the wizard's job status strip (SchemaDiffJobStatusPanel.tsx).
 pub(crate) mod schema_diff_job_status_panel;
+// T372: the clipboard-feedback hook (useSchemaDiffClipboardFeedback.ts;
+// the schemaDiffTableNames.ts full port rides in its own module).
+pub(crate) mod use_schema_diff_clipboard_feedback;
 pub(crate) mod schema_diff_table_names;

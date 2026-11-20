@@ -78,14 +78,10 @@ pub(crate) enum SchemaDiffExecutionStep {
     Deploy,
 }
 
-/// React `ClipboardFeedback` (`'summary' | 'sql' | 'config' | null`); the
-/// `null` arm is `Option::None` at the call site.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SchemaDiffClipboardFeedback {
-    Summary,
-    Sql,
-    Config,
-}
+/// React `ClipboardFeedback` — the clipboard-feedback hook's canonical
+/// enum (T372), re-exported for the wizard track (the `null` arm is
+/// `Option::None` at the call site).
+pub(crate) use crate::views::schema_diff::use_schema_diff_clipboard_feedback::SchemaDiffFeedbackKind as SchemaDiffClipboardFeedback;
 
 /// The execution panels builder, generic over the owning state `S`.
 pub(crate) struct SchemaDiffExecutionPanels<'a, S: 'static> {
