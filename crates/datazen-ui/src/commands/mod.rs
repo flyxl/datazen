@@ -5,9 +5,9 @@
 //! typed wrappers above it, exactly the React layering.
 //!
 //! `adb.ts` (T047) is first; schema-diff (T377), the AI family (T094),
-//! backup (T163), the connection family (T190) and the context family
-//! (T214) have landed; the remaining command families land with their
-//! own tasks.
+//! backup (T163), the connection family (T190), the context family
+//! (T214) and the dashboard family (T237) have landed; the remaining
+//! command families land with their own tasks.
 
 pub(crate) mod adb;
 /// T130: the artifact export command (one call, the two-arm receipt).
@@ -18,6 +18,8 @@ pub(crate) mod backup;
 pub(crate) mod connection;
 /// T214: the AI context-directory family (get/list/read).
 pub(crate) mod context;
+/// T237: the dashboard domain-client family + the two legacy dialog faces.
+pub(crate) mod dashboard;
 // T377: the schema-diff commands shell (pure helpers, wire folding, the
 // job-observer bus and the submit→poll→resolve machine).
 pub(crate) mod schema_diff;

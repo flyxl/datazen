@@ -79,6 +79,9 @@ mod schema_diff_saved_setup_dialogs_audit;
 // T233: the compact-toolbar hysteresis + the width estimate, audited
 // against useCompactToolbar.test.tsx.
 mod use_compact_toolbar_audit;
+// T237: the dashboard domain-client shapers + the legacy dialog faces,
+// audited against the React wrapper literals (contract §6.15).
+mod commands_dashboard_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;
