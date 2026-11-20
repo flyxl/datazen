@@ -297,43 +297,213 @@ pub(crate) fn oracle_row_limit_clause(limit: usize) -> String {
 
 // ---- backup options ------------------------------------------------------------
 
-/// One `{ id, label }` backup option.
-pub(crate) type BackupOption = (&'static str, &'static str);
+/// React `sqlserverDialect.backupOptions`.
+pub(crate) const SQLSERVER_BACKUP_OPTIONS: &[super::strategy::BackupOption] = &[
+    super::strategy::BackupOption { id: "schema-only", label: "--schema-only" },
+    super::strategy::BackupOption { id: "data-only", label: "--data-only" },
+    super::strategy::BackupOption { id: "clean", label: "--clean" },
+    super::strategy::BackupOption { id: "no-owner", label: "--no-owner" },
+    super::strategy::BackupOption { id: "single-transaction", label: "--single-transaction" },
+];
 
-pub(crate) fn sqlserver_backup_options() -> &'static [BackupOption] {
-    &[
-        ("schema-only", "--schema-only"),
-        ("data-only", "--data-only"),
-        ("clean", "--clean"),
-        ("no-owner", "--no-owner"),
-        ("single-transaction", "--single-transaction"),
-    ]
-}
+/// React `oracleDialect.backupOptions`.
+pub(crate) const ORACLE_BACKUP_OPTIONS: &[super::strategy::BackupOption] = &[
+    super::strategy::BackupOption { id: "schema-only", label: "--schema-only" },
+    super::strategy::BackupOption { id: "data-only", label: "--data-only" },
+    super::strategy::BackupOption { id: "clean", label: "--clean" },
+];
 
-pub(crate) fn oracle_backup_options() -> &'static [BackupOption] {
-    &[("schema-only", "--schema-only"), ("data-only", "--data-only"), ("clean", "--clean")]
-}
+/// React `clickhouseDialect.backupOptions`.
+pub(crate) const CLICKHOUSE_BACKUP_OPTIONS: &[super::strategy::BackupOption] = &[
+    super::strategy::BackupOption { id: "schema-only", label: "--schema-only" },
+    super::strategy::BackupOption { id: "data-only", label: "--data-only" },
+    super::strategy::BackupOption { id: "clean", label: "--clean" },
+    super::strategy::BackupOption { id: "no-owner", label: "--no-owner" },
+];
 
-pub(crate) fn clickhouse_backup_options() -> &'static [BackupOption] {
-    &[
-        ("schema-only", "--schema-only"),
-        ("data-only", "--data-only"),
-        ("clean", "--clean"),
-        ("no-owner", "--no-owner"),
-    ]
-}
-
-pub(crate) fn duckdb_backup_options() -> &'static [BackupOption] {
-    &[
-        ("schema-only", "--schema-only"),
-        ("data-only", "--data-only"),
-        ("clean", "--clean"),
-        ("no-owner", "--no-owner"),
-        ("single-transaction", "--single-transaction"),
-    ]
-}
+/// React `duckdbDialect.backupOptions`.
+pub(crate) const DUCKDB_BACKUP_OPTIONS: &[super::strategy::BackupOption] = &[
+    super::strategy::BackupOption { id: "schema-only", label: "--schema-only" },
+    super::strategy::BackupOption { id: "data-only", label: "--data-only" },
+    super::strategy::BackupOption { id: "clean", label: "--clean" },
+    super::strategy::BackupOption { id: "no-owner", label: "--no-owner" },
+    super::strategy::BackupOption { id: "single-transaction", label: "--single-transaction" },
+];
 
 /// The engines with no backup options (elasticsearch, mongodb, generic).
-pub(crate) fn no_backup_options() -> &'static [BackupOption] {
-    &[]
+pub(crate) const NO_BACKUP_OPTIONS: &[super::strategy::BackupOption] = &[];
+
+// ---- the assembled strategies (React's `export const xDialect`) ---------------
+
+use super::strategy::{
+    CreateIndexOptions, DdlQuery, DialectDdl, DialectIndex, IndexMethod, RowLimitPlacement,
+    RowLimitShape, SqlDialectStrategy,
+};
+
+/// The supported methods every `standardIndex` declares.
+const STANDARD_METHODS: &[IndexMethod] = &[IndexMethod::Btree, IndexMethod::Hash];
+
+/// `standardIndex('bare').getDropIndexSql`.
+fn drop_index_bare(index_name: &str, _table_name: &str, quote_char: char) -> String {
+    drop_index_sql(DropIndexPattern::Bare, index_name, _table_name, quote_char)
 }
+
+/// `standardIndex('table').getDropIndexSql`.
+fn drop_index_table(index_name: &str, table_name: &str, quote_char: char) -> String {
+    drop_index_sql(DropIndexPattern::Table, index_name, table_name, quote_char)
+}
+
+/// `standardIndex(…).getCreateIndexSql` (no method in the CREATE string).
+fn create_index(opts: &CreateIndexOptions<'_>) -> String {
+    let columns: Vec<&str> = opts.columns.iter().map(String::as_str).collect();
+    create_index_sql(opts.unique, opts.index_name, opts.table_name, &columns, opts.quote_char)
+}
+
+/// `noDdl.getTableDdlQuery` — no rows, the DDL tab stays harmless.
+fn no_ddl_query(_table_name: &str, _schema: Option<&str>) -> DdlQuery {
+    DdlQuery { sql: NO_DDL_TABLE_QUERY.to_owned(), extract_column_index: 0 }
+}
+
+/// `sqlserverDialect.ddl.getTableDdlQuery`.
+fn sqlserver_ddl(table_name: &str, _schema: Option<&str>) -> DdlQuery {
+    DdlQuery { sql: sqlserver_table_ddl_query(table_name), extract_column_index: 0 }
+}
+
+/// `oracleDialect.ddl.getTableDdlQuery`.
+fn oracle_ddl(table_name: &str, _schema: Option<&str>) -> DdlQuery {
+    DdlQuery { sql: oracle_table_ddl_query(table_name), extract_column_index: 0 }
+}
+
+/// `oracleDialect.ddl.getViewDdlQuery`.
+fn oracle_view_ddl(view_name: &str, _schema: Option<&str>) -> DdlQuery {
+    DdlQuery { sql: oracle_view_ddl_query(view_name), extract_column_index: 0 }
+}
+
+/// `clickhouseDialect.ddl.getTableDdlQuery`.
+fn clickhouse_ddl(table_name: &str, _schema: Option<&str>) -> DdlQuery {
+    DdlQuery { sql: clickhouse_table_ddl_query(table_name), extract_column_index: 0 }
+}
+
+/// `duckdbDialect.ddl.getTableDdlQuery`.
+fn duckdb_ddl(table_name: &str, _schema: Option<&str>) -> DdlQuery {
+    DdlQuery { sql: duckdb_table_ddl_query(table_name), extract_column_index: 0 }
+}
+
+/// `duckdbDialect.ddl.getViewDdlQuery`.
+fn duckdb_view_ddl(view_name: &str, _schema: Option<&str>) -> DdlQuery {
+    DdlQuery { sql: duckdb_view_ddl_query(view_name), extract_column_index: 0 }
+}
+
+/// React `sqlserverDialect` — `TOP n` inside the select list, bracket
+/// quoting, double-quote table SQL.
+pub(crate) static SQLSERVER_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
+    family: "sqlserver",
+    ddl: DialectDdl { table_ddl: sqlserver_ddl, view_ddl: None },
+    index: DialectIndex {
+        supported_methods: STANDARD_METHODS,
+        drop_index: drop_index_table,
+        create_index,
+    },
+    backup_options: SQLSERVER_BACKUP_OPTIONS,
+    truncate_table_sql: None,
+    table_sql: Some(super::base_table_sql::BaseTableSqlGenerator::new('"')),
+    row_limit: Some(RowLimitShape {
+        placement: RowLimitPlacement::SelectList,
+        clause: sqlserver_row_limit_clause,
+    }),
+};
+
+/// React `oracleDialect` — `FETCH FIRST n ROWS ONLY` trailing, DDL from
+/// `DBMS_METADATA`.
+pub(crate) static ORACLE_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
+    family: "oracle",
+    ddl: DialectDdl { table_ddl: oracle_ddl, view_ddl: Some(oracle_view_ddl) },
+    index: DialectIndex {
+        supported_methods: STANDARD_METHODS,
+        drop_index: drop_index_bare,
+        create_index,
+    },
+    backup_options: ORACLE_BACKUP_OPTIONS,
+    truncate_table_sql: None,
+    table_sql: Some(super::base_table_sql::BaseTableSqlGenerator::new('"')),
+    row_limit: Some(RowLimitShape {
+        placement: RowLimitPlacement::Trailing,
+        clause: oracle_row_limit_clause,
+    }),
+};
+
+/// React `clickhouseDialect` — backticks, `ALTER TABLE` write shapes.
+pub(crate) static CLICKHOUSE_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
+    family: "clickhouse",
+    ddl: DialectDdl { table_ddl: clickhouse_ddl, view_ddl: None },
+    index: DialectIndex {
+        supported_methods: STANDARD_METHODS,
+        drop_index: drop_index_table,
+        create_index,
+    },
+    backup_options: CLICKHOUSE_BACKUP_OPTIONS,
+    truncate_table_sql: None,
+    table_sql: Some(super::base_table_sql::BaseTableSqlGenerator::clickhouse()),
+    row_limit: None,
+};
+
+/// React `duckdbDialect` — DDL from the `duckdb_tables()`/`duckdb_views()`
+/// catalogs.
+pub(crate) static DUCKDB_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
+    family: "duckdb",
+    ddl: DialectDdl { table_ddl: duckdb_ddl, view_ddl: Some(duckdb_view_ddl) },
+    index: DialectIndex {
+        supported_methods: STANDARD_METHODS,
+        drop_index: drop_index_bare,
+        create_index,
+    },
+    backup_options: DUCKDB_BACKUP_OPTIONS,
+    truncate_table_sql: None,
+    table_sql: Some(super::base_table_sql::BaseTableSqlGenerator::new('"')),
+    row_limit: None,
+};
+
+/// React `elasticsearchDialect` — no DDL, every write throws.
+pub(crate) static ELASTICSEARCH_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
+    family: "elasticsearch",
+    ddl: DialectDdl { table_ddl: no_ddl_query, view_ddl: None },
+    index: DialectIndex {
+        supported_methods: STANDARD_METHODS,
+        drop_index: drop_index_bare,
+        create_index,
+    },
+    backup_options: NO_BACKUP_OPTIONS,
+    truncate_table_sql: None,
+    table_sql: Some(super::base_table_sql::BaseTableSqlGenerator::elasticsearch()),
+    row_limit: None,
+};
+
+/// React `mongodbDialect` — no DDL, no table SQL, no backup flags.
+pub(crate) static MONGODB_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
+    family: "mongodb",
+    ddl: DialectDdl { table_ddl: no_ddl_query, view_ddl: None },
+    index: DialectIndex {
+        supported_methods: STANDARD_METHODS,
+        drop_index: drop_index_bare,
+        create_index,
+    },
+    backup_options: NO_BACKUP_OPTIONS,
+    truncate_table_sql: None,
+    table_sql: None,
+    row_limit: None,
+};
+
+/// React `genericDialect` — the ANSI fallback.
+pub(crate) static GENERIC_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
+    family: "generic",
+    ddl: DialectDdl { table_ddl: no_ddl_query, view_ddl: None },
+    index: DialectIndex {
+        supported_methods: STANDARD_METHODS,
+        drop_index: drop_index_bare,
+        create_index,
+    },
+    backup_options: NO_BACKUP_OPTIONS,
+    truncate_table_sql: None,
+    table_sql: Some(super::base_table_sql::BaseTableSqlGenerator::new('"')),
+    row_limit: None,
+};

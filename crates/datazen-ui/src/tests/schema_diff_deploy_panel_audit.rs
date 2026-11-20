@@ -35,7 +35,7 @@ fn statement(risk: StatementRiskVm, requires_tx: bool) -> PlanStatementVm {
         risk,
         rollback_sql: None,
         summary: "s".to_owned(),
-        requires_transaction: requires_tx,
+        requires_transaction: Some(requires_tx),
     }
 }
 
@@ -48,6 +48,7 @@ fn sample_plan() -> SchemaDiffPlanVm {
         statements: vec![statement(StatementRiskVm::Additive, false)],
         requirements: Vec::new(),
         rollback_completeness: RollbackCompletenessVm { complete: true, missing: Vec::new() },
+        ..Default::default()
     }
 }
 
@@ -57,6 +58,7 @@ fn result(status: DeployStatusVm, executed: usize, total: usize, errors: &[&str]
         executed_count: executed,
         statement_count: total,
         errors: errors.iter().map(|s| s.to_string()).collect(),
+        statement_results: Vec::new(),
     }
 }
 
@@ -137,7 +139,7 @@ fn deploy_readiness_matches_reacts_derivation() {
     // button enabled even with useTransaction=false.
     let mut sqlite = sample_plan();
     sqlite.target_dialect = "sqlite".to_owned();
-    sqlite.statements[0].requires_transaction = true;
+    sqlite.statements[0].requires_transaction = Some(true);
     let r = deploy_readiness(&sqlite, false, false, "", false);
     assert!(r.transaction_required);
     assert!(r.transaction_enabled, "forced on");
@@ -166,7 +168,7 @@ fn deploy_readiness_matches_reacts_derivation() {
     // || (txSupported && transactionEnabled)` clause).
     let mut stranded = sample_plan();
     stranded.target_dialect = "mysql".to_owned();
-    stranded.statements[0].requires_transaction = true;
+    stranded.statements[0].requires_transaction = Some(true);
     let r = deploy_readiness(&stranded, false, false, "", false);
     assert!(r.transaction_required);
     assert!(!r.tx_supported);
@@ -371,7 +373,7 @@ fn a_sqlite_rebuild_forces_the_transaction_control() {
     // hint; deploy stays enabled.
     let mut scene = Scene::base();
     scene.plan.target_dialect = "sqlite".to_owned();
-    scene.plan.statements[0].requires_transaction = true;
+    scene.plan.statements[0].requires_transaction = Some(true);
     scene.use_transaction = false;
     scene.require_rollback = false;
     let rt = rt(scene);

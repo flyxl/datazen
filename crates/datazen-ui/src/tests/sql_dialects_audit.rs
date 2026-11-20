@@ -19,15 +19,16 @@ use crate::support::sql_dialects::dialect_profile::{
     list_builtin_dialect_profile_ids, normalize_declared_profile, resolve_dialect_profile,
 };
 use crate::support::sql_dialects::extra::{
-    BackupOption, ColumnVm, DropIndexPattern, TableSchemaVm, base_delete_sql, base_update_sql,
+    ColumnVm, DropIndexPattern, TableSchemaVm, base_delete_sql, base_update_sql,
     clickhouse_delete_sql, clickhouse_table_ddl_query, clickhouse_update_sql,
     create_index_sql, drop_index_sql, duckdb_table_ddl_query, duckdb_view_ddl_query,
     elasticsearch_delete_sql, elasticsearch_insert_sql, elasticsearch_update_sql,
-    no_backup_options, oracle_backup_options, oracle_row_limit_clause, oracle_table_ddl_query,
-    oracle_view_ddl_query, quote_identifier, sqlserver_backup_options,
-    sqlserver_row_limit_clause, sqlserver_table_ddl_query, duckdb_backup_options,
-    clickhouse_backup_options, NO_DDL_TABLE_QUERY, SUPPORTED_INDEX_METHODS,
+    CLICKHOUSE_BACKUP_OPTIONS, DUCKDB_BACKUP_OPTIONS, NO_BACKUP_OPTIONS, ORACLE_BACKUP_OPTIONS,
+    oracle_row_limit_clause, oracle_table_ddl_query, oracle_view_ddl_query, quote_identifier,
+    SQLSERVER_BACKUP_OPTIONS, sqlserver_row_limit_clause, sqlserver_table_ddl_query,
+    NO_DDL_TABLE_QUERY, SUPPORTED_INDEX_METHODS,
 };
+use crate::support::sql_dialects::strategy::BackupOption;
 
 // ---- the profile table, row by row ------------------------------------------
 
@@ -310,23 +311,23 @@ fn row_limit_clauses_match_their_dialects() {
 }
 
 fn option_ids(options: &[BackupOption]) -> Vec<&str> {
-    options.iter().map(|(id, _)| *id).collect()
+    options.iter().map(|o| o.id).collect()
 }
 
 #[test]
 fn backup_option_tables_match_react() {
     assert_eq!(
-        option_ids(sqlserver_backup_options()),
+        option_ids(SQLSERVER_BACKUP_OPTIONS),
         vec!["schema-only", "data-only", "clean", "no-owner", "single-transaction"]
     );
-    assert_eq!(option_ids(oracle_backup_options()), vec!["schema-only", "data-only", "clean"]);
+    assert_eq!(option_ids(ORACLE_BACKUP_OPTIONS), vec!["schema-only", "data-only", "clean"]);
     assert_eq!(
-        option_ids(clickhouse_backup_options()),
+        option_ids(CLICKHOUSE_BACKUP_OPTIONS),
         vec!["schema-only", "data-only", "clean", "no-owner"]
     );
     assert_eq!(
-        option_ids(duckdb_backup_options()),
+        option_ids(DUCKDB_BACKUP_OPTIONS),
         vec!["schema-only", "data-only", "clean", "no-owner", "single-transaction"]
     );
-    assert!(no_backup_options().is_empty());
+    assert!(NO_BACKUP_OPTIONS.is_empty());
 }

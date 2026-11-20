@@ -1,9 +1,16 @@
-//! The `schemaDiffTableNames.ts` seam subset ported by T351 — the table
-//! inventory merge that `schemaDiffObjectDiscovery.ts`'s discovery run
-//! returns. The full React file (`packages/frontend/src/windows/schema-diff/
-//! schemaDiffTableNames.ts`) is T374's task; until it lands, this module
-//! carries exactly the four exports the discovery run consumes, 1:1 (the
-//! deploy panel's T379-seam precedent — T374 re-points/extends here):
+//! Port of `packages/frontend/src/windows/schema-diff/schemaDiffTableNames.ts`
+//! — the table inventory merge and the enabled-set selectors (T372, the
+//! shard's historical T374). The merge subset first landed as T351's seam
+//! for the discovery run; this is the full file:
+//!
+//! - `tableDiffHasChanges` → [`table_diff_has_changes`]
+//! - `qualifySchemaDiffTableName` → [`qualify_schema_diff_table_name`]
+//! - `filterTablesForSchema` → [`filter_tables_for_schema`]
+//! - `SchemaDiffTablePick` → [`SchemaDiffTablePickVm`]
+//! - `enabledTableNames` → [`enabled_table_names`]
+//! - `enabledSourceTableNames` → [`enabled_source_table_names`]
+//! - `enabledTargetOnlyTableNames` → [`enabled_target_only_table_names`]
+//! - `mergeSchemaDiffTablePicks` → [`merge_schema_diff_table_picks`]
 //!
 //! - `SchemaDiffTablePick` → [`SchemaDiffTablePickVm`]
 //! - `filterTablesForSchema` → [`filter_tables_for_schema`]
@@ -218,6 +225,50 @@ pub(crate) fn merge_schema_diff_table_picks(
 }
 
 #[cfg(test)]
+/// React `tableDiffHasChanges`: a target-only table always counts as a
+/// change; otherwise any missing/extra/changed column, any check
+/// constraint delta or a table-options delta does. `missingOnTarget ??
+/// added` / `extraOnTarget ?? removed` prefer the explicit fields over
+/// the legacy aliases.
+pub(crate) fn table_diff_has_changes(diff: &crate::components::schema::schema_diff_panel::TableSchemaDiffVm) -> bool {
+    if diff.target_only {
+        return true;
+    }
+    let missing = diff.missing_on_target.as_deref().unwrap_or(&diff.added);
+    let extra = diff.extra_on_target.as_deref().unwrap_or(&diff.removed);
+    !missing.is_empty()
+        || !extra.is_empty()
+        || !diff.changed.is_empty()
+        || diff.missing_check_constraints.as_ref().map_or(false, |c| !c.is_empty())
+        || diff.extra_check_constraints.as_ref().map_or(false, |c| !c.is_empty())
+        || diff.table_options.is_some()
+}
+
+/// React `enabledTableNames`: the enabled picks' bare names.
+pub(crate) fn enabled_table_names(picks: &[SchemaDiffTablePickVm]) -> Vec<String> {
+    picks.iter().filter(|row| row.enabled).map(|row| row.name.clone()).collect()
+}
+
+/// React `enabledSourceTableNames`: enabled non-target-only picks, by
+/// their exact source selector (`sourceName ?? name`).
+pub(crate) fn enabled_source_table_names(picks: &[SchemaDiffTablePickVm]) -> Vec<String> {
+    picks
+        .iter()
+        .filter(|row| row.enabled && row.origin != TablePickOriginVm::TargetOnly)
+        .map(|row| row.source_name.clone().unwrap_or_else(|| row.name.clone()))
+        .collect()
+}
+
+/// React `enabledTargetOnlyTableNames`: enabled target-only picks, by
+/// their exact target selector (`targetName ?? name`).
+pub(crate) fn enabled_target_only_table_names(picks: &[SchemaDiffTablePickVm]) -> Vec<String> {
+    picks
+        .iter()
+        .filter(|row| row.enabled && row.origin == TablePickOriginVm::TargetOnly)
+        .map(|row| row.target_name.clone().unwrap_or_else(|| row.name.clone()))
+        .collect()
+}
+
 pub(crate) mod tests {
     use super::*;
 
@@ -356,5 +407,108 @@ pub(crate) mod tests {
         assert_eq!(picks[1].origin, TablePickOriginVm::TargetOnly);
         assert_eq!(picks[0].name, "s.dup");
         assert_eq!(picks[1].name, "s.dup");
+    }
+
+    // ---- T372: the change predicate and the enabled-set selectors -----
+
+    use crate::components::schema::schema_diff_panel::{
+        CheckConstraintDiffVm, ColumnDiffVm, TableOptionsDiffVm, TableSchemaDiffVm,
+    };
+
+    fn diff() -> TableSchemaDiffVm {
+        TableSchemaDiffVm {
+            table: "users".to_owned(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn has_changes_detects_every_delta_kind() {
+        // Clean diff: no changes.
+        assert!(!table_diff_has_changes(&diff()));
+        // Target-only: always a change.
+        let mut target_only = diff();
+        target_only.target_only = true;
+        assert!(table_diff_has_changes(&target_only));
+        // Missing columns (either field).
+        let mut missing = diff();
+        missing.added = vec![ColumnDiffVm::new("email", "text", true, false)];
+        assert!(table_diff_has_changes(&missing));
+        let mut missing_explicit = diff();
+        missing_explicit.missing_on_target = Some(vec![ColumnDiffVm::new("email", "text", true, false)]);
+        assert!(table_diff_has_changes(&missing_explicit));
+        // Extra columns through the legacy alias alone.
+        let mut extra = diff();
+        extra.removed = vec![ColumnDiffVm::new("old", "text", true, false)];
+        assert!(table_diff_has_changes(&extra));
+        // Changed columns.
+        let mut changed = diff();
+        changed.changed = vec![crate::components::schema::schema_diff_panel::ChangedColumnDiffVm {
+            name: "email".to_owned(),
+            ..Default::default()
+        }];
+        assert!(table_diff_has_changes(&changed));
+        // Check constraints (either side).
+        let mut checks = diff();
+        checks.missing_check_constraints = Some(vec![CheckConstraintDiffVm {
+            name: "c".to_owned(),
+            expression: "x > 0".to_owned(),
+        }]);
+        assert!(table_diff_has_changes(&checks));
+        let mut extra_checks = diff();
+        extra_checks.extra_check_constraints = Some(Vec::new());
+        assert!(!table_diff_has_changes(&extra_checks), "empty list is no change");
+        // Table options presence.
+        let mut options = diff();
+        options.table_options = Some(TableOptionsDiffVm::default());
+        assert!(table_diff_has_changes(&options));
+    }
+
+    #[test]
+    fn enabled_selectors_split_by_origin() {
+        let picks = vec![
+            SchemaDiffTablePickVm {
+                name: "alpha".to_owned(),
+                enabled: true,
+                origin: TablePickOriginVm::Both,
+                source_name: Some("s.alpha".to_owned()),
+                target_name: Some("t.alpha".to_owned()),
+            },
+            SchemaDiffTablePickVm {
+                name: "beta".to_owned(),
+                enabled: false,
+                origin: TablePickOriginVm::Both,
+                source_name: Some("s.beta".to_owned()),
+                target_name: Some("t.beta".to_owned()),
+            },
+            SchemaDiffTablePickVm {
+                name: "gamma".to_owned(),
+                enabled: true,
+                origin: TablePickOriginVm::SourceOnly,
+                source_name: Some("s.gamma".to_owned()),
+                target_name: None,
+            },
+            SchemaDiffTablePickVm {
+                name: "archive".to_owned(),
+                enabled: true,
+                origin: TablePickOriginVm::TargetOnly,
+                source_name: None,
+                target_name: Some("t.archive".to_owned()),
+            },
+        ];
+        assert_eq!(enabled_table_names(&picks), ["alpha", "gamma", "archive"]);
+        // Source selectors exclude target-only rows; disabled rows drop.
+        assert_eq!(enabled_source_table_names(&picks), ["s.alpha", "s.gamma"]);
+        // Target-only selectors fall back to the bare name when the
+        // selector is absent.
+        assert_eq!(enabled_target_only_table_names(&picks), ["t.archive"]);
+        let bare = vec![SchemaDiffTablePickVm {
+            name: "bare".to_owned(),
+            enabled: true,
+            origin: TablePickOriginVm::TargetOnly,
+            source_name: None,
+            target_name: None,
+        }];
+        assert_eq!(enabled_target_only_table_names(&bare), ["bare"]);
     }
 }

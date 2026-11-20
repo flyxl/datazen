@@ -10,4 +10,25 @@ pub(crate) mod schema_diff_object_identity;
 // (schemaDiffObjectDiscovery.ts; the schemaDiffTableNames.ts merge rides
 // along as its seam module until T374 ports the full file).
 pub(crate) mod schema_diff_object_discovery;
+// T149: the wizard's object-selection step (SchemaDiffObjectsStep.tsx).
+pub(crate) mod schema_diff_objects_step;
+// T178: the reviewed plan's content panel (SchemaDiffPlanPanel.tsx; the
+// requirements / type-suggestions / rollback-status sections are submodules).
+pub(crate) mod schema_diff_plan_panel;
+// T269: the wizard's table list rail (SchemaDiffTableListPanel.tsx).
+pub(crate) mod schema_diff_table_list_panel;
+// T204: the right review panel (SchemaDiffRightPanel.tsx: tabs + plan /
+// deploy bodies + the generate-plan empty state).
+pub(crate) mod schema_diff_right_panel;
+// T075: the wizard's per-step execution surfaces
+// (SchemaDiffExecutionPanels.tsx: compare row, plan step, deploy step).
+pub(crate) mod schema_diff_execution_panels;
+// T391: the wizard's job-tracking hook (useSchemaDiffJobLifecycle.ts:
+// the tracked job, latest apply, cancel/verify outcomes, hydration).
+pub(crate) mod use_schema_diff_job_lifecycle;
+// T115: the wizard's job status strip (SchemaDiffJobStatusPanel.tsx).
+pub(crate) mod schema_diff_job_status_panel;
+// T372: the clipboard-feedback hook (useSchemaDiffClipboardFeedback.ts;
+// the schemaDiffTableNames.ts full port rides in its own module).
+pub(crate) mod use_schema_diff_clipboard_feedback;
 pub(crate) mod schema_diff_table_names;

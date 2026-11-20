@@ -50,6 +50,15 @@ mod schema_diff_deploy_panel_audit;
 mod confirm_dialog_hook_audit;
 // T035: the sqlDialects support layer (profiles, strategies, exact SQL).
 mod sql_dialects_audit;
+// T083: identifierQuoting + the index registry (builtin strategies),
+// audited against the React sources and dialects.test.ts.
+mod sql_dialect_identifier_quoting_audit;
+// T086: the useAiEditorGrant hook + targetClaim seam, audited
+// against the React sources with an injected clock.
+mod ai_editor_grant_hook_audit;
+// T094: the ai command family shapers (wire keys, stub policy,
+// workflow MethodMap), audited against the React source literal.
+mod ai_commands_audit;
 mod column_stats_dialog;
 // T002: the single DataTable cell — formatting, colour, plan and geometry.
 mod cell_renderer;
@@ -1322,3 +1331,31 @@ mod pie_chart_renderer;
 // T200: the workflow yaml editor chrome pins (the host, the line-number
 // gutter, the lint gutter flag).
 mod workflow_yaml_editor;
+
+// T377: the commands/schemaDiff.ts port — pure helpers, wire payload
+// shapes, tagged-enum folding and the submit→poll→resolve machine.
+mod commands_schema_diff;
+// T269: the schema-diff table list rail (row keys, selection, hasDiff
+// badge states, empty hint, pinned width).
+mod schema_diff_table_list_panel_audit;
+// T149: the schema-diff objects step (three branches, count line,
+// link buttons, checkbox names, origin badges).
+mod schema_diff_objects_step_audit;
+// T178: the schema-diff plan panel (options row, requirements,
+// type suggestions, rollback status, statement cards).
+mod schema_diff_plan_panel_audit;
+// T204: the schema-diff right review panel (tabs, threaded panels,
+// generate-plan empty state).
+mod schema_diff_right_panel_audit;
+// T075: the schema-diff execution panels (compare row, plan step,
+// deploy step threading).
+mod schema_diff_execution_panels_audit;
+// T391: the schema-diff job lifecycle hook (tracked job identity,
+// latest apply, hydration + poll, cancel/verify outcomes).
+mod use_schema_diff_job_lifecycle;
+// T115: the schema-diff job status strip (recovery notices, verify
+// journey, cancel journey, last-apply report).
+mod schema_diff_job_status_panel_audit;
+// T372: the clipboard-feedback hook's inline suite (the show/clear
+// window) — the table-names full port rides its existing bridge.
+mod use_schema_diff_clipboard_feedback;

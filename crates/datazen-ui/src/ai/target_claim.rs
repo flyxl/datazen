@@ -148,3 +148,61 @@ pub(crate) fn attribution_of(claim: Option<&AiTargetClaim>) -> AiRunAttribution 
         _ => AiRunAttribution::Independent,
     }
 }
+
+// segment 4's T086 inline suite: the wire contract against the real receipt
+// produced by grant_state; `impl Into<String>` above accepts its `&str` args.
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+    use crate::ai::grant_state::AiGrantReceipt;
+
+    fn receipt(grant_id: &str) -> AiGrantReceipt {
+        AiGrantReceipt {
+            grant_id: grant_id.to_owned(),
+            connection_id: "conn".to_owned(),
+            database: None,
+            config_revision: 3,
+            expires_at_ms: 9_000,
+        }
+    }
+
+    #[test]
+    fn the_default_claim_is_independent() {
+        assert_eq!(independent(), AiTargetClaim::Independent);
+        assert!(!is_editor_grant(Some(&independent())));
+        assert!(!is_editor_grant(None));
+    }
+
+    #[test]
+    fn editor_grant_reads_only_the_grant_id() {
+        let claim = editor_grant(&receipt("g-1"), "client-7", "editor-9");
+        assert_eq!(
+            claim,
+            AiTargetClaim::EditorGrant {
+                grant_id: "g-1".to_owned(),
+                claimed_client_instance_id: "client-7".to_owned(),
+                editor_session_id: "editor-9".to_owned(),
+            }
+        );
+        assert!(is_editor_grant(Some(&claim)));
+        // Only the grant id is read: every other receipt field may differ.
+        let other = receipt("g-1");
+        assert_eq!(editor_grant(&other, "client-7", "editor-9"), claim);
+    }
+
+    #[test]
+    fn attribution_projects_the_non_secret_fields() {
+        let claim = editor_grant(&receipt("g-2"), "client-7", "editor-9");
+        assert_eq!(
+            attribution_of(Some(&claim)),
+            AiRunAttribution::EditorGrant {
+                grant_id: "g-2".to_owned(),
+                editor_session_id: "editor-9".to_owned(),
+            }
+        );
+        // The claimed client instance never crosses into the attribution.
+        assert!(!format!("{:?}", attribution_of(Some(&claim))).contains("client-7"));
+        assert_eq!(attribution_of(None), AiRunAttribution::Independent);
+        assert_eq!(attribution_of(Some(&independent())), AiRunAttribution::Independent);
+    }
+}

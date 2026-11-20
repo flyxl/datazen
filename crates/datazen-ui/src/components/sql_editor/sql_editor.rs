@@ -59,6 +59,8 @@ use std::rc::Rc;
 
 use rune::{col, row, text, tok, El, Ime, KeyEvent, Span, Tx};
 
+#[allow(unused_imports)] // re-export keeps the pre-T105 paths (mod.rs, completion) stable
+pub(crate) use super::contracts::{CompletionQuotePolicy, ExecutionStatus};
 use super::lib_helpers::{parse_qualified_path_parents, toggle_sql_line_comments};
 use crate::sql_editor::{self, SqlEditor};
 use crate::ui::palette;
@@ -66,28 +68,9 @@ use crate::ui::spinner::{Spinner, SpinnerVariant};
 
 
 // ---------------------------------------------------------------------------
-// Props (mirror of `contracts.ts` `SqlEditorProps`, minus seams listed above)
+// Props (mirror of `contracts.ts` `SqlEditorProps`, minus seams listed above;
+// the vocabulary types moved to `contracts.rs` — their single source, T105)
 // ---------------------------------------------------------------------------
-
-/// `executionStatus` from `contracts.ts`: `'idle' | 'running' | 'cancelling'`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[allow(dead_code)] // reusable port; wired by the workspace view wiring
-pub(crate) enum ExecutionStatus {
-    #[default]
-    Idle,
-    Running,
-    Cancelling,
-}
-
-/// `'unquoted' | 'always' | 'both'` from `contracts.ts`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[allow(dead_code)] // reusable port; wired by the workspace view wiring
-pub(crate) enum CompletionQuotePolicy {
-    #[default]
-    Unquoted,
-    Always,
-    Both,
-}
 
 /// Per-frame configuration, the port of `SqlEditorProps`. Callback props
 /// become [`EditorEvent`]s; fields that only feed unwritten extension

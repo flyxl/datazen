@@ -146,20 +146,10 @@ pub(crate) fn button_label(artifact_count: usize, index: usize) -> String {
     }
 }
 
-/// React `ArtifactExportResponse` (`commands/artifact.ts`): the Host owns
-/// identity, partial-result confirmation and the save destination, and
-/// reports back either outcome.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[allow(dead_code)] // reusable component; wired by the query-view track
-pub(crate) enum ArtifactExportReceipt {
-    /// The native dialog was cancelled: a normal exit, not an error.
-    Cancelled,
-    /// The artifact was written; `byte_length` is the Host's receipt detail.
-    Saved {
-        artifact_id: String,
-        byte_length: u64,
-    },
-}
+/// React `ArtifactExportResponse` — the single source is
+/// `commands::artifact::ArtifactExportResponse` (T130); this alias keeps
+/// the component's original name.
+pub(crate) use crate::commands::artifact::ArtifactExportResponse as ArtifactExportReceipt;
 
 /// The message a rejection shows: the failure's own message when it has one,
 /// else `query.artifactExport.failed` — React's `failure instanceof Error ?

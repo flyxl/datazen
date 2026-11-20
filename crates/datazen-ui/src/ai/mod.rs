@@ -11,5 +11,8 @@ pub(crate) mod grant_state;
 pub(crate) mod session_cancel;
 #[allow(dead_code)] // T133; consumer: AI chat panel (not landed). Delete when it lands.
 pub(crate) mod stream_registry;
-#[allow(dead_code)] // T164; consumer: AI chat panel claim wiring (not landed). Delete when it lands.
+/// targetClaim.ts's wire contracts (T086's seam; segment 1's T162 owns the
+/// file formally — see the module doc). T162's version reuses the receipt and
+/// cancel types from the sibling state machines rather than duplicating them.
+#[allow(dead_code)] // T164/T162; consumer: AI chat panel claim wiring (not landed). Delete when it lands.
 pub(crate) mod target_claim;

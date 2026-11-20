@@ -20,6 +20,21 @@ pub(crate) use sql_editor::{
     SqlEditorComponent, SqlEditorProps, SqlEditorState,
 };
 
+/// `contracts.ts` (T105): the S6-D contract vocabulary — props enums,
+/// the drop payload, the navigation targets, the CM dialect mapping.
+pub(crate) mod contracts;
+#[allow(unused_imports)] // the handle/extension tasks build on these
+pub(crate) use contracts::{
+    CmSqlDialect, DdlNavTarget, DroppedTablePayload, DroppedTableRef, SqlSchema,
+    StructureNavTarget, TableNavTarget, resolve_cm_dialect,
+};
+
+/// `editorExtensions.ts` (T139, split): the assembly's decision logic —
+/// theme config, the document-version rule, the execute dispatch, the
+/// large-document windowing, the path dedup, the contextmenu SQL, the
+/// completion anchors and admission classes.
+pub(crate) mod editor_extensions;
+
 pub(crate) mod lib_helpers;
 #[allow(unused_imports)] // re-exports keep the module boundary flat for callers
 pub(crate) use lib_helpers::{parse_qualified_path_parents, toggle_sql_line_comments};
