@@ -295,6 +295,11 @@ mod area_chart_renderer;
 // rectangle geometry, the LabelList, hit-band routing and the tooltips).
 mod bar_chart_renderer;
 
+// T216: the line chart engine port (the per-point dot layer, the hovered
+// row's activeDot layer, the LabelList values overlay, the shared log-hint
+// pipeline, hit-band routing and the tooltips).
+mod line_chart_renderer;
+
 // T200: the workflow yaml editor chrome pins (the host, the line-number
 // gutter, the lint gutter flag).
 mod workflow_yaml_editor;

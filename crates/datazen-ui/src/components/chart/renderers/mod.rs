@@ -5,6 +5,8 @@
 //!
 //! `AreaChartRenderer.tsx` (T166) is the first: `renderers/area_chart_renderer.rs`.
 //! `BarChartRenderer.tsx` (T192) is the second: `renderers/bar_chart_renderer.rs`.
+//! `LineChartRenderer.tsx` (T216) is the third: `renderers/line_chart_renderer.rs`.
 
 pub(crate) mod area_chart_renderer;
 pub(crate) mod bar_chart_renderer;
+pub(crate) mod line_chart_renderer;
