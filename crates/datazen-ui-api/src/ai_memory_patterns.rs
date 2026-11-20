@@ -1067,4 +1067,17 @@ mod tests {
             "the wall-clock fallback yields a valid window"
         );
     }
+
+    #[test]
+    fn the_extraction_constants_are_the_react_literals() {
+        // [tester] Supplementary: the payload pins assert the window and
+        // the occurrence count symbolically (`Some(MEMORY_PATTERN_…)`),
+        // so drifting either constant escapes them — the window's literal
+        // only surfaces through the since-ISO pin, and the occurrence
+        // count has no literal channel at all (a 3→4 drift survived every
+        // other test). The literals are the extraction contract the host
+        // applies, so they are pinned at their source.
+        assert_eq!(MEMORY_PATTERN_WINDOW_DAYS, 14);
+        assert_eq!(MEMORY_PATTERN_MIN_OCCURRENCES, 3);
+    }
 }
