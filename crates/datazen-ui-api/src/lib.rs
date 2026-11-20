@@ -4,6 +4,7 @@
 //! interface can run before the desktop and HTTP adapters exist.
 
 mod ai_memory_correction;
+mod ai_memory_patterns;
 mod ai_sessions;
 mod ai_store_types;
 mod ai_streaming;
@@ -42,6 +43,11 @@ use datazen_driver_api::{ConnectionConfig as DriverConnectionConfig, SslMode as 
 pub use ai_memory_correction::{
     AiMemoryCommands, MemoryCorrectionSubmission, SchemaStaleSubmission,
     mark_stale_for_schema_drops, submit_memory_correction_if_needed,
+};
+pub use ai_memory_patterns::{
+    HistorySort, MemoryPatternCommands, MemoryPatternExtractionInput, MemoryPatternScheduler,
+    QueryHistoryPage, QueryHistoryPageParams, SubmitDecision, extract_memory_patterns_if_needed,
+    extract_once, MEMORY_PATTERN_MIN_OCCURRENCES, MEMORY_PATTERN_WINDOW_DAYS,
 };
 pub use ai_sessions::{
     ActiveConnectionEntry, ActiveConnections, AiSessionBackend, AiSessionStore, ExportFormat,
