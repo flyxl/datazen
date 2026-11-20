@@ -144,6 +144,33 @@ fn connection_content(state: &AppState, theme: tok::Theme, dark: bool, layer: &m
     // T199 (ContentView port): the componentized view owns the toolbar / tab
     // strip / body / status-bar composition and the VM's conditional gates.
     let vm = crate::views::content_view::ContentViewVm::from_host(state);
+    connection_content_with_vm(state, theme, dark, &vm, layer)
+}
+
+/// The same content column with an explicit view model, so a host that owns an
+/// object selection can compose the real `DatabaseObjectView` into the slot.
+#[allow(dead_code)] // composition entry point; remove when the host owns object selection.
+pub(crate) fn connection_content_with_vm(
+    state: &AppState,
+    theme: tok::Theme,
+    dark: bool,
+    vm: &crate::views::content_view::ContentViewVm,
+    layer: &mut Vec<El>,
+) -> El {
+    let mut slot = row().key("db-object-host").w_full().min_w(0.0);
+    if let Some(object) = vm.object_vm.as_ref() {
+        let mut layer = Vec::new();
+        crate::views::database_object_view::build::<AppState>(
+            &object.identity,
+            &object.state,
+            None,
+            dark,
+            &mut layer,
+        );
+        slot = slot.grow(1.0).min_h(0.0).children(layer);
+    } else {
+        slot = slot.size(0.0, 0.0);
+    }
     col()
         .key("datazen-page")
         .grow(1.0)
@@ -156,7 +183,30 @@ fn connection_content(state: &AppState, theme: tok::Theme, dark: bool, layer: &m
         // Thread the single overlay layer through the ContentView port down to
         // `page_body`, so workspace select listboxes mount into the same layer
         // `connection_page` mounts once at the root (no second scrim).
-        .child(crate::views::content_view::build(state, theme, dark, &vm, layer))
+        .child(crate::views::content_view::build(state, theme, dark, vm, layer))
+        // seg1's object/document view slots. Their local `Vec<El>`s are output
+        // containers for the views' root elements (each builder pushes one
+        // `root`), not modal layers — no scrim is mounted from them. The one
+        // real overlay remains `connection_page`'s `modal_layer`, mounted once
+        // at the root.
+        .child(slot)
+        // T337: the document browser composes here when a host supplies its VM.
+        .child({
+            let mut doc_slot = row().key("doc-view-host").w_full().min_w(0.0);
+            if let Some(document) = vm.document_vm.as_ref() {
+                let mut doc_layer = Vec::new();
+                crate::views::document_connection_view::build::<AppState>(
+                    document,
+                    None,
+                    dark,
+                    &mut doc_layer,
+                );
+                doc_slot = doc_slot.grow(1.0).min_h(0.0).children(doc_layer);
+            } else {
+                doc_slot = doc_slot.size(0.0, 0.0);
+            }
+            doc_slot
+        })
 }
 
 /// The title band: React's `titleBarLeft` (back + menu bar), the centred title,

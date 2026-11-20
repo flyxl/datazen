@@ -14,6 +14,16 @@ pub(crate) mod support;
 pub(crate) mod tokens;
 // T0-11 patch: a compact tooltip's long hint wraps inside the window.
 mod tooltip_text;
+// T0-04: chrome icons come from one 24-view lucide registry.
+mod icon_registry;
+// T0-11 audit: independent wrap and placement probes.
+mod tooltip_text_audit;
+// T0-11 row math: external selection reveal and page arithmetic.
+mod tree_rowmath_audit;
+// T349: ER relation legend port (labels/counts, swatch strokes, toggle, geometry).
+mod er_relation_legend;
+// T349 independent audit: row dimming, count extremes, inert toggle, constants.
+mod er_legend_audit;
 
 // T004: the column-statistics dialog's four branches, dismissal and bounds.
 mod column_stats_audit;
@@ -371,6 +381,20 @@ mod session_prompts;
 // T273 independent audit: literal React key strings, disconnect regex branches
 // and unknown-code fallbacks.
 mod session_prompts_audit;
+// T292: lib/session/tableSession.ts port (key derivation + handle rules).
+mod table_session;
+// T292 independent audit: absent namespace fields and a controller with no
+// snapshot.
+mod table_session_audit;
+// T311: lib/session/targetCommand.ts port (target derivation + admission).
+mod target_command;
+// T311 independent audit: recover-without-view, undefined error code, rows
+// shape filtering and schema columns validation.
+mod target_command_audit;
+// T327: lib/settingsExport.ts port + targetCommandPhase.ts X-class ruling.
+mod settings_export;
+// T327 independent audit: empty export, full enum sets and defensive drops.
+mod settings_export_audit;
 
 
 // T091: platform/capabilities.ts — desktop and web capability tables.
@@ -449,6 +473,10 @@ mod schema_diff_panel;
 mod schema_diff_audit;
 mod connection_advanced_settings;
 mod connection_advanced_audit;
+// T318: tunnel contract DTOs, validation rules and the clipboard-fill hook port.
+mod tunnel_contracts;
+// T318 independent audit: clipboard guard branches, numeric forms and purity.
+mod tunnel_contracts_audit;
 // T217: HttpProxyTunnelFields + IndexConnectionFields ports.
 mod tunnel_fields;
 // T217 independent audit: placeholders/secure password, scheme back-switch and
@@ -456,11 +484,27 @@ mod tunnel_fields;
 mod tunnel_fields_audit;
 // T059: the ConnectionAiNotes port (load/save, UTF-8 byte limit, timed feedback, geometry).
 mod connection_ai_notes;
+// T333: useConnectionForm ported as a state slice (defaults, snapshots,
+// validation, test/save ports and the inline/saved tunnel state machine).
+mod use_connection_form;
+// T346: useConnectionImport hook ported as an immediate-mode slice + effects.
+mod use_connection_import;
+// T346 independent audit: stale guard variants, dismissed picker and VM flags.
+mod use_connection_import_audit;
+// T333 independent audit: failed commands, driver validation, file/port rules,
+// derived flags, edit-mode type changes and tunnel auth configs.
+mod use_form_audit;
 // T103: ConnectionFormBody + ConnectionImportFields ports (keys, validation,
 // disabled states, exact i18n and two-window/two-theme geometry).
 mod connection_form_parts;
 // T103 independent audit: observable behaviour, structural parity and coverage gaps.
 mod connection_form_audit;
+// T300: WebSocketTunnelFields + AxisConfigurator ports (keys, mode validation,
+// axis config branches, field mapping, config edits and two-window geometry).
+mod websocket_axis;
+// T300 independent audit: edit routing, accessor-free path, hiding rules,
+// select edits, palette data and source guards.
+mod ws_axis_audit;
 // T281: SshTunnelFields + StandardConnectionFields ports and the form-body swap.
 mod ssh_standard_fields;
 // T281 independent audit: auth mapping, toggle rule, path pick, no-username,
@@ -911,6 +955,21 @@ mod content_view_drawers;
 // T245 independent audit: reason parsing, width bounds, auto-context fallback,
 // object cells, table detail row, resolving banner and visible-rect geometry.
 mod content_view_drawers_audit;
+// T305: DatabaseObjectView port (object detail, host actions, slot, geometry).
+mod database_object_view;
+// T305 independent audit: load/message, DDL retry, execute guards, empty schema,
+// null-schema action, visible-rect geometry and real connection-page composition.
+mod database_object_view_audit;
+// T337: DocumentConnectionView port (tabs, sidebar, result/editor, query, geometry).
+mod document_connection_view;
+// T337 independent audit: initial DB choice, query index clamp, show_editor,
+// real slot composition, visible-rect geometry, palette underline and id probes.
+mod document_connection_view_audit;
+// T322: DDLView port (branch keys, copy/wake, state machine, slot, geometry).
+mod ddl_view;
+// T322 independent audit: exact 2000ms wake, copied deadline, visible-rect
+// geometry and a whitespace-only DDL probe.
+mod ddl_view_audit;
 
 
 // T136: the log-scale tooltip port (the __orig__ formatter arms, the JS

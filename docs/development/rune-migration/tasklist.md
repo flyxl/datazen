@@ -308,7 +308,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T289 · windows/data-sync · 0.60d · windows/data-sync/DataSyncWizardNav.tsx windows/data-sync/DataSyncWizardStepper.tsx
 - [ ] T290 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffUnifiedObjectsPicker.tsx
 - [ ] T291 · lib · 0.90d · lib/aiSafetyPresets.ts lib/aiSkills.ts lib/anyColumnFilter.ts
-- [ ] T292 · lib/session · 0.90d · lib/session/tableSession.ts
+- [x] T292 · lib/session · 0.90d · lib/session/tableSession.ts
 - [ ] T293 · lib/valuePresentation · 0.80d · lib/valuePresentation/valuePresentationRules.ts
 - [ ] T294 · hooks · 1.30d · hooks/useGridClipboard.ts · split
 - [ ] T295 · stores · 0.30d · stores/panelCloseNotifier.ts
@@ -316,44 +316,44 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T297 · types · 0.50d · types/wapp.ts
 - [ ] T298 · commands · 2.00d · commands/file.ts · split
 - [ ] T299 · components/DataTable · 0.80d · components/DataTable/editors/CellEditorHost.tsx
-- [ ] T300 · components/connection · 0.80d · components/connection/WebSocketTunnelFields.tsx components/chart/AxisConfigurator.tsx
+- [x] T300 · components/connection · 0.80d · components/connection/WebSocketTunnelFields.tsx components/chart/AxisConfigurator.tsx
 - [ ] T301 · components/ai · 0.90d · components/ai/NlFilterInput.tsx
 - [ ] T302 · components/sql-editor · 2.00d · components/sql-editor/paste/multiCursorPointer.ts · split
 - [ ] T303 · components · 0.30d · components/WindowChromeFallback.tsx
 - [ ] T304 · windows/settings · 0.30d · windows/settings/JsonSchemaSettingsForm.tsx
-- [ ] T305 · windows/connection · 0.90d · windows/connection/DatabaseObjectView.tsx
+- [x] T305 · windows/connection · 0.90d · windows/connection/DatabaseObjectView.tsx
 - [ ] T306 · windows/onboarding · 0.90d · windows/onboarding/useDetectedImportSource.ts
 - [ ] T307 · windows/data-transfer · 0.90d · windows/data-transfer/transferMappingView.ts
 - [ ] T308 · windows/data-sync · 1.30d · windows/data-sync/DiffDetail.tsx · split
 - [ ] T309 · windows/schema-diff · 1.30d · windows/schema-diff/SchemaDiffWindow.tsx · split
 - [ ] T310 · lib · 0.80d · lib/backupProgress.ts lib/base64.ts
-- [ ] T311 · lib/session · 0.90d · lib/session/targetCommand.ts
+- [x] T311 · lib/session · 0.90d · lib/session/targetCommand.ts
 - [ ] T312 · lib/valuePresentation · 0.30d · lib/valuePresentation/valuePresentationSave.ts
 - [ ] T313 · hooks · 0.90d · hooks/useGridKeyboardNav.ts
 - [ ] T314 · stores · 0.90d · stores/panelExecCleanup.ts
 - [ ] T315 · stores/tableData · 0.50d · stores/tableData/selectionActions.ts
 - [ ] T316 · commands · 0.90d · commands/history.ts
 - [ ] T317 · components/DataTable · 0.90d · components/DataTable/editors/EnumCellEditor.tsx components/DataTable/editors/JsonCellEditor.tsx components/DataTable/editors/LongTextCellEditor.tsx
-- [ ] T318 · components/connection · 0.60d · components/connection/tunnelFieldContracts.ts components/connection/useConnectionClipboardFill.ts
+- [x] T318 · components/connection · 0.60d · components/connection/tunnelFieldContracts.ts components/connection/useConnectionClipboardFill.ts
 - [ ] T319 · components/ai · 1.30d · components/ai/WorkflowChatPanel.tsx · split
 - [ ] T320 · components/sql-editor · 2.00d · components/sql-editor/paste/multipleSelections.ts · split
 - [ ] T321 · windows/settings · 0.90d · windows/settings/LanguagePacksCard.tsx
-- [ ] T322 · windows/connection · 0.50d · windows/connection/DDLView.tsx
+- [x] T322 · windows/connection · 0.50d · windows/connection/DDLView.tsx
 - [ ] T323 · windows/onboarding · 0.80d · windows/onboarding/wizardState.ts windows/schema-diff/schemaDiffLimitationKeys.ts
 - [ ] T324 · windows/data-sync · 0.60d · windows/data-sync/EndpointsBar.tsx windows/data-sync/ExecuteBar.tsx
 - [ ] T325 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffWindowJobSection.tsx
 - [ ] T326 · lib · 2.00d · lib/batchExportJob.ts · split
-- [ ] T327 · lib/session · 0.60d · lib/session/targetCommandPhase.ts lib/settingsExport.ts
+- [x] T327 · lib/session · 0.60d · lib/session/targetCommandPhase.ts lib/settingsExport.ts
 - [ ] T328 · hooks · 1.30d · hooks/useGridSelection.ts · split
 - [ ] T329 · stores · 0.90d · stores/panelQueryContext.ts
 - [ ] T330 · stores/tableData · 2.00d · stores/tableData/stageCellValue.ts · split
 - [ ] T331 · commands · 0.90d · commands/languagePacks.ts
 - [ ] T332 · components/DataTable · 0.90d · components/DataTable/editors/NumberCellEditor.tsx components/DataTable/editors/TemporalCellEditor.tsx components/DataTable/editors/TextCellEditor.tsx
-- [ ] T333 · components/connection · 1.30d · components/connection/useConnectionForm.ts · split
+- [x] T333 · components/connection · 1.30d · components/connection/useConnectionForm.ts · split
 - [ ] T334 · components/ai · 1.30d · components/ai/WorkflowPanel.tsx · split
 - [ ] T335 · components/sql-editor · 2.00d · components/sql-editor/proCompartments.ts · split
 - [ ] T336 · windows/settings · 1.30d · windows/settings/McpClientSection.tsx · split
-- [ ] T337 · windows/connection · 3.60d · windows/connection/DocumentConnectionView.tsx · split
+- [x] T337 · windows/connection · 3.60d · windows/connection/DocumentConnectionView.tsx · split
 - [ ] T338 · windows/data-sync · 0.50d · windows/data-sync/MappingPanel.tsx
 - [ ] T339 · windows/schema-diff · 0.60d · windows/schema-diff/SchemaDiffWindowNavigation.tsx windows/schema-diff/SchemaDiffWizardProgress.tsx
 - [ ] T340 · lib · 0.90d · lib/bootstrapIconResolver.ts lib/buildConnectionUrl.ts lib/buildEditorSchema.ts
@@ -362,10 +362,10 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T343 · stores/tableData · 2.00d · stores/tableData/stageEdit.ts · split
 - [ ] T344 · commands · 0.30d · commands/namedViews.ts
 - [ ] T345 · components/DataTable · 0.80d · components/DataTable/GridCell.tsx
-- [ ] T346 · components/connection · 0.90d · components/connection/useConnectionImport.ts
+- [x] T346 · components/connection · 0.90d · components/connection/useConnectionImport.ts
 - [ ] T347 · components/sql-editor · 0.60d · components/sql-editor/snippets/builtinSnippets.ts components/sql-editor/snippets/index.ts
 - [ ] T348 · windows/settings · 1.30d · windows/settings/McpSettingsSection.tsx · split
-- [ ] T349 · windows/connection · 0.30d · windows/connection/er/ErRelationLegend.tsx
+- [x] T349 · windows/connection · 0.30d · windows/connection/er/ErRelationLegend.tsx
 - [ ] T350 · windows/data-sync · 0.90d · windows/data-sync/OptionsBar.tsx
 - [ ] T351 · windows/schema-diff · 0.90d · windows/schema-diff/schemaDiffObjectDiscovery.ts
 - [ ] T352 · lib · 0.60d · lib/cellEditorCandidates.ts lib/chart/colors.ts

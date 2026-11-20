@@ -104,7 +104,9 @@ fn every_section_stays_reachable_after_the_port() {
         (Section::Settings, "settings-page"),
         (Section::Tools, "tools-page"),
         (Section::Dashboards, "dashboards-page"),
-        (Section::Workflows, "workflows-page"),
+        // T199/WorkflowPage port: the workflows section now mounts the real
+        // workflow page (`workflow-workspace`), not the old placeholder.
+        (Section::Workflows, "workflow-workspace"),
         // T072 ported the real WappManagementPage, so the old C4
         // "wapps-page" placeholder is gone: the section's body is the
         // ported page's own testid root.

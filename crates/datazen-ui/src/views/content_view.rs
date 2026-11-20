@@ -58,6 +58,10 @@ pub(crate) struct ContentViewVm {
     /// The seven dialogs of React `ContentViewDialogs`; `None` until a host
     /// view owns their open flags (leftover: connection view track).
     pub(crate) dialogs_vm: Option<super::content_view_dialogs::DialogsVm>,
+    /// The selected database object; `None` until a host object store owns one.
+    pub(crate) object_vm: Option<super::database_object_view::DatabaseObjectVm>,
+    /// The document browser; `None` until a host owns a document connection.
+    pub(crate) document_vm: Option<super::document_connection_view::DocumentViewVm>,
 }
 
 impl ContentViewVm {
@@ -94,6 +98,8 @@ impl ContentViewVm {
             react_toolbar_gate: false,
             react_status_gate: false,
             dialogs_vm: None,
+            object_vm: None,
+            document_vm: None,
         }
     }
 }

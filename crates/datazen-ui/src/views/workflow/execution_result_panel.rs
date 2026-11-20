@@ -136,14 +136,13 @@ impl<'a, S: 'static> WorkflowExecutionResultPanel<'a, S> {
             },
         };
         let result = self.result;
-        // React's `WorkflowPage` defaults `workflowStepResultOrder` to 'desc'
-        // (`appSettings.workflowStepResultOrder ?? 'desc'`), so the most
-        // recent — and in the lite report the failing — step leads the result
-        // read. The panel mirrors that order; the VM itself stays in report
-        // order for the host's own summary rows.
-        let mut ordered: Vec<&super::step_result_utils::StepExecutionResult> =
+        // React's `WorkflowExecutionResultPanel` renders `result.steps.map(...)`
+        // in the report's own order — the `workflowStepResultOrder` setting
+        // only orders WorkflowPage's step *tabs*, not this result panel. Keep
+        // that order: `steps[0]` is the first reported step, and per-step keys
+        // (`-step-<i>-*`) follow it.
+        let ordered: Vec<&super::step_result_utils::StepExecutionResult> =
             result.steps.iter().collect();
-        ordered.reverse();
         let last = ordered.len().saturating_sub(1);
         let mut panel = col()
             .key(self.key.clone())

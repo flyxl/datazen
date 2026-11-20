@@ -29,6 +29,11 @@
 //! Area placeholder with it.
 #[allow(dead_code)]
 pub(crate) mod chart_view;
+
+/// `AxisConfigurator.tsx` (T046) is the `ChartConfig` editor panel (X/Y field
+/// mapping, group-by, aggregation, sort and colour scheme); its VM types are
+/// reused from `chart_canvas`.
+pub(crate) mod axis_configurator;
 pub(crate) mod chart_canvas;
 pub(crate) mod chart_empty_state;
 pub(crate) mod chart_toolbar;
