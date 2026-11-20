@@ -1106,6 +1106,12 @@ mod compare_summary;
 // T286 independent audit: the disabled channel, geometry both sizes, the
 // light-theme note with its margin.
 mod compare_summary_audit;
+// T247: the Data Sync result step (outcome derivation, verdict branches,
+// the skipped aside, re-compare, the embedded summary).
+mod data_sync_result_step;
+// T247 independent audit: the status role channel, geometry both sizes,
+// the light-theme committed face.
+mod data_sync_result_step_audit;
 // T293: the tab-closed notification (panelCloseNotifier).
 mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the
