@@ -9,6 +9,10 @@
 pub(crate) mod confirm_dialog;
 pub(crate) mod grid_clipboard_helpers;
 pub(crate) mod grid_paste_plan_helpers;
+/// `lib/migrationJobHydration.ts` helpers carried for the
+/// useMigrationJobHydration port (T376) until T559 lands and absorbs
+/// them.
+pub(crate) mod migration_job_hydration_helpers;
 pub(crate) mod use_ai_editor_grant;
 pub(crate) mod use_ai_keyboard;
 pub(crate) mod use_auto_scroll;
@@ -20,3 +24,7 @@ pub(crate) mod use_compact_toolbar;
 pub(crate) mod use_connection_command;
 pub(crate) mod use_fk_navigation_shortcuts;
 pub(crate) mod use_grid_clipboard;
+/// T376: per-window job hydration for the three migration windows
+/// (job-center-first read, watch re-subscribe, unsubscribe-only
+/// unmount).
+pub(crate) mod use_migration_job_hydration;
