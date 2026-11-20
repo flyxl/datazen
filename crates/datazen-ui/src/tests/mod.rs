@@ -376,6 +376,10 @@ mod batch_export_audit;
 // T016 fix retest: independent D1/D2 verification.
 mod batch_export_retest;
 
+// T435: ShortcutFooter port (keymap presets/custom, display format, wrapping geometry).
+mod shortcut_footer;
+// T435 independent audit: value unions, F-key display, per-preset kbd, geometry.
+mod shortcut_audit;
 // T409: ConnectionCardList port (cards, sorting/filter, paging, host ports, geometry).
 mod connection_card_list;
 // T409 independent audit: engine chip, connecting button, keyboard, filter, geometry.
