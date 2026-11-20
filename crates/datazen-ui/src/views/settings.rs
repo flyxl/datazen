@@ -34,6 +34,9 @@ pub(crate) mod data_cleanup_section;
 // T265: the driver settings section (per-driver blocks over the
 // generated entries seam).
 pub(crate) mod driver_settings_section;
+// T304: the generic JSON-schema settings form (the driver section's
+// schema seam: every boolean property one toggle row).
+pub(crate) mod json_schema_settings_form;
 // T285: the install-language-pack dialog (pick → review → install).
 pub(crate) mod install_language_pack_dialog;
 

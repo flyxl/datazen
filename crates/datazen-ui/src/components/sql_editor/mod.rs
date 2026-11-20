@@ -69,11 +69,19 @@ pub(crate) mod create_paste_extensions;
 /// dedicated Escape leaving the multi-cursor state (S1's collapse to a
 /// bare main-head cursor, S0's refusal).
 pub(crate) mod multi_cursor_escape;
+/// T302: the multi-cursor POINTER predicate (the platform chord
+/// CodeMirror's `clickAddsSelectionRange` override had dropped).
+pub(crate) mod multi_cursor_pointer;
 
 /// `components/sql-editor/format/formatEditorDocument.ts` (T220, split):
 /// the selection-aware beautifier command (the formatter stays
 /// injected — T615's sqlFormat).
 pub(crate) mod format_editor_document;
+
+/// `components/sql-editor/snippets/` (T370+): the SQL snippet
+/// template system — the `SqlSnippetItem` contract first; the builtin
+/// library (T347) and the completion source (T359) follow.
+pub(crate) mod snippets;
 
 pub(crate) mod completion;
 #[allow(unused_imports)] // consumers land with the S2/S3 slices

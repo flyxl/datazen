@@ -1564,3 +1564,8 @@ mod index_surface;
 // view-box mapping, null/NaN gaps, both formatCompact axes, the single palette
 // slot, the plain tooltip + cursor, the hit raster and the two-size window fit).
 mod scatter_chart_renderer;
+
+// T294: the useGridClipboard orchestration audit — the parse/serialize
+// kernel, the registries' clipboard-text binding, the planner's gates,
+// the plan→confirm→stage machine, and the DBR-02 row features.
+mod use_grid_clipboard;
