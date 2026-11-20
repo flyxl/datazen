@@ -115,7 +115,7 @@
 - [ ] T340 · stores · 0.90d · stores/panelResultEdit.ts
 - [ ] T341 · stores/tableData · 2.00d · stores/tableData/stageEdit.ts · split
 - [ ] T343 · components/DataTable · 0.80d · components/DataTable/GridCell.tsx
-- [ ] T348 · windows/data-sync · 0.90d · windows/data-sync/OptionsBar.tsx
+- [x] T348 · windows/data-sync · 0.90d · windows/data-sync/OptionsBar.tsx
 - [ ] T352 · stores · 1.30d · stores/panelStore.ts · split
 - [ ] T353 · stores/tableData · 1.00d · stores/tableData/stagePasteWrites.ts stores/tableData/tableColumnLayoutPreferences.ts
 - [x] T355 · components/DataTable · 0.30d · components/DataTable/GridKeyboardHints.tsx
