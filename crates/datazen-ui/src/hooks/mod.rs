@@ -28,3 +28,6 @@ pub(crate) mod use_grid_clipboard;
 /// (job-center-first read, watch re-subscribe, unsubscribe-only
 /// unmount).
 pub(crate) mod use_migration_job_hydration;
+/// T422: the foreign keys of one table as the grid needs them (DB-07:
+/// the schema-cache read, the column→group index, degradation).
+pub(crate) mod use_table_foreign_keys;
