@@ -112,7 +112,9 @@ fn node_metrics_match_the_react_contract() {
     assert_eq!(er_node_height(5, false), 36.0 + 120.0 + 2.0);
     assert_eq!(er_node_height(5, true), 36.0 + 24.0 + 2.0);
     assert_eq!(er_node_height(60, true), er_node_height(3, true));
-    assert_eq!(er_column_row_center_y(0), 1.0 + 36.0 + 12.0);
+    // Rune's border is drawn inside the box, so unlike React's CSS box it adds
+    // no 1pt layout offset before the header.
+    assert_eq!(er_column_row_center_y(0), 36.0 + 12.0);
     assert_eq!(er_column_row_center_y(3) - er_column_row_center_y(2), 24.0);
 }
 

@@ -41,7 +41,10 @@ pub(crate) fn er_node_body_height(column_count: usize) -> f32 {
 }
 
 pub(crate) fn er_column_row_center_y(index: usize) -> f32 {
-    ER_NODE_BORDER + ER_HEADER_HEIGHT + index as f32 * ER_COLUMN_ROW_HEIGHT + ER_COLUMN_ROW_HEIGHT / 2.0
+    // React adds ER_NODE_BORDER here because its CSS border participates in
+    // layout. Rune's border is drawn inside the box and adds no layout offset,
+    // so applying that 1pt here would put handle dots one point too low.
+    ER_HEADER_HEIGHT + index as f32 * ER_COLUMN_ROW_HEIGHT + ER_COLUMN_ROW_HEIGHT / 2.0
 }
 
 pub(crate) fn er_node_height(column_count: usize, collapsed: bool) -> f32 {
@@ -239,6 +242,15 @@ pub(crate) fn table_node<S: 'static>(
         let name = table_name.clone();
         toggle = toggle.on_press(move |s: &mut S| on_toggle_collapse(s, &name));
     }
+    // Node-level fallbacks: a collapsed table has no rows, and a self-reference
+    // has no left/right column to point at. The ids match xyflow exactly. The
+    // wrapper is zero-height inside the fixed-height header, so these
+    // absolutely-positioned handles add nothing to the node's packed height.
+    let mut fallbacks = row().key("er-table-node-fallback-handles").h(0.0).gap(4.0);
+    for id in ["node:t-l", "node:s-l", "node:s-r", "node:t-r"] {
+        fallbacks = fallbacks.child(dot(id, 8.0, k));
+    }
+
     header = header
         .child(toggle)
         .child(
@@ -257,7 +269,8 @@ pub(crate) fn table_node<S: 'static>(
                 .key("er-table-node-count")
                 .font(k.ty.text_xsmall)
                 .color(k.c.text_muted),
-        );
+        )
+        .child(fallbacks);
     if let Some(on_select) = host.on_select.clone() {
         let name = table_name.clone();
         header = header.on_press(move |s: &mut S| on_select(s, &name));
@@ -271,6 +284,9 @@ pub(crate) fn table_node<S: 'static>(
         .key(ROOT_KEY)
         .w(ER_NODE_WIDTH)
         .min_w(ER_NODE_WIDTH)
+        // The layout engine packs against this exact metric; pin the rendered
+        // height to it instead of letting handle decorations grow the node.
+        .h(er_node_height(vm.columns.len(), vm.collapsed))
         .radius(8.0)
         .border(ER_NODE_BORDER, if vm.highlighted { k.c.text_accent } else { k.c.border_base })
         .fill(if vm.highlighted {
@@ -303,13 +319,7 @@ pub(crate) fn table_node<S: 'static>(
         }
     }
 
-    // Node-level fallbacks: a collapsed table has no rows, and a self-reference
-    // has no left/right column to point at. The ids match xyflow exactly.
-    let mut fallbacks = row().key("er-table-node-fallback-handles").w_full().h(8.0).gap(4.0);
-    for id in ["node:t-l", "node:s-l", "node:s-r", "node:t-r"] {
-        fallbacks = fallbacks.child(dot(id, 8.0, k));
-    }
-    root.child(fallbacks)
+    root
 }
 
 // Leftover L1 (removal stage): when the ER canvas view lands, drive collapse /

@@ -115,9 +115,12 @@ fn rendered_node_height_matches_the_packed_metric() {
 /// React's `erColumnRowCenterY` positions the edge endpoints.
 #[test]
 fn column_handle_dots_sit_at_the_metric_center_y() {
-    let rt = runtime(probe(false, 3), (1440.0, 816.0));
+    // Only `handle_columns` get per-row handles; the probe touches the first
+    // two columns, so check those two rather than asking for a third handle
+    // the React component would not draw either.
+    let rt = runtime(probe(false, 2), (1440.0, 816.0));
     let node_top = element(&rt, ROOT_KEY).rect[1];
-    for index in 0..3 {
+    for index in 0..2 {
         let dot = element(&rt, &format!("col{index}:s-r"));
         let center_y = dot.rect[1] + dot.rect[3] / 2.0;
         let expected = node_top + er_column_row_center_y(index);
