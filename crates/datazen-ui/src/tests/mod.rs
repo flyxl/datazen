@@ -307,6 +307,11 @@ mod line_chart_renderer;
 // tab label's clock reads).
 mod workflow_draft_convert;
 
+// T238 (the ledger's older numbering says T240): the pie chart engine port
+// (the wedge angles, the row-indexed palette, the showValues labels with the
+// toFixed(0) rounding, the showLegend gate, the hit raster and the tooltip).
+mod pie_chart_renderer;
+
 // T200: the workflow yaml editor chrome pins (the host, the line-number
 // gutter, the lint gutter flag).
 mod workflow_yaml_editor;
