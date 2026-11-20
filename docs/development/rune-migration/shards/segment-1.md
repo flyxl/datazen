@@ -86,9 +86,9 @@
 - [x] T465 · windows/connection · 0.50d · windows/connection/navigator/NavigatorToolbar.tsx
 - [x] T470 · windows/connection · 1.30d · windows/connection/navigator/NavigatorTreeRow.tsx · split
 - [x] T475 · windows/connection · 0.90d · windows/connection/navigator/treeStatusDot.tsx
-- [ ] T480 · windows/connection · 0.90d · windows/connection/ObjectBrowser.tsx
-- [ ] T485 · windows/connection · 1.30d · windows/connection/PanelContentRenderer.tsx · split
-- [ ] T489 · windows/connection · 0.90d · windows/connection/PanelTabBar.tsx
+- [x] T480 · windows/connection · 0.90d · windows/connection/ObjectBrowser.tsx
+- [x] T485 · windows/connection · 1.30d · windows/connection/PanelContentRenderer.tsx · split
+- [x] T489 · windows/connection · 0.90d · windows/connection/PanelTabBar.tsx
 - [ ] T492 · windows/connection · 0.30d · windows/connection/PendingPlanDialog.tsx
 - [ ] T495 · windows/connection · 1.30d · windows/connection/PrivilegeView.tsx · split
 - [ ] T498 · windows/connection · 0.90d · windows/connection/ProcessListView.tsx
