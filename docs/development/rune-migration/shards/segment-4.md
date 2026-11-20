@@ -94,7 +94,7 @@
 - [x] T283 · components/sql-editor · 2.00d · components/sql-editor/paste/multiCursorEscape.ts · split
 - [x] T285 · windows/settings · 0.90d · windows/settings/InstallLanguagePackDialog.tsx
 - [x] T287 · windows/onboarding · 0.30d · windows/onboarding/onboardingLayout.ts
-- [ ] T290 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffUnifiedObjectsPicker.tsx
+- [x] T290 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffUnifiedObjectsPicker.tsx
 - [x] T293 · lib/valuePresentation · 0.80d · lib/valuePresentation/valuePresentationRules.ts
 - [ ] T294 · hooks · 1.30d · hooks/useGridClipboard.ts · split
 - [ ] T298 · commands · 2.00d · commands/file.ts · split
