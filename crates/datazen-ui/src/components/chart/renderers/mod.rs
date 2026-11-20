@@ -7,8 +7,10 @@
 //! `BarChartRenderer.tsx` (T192) is the second: `renderers/bar_chart_renderer.rs`.
 //! `LineChartRenderer.tsx` (T216) is the third: `renderers/line_chart_renderer.rs`.
 //! `PieChartRenderer.tsx` (T238) is the fourth: `renderers/pie_chart_renderer.rs`.
+//! `ScatterChartRenderer.tsx` (T261) is the fifth: `renderers/scatter_chart_renderer.rs`.
 
 pub(crate) mod area_chart_renderer;
 pub(crate) mod bar_chart_renderer;
 pub(crate) mod line_chart_renderer;
 pub(crate) mod pie_chart_renderer;
+pub(crate) mod scatter_chart_renderer;
