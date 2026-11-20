@@ -558,3 +558,71 @@ fn data_shrinking_under_a_hover_unmounts_the_tooltip() {
     }
     assert!(!has_key(&rt, TOOLTIP_KEY), "the gone row unmounts the tooltip");
 }
+
+// ==== T238 audit round ==========================================================
+//
+// The pins below close mutation survivors: every probe mutation survived the
+// port's first 12 tests red-handed and now dies on its pin. The React
+// positions cite
+// `packages/frontend/src/components/chart/renderers/PieChartRenderer.tsx`.
+
+#[test]
+fn the_wedge_arc_starts_at_twelve_oclock_and_sweeps_clockwise() {
+    // React 22-24 (cx/cy 50%, outerRadius 70%) with recharts' default
+    // startAngle 90/sweep: the arc's first vertex sits at 12 o'clock and the
+    // sweep runs clockwise. The probe mutation dropping the -90° rotation
+    // survived (the painted rotation is canvas-interior); the polygon is the
+    // observable geometry.
+    let tau = std::f64::consts::TAU;
+    let full = wedge_polygon(0.0, tau);
+    assert_eq!(full[0], [0.5, 0.5], "the centre vertex");
+    assert!((full[1][0] - 0.5).abs() < 1e-6 && (full[1][1] - 0.15).abs() < 1e-6,
+        "the arc opens at 12 o'clock (0.5, 0.5-0.35): {:?}", full[1]);
+    assert_eq!(full[full.len() - 1], full[1], "the full circle closes where it opened");
+
+    // A quarter wedge sweeps clockwise: from 12 to 3 o'clock.
+    let quarter = wedge_polygon(0.0, tau / 4.0);
+    let last = quarter[quarter.len() - 1];
+    assert!((last[0] - 0.85).abs() < 1e-6 && (last[1] - 0.5).abs() < 1e-6,
+        "the quarter ends at 3 o'clock (0.5+0.35, 0.5): {last:?}");
+
+    // A mid-pie wedge starts where the last ended (the 45° offset).
+    let second = wedge_polygon(tau / 8.0, tau / 8.0);
+    assert!((second[1][0] - 0.7474874_f32).abs() < 1e-4,
+        "the second wedge's opener sits at 1:30 (cos 45°): {:?}", second[1]);
+}
+
+#[test]
+fn the_legend_declares_its_22pt_row_and_8x8_swatches() {
+    // The port's declared chrome literals (React's wrapperStyle fontSize 12
+    // row; the recharts default swatch chip) — the probe mutations LEGEND_H
+    // 22→30 and SWATCH 8→12 both survived the suite.
+    let rt = runtime(pie_scenario(quarter_data()), (960.0, 640.0));
+    let legend = element(&rt, LEGEND_KEY).rect;
+    assert!((legend[3] - 22.0).abs() <= 0.5, "the legend row is 22pt: {legend:?}");
+    let swatch = element(&rt, "pie-chart-legend-swatch-0").rect;
+    assert!(
+        (swatch[2] - 8.0).abs() <= 0.5 && (swatch[3] - 8.0).abs() <= 0.5,
+        "the swatch chip is 8x8: {swatch:?}"
+    );
+}
+
+#[test]
+fn an_unnamed_slice_tooltip_shows_the_value_alone() {
+    // recharts' default tooltip line is the name and value joined by
+    // ' : ' — a nameless slice (the __index fallback's absent column) is the
+    // value alone (the probe mutation making the join unconditional
+    // survived: every fixture had a name).
+    let mut cfg = config();
+    cfg.x_axis = None; // the __index fallback: no such column → empty names
+    cfg.chart_type = ChartType::Pie;
+    let mut sc = scenario(cfg, quarter_data());
+    sc.engine = PieChartRenderer::new();
+    let mut rt = runtime(sc, (960.0, 640.0));
+    hover_key_center(&mut rt, "pie-chart-hit-8-13"); // the gamma cell
+    assert_eq!(
+        element(&rt, "pie-chart-tooltip-item-0").text.as_deref(),
+        Some("2"),
+        "the unnamed slice shows the value alone"
+    );
+}
