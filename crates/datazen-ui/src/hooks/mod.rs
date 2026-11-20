@@ -31,3 +31,9 @@ pub(crate) mod use_migration_job_hydration;
 /// T422: the foreign keys of one table as the grid needs them (DB-07:
 /// the schema-cache read, the column→group index, degradation).
 pub(crate) mod use_table_foreign_keys;
+/// T341a: the host-side alias for the single i18n hook (the table
+/// face + `{param}` interpolation).
+pub(crate) mod use_i18n;
+/// T341b: the keyboard-shortcut registry (spec grammar, scope gates,
+/// first-match-wins resolution).
+pub(crate) mod use_keyboard_shortcuts;
