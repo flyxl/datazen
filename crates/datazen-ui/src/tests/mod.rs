@@ -843,6 +843,10 @@ mod data_sync_options_bar;
 // preview-text join, the no-wire row projection with its gates).
 mod data_sync_client_sql_preview;
 
+// T390 independent audit: mixed update forms, a composite pk, each
+// filter face, the both-empty statement line, the no-match placeholder.
+mod data_sync_client_sql_preview_audit;
+
 // T203: the Data Sync options step (the card chrome, the title block,
 // the mounted OptionsBar, the callback pass-through, geometry).
 mod data_sync_options_step;
