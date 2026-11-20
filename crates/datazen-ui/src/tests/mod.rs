@@ -368,6 +368,8 @@ mod batch_export_retest;
 
 // T409: ConnectionCardList port (cards, sorting/filter, paging, host ports, geometry).
 mod connection_card_list;
+// T409 independent audit: engine chip, connecting button, keyboard, filter, geometry.
+mod card_list_audit;
 // T144: the React ConnectionWorkspaceHome port (hero counts, card keys,
 // filter, MCP copy feedback with a real wake, KV-slot takeover, geometry).
 mod connection_workspace_home;
