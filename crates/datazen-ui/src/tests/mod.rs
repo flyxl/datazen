@@ -36,6 +36,9 @@ mod er_node_audit;
 // T418: the standalone HomeHero + McpPromoBar ports (keys, counts, real copy
 // wake deadline and two-window/two-theme geometry).
 mod home_hero_promo;
+// T418 independent audit: host command copy, re-time, keyed marker, badge cap,
+// exact 2000ms wake, visible-rect geometry and exact copy locale keys.
+mod home_hero_promo_audit;
 
 // T004: the column-statistics dialog's four branches, dismissal and bounds.
 mod column_stats_audit;
