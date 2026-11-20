@@ -15,7 +15,9 @@
 //! - `workflow_form.rs` — `WorkflowForm.tsx` (the visual workflow editor
 //!   form: the draft model, field/variable/step editors, the command-input
 //!   schema editor and the two footer variants).
-//!
+
+//! - `yaml_lint.rs` — `yamlLint.ts` (T244) — the parameter-reference pairing
+//!   pass the yaml editor mounts as its lint.
 //! - `workflow_page.rs` — `WorkflowPage.tsx` (T145; the ledger's older
 //!   numbering says T147) — the page-level assembly: the toolbar, the
 //!   workflows/history sidebar, the panel tab bar, the variables + execute
@@ -36,6 +38,9 @@ pub(crate) mod step_result_utils;
 pub(crate) mod workflow_page;
 // T070: the page's edit pane (T145) is the form's production consumer.
 pub(crate) mod workflow_form;
+// T244: the yaml lint pass — the yaml editor (T200) mounts its gutter over
+// these diagnostics.
+pub(crate) mod yaml_lint;
 
 // The family's re-exported view models (the page's own helpers ride through
 // `workflow_page::*`; the page reaches the action bar, the result panel and
