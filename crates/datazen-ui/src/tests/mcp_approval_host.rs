@@ -149,6 +149,8 @@ fn a_known_request_id_is_not_duplicated() {
     state.push_request(request("db.query", "req-1", stamp(300_000)));
     let same_id_other_tool = request("fs.read", "req-1", stamp(300_000));
     state.push_request(same_id_other_tool);
+    // The queue holds one entry: later pushes with a known id drop.
+    assert_eq!(state.queue_len(), 1);
     assert_eq!(state.current().map(|r| r.tool.clone()), Some("db.query".to_owned()));
 }
 

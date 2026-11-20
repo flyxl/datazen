@@ -136,6 +136,11 @@ impl McpApprovalHostState {
         self.queue.first()
     }
 
+    /// How many requests are waiting (the queue guard's observable).
+    pub(crate) fn queue_len(&self) -> usize {
+        self.queue.len()
+    }
+
     /// The `mcp:approval-requested` listener's push: an empty tool or a
     /// known `requestId` is dropped, exactly as the React guard does.
     pub(crate) fn push_request(&mut self, request: McpApprovalRequest) {
