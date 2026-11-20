@@ -1085,6 +1085,9 @@ mod mapping_view_audit;
 // T497: the Data Sync wizard state (nine cells, the reset composite,
 // the two step arrays).
 mod use_data_sync_wizard_state;
+// T497 independent audit: full wizard walks, reruns after reset, cell
+// independence.
+mod use_data_sync_wizard_state_audit;
 // T293: the tab-closed notification (panelCloseNotifier).
 mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the
