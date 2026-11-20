@@ -610,6 +610,8 @@ mod indexes_view_audit;
 mod object_browser;
 // T492: PendingPlanDialog port (once-only counts, statement preview, close action, geometry).
 mod pending_plan_dialog;
+// T492 independent audit: no-insert description, statement order, empty fields.
+mod pending_plan_dialog_audit;
 // T480 independent audit: DDL/execute answers, running gate and menu teardown.
 mod object_browser_audit;
 
