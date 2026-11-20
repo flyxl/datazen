@@ -464,19 +464,19 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T445 · hooks · 0.90d · hooks/useValuePresentation.ts
 - [ ] T446 · stores · 0.90d · stores/schemaStoreSelectors.ts
 - [ ] T447 · windows/settings · 0.90d · windows/settings/TunnelEditDialog.tsx
-- [ ] T448 · windows/connection · 1.30d · windows/connection/IndexesView.tsx · split
+- [x] T448 · windows/connection · 1.30d · windows/connection/IndexesView.tsx · split
 - [ ] T449 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncExecution.ts · split
 - [ ] T450 · lib · 0.50d · lib/databaseTypes.ts
 - [ ] T451 · hooks · 0.90d · hooks/useValuePresentationSnapshot.ts
 - [ ] T452 · stores · 0.30d · stores/schemaStoreState.ts
 - [ ] T453 · windows/settings · 0.90d · windows/settings/TunnelSettingsSection.tsx
-- [ ] T454 · windows/connection · 1.30d · windows/connection/navigator/DatabaseValueSearchDialog.tsx · split
+- [x] T454 · windows/connection · 1.30d · windows/connection/navigator/DatabaseValueSearchDialog.tsx · split
 - [ ] T455 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncExplain.ts
 - [ ] T456 · lib · 2.00d · lib/dataFetcher.ts · split
 - [ ] T457 · hooks · 2.00d · hooks/useVirtualTable.ts · split
 - [ ] T458 · stores · 1.30d · stores/settingsStore.ts · split
 - [ ] T459 · windows/settings · 0.90d · windows/settings/TunnelTestDialog.tsx
-- [ ] T460 · windows/connection · 1.00d · windows/connection/navigator/GlobalObjectSearch.tsx windows/connection/navigator/NavigatorDialogs.tsx
+- [x] T460 · windows/connection · 1.00d · windows/connection/navigator/GlobalObjectSearch.tsx windows/connection/navigator/NavigatorDialogs.tsx
 - [ ] T461 · windows/data-sync · 0.30d · windows/data-sync/useDataSyncFeedback.ts
 - [ ] T462 · lib · 3.30d · lib/dataTableContextMenu.ts · split
 - [ ] T463 · stores · 1.30d · stores/tableDataStore.ts · split
