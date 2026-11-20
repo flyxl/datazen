@@ -253,6 +253,8 @@ mod target_command;
 // T311 independent audit: recover-without-view, undefined error code, rows
 // shape filtering and schema columns validation.
 mod target_command_audit;
+// T327: lib/settingsExport.ts port + targetCommandPhase.ts X-class ruling.
+mod settings_export;
 
 
 // Independent re-audit of merged T0-07 menu base.
