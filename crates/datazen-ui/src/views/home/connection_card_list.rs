@@ -19,9 +19,10 @@ use rune::{col, icon, row, text, El, TextEdit};
 use rune_kit::{Button, ButtonVariant, ControlSize};
 
 use crate::i18n::t;
-use crate::icons::{ICON_DOWNLOAD, ICON_PLUS, ICON_PLAY, ICON_SEARCH, ICON_X};
+use crate::icons::{ICON_DOWNLOAD, ICON_LOADER2, ICON_PLUS, ICON_PLAY, ICON_SEARCH, ICON_X};
 use crate::ui::field::TextField;
 use crate::ui::kit::kit;
+use crate::views::engine_label;
 
 /// React `COLLAPSED_COUNT`.
 pub(crate) const COLLAPSED_COUNT: usize = 6;
@@ -233,13 +234,13 @@ fn card<S: 'static>(
                         .gap(8.0)
                         .center_y()
                         .child(text(conn.name.clone()).font(k.ty.text_small).color(k.c.text_base))
+                        // React renders `getDbLabel(databaseType)` beside the
+                        // name; the monogram chip above is decorative only.
                         .child(
-                            row()
-                                .w(8.0)
-                                .h(16.0)
-                                .radius(4.0)
-                                .fill(k.c.surface_base)
-                                .border(1.0, k.c.border_base),
+                            text(engine_label(&conn.engine))
+                                .font(k.ty.text_xsmall)
+                                .color(k.c.text_muted)
+                                .wrap(),
                         ),
                 )
                 .child(
@@ -255,32 +256,41 @@ fn card<S: 'static>(
                 .child(status_pill(status, dark)),
         );
 
-    let mut action = row()
-        .key(format!("conn-open-{}", conn.id))
-        .child(row().key(format!("home-conn-connect-{}", conn.id)).a11y_hidden())
-        .h(28.0)
-        .gap(6.0)
-        .center_y()
-        .role("button")
-        .label(if status == CardConnectionStatus::Connected {
+    // React swaps in a disabled Spinner button (with no data-testid) while
+    // connecting; the Connect/Open affordance only exists for other states.
+    let action = if status == CardConnectionStatus::Connecting {
+        row()
+            .key(format!("conn-connecting-{}", conn.id))
+            .w(28.0)
+            .h(28.0)
+            .center()
+            .label(t("conn.connecting"))
+            .disabled(true)
+            .opacity(0.6)
+            .child(icon(&ICON_LOADER2, 14.0).color(k.c.text_muted))
+    } else {
+        let label = if status == CardConnectionStatus::Connected {
             t("connWin.home.connections.open")
         } else {
             t("connWin.home.connections.connect")
-        })
-        .focusable(true);
-    if let Some(on_connect) = host.on_connect.clone() {
-        let id = id.clone();
-        action = action.on_press(move |s: &mut S| on_connect(s, id.clone()));
-    }
-    action = action.child(icon(&ICON_PLAY, 12.0).color(k.c.text_accent)).child(
-        text(if status == CardConnectionStatus::Connected {
-            t("connWin.home.connections.open")
-        } else {
-            t("connWin.home.connections.connect")
-        })
-        .font(k.ty.text_xsmall)
-        .color(k.c.text_accent),
-    );
+        };
+        let mut action = row()
+            .key(format!("conn-open-{}", conn.id))
+            .child(row().key(format!("home-conn-connect-{}", conn.id)).a11y_hidden())
+            .h(28.0)
+            .gap(6.0)
+            .center_y()
+            .role("button")
+            .label(label)
+            .focusable(true);
+        if let Some(on_connect) = host.on_connect.clone() {
+            let id = id.clone();
+            action = action.on_press(move |s: &mut S| on_connect(s, id.clone()));
+        }
+        action
+            .child(icon(&ICON_PLAY, 12.0).color(k.c.text_accent))
+            .child(text(label).font(k.ty.text_xsmall).color(k.c.text_accent))
+    };
     row_el.child(action)
 }
 
