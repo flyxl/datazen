@@ -31,6 +31,9 @@ mod schema_diff_deploy_panel_audit;
 mod confirm_dialog_hook_audit;
 // T035: the sqlDialects support layer (profiles, strategies, exact SQL).
 mod sql_dialects_audit;
+// T083: identifierQuoting + the index registry (builtin strategies),
+// audited against the React sources and dialects.test.ts.
+mod sql_dialect_identifier_quoting_audit;
 mod column_stats_dialog;
 // T002: the single DataTable cell — formatting, colour, plan and geometry.
 mod cell_renderer;

@@ -31,9 +31,12 @@
 //! Known deltas: none behavioural — every profile row, key and default is
 //! the React table verbatim.
 
-/// React `quoteStyle`: 'double' | 'backtick' | 'bracket'.
+/// React `quoteStyle`: 'none' | 'double' | 'backtick' | 'bracket'. No
+/// built-in profile uses 'none' (a driver may declare it); identifier
+/// quoting is the passthrough then.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum QuoteStyle {
+    None,
     Double,
     Backtick,
     Bracket,
@@ -285,11 +288,9 @@ pub(crate) fn fold_identifier_for_dialect(
     fold_identifier(value, &profile)
 }
 
-/// Fold an unquoted identifier the way the dialect does.
+/// Fold an unquoted identifier the way the dialect does (the primitive
+/// lives in [`super::identifier_quoting`]; this is the profile-resolved
+/// spelling React's callers reach through).
 pub(crate) fn fold_identifier(value: &str, profile: &SqlDialectProfile) -> String {
-    match profile.fold_case {
-        FoldCase::Lower => value.to_lowercase(),
-        FoldCase::Upper => value.to_uppercase(),
-        FoldCase::Preserve => value.to_owned(),
-    }
+    super::identifier_quoting::fold_identifier(value, profile.fold_case)
 }

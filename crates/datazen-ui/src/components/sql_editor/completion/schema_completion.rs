@@ -34,8 +34,9 @@ use crate::relation_metadata::schema::{
     ColumnSchema, EditorMetadataSnapshot, EditorRelationMetadata,
 };
 use crate::support::sql_dialects::dialect_profile::{
-    FoldCase, QuoteStyle, SqlDialectProfile, fold_identifier, resolve_dialect_profile,
+    SqlDialectProfile, fold_identifier, resolve_dialect_profile,
 };
+use crate::support::sql_dialects::identifier_quoting;
 
 use super::super::metadata::find_relation_metadata;
 use super::super::sql_editor::CompletionQuotePolicy;
@@ -131,119 +132,6 @@ pub(crate) struct SchemaCompletionItem {
 /*  Dialect facade (adapter surface over a resolved profile)                  */
 /* -------------------------------------------------------------------------- */
 
-/// Reserved words that force quoting
-/// (`lib/sqlDialects/identifierQuoting.ts`'s
-/// `SQL_RESERVED_IDENTIFIER_KEYWORDS`, carried until T084 absorbs it).
-const SQL_RESERVED_IDENTIFIER_KEYWORDS: &[&str] = &[
-    "all",
-    "analyse",
-    "analyze",
-    "and",
-    "any",
-    "array",
-    "as",
-    "asc",
-    "asymmetric",
-    "both",
-    "case",
-    "cast",
-    "check",
-    "collate",
-    "collation",
-    "column",
-    "constraint",
-    "create",
-    "cross",
-    "current_catalog",
-    "current_date",
-    "current_role",
-    "current_schema",
-    "current_time",
-    "current_timestamp",
-    "current_user",
-    "default",
-    "deferrable",
-    "delete",
-    "desc",
-    "describe",
-    "distinct",
-    "do",
-    "drop",
-    "else",
-    "end",
-    "except",
-    "false",
-    "fetch",
-    "for",
-    "foreign",
-    "from",
-    "full",
-    "grant",
-    "group",
-    "having",
-    "ilike",
-    "in",
-    "index",
-    "initially",
-    "inner",
-    "insert",
-    "intersect",
-    "into",
-    "is",
-    "isnull",
-    "join",
-    "key",
-    "keys",
-    "lateral",
-    "leading",
-    "left",
-    "like",
-    "limit",
-    "localtime",
-    "localtimestamp",
-    "lock",
-    "natural",
-    "not",
-    "notnull",
-    "null",
-    "offset",
-    "on",
-    "only",
-    "or",
-    "order",
-    "outer",
-    "overlaps",
-    "placing",
-    "primary",
-    "references",
-    "returning",
-    "right",
-    "select",
-    "session_user",
-    "set",
-    "similar",
-    "some",
-    "symmetric",
-    "system_user",
-    "table",
-    "tablesample",
-    "then",
-    "to",
-    "trailing",
-    "true",
-    "union",
-    "unique",
-    "update",
-    "user",
-    "using",
-    "values",
-    "variadic",
-    "verbose",
-    "when",
-    "where",
-    "window",
-    "with",
-];
 
 /// The adapter surface the completion quotes and folds through
 /// (`SqlDialectAdapter`'s completion-facing half, over a resolved
@@ -265,11 +153,7 @@ impl SqlCompletionDialect {
     /// `adapter.quoteIdentifier(name)` — wrap in the dialect's quote style,
     /// escaping the closer.
     pub(crate) fn quote_identifier(&self, name: &str) -> String {
-        match self.profile.quote_style {
-            QuoteStyle::Double => format!("\"{}\"", name.replace('"', "\"\"")),
-            QuoteStyle::Backtick => format!("`{name}`"),
-            QuoteStyle::Bracket => format!("[{}]", name.replace(']', "]]")),
-        }
+        identifier_quoting::wrap_quoted(name, self.profile.quote_style)
     }
 
     /// `adapter.foldUnquotedIdentifier(name)` — fold the way the dialect's
@@ -285,40 +169,17 @@ impl SqlCompletionDialect {
     }
 
     /// `adapter.shouldQuoteIdentifier(name)` — `needsQuoting` from
-    /// `lib/sqlDialects/identifierQuoting.ts` (T084's file; carried here
-    /// until that task lands and absorbs it): empty and non-plain names
+    /// `lib/sqlDialects/identifierQuoting.ts` (absorbed into the shared
+    /// `identifier_quoting` module by T083): empty and non-plain names
     /// quote, reserved words quote (the dialect's extras included), and a
     /// fold case that would change the spelling quotes.
     pub(crate) fn should_quote_identifier(&self, name: &str) -> bool {
-        if name.is_empty() {
-            return true;
-        }
-        let bytes = name.as_bytes();
-        let first = bytes[0];
-        let plain = (first.is_ascii_alphabetic() || first == b'_')
-            && bytes[1..]
-                .iter()
-                .all(|b| b.is_ascii_alphanumeric() || *b == b'_' || *b == b'$');
-        if !plain {
-            return true;
-        }
-        let lower = name.to_lowercase();
-        if SQL_RESERVED_IDENTIFIER_KEYWORDS.contains(&lower.as_str()) {
-            return true;
-        }
-        if self
-            .profile
-            .reserved_keywords
-            .as_ref()
-            .is_some_and(|extras| extras.iter().any(|k| *k == lower))
-        {
-            return true;
-        }
-        match self.profile.fold_case {
-            FoldCase::Lower => name.bytes().any(|b| b.is_ascii_uppercase()),
-            FoldCase::Upper => name.bytes().any(|b| b.is_ascii_lowercase()),
-            FoldCase::Preserve => false,
-        }
+        identifier_quoting::needs_quoting(
+            name,
+            self.profile.quote_style,
+            self.profile.fold_case,
+            self.profile.reserved_keywords.as_deref(),
+        )
     }
 }
 

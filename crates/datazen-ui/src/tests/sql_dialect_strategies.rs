@@ -268,7 +268,7 @@ fn base_generator_insert_placeholders() {
     // Declared default wins; int/numeric types get 0; others ''.
     assert_eq!(
         pg.generate_insert("\"users\"", &with_cols),
-        "INSERT INTO \"users\" (\n  \"id\",\n  \"name\",\n  \"count\"\n) VALUES (\n  nextval('s'),\n  '',\n  0\n);"
+        Ok("INSERT INTO \"users\" (\n  \"id\",\n  \"name\",\n  \"count\"\n) VALUES (\n  nextval('s'),\n  '',\n  0\n);".to_string())
     );
 
     // An empty-string default is falsy in React: it falls through to the
@@ -276,6 +276,7 @@ fn base_generator_insert_placeholders() {
     with_cols.columns[0].default_value = Some(String::new());
     assert!(
         pg.generate_insert("\"users\"", &with_cols)
+            .expect("the ANSI generator never errors")
             .contains("\n  0,\n  '',\n  0\n);"),
         "empty defaults fall through to the type placeholder"
     );
@@ -287,11 +288,11 @@ fn base_generator_insert_placeholders() {
     );
     assert_eq!(
         pg.generate_insert("\"users\"", &auto_only),
-        "INSERT INTO \"users\"\nDEFAULT VALUES;"
+        Ok("INSERT INTO \"users\"\nDEFAULT VALUES;".to_string())
     );
     assert_eq!(
         pg.generate_insert("\"users\"", &schema(vec![], vec![])),
-        "INSERT INTO \"users\"\nDEFAULT VALUES;"
+        Ok("INSERT INTO \"users\"\nDEFAULT VALUES;".to_string())
     );
 }
 
@@ -312,11 +313,11 @@ fn base_generator_update_and_delete() {
     );
     assert_eq!(
         pg.generate_update("\"users\"", &s),
-        "UPDATE \"users\"\nSET\n  \"name\" = ''\nWHERE \"id\" = ;"
+        Ok("UPDATE \"users\"\nSET\n  \"name\" = ''\nWHERE \"id\" = ;".to_string())
     );
     assert_eq!(
         pg.generate_delete("\"users\"", &s),
-        "DELETE FROM \"users\"\nWHERE \"id\" = ;"
+        Ok("DELETE FROM \"users\"\nWHERE \"id\" = ;".to_string())
     );
 
     // No declared list: the column flags become the WHERE keys, and the
@@ -324,16 +325,18 @@ fn base_generator_update_and_delete() {
     s.primary_keys.clear();
     assert_eq!(
         pg.generate_update("\"users\"", &s),
-        "UPDATE \"users\"\nSET\n  \"id\" = '',\n  \"name\" = ''\nWHERE \"fake_pk\" = ;"
+        Ok("UPDATE \"users\"\nSET\n  \"id\" = '',\n  \"name\" = ''\nWHERE \"fake_pk\" = ;".to_string())
     );
 
     // No keys at all: the warning comment, both statements.
     let no_pk = schema(vec![col("a", "int")], vec![]);
     assert!(pg
         .generate_update("\"t\"", &no_pk)
+        .expect("the ANSI generator never errors")
         .ends_with("WHERE /* WARNING: Primary Key not found. Specify condition */;"));
     assert!(pg
         .generate_delete("\"t\"", &no_pk)
+        .expect("the ANSI generator never errors")
         .ends_with("WHERE /* WARNING: Primary Key not found. Specify condition */;"));
 
     // Composite keys join with AND — note the double space: each key's
@@ -341,23 +344,27 @@ fn base_generator_update_and_delete() {
     let two_pks = schema(vec![col("tenant_id", "int"), col("id", "int"), col("v", "text")], vec!["tenant_id", "id"]);
     assert_eq!(
         pg.generate_delete("\"t\"", &two_pks),
-        "DELETE FROM \"t\"\nWHERE \"tenant_id\" =  AND \"id\" = ;"
+        Ok("DELETE FROM \"t\"\nWHERE \"tenant_id\" =  AND \"id\" = ;".to_string())
     );
 
     // Empty schema: the metadata comments.
     assert_eq!(
         pg.generate_update("\"t\"", &schema(vec![], vec![])),
-        "/* No column metadata available for UPDATE \"t\" */"
+        Ok("/* No column metadata available for UPDATE \"t\" */".to_string())
     );
     assert_eq!(
         pg.generate_delete("\"t\"", &schema(vec![], vec![])),
-        "/* No column metadata available for DELETE \"t\" */"
+        Ok("/* No column metadata available for DELETE \"t\" */".to_string())
     );
 
     // generateSql dispatches.
     assert_eq!(
         pg.generate_sql(sd::GeneratedSqlType::Select, "\"t\"", &no_pk),
-        pg.generate_select("\"t\"", &no_pk)
+        Ok(pg.generate_select("\"t\"", &no_pk))
+    );
+    assert_eq!(
+        pg.generate_sql(sd::GeneratedSqlType::Delete, "\"t\"", &two_pks),
+        pg.generate_delete("\"t\"", &two_pks)
     );
 }
 
