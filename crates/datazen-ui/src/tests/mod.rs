@@ -570,4 +570,8 @@ mod ddl_view_audit;
 mod foreign_keys_view;
 // T400 independent audit: callback-free composition, header titles, dense rows.
 mod foreign_keys_view_audit;
+// T448: IndexesView port (keys, rows/flags, create/drop actions, states, geometry).
+mod indexes_view;
+// T448 independent audit: dialect method sets, name helpers and load fallback.
+mod indexes_view_audit;
 
