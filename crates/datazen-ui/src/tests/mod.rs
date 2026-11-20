@@ -97,6 +97,9 @@ mod commands_database_audit;
 // T263: the paste compartment's host factory (the ungated base + the
 // enhanced EP's forwarded half), audited against the factory body.
 mod create_paste_extensions_audit;
+// T265: the driver settings section (merge, the saved window, the
+// entry arms), audited against the React body.
+mod driver_settings_section_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;
