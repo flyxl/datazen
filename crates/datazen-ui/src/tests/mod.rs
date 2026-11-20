@@ -799,3 +799,6 @@ mod schema_diff_table_list_panel_audit;
 // T149: the schema-diff objects step (three branches, count line,
 // link buttons, checkbox names, origin badges).
 mod schema_diff_objects_step_audit;
+// T178: the schema-diff plan panel (options row, requirements,
+// type suggestions, rollback status, statement cards).
+mod schema_diff_plan_panel_audit;

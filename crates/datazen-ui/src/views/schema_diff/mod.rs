@@ -12,6 +12,9 @@ pub(crate) mod schema_diff_object_identity;
 pub(crate) mod schema_diff_object_discovery;
 // T149: the wizard's object-selection step (SchemaDiffObjectsStep.tsx).
 pub(crate) mod schema_diff_objects_step;
+// T178: the reviewed plan's content panel (SchemaDiffPlanPanel.tsx; the
+// requirements / type-suggestions / rollback-status sections are submodules).
+pub(crate) mod schema_diff_plan_panel;
 // T269: the wizard's table list rail (SchemaDiffTableListPanel.tsx).
 pub(crate) mod schema_diff_table_list_panel;
 pub(crate) mod schema_diff_table_names;
