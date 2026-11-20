@@ -259,24 +259,41 @@ impl SqlEditorState {
     }
 
     /// `formatDocument`: format the selection, or the whole document when
-    /// nothing is selected. The formatter is injected (T220's
-    /// `formatEditorDocument` port will supply it); without one the host
-    /// skips the call, which the return value distinguishes.
+    /// nothing is selected. The formatter is injected; the
+    /// selection-reindent and statement-anchored cursor mapping are
+    /// T220's `format_editor_document` port (this method is the
+    /// infallible-formatter shorthand — a formatter that cannot reject).
     pub(crate) fn format_document(&mut self, formatter: &dyn Fn(&str) -> String) -> bool {
+        self.format_document_with(None, super::format_editor_document::PartialSqlFormatOptions::default(), &|sql, _database_type, _options| {
+            Ok(formatter(sql))
+        })
+    }
+
+    /// The full `formatEditorDocument` seam: the dialect, the partial
+    /// options overlay and a formatter that may reject (sql-formatter
+    /// throws on syntax it cannot parse; the buffer stays untouched).
+    pub(crate) fn format_document_with(
+        &mut self,
+        database_type: Option<&str>,
+        options: super::format_editor_document::PartialSqlFormatOptions,
+        format_sql: super::format_editor_document::FormatSql<'_>,
+    ) -> bool {
         let sel = self.editor.selection().main();
-        let doc = self.editor.doc();
-        let (from, to) = if sel.from() == sel.to() {
-            (0, doc.len())
-        } else {
-            (sel.from(), sel.to())
-        };
-        let original = doc[from..to].to_string();
-        let formatted = formatter(&original);
-        if formatted == original {
+        let cursor = self.editor.main_head();
+        let doc = self.editor.doc().to_string();
+        let Some(edit) = super::format_editor_document::format_editor_document(
+            &doc,
+            sel.from(),
+            sel.to(),
+            cursor,
+            database_type,
+            options,
+            format_sql,
+        ) else {
             return false;
-        }
-        self.editor.replace_range(from, to, &formatted);
-        self.editor.set_main_selection(from, from + formatted.len());
+        };
+        self.editor.replace_range(edit.from, edit.to, &edit.insert);
+        self.editor.set_main_selection(edit.anchor, edit.head);
         true
     }
 

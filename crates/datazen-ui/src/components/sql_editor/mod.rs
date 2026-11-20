@@ -59,6 +59,11 @@ pub(crate) mod extensions;
 /// shared settings bag). The registry itself is T335.
 pub(crate) mod fold;
 
+/// `components/sql-editor/format/formatEditorDocument.ts` (T220, split):
+/// the selection-aware beautifier command (the formatter stays
+/// injected — T615's sqlFormat).
+pub(crate) mod format_editor_document;
+
 pub(crate) mod completion;
 #[allow(unused_imports)] // consumers land with the S2/S3 slices
 pub(crate) use completion::{
