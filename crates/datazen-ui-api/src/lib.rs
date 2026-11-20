@@ -39,6 +39,8 @@ mod chart_types;
 mod command_schema;
 mod connection_clipboard;
 mod connection_config;
+mod connection_form_model;
+mod connection_groups;
 mod connection_types;
 mod connection_views;
 mod context_items;
@@ -231,6 +233,16 @@ pub use connection_clipboard::{
 };
 pub use connection_config::{
     clone_connection_config_for_ipc, to_ipc_connection_config, PlainConfigAssertion,
+};
+pub use connection_form_model::{
+    assert_plain_connection_config, build_connection_config, clone_plain_json,
+    coerce_connection_group, normalize_index_database_field, plain_config_assertion,
+    sanitize_connection_options, BuildConnectionConfigInput, ConnectionFormDriverMeta,
+    ConnectionFormSnapshot, DatabaseFieldType,
+};
+pub use connection_groups::{
+    format_group_label, KEY_GROUP_DEV, KEY_GROUP_PROD, KEY_GROUP_TEST, PRESET_DEVELOPMENT,
+    PRESET_GROUP_OPTIONS, PRESET_PRODUCTION, PRESET_TESTING,
 };
 pub use connection_types::{
     ConnectionConfig, ContextEntry, DatabaseObject, DatabaseObjectKind, DatabaseType,

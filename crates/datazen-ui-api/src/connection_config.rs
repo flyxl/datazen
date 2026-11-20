@@ -6,7 +6,7 @@ use serde_json::{Map, Value};
 
 pub type PlainConfigAssertion = dyn Fn(&ConnectionConfig) -> Result<(), String>;
 
-fn clone_ssh_tunnel(tunnel: &SshTunnelConfig) -> SshTunnelConfig {
+pub(crate) fn clone_ssh_tunnel(tunnel: &SshTunnelConfig) -> SshTunnelConfig {
     SshTunnelConfig {
         enabled: tunnel.enabled,
         host: tunnel.host.clone(),
