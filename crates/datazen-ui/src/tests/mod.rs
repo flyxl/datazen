@@ -497,6 +497,8 @@ mod content_view_dialogs;
 // T223 independent audit: cancel/header routing, database fallback, slot
 // integration geometry and the source-contract guard.
 mod content_view_dialogs_audit;
+// T391: ExportDialog port (option tables, scope correction, columns, states, slot).
+mod export_dialog;
 // T266: CreateDatabaseDialog + CreateSchemaDialog ports.
 mod create_db_schema_dialogs;
 // T266 independent audit: blank-name guard, failure retry, schema spec words,
