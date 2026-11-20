@@ -831,6 +831,11 @@ mod data_sync_recordset_editor;
 // the hint, geometry).
 mod data_sync_options_bar;
 
+// T348 independent audit: the delete checkbox's both directions under a
+// live model, an all-off mount, the warning beside the select, the
+// unset-policy abort display.
+mod data_sync_options_bar_audit;
+
 // T360 independent audit: limit boundary integers, the toggle's editor
 // unmount, the sibling-preserving all-empty deletion, the scalar→tuple
 // switch on the first tuple edit, the limit error paragraph.
