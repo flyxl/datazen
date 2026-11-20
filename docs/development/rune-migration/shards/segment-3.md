@@ -136,7 +136,7 @@
 - [ ] T399 · windows/data-sync · 0.90d · windows/data-sync/compareReport.ts
 - [ ] T403 · stores · 0.80d · stores/schemaColumnBatcher.ts stores/schemaColumnLoader.ts
 - [x] T405 · components/DataTable · 0.90d · components/DataTable/dirtyCellText.ts components/DataTable/editors/activeEditor.ts components/DataTable/fkCellText.ts
-- [ ] T408 · windows/data-sync · 0.30d · windows/data-sync/dataSyncTypes.ts
+- [x] T408 · windows/data-sync · 0.30d · windows/data-sync/dataSyncTypes.ts
 - [x] T412 · stores · 0.90d · stores/schemaMetadataKeys.ts
 - [ ] T414 · components/DataTable · 0.90d · components/DataTable/fkSelectorText.ts components/DataTable/gridClipboardBridge.ts components/DataTable/rowHeight.ts
 - [x] T417 · windows/data-sync · 0.90d · windows/data-sync/mappingView.ts
