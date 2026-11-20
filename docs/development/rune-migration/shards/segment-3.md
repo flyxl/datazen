@@ -56,7 +56,7 @@
 - [ ] T163 · components/DataTable · 4.50d · components/DataTable/DataTable.tsx · split
 - [ ] T167 · components/ai · 2.00d · components/ai/AiMessageContent.tsx · split
 - [ ] T169 · components · 0.90d · components/McpApprovalHost.tsx
-- [ ] T176 · windows/data-transfer · 0.90d · windows/data-transfer/MappingGateNotice.tsx
+- [x] T176 · windows/data-transfer · 0.90d · windows/data-transfer/MappingGateNotice.tsx
 - [ ] T177 · windows/data-sync · 0.90d · windows/data-sync/DataSyncObjectsStep.tsx
 - [ ] T180 · lib/chart · 1.00d · lib/chart/transform.ts lib/columnStats.ts
 - [ ] T184 · stores · 0.90d · stores/dashboardStore.ts
