@@ -9,3 +9,5 @@
 pub(crate) mod connection_card_list;
 pub(crate) mod home_hero;
 pub(crate) mod mcp_promo_bar;
+pub(crate) mod shortcut_footer;
+pub(crate) mod recent_queries_list;

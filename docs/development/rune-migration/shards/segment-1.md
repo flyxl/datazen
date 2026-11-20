@@ -77,12 +77,12 @@
 - [x] T400 · windows/connection · 0.90d · windows/connection/ForeignKeysView.tsx
 - [x] T409 · windows/connection · 0.90d · windows/connection/home/ConnectionCardList.tsx
 - [x] T418 · windows/connection · 0.60d · windows/connection/home/HomeHero.tsx windows/connection/home/McpPromoBar.tsx
-- [ ] T427 · windows/connection · 0.50d · windows/connection/home/RecentQueriesList.tsx
-- [ ] T435 · windows/connection · 0.90d · windows/connection/home/ShortcutFooter.tsx
-- [ ] T442 · windows/connection · 3.70d · windows/connection/ImportDialog.tsx · split
-- [ ] T448 · windows/connection · 1.30d · windows/connection/IndexesView.tsx · split
-- [ ] T454 · windows/connection · 1.30d · windows/connection/navigator/DatabaseValueSearchDialog.tsx · split
-- [ ] T460 · windows/connection · 1.00d · windows/connection/navigator/GlobalObjectSearch.tsx windows/connection/navigator/NavigatorDialogs.tsx
+- [x] T427 · windows/connection · 0.50d · windows/connection/home/RecentQueriesList.tsx
+- [x] T435 · windows/connection · 0.90d · windows/connection/home/ShortcutFooter.tsx
+- [x] T442 · windows/connection · 3.70d · windows/connection/ImportDialog.tsx · split
+- [x] T448 · windows/connection · 1.30d · windows/connection/IndexesView.tsx · split
+- [x] T454 · windows/connection · 1.30d · windows/connection/navigator/DatabaseValueSearchDialog.tsx · split
+- [x] T460 · windows/connection · 1.00d · windows/connection/navigator/GlobalObjectSearch.tsx windows/connection/navigator/NavigatorDialogs.tsx
 - [ ] T465 · windows/connection · 0.50d · windows/connection/navigator/NavigatorToolbar.tsx
 - [ ] T470 · windows/connection · 1.30d · windows/connection/navigator/NavigatorTreeRow.tsx · split
 - [ ] T475 · windows/connection · 0.90d · windows/connection/navigator/treeStatusDot.tsx

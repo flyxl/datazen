@@ -36,6 +36,18 @@ mod er_diagram_view_audit;
 // T418: the standalone HomeHero + McpPromoBar ports (keys, counts, real copy
 // wake deadline and two-window/two-theme geometry).
 mod home_hero_promo;
+// T442: the ImportDialog wizard port (mapping plan, keys, host actions, slot
+// composition and two-window/two-theme geometry).
+mod import_dialog;
+// T460: GlobalObjectSearch + NavigatorDialogs ports (search journey, host
+// actions, confirm children and two-window/two-theme geometry).
+mod global_object_search;
+// T460 independent audit: result cap, sort, match reason, empty-old rename and
+// visible-rect geometry.
+mod global_object_search_audit;
+// T442 independent audit: running footer, Start action, sample, mapped pairs,
+// Select write-back and visible-rect geometry across all phases.
+mod import_dialog_audit;
 // T418 independent audit: host command copy, re-time, keyed marker, badge cap,
 // exact 2000ms wake, visible-rect geometry and exact copy locale keys.
 mod home_hero_promo_audit;
@@ -620,10 +632,23 @@ mod batch_export_audit;
 // T016 fix retest: independent D1/D2 verification.
 mod batch_export_retest;
 
+// T435: ShortcutFooter port (keymap presets/custom, display format, wrapping geometry).
+mod shortcut_footer;
+// T435 independent audit: value unions, F-key display, per-preset kbd, geometry.
+mod shortcut_audit;
 // T409: ConnectionCardList port (cards, sorting/filter, paging, host ports, geometry).
 mod connection_card_list;
 // T409 independent audit: engine chip, connecting button, keyboard, filter, geometry.
 mod card_list_audit;
+// T427: RecentQueriesList port (rows, sources, relative time, actions, geometry).
+mod recent_queries_list;
+// T427 independent audit: inert ports, relative-time boundaries and row role.
+mod recent_queries_list_audit;
+// T454: DatabaseValueSearchDialog port (keys, scope/type rules, answers, host
+// actions, two-window/two-palette geometry).
+mod database_value_search_dialog;
+// T454 independent audit: Enter-to-start, rounded seconds, resume, picker, busy.
+mod value_search_audit;
 // T144: the React ConnectionWorkspaceHome port (hero counts, card keys,
 // filter, MCP copy feedback with a real wake, KV-slot takeover, geometry).
 mod connection_workspace_home;
@@ -1079,6 +1104,10 @@ mod ddl_view_audit;
 mod foreign_keys_view;
 // T400 independent audit: callback-free composition, header titles, dense rows.
 mod foreign_keys_view_audit;
+// T448: IndexesView port (keys, rows/flags, create/drop actions, states, geometry).
+mod indexes_view;
+// T448 independent audit: dialect method sets, name helpers and load fallback.
+mod indexes_view_audit;
 
 
 // T136: the log-scale tooltip port (the __orig__ formatter arms, the JS
