@@ -91,6 +91,9 @@ mod schema_diff_selection_steps_audit;
 // T254: the connection driver-command lookup hooks (the epoch-guarded
 // effect machine), audited against the hook bodies.
 mod use_connection_command_audit;
+// T258: the database family (target shapers, validations, projections,
+// the discovery joiner), audited against the React source literal.
+mod commands_database_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;
