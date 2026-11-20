@@ -1016,6 +1016,8 @@ mod ai_egress_notice;
 mod ai_egress_notice_audit;
 // T185: the filter-draft helpers (filterUtils).
 mod table_data_filter_utils;
+// T412: the schema-store metadata identity keys (schemaMetadataKeys.ts).
+mod schema_metadata_keys;
 // T210: grid-selection geometry and state transitions (DB-01).
 mod table_data_grid_selection;
 // T210 independent audit: fresh vectors (render order disagreeing with
