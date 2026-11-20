@@ -1039,6 +1039,10 @@ mod content_bar_ports;
 // T173 independent audit: preserved inner ER testid, React detail/AI titles,
 // KV slot branches and adversarial two-size two-theme geometry.
 mod content_bar_audit;
+
+// T471: the shell layout store (seeds, persisted sidebar mode, dialog
+// slot, platform-probed fullscreen sync).
+mod ui_store;
 // T293: the tab-closed notification (panelCloseNotifier).
 mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the

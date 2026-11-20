@@ -92,6 +92,8 @@ mod search_state;
 mod schema_workflows_state;
 mod tools_state;
 mod workflow_page_state;
+// T471: the shell layout store (uiStore.ts).
+pub(crate) mod ui_store;
 mod workspace_state;
 mod wapps_state;
 pub(crate) mod ui;
