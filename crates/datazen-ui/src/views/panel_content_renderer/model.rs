@@ -102,19 +102,28 @@ pub(crate) fn view_sub_tabs(t: &dyn Fn(&str) -> String) -> Vec<(SubTabId, String
     ]
 }
 
-/// React `formatPanelContextPath` — connection · database · schema, gaps skipped.
+/// React `formatPanelContextPath` — connection name verbatim, trimmed database
+/// and schema appended when non-empty, all joined with `.`.
 #[allow(dead_code)] // pure rule; pinned by the renderer tests.
 pub(crate) fn format_context_path(
     connection_name: &str,
     database: Option<&str>,
     schema: Option<&str>,
 ) -> String {
-    [connection_name, database.unwrap_or(""), schema.unwrap_or("")]
-        .iter()
-        .filter(|part| !part.is_empty())
-        .copied()
-        .collect::<Vec<_>>()
-        .join(" · ")
+    let mut parts = vec![connection_name];
+    if let Some(database) = database {
+        let database = database.trim();
+        if !database.is_empty() {
+            parts.push(database);
+        }
+    }
+    if let Some(schema) = schema {
+        let schema = schema.trim();
+        if !schema.is_empty() {
+            parts.push(schema);
+        }
+    }
+    parts.join(".")
 }
 
 /// The driver registries this renderer consults: only the two facts it needs.

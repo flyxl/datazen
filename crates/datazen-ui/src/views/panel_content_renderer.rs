@@ -74,6 +74,7 @@ impl<S: 'static> PanelHostPort<S> {
 
 fn sub_tab_bar<S: 'static>(
     panel: &PanelVm,
+    database: Option<&str>,
     tabs: Vec<(SubTabId, String)>,
     dark: bool,
     host: &PanelHostPort<S>,
@@ -106,7 +107,7 @@ fn sub_tab_bar<S: 'static>(
     bar = bar.child(buttons);
     let context = format_context_path(
         &panel.connection_name,
-        panel.database.as_deref(),
+        database,
         panel.table_schema.as_deref(),
     );
     if !context.is_empty() {
@@ -168,7 +169,7 @@ pub(crate) fn panel_content_renderer<S: 'static>(
         PanelType::Table => {
             let tabs = sub_tabs(read_only, &|key| t(key).to_owned());
             let mut content = col().key("panel-slot-table").w_full().grow(1.0).gap(4.0);
-            content = content.child(sub_tab_bar(panel, tabs, dark, host, state));
+            content = content.child(sub_tab_bar(panel, panel.database.as_deref().or(current_database), tabs, dark, host, state));
             match panel.sub_tab {
                 SubTabId::Data => content = content.child(slot("panel-slot-data", "Table data", dark)),
                 SubTabId::Structure if panel.structure_editing => {
@@ -190,7 +191,7 @@ pub(crate) fn panel_content_renderer<S: 'static>(
         PanelType::View => {
             let tabs = view_sub_tabs(&|key| t(key).to_owned());
             let mut content = col().key("panel-slot-view").w_full().grow(1.0).gap(4.0);
-            content = content.child(sub_tab_bar(panel, tabs, dark, host, state));
+            content = content.child(sub_tab_bar(panel, panel.database.as_deref().or(current_database), tabs, dark, host, state));
             match panel.sub_tab {
                 SubTabId::Data => content = content.child(slot("panel-slot-data", "View data", dark)),
                 SubTabId::Structure => {
@@ -203,7 +204,7 @@ pub(crate) fn panel_content_renderer<S: 'static>(
         }
         PanelType::Query => Some(slot("panel-slot-query", "Query", dark)),
         PanelType::CreateTable => {
-            if panel.multi_db_without_database && panel.database.is_none() {
+            if panel.multi_db_without_database && database.is_empty() {
                 Some(
                     col()
                         .key("panel-slot-create-table-loading")

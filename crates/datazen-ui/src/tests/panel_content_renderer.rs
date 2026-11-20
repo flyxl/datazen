@@ -20,7 +20,7 @@ struct Probe {
     dark: bool,
     slot_state: Option<KvSlotAtom>,
     events: Vec<PanelAction>,
-    kv_received: Rc<RefCell<Option<KvSlotAtom>>>,
+    kv_received: Rc<RefCell<Option<Option<KvSlotAtom>>>>,
 }
 
 fn probe(panel_type: PanelType) -> Probe {
@@ -140,7 +140,7 @@ fn kv_panel_forwards_the_exact_slot_atom() {
     p.slot_state = Some(atom.clone());
     let rt = runtime(p, (1440.0, 816.0));
     assert!(has(&rt, "panel-kv-view"), "KV panels route to the driver view");
-    let received = rt.state.kv_received.borrow().as_ref().cloned().expect("host received the atom");
+    let received = rt.state.kv_received.borrow().as_ref().cloned().flatten().expect("host received the atom");
     assert!(Rc::ptr_eq(&received, &atom), "the very same atom is forwarded, identity intact");
     assert_eq!(element(&rt, "panel-kv-selected-key").label.as_deref(), Some("app:cache:session:1"));
     assert_eq!(element(&rt, "panel-kv-dirty").label.as_deref(), Some("true"));
@@ -155,7 +155,7 @@ fn kv_panel_without_a_relay_still_renders() {
     let rt = runtime(p, (960.0, 640.0));
     assert!(has(&rt, "panel-kv-view"));
     assert_eq!(element(&rt, "panel-kv-has-state").label.as_deref(), Some("no"));
-    assert!(rt.state.kv_received.borrow().is_none(), "no atom to forward");
+    assert!(rt.state.kv_received.borrow().as_ref().is_some_and(|atom| atom.is_none()), "callback fired with no atom");
 }
 
 #[test]
@@ -198,7 +198,7 @@ fn sub_tabs_follow_read_only_and_dispatch_selection() {
     ] {
         assert!(has(&rt, key), "{key} is mounted");
     }
-    assert_eq!(element(&rt, "panel-context-path").text.as_deref(), Some("Local · app · public"));
+    assert_eq!(element(&rt, "panel-context-path").text.as_deref(), Some("Local.app.public"));
     click(&mut rt, "sub-tab-ddl");
     assert!(rt.state.events.iter().any(|a| matches!(
         a,
@@ -236,7 +236,7 @@ fn structure_editing_and_data_cache_slots_render() {
 
 #[test]
 fn context_path_rules_match_react() {
-    assert_eq!(format_context_path("Local", Some("app"), Some("public")), "Local · app · public");
+    assert_eq!(format_context_path("Local", Some("app"), Some("public")), "Local.app.public");
     assert_eq!(format_context_path("Local", None, None), "Local");
 }
 

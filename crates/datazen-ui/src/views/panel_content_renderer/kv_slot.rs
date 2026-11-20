@@ -11,7 +11,7 @@ use super::model::{KvSlotAtom, KvViewProps, PanelVm};
 
 #[allow(dead_code)] // host contract; consumer: the KV workbench host (not wired).
 pub(crate) struct KvViewHostPort<S> {
-    pub on_view: Option<Rc<dyn Fn(&mut S, KvViewProps, KvSlotAtom) + 'static>>,
+    pub on_view: Option<Rc<dyn Fn(&mut S, KvViewProps, Option<KvSlotAtom>) + 'static>>,
 }
 
 /// Build the KV view marker and hand the host the props + the very same atom.
@@ -45,8 +45,10 @@ pub(crate) fn kv_view<S: 'static>(
         selected_key: selected.clone(),
         dirty,
     };
-    if let (Some(on_view), Some(atom)) = (host.on_view.clone(), atom.clone()) {
-        on_view(state, props, atom);
+    // The KV view mounts for every KV panel, relay or not — the atom is simply
+    // absent when the host has no slot state to publish.
+    if let Some(on_view) = host.on_view.clone() {
+        on_view(state, props, atom.clone());
     }
     let mut view = col()
         .key("panel-kv-view")
