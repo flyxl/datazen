@@ -349,7 +349,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T330 · stores/tableData · 2.00d · stores/tableData/stageCellValue.ts · split
 - [ ] T331 · commands · 0.90d · commands/languagePacks.ts
 - [ ] T332 · components/DataTable · 0.90d · components/DataTable/editors/NumberCellEditor.tsx components/DataTable/editors/TemporalCellEditor.tsx components/DataTable/editors/TextCellEditor.tsx
-- [ ] T333 · components/connection · 1.30d · components/connection/useConnectionForm.ts · split
+- [x] T333 · components/connection · 1.30d · components/connection/useConnectionForm.ts · split
 - [ ] T334 · components/ai · 1.30d · components/ai/WorkflowPanel.tsx · split
 - [ ] T335 · components/sql-editor · 2.00d · components/sql-editor/proCompartments.ts · split
 - [ ] T336 · windows/settings · 1.30d · windows/settings/McpClientSection.tsx · split
