@@ -796,3 +796,6 @@ mod commands_schema_diff;
 // T269: the schema-diff table list rail (row keys, selection, hasDiff
 // badge states, empty hint, pinned width).
 mod schema_diff_table_list_panel_audit;
+// T149: the schema-diff objects step (three branches, count line,
+// link buttons, checkbox names, origin badges).
+mod schema_diff_objects_step_audit;

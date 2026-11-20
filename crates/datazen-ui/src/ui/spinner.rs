@@ -20,7 +20,8 @@
 use crate::icons::{ICON_LOADER2, ICON_RING_ARC};
 use rune::{el, icon, row, text, El};
 
-/// Visual size. Three tiers as required by acceptance.
+/// Visual size. Three tiers as required by acceptance, plus the `2xl`
+/// tier real call sites use (h-6 = 24px, T149's objects step).
 #[allow(dead_code)] // reusable base; remove when view callers land
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub(crate) enum SpinnerSize {
@@ -28,6 +29,7 @@ pub(crate) enum SpinnerSize {
     #[default]
     Md,
     Lg,
+    Xxl,
 }
 
 impl SpinnerSize {
@@ -36,6 +38,7 @@ impl SpinnerSize {
             Self::Sm => 12.0,
             Self::Md => 16.0,
             Self::Lg => 20.0,
+            Self::Xxl => 24.0,
         }
     }
 }
