@@ -294,3 +294,7 @@ mod area_chart_renderer;
 // T192: the bar chart engine port (the shared log-hint pipeline, bar
 // rectangle geometry, the LabelList, hit-band routing and the tooltips).
 mod bar_chart_renderer;
+
+// T200: the workflow yaml editor chrome pins (the host, the line-number
+// gutter, the lint gutter flag).
+mod workflow_yaml_editor;

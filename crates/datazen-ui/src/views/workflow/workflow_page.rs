@@ -27,15 +27,17 @@
 //!
 //! ## Honest seams (each belongs to its own later task)
 //!
-//! - **`WorkflowYamlEditor` (T202)**: the yaml mode keeps the lite editor's
-//!   editable document (`sql_editor::plain_panel` over `AppState::workflow_yaml`,
-//!   the surface the workspace-tabs tests pin) as the honest stand-in; the
-//!   real editor's lint/gutter chrome lands with T202. The mode switch itself
-//!   is real in both directions — `draftToYamlObject`+`YAML.stringify` becomes
-//!   the lite writer (`views::workflow_yaml`), `parseWorkflowYaml`+
-//!   `yamlObjectToDraft` (`lib/workflowYaml.ts`/`lib/workflowDraftYaml.ts`,
-//!   T646) becomes the lean parse of exactly that writer's shape
-//!   ([`parse_lite_workflow_yaml`]).
+//! - **`WorkflowYamlEditor` (T200; this note's older numbering says T202)**:
+//!   the yaml mode's editor is the real port —
+//!   [`super::workflow_yaml_editor`] mounts the document surface over
+//!   `AppState::workflow_yaml` (the surface the workspace-tabs tests pin)
+//!   with the yaml highlighting, the line-number gutter and the lint gutter
+//!   ([`super::yaml_mode`]/[`super::yaml_lint`], T265/T244). The mode switch
+//!   itself is real in both directions — `draftToYamlObject`+
+//!   `YAML.stringify` becomes the lite writer (`views::workflow_yaml`),
+//!   `parseWorkflowYaml`+`yamlObjectToDraft` (`lib/workflowYaml.ts`/
+//!   `lib/workflowDraftYaml.ts`, T646) becomes the lean parse of exactly
+//!   that writer's shape ([`parse_lite_workflow_yaml`]).
 //! - **`workflowDraftConvert` (T225)**: the definition ↔ draft conversions are
 //!   the lean projection over the host's lite `Workflow { name, steps }` shape
 //!   ([`workflow_definition_to_draft`] / [`workflow_draft_to_steps`]) — every
@@ -1851,19 +1853,18 @@ fn edit_pane(state: &AppState, edit: &WorkflowEditPanel, k: &Kit, dark: bool) ->
                 ),
         );
     } else {
-        // The yaml mode's honest stand-in: the lite editor's editable
-        // document (T202 swaps the pane; the document model stays).
+        // The yaml mode's real editor: the document surface T200 mounts
+        // over the same editing model (the highlighting, the line-number
+        // and lint gutters) — the lite panel's stand-in years are over;
+        // the document model itself stays.
         pane = pane.child(
             col()
                 .key("workflow-edit-yaml")
                 .grow(1.0)
                 .min_h(0.0)
                 .padding(12.0)
-                .child(crate::sql_editor::plain_panel(
-                    &state.workflow_yaml,
-                    k.c.text_base,
-                    k.c.text_muted,
-                    dark,
+                .child(super::workflow_yaml_editor::workflow_yaml_editor(
+                    state, dark,
                 )),
         );
     }

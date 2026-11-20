@@ -44,6 +44,10 @@ pub(crate) mod yaml_lint;
 // T265: the yaml syntax highlighting — the yaml editor (T200) mounts it
 // over the document surface.
 pub(crate) mod yaml_mode;
+// T200: the yaml editor's chrome — the document surface with the yaml
+// highlighting, the line-number and lint gutters (the page's edit pane is
+// its production consumer).
+pub(crate) mod workflow_yaml_editor;
 
 // The family's re-exported view models (the page's own helpers ride through
 // `workflow_page::*`; the page reaches the action bar, the result panel and
