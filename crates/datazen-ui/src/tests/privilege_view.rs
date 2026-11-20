@@ -248,3 +248,83 @@ fn panel_fits_both_windows_in_both_palettes() {
         }
     }
 }
+
+// ── T495 independent audit (appended; reuses this module's Probe) ────────
+
+fn expanded_keys(keys: &[&str]) -> std::collections::BTreeSet<String> {
+    keys.iter().map(|k| (*k).to_owned()).collect()
+}
+
+/// React `ByObjectView` gives each privilege leaf a revoke button
+/// (`PrivilegeView.tsx:718-721`, `:741-744`) carrying the table/schema as the
+/// revoke object. The port's `privilege_tree` never gives a revoke target to
+/// by-object nodes, so no revoke affordance is mounted at all.
+#[test]
+fn audit_by_object_view_offers_revoke() {
+    let mut p = probe();
+    p.vm.view_mode = ViewMode::ByObject;
+    p.vm.grants = vec![grantee("alice", Some("public"), "users", "SELECT")];
+    p.vm.expanded = expanded_keys(&["db-current", "schema-public", "table-users"]);
+    let mut rt = runtime(p, (1440.0, 816.0));
+    assert!(has(&rt, "priv-revoke-SELECT"), "by-object leaves must offer a revoke button");
+    click(&mut rt, "priv-revoke-SELECT");
+    assert!(
+        rt.state.events.iter().any(|a| matches!(a,
+            PrivilegeAction::Revoke { username, object_name, privileges }
+                if username == "alice" && object_name == "users" && privileges.as_slice() == ["SELECT"]
+        )),
+        "by-object revoke must pin the table as its object; events {:?}",
+        rt.state.events
+    );
+}
+
+/// React `ByUserView` table leaves revoke with `tableName` as the object
+/// (`PrivilegeView.tsx:574`). The port stores `(privilege, None)` for table
+/// leaves (`model.rs:143-146`), so the emitted object name is empty.
+#[test]
+fn audit_by_user_table_revoke_pins_the_table_name() {
+    let mut p = probe();
+    p.vm.grants = vec![grantee("alice", Some("public"), "users", "SELECT")];
+    p.vm.expanded = expanded_keys(&["user-alice", "db-current", "schema-public"]);
+    let mut rt = runtime(p, (1440.0, 816.0));
+    assert!(has(&rt, "priv-revoke-SELECT"));
+    click(&mut rt, "priv-revoke-SELECT");
+    assert!(
+        rt.state.events.iter().any(|a| matches!(a,
+            PrivilegeAction::Revoke { object_name, .. } if object_name == "users"
+        )),
+        "a table leaf's revoke must name the table; events {:?}",
+        rt.state.events
+    );
+}
+
+/// React's role-level leaf (`PrivilegeView.tsx:531-537`) passes no `onRevoke`,
+/// so it renders no per-privilege X. The port gives every by-user leaf a
+/// revoke target through `revoke_user`, including the role-level ones.
+#[test]
+fn audit_role_level_leaf_has_no_revoke() {
+    let mut p = probe();
+    p.vm.grants = vec![grantee("bob", None, "", "USAGE")];
+    p.vm.expanded = expanded_keys(&["user-bob", "db-*", "role-level"]);
+    let rt = runtime(p, (1440.0, 816.0));
+    assert!(
+        !has(&rt, "priv-revoke-USAGE"),
+        "role-level grants must not offer revoke (React passes no onRevoke)"
+    );
+}
+
+/// React's `ByObjectView` has no drop-user button (only `ByUserView` does,
+/// gated by `supportsDropUser` at `PrivilegeView.tsx:500-514`). The port's
+/// `tree_node` adds one to every `user-*` node regardless of view mode.
+#[test]
+fn audit_by_object_view_has_no_drop_user() {
+    let mut p = probe();
+    p.vm.view_mode = ViewMode::ByObject;
+    p.vm.grants = vec![grantee("alice", Some("public"), "users", "SELECT")];
+    p.vm.expanded = expanded_keys(&["db-current", "schema-public", "table-users"]);
+    let rt = runtime(p, (1440.0, 816.0));
+    assert!(
+        !has(&rt, "priv-drop-user-alice"),
+        "by-object user nodes must not offer drop-user"
+    );
+}
