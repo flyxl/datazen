@@ -41,6 +41,9 @@ pub(crate) mod workflow_form;
 // T244: the yaml lint pass — the yaml editor (T200) mounts its gutter over
 // these diagnostics.
 pub(crate) mod yaml_lint;
+// T265: the yaml syntax highlighting — the yaml editor (T200) mounts it
+// over the document surface.
+pub(crate) mod yaml_mode;
 
 // The family's re-exported view models (the page's own helpers ride through
 // `workflow_page::*`; the page reaches the action bar, the result panel and
