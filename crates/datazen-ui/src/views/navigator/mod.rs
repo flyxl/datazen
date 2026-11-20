@@ -8,4 +8,5 @@ pub(crate) mod database_value_search_dialog;
 pub(crate) mod global_object_search;
 pub(crate) mod navigator_dialogs;
 pub(crate) mod navigator_toolbar;
+pub(crate) mod navigator_tree_row;
 pub(crate) mod tree_status_dot;
