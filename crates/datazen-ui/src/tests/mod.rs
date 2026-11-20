@@ -907,3 +907,7 @@ mod schema_diff_job_status_panel_audit;
 // T372: the clipboard-feedback hook's inline suite (the show/clear
 // window) — the table-names full port rides its existing bridge.
 mod use_schema_diff_clipboard_feedback;
+// T294: the useGridClipboard orchestration audit — the parse/serialize
+// kernel, the registries' clipboard-text binding, the planner's gates,
+// the plan→confirm→stage machine, and the DBR-02 row features.
+mod use_grid_clipboard;
