@@ -19,7 +19,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
-use rune::{col, icon, row, text, El, TextEdit, Tx};
+use rune::{col, icon, row, text, El, Key, TextEdit, Tx};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit};
 
 use crate::i18n::t;
@@ -137,6 +137,20 @@ pub(crate) fn database_value_search_dialog<S: 'static>(
             }
         });
 
+    // One start action shared by the button and the value field's Enter key,
+    // mirroring React's `start()` (guarded by value, targets and busy state).
+    let start_action: Option<Rc<dyn Fn(&mut S) + 'static>> = host.on_start.clone().map(|cb| {
+        let request = StartRequest {
+            db_session_id: vm.db_session_id.clone(),
+            database: vm.database.clone(),
+            targets: targets.clone(),
+            value: vm.value.text.trim().to_owned(),
+            mode: vm.mode,
+            cell_types: cell_types_for_scope(vm.type_scope),
+        };
+        Rc::new(move |s: &mut S| cb(s, request.clone())) as Rc<dyn Fn(&mut S)>
+    });
+
     // Search line: value + match mode + start/pause/resume/cancel.
     let mut value_field = TextField::new("value-search-input", &vm.value)
         .height(28.0)
@@ -146,6 +160,16 @@ pub(crate) fn database_value_search_dialog<S: 'static>(
         .disabled(busy);
     if let Some(accessor) = host.value_edit.clone() {
         value_field = value_field.on_edit(rune::edit_access(move |s: &mut S| accessor(s)));
+    }
+    if let Some(action) = start_action.clone() {
+        let can_start = !busy && !vm.value.text.trim().is_empty() && !targets.is_empty();
+        value_field = value_field.on_key(move |s: &mut S, ev: &rune::KeyEvent, _tx: &mut Tx| {
+            if ev.key == Key::Enter && can_start {
+                action(s);
+                return true;
+            }
+            false
+        });
     }
     let search_line = row()
         .w_full()
@@ -183,21 +207,12 @@ pub(crate) fn database_value_search_dialog<S: 'static>(
     let mut search_line = search_line.child(mode_select);
     let status = vm.progress.as_ref().map(|p| p.status);
     if !busy {
-        let request = StartRequest {
-            db_session_id: vm.db_session_id.clone(),
-            database: vm.database.clone(),
-            targets: targets.clone(),
-            value: vm.value.text.trim().to_owned(),
-            mode: vm.mode,
-            cell_types: cell_types_for_scope(vm.type_scope),
-        };
-        let on_start = host.on_start.clone();
         search_line = search_line.child(button(
             "value-search-start",
             t("valueSearch.start").to_owned(),
             dark,
             vm.value.text.trim().is_empty() || targets.is_empty(),
-            on_start.map(|cb| Rc::new(move |s: &mut S| cb(s, request.clone())) as Rc<dyn Fn(&mut S)>),
+            start_action.clone(),
         ));
     }
     match status {
@@ -392,7 +407,9 @@ pub(crate) fn database_value_search_dialog<S: 'static>(
         }
         if progress.status == SearchStatus::Done {
             if let Some(ms) = progress.elapsed_ms {
-                let seconds = (ms / 1000).max(1);
+                // React uses Math.round(ms / 1000); add half a second before the
+                // integer division so 1500ms reports 2s, then keep the 1s floor.
+                let seconds = ((ms + 500) / 1000).max(1);
                 dialog = dialog.child(
                     text(
                         t("valueSearch.doneNote")
