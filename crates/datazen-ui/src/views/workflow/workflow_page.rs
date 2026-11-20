@@ -27,15 +27,17 @@
 //!
 //! ## Honest seams (each belongs to its own later task)
 //!
-//! - **`WorkflowYamlEditor` (T202)**: the yaml mode keeps the lite editor's
-//!   editable document (`sql_editor::plain_panel` over `AppState::workflow_yaml`,
-//!   the surface the workspace-tabs tests pin) as the honest stand-in; the
-//!   real editor's lint/gutter chrome lands with T202. The mode switch itself
-//!   is real in both directions — `draftToYamlObject`+`YAML.stringify` becomes
-//!   the lite writer (`views::workflow_yaml`), `parseWorkflowYaml`+
-//!   `yamlObjectToDraft` (`lib/workflowYaml.ts`/`lib/workflowDraftYaml.ts`,
-//!   T646) becomes the lean parse of exactly that writer's shape
-//!   ([`parse_lite_workflow_yaml`]).
+//! - **`WorkflowYamlEditor` (T200; this note's older numbering says T202)**:
+//!   the yaml mode's editor is the real port —
+//!   [`super::workflow_yaml_editor`] mounts the document surface over
+//!   `AppState::workflow_yaml` (the surface the workspace-tabs tests pin)
+//!   with the yaml highlighting, the line-number gutter and the lint gutter
+//!   ([`super::yaml_mode`]/[`super::yaml_lint`], T265/T244). The mode switch
+//!   itself is real in both directions — `draftToYamlObject`+
+//!   `YAML.stringify` becomes the lite writer (`views::workflow_yaml`),
+//!   `parseWorkflowYaml`+`yamlObjectToDraft` (`lib/workflowYaml.ts`/
+//!   `lib/workflowDraftYaml.ts`, T646) becomes the lean parse of exactly
+//!   that writer's shape ([`parse_lite_workflow_yaml`]).
 //! - **`workflowDraftConvert` (T225)**: the definition ↔ draft conversions are
 //!   the lean projection over the host's lite `Workflow { name, steps }` shape
 //!   ([`workflow_definition_to_draft`] / [`workflow_draft_to_steps`]) — every
@@ -284,13 +286,11 @@ impl WorkflowPanel {
     }
 
     /// React's `panelExecutionResult`: the run's answer or the history record;
-    /// edit and ai-create panels carry none.
+    /// edit and ai-create panels carry none. The T223 port
+    /// (`workflow_panel_guards.rs`) owns the definition; this method is the
+    /// enum-side delegation.
     pub(crate) fn execution_result(&self) -> Option<&WorkflowExecutionResult> {
-        match self {
-            Self::Run(panel) => panel.result.as_ref(),
-            Self::History(panel) => Some(&panel.result),
-            Self::Edit(_) | Self::AiCreate { .. } => None,
-        }
+        super::workflow_panel_guards::panel_execution_result(self)
     }
 }
 
@@ -394,51 +394,29 @@ pub(crate) fn step_needs_database(
 
 /// React's `panelTabLabel(panel, labels)`: the ai-create/create labels, the
 /// edit tab's draft-name read (the draft lives in the app-level slot this
-/// build backs it with), and the run/history clocks.
+/// build backs it with), and the run/history clocks. The T223 port
+/// (`workflow_panel_guards.rs`) owns the ladder; this caller builds the
+/// labels bag from `t()` and passes the app-level draft's name.
 pub(crate) fn panel_tab_label(state: &AppState, panel: &WorkflowPanel) -> String {
-    match panel {
-        WorkflowPanel::AiCreate { .. } => t("workflows.aiCreate.title").to_owned(),
-        WorkflowPanel::Edit(edit) => {
-            if edit.editing_id.is_some() {
-                // React: `panel.draft.name || labels.edit`.
-                if state.workflow_draft.name.text.is_empty() {
-                    t("workflows.edit").to_owned()
-                } else {
-                    state.workflow_draft.name.text.clone()
-                }
-            } else {
-                t("workflows.create").to_owned()
-            }
-        }
-        WorkflowPanel::Run(run) => {
-            format!("{} {}", run.workflow_name, tab_clock(&run.started_at))
-        }
-        WorkflowPanel::History(history) => {
-            format!("{} {}", history.workflow_name, tab_clock(&history.created_at))
-        }
-    }
+    let labels = super::workflow_panel_guards::PanelTabLabels {
+        ai_create: t("workflows.aiCreate.title").to_owned(),
+        edit: t("workflows.edit").to_owned(),
+        create: t("workflows.create").to_owned(),
+    };
+    super::workflow_panel_guards::panel_tab_label(
+        panel,
+        &labels,
+        state.workflow_draft.name.text.as_str(),
+    )
 }
 
-/// The `HH:MM` the run/history tab labels read (React
-/// `new Date(...).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})`
-/// — the `locale_string` stance: zoned input in the local zone; anything
-/// unparseable stays verbatim).
-fn tab_clock(iso: &str) -> String {
-    match crate::support::formatters::parse_zoned_instant(iso)
-        .and_then(chrono::DateTime::from_timestamp_millis)
-    {
-        Some(instant) => instant
-            .with_timezone(&chrono::Local)
-            .format("%H:%M")
-            .to_string(),
-        None => iso.to_owned(),
-    }
-}
-
-/// React's `workflowDefinitionToDraft` (`workflowDraftConvert.ts`, T225) — the
-/// lean projection over the host's lite `Workflow { name, steps }`: the name
-/// fills both id and name, each step text rides as a query step's SQL. The
-/// round trip ([`workflow_draft_to_steps`]) preserves it.
+/// React's `workflowDefinitionToDraft` (`workflowDraftConvert.ts`) — the
+/// lite stand-in over the host's lite `Workflow { name, steps }` seam: the
+/// name fills both id and name, each step text rides as a query step's SQL.
+/// The full T223 conversion (`workflow_draft_convert.rs`) speaks the
+/// `WorkflowDefinition` the host's full seam (a cross-segment adapter task)
+/// will hand this page; the round trip ([`workflow_draft_to_steps`])
+/// preserves the lite projection.
 pub(crate) fn workflow_definition_to_draft(flow: &datazen_ui_api::Workflow) -> WorkflowDraft {
     let mut draft = WorkflowDraft::empty();
     draft.id = TextEdit::new(flow.name.clone());
@@ -1851,19 +1829,18 @@ fn edit_pane(state: &AppState, edit: &WorkflowEditPanel, k: &Kit, dark: bool) ->
                 ),
         );
     } else {
-        // The yaml mode's honest stand-in: the lite editor's editable
-        // document (T202 swaps the pane; the document model stays).
+        // The yaml mode's real editor: the document surface T200 mounts
+        // over the same editing model (the highlighting, the line-number
+        // and lint gutters) — the lite panel's stand-in years are over;
+        // the document model itself stays.
         pane = pane.child(
             col()
                 .key("workflow-edit-yaml")
                 .grow(1.0)
                 .min_h(0.0)
                 .padding(12.0)
-                .child(crate::sql_editor::plain_panel(
-                    &state.workflow_yaml,
-                    k.c.text_base,
-                    k.c.text_muted,
-                    dark,
+                .child(super::workflow_yaml_editor::workflow_yaml_editor(
+                    state, dark,
                 )),
         );
     }

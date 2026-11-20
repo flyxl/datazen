@@ -97,6 +97,17 @@
 //!   same-named prediction slices (`relation_prediction`) were narrow
 //!   stopgaps with no root-path consumer, and stay reachable inside their
 //!   module.
+//! - **The index.ts reconciliation (T211)**: `types/index.ts` is the file
+//!   the app actually imports, and its own NOTE — mirrored in
+//!   `types/connection.ts` — records that the two files' duplicated shapes
+//!   "must not drift" and that "new fields belong in `./index` only". Two
+//!   pairs had drifted when T211 landed: `DriverCapabilities` (the index
+//!   copy carries `supportsOffset`/`hasSchemaLevel`, which the kernel's own
+//!   wire struct also serializes) and `DatabaseObject` (the index copy
+//!   carries the driver-api twin's `signature`/`targetSchema`/
+//!   `targetName`). The single Rust definitions here were **enriched to the
+//!   authoritative index.ts shapes** — one definition, re-exported by the
+//!   aggregate (`crate::types`), never forked; see each struct's docs.
 //!
 //! The React file has no test suite of its own (its tests live with the
 //! connection commands/stores, other tasks); the pins below are the port's
@@ -503,8 +514,17 @@ pub struct ServerInfo {
 }
 
 /// React `DriverCapabilities` — capabilities reported by the concrete
-/// driver for a live database session. Four required booleans; no Rust
-/// twin exists yet (driver-api exposes these as individual trait methods).
+/// driver for a live database session.
+///
+/// T128 ported the four-boolean copy `types/connection.ts` declares;
+/// `types/index.ts` (the file the app actually imports, and whose own NOTE
+/// — "keep new fields in `./index` only" — makes it the authoritative
+/// pair) carries six: `supportsOffset` and `hasSchemaLevel` were added
+/// there first. The single Rust definition is the enriched six-field shape
+/// (T211's reconciliation — one definition, no fork): the kernel's own wire
+/// struct (`driver_registry::DriverCapabilities`, the thing that actually
+/// serializes) carries all six plus `hasMultiDatabase`, which the frontend
+/// view leaves out and serde ignores on decode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DriverCapabilities {
@@ -513,6 +533,11 @@ pub struct DriverCapabilities {
     pub supports_query_execution_cancel: bool,
     pub supports_explain: bool,
     pub supports_streaming_results: bool,
+    /// Whether the dialect accepts `OFFSET` in pagination (`false` for
+    /// Presto/Hive-family engines, which paginate with `LIMIT` only).
+    pub supports_offset: bool,
+    /// Whether the engine has a real second namespace level (`schema`).
+    pub has_schema_level: bool,
 }
 
 /// React `TableType = 'table' | 'view' | 'materializedView' |
@@ -544,10 +569,18 @@ impl TableType {
 /// React `DatabaseObject` — one non-relation catalog object a driver
 /// lists/opens.
 ///
-/// Frontend-narrowed twin of driver-api's `DatabaseObject` (which also
-/// carries routine signature and trigger target fields, and a String
-/// `kind`); `schema` is `?: string | null` because the backend twin
-/// emits `null` when the engine has no schema level.
+/// Frontend-narrowed twin of driver-api's `DatabaseObject` (which spells
+/// `kind` a plain `String`); `schema` is `?: string | null` because the
+/// backend twin emits `null` when the engine has no schema level.
+///
+/// T128 ported the three-field copy `types/connection.ts` declares;
+/// `types/index.ts` (the authoritative pair — see [`DriverCapabilities`]'
+/// docs) carries the driver-api twin's three extra legs: the PostgreSQL
+/// routine `signature` that disambiguates overloads, and a trigger's
+/// `targetSchema`/`targetName` relation. The single Rust definition is
+/// the enriched shape (T211's reconciliation). The three legs mirror the
+/// twin's own `skip_serializing_if` wire — absent stays absent — while
+/// `null` payloads decode (serde `Option` accepts both states).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DatabaseObject {
@@ -556,6 +589,19 @@ pub struct DatabaseObject {
     /// accepted.
     pub schema: Option<String>,
     pub name: String,
+    /// PostgreSQL routine identity arguments. This disambiguates
+    /// overloaded functions/procedures without putting SQL syntax into
+    /// `name`. Absent stays absent (the twin's own skip).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
+    /// Relation attached to a trigger, when exposed by the driver — its
+    /// schema leg. Absent stays absent (the twin's own skip).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_schema: Option<String>,
+    /// Relation attached to a trigger, when exposed by the driver — its
+    /// name leg. Absent stays absent (the twin's own skip).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_name: Option<String>,
 }
 
 /// React `PrivilegeGrant` — one row of a privilege listing.
@@ -1215,12 +1261,16 @@ mod tests {
             serde_json::json!({ "serverVersion": "16.2", "serverType": "PostgreSQL" })
         );
 
-        // Four required booleans — no optionality anywhere on the surface.
+        // Six required booleans — no optionality anywhere on the surface
+        // (the four-boolean shape was `types/connection.ts`'s lagging copy;
+        // `types/index.ts`, the authoritative pair, carries all six).
         let caps = DriverCapabilities {
             supports_cancel_query: true,
             supports_query_execution_cancel: false,
             supports_explain: true,
             supports_streaming_results: false,
+            supports_offset: true,
+            has_schema_level: false,
         };
         assert_eq!(
             encode(&caps),
@@ -1229,8 +1279,23 @@ mod tests {
                 "supportsQueryExecutionCancel": false,
                 "supportsExplain": true,
                 "supportsStreamingResults": false,
+                "supportsOffset": true,
+                "hasSchemaLevel": false,
             })
         );
+        // The kernel's own wire struct carries a seventh boolean
+        // (`hasMultiDatabase`) the frontend view leaves out — decoding it
+        // is a noop, not an error.
+        let from_kernel: DriverCapabilities = decode(serde_json::json!({
+            "supportsCancelQuery": true,
+            "supportsQueryExecutionCancel": false,
+            "supportsExplain": true,
+            "supportsStreamingResults": false,
+            "supportsOffset": true,
+            "hasSchemaLevel": true,
+            "hasMultiDatabase": false,
+        }));
+        assert_eq!(from_kernel.has_schema_level, true);
     }
 
     #[test]
@@ -1285,11 +1350,44 @@ mod tests {
             kind: DatabaseObjectKind::Function,
             schema: None,
             name: "now".into(),
+            signature: None,
+            target_schema: None,
+            target_name: None,
         };
         let wire = encode(&object);
+        // `schema` keeps its explicit null; the three legs the index.ts copy
+        // added keep the twin's own skip — absent stays absent.
         assert_eq!(wire, serde_json::json!({ "kind": "function", "schema": null, "name": "now" }));
         let back: DatabaseObject = decode(wire);
         assert_eq!(back, object);
+
+        // The routine/trigger legs ride when the driver fills them: a
+        // PostgreSQL overloaded function disambiguated by its signature,
+        // and a trigger carrying its relation.
+        let routine = DatabaseObject {
+            schema: Some("public".into()),
+            signature: Some("(integer, text)".into()),
+            target_schema: None,
+            target_name: None,
+            ..object
+        };
+        let wire = encode(&routine);
+        assert_eq!(wire["schema"], "public");
+        assert_eq!(wire["signature"], "(integer, text)");
+        assert!(wire.get("targetSchema").is_none());
+        let back: DatabaseObject = decode(wire);
+        assert_eq!(back, routine);
+        let trigger = DatabaseObject {
+            kind: DatabaseObjectKind::Trigger,
+            target_schema: Some("public".into()),
+            target_name: Some("users".into()),
+            ..routine
+        };
+        let wire = encode(&trigger);
+        assert_eq!(wire["targetSchema"], "public");
+        assert_eq!(wire["targetName"], "users");
+        let back: DatabaseObject = decode(wire);
+        assert_eq!(back, trigger);
 
         let grant = PrivilegeGrant {
             grantee: "app".into(),

@@ -1205,3 +1205,24 @@ mod schema_diff_object_discovery;
 // schemaDiffTableNames.ts merge the discovery run returns; T374 owns the
 // rest of that React file).
 mod schema_diff_table_names;
+
+// T216: the line chart engine port (the per-point dot layer, the hovered
+// row's activeDot layer, the LabelList values overlay, the shared log-hint
+// pipeline, hit-band routing and the tooltips).
+mod line_chart_renderer;
+
+// T223 (the ledger's older numbering says T225): the workflow draft
+// conversion pair + the panel guards (the definition → draft field map with
+// its kind folds, the save path's trims and the command step's
+// input.database carry, the 30-second floor, the guards' narrowing and the
+// tab label's clock reads).
+mod workflow_draft_convert;
+
+// T238 (the ledger's older numbering says T240): the pie chart engine port
+// (the wedge angles, the row-indexed palette, the showValues labels with the
+// toFixed(0) rounding, the showLegend gate, the hit raster and the tooltip).
+mod pie_chart_renderer;
+
+// T200: the workflow yaml editor chrome pins (the host, the line-number
+// gutter, the lint gutter flag).
+mod workflow_yaml_editor;

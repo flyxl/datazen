@@ -107,7 +107,7 @@ pub use providers::{
     AiSafetyGateConfig, AiSettingsConfig, AiToolPermissionPolicy, ModelInfo, ProviderListItem,
     PromptTemplate,
 };
-pub use skills::{
+pub use skills::{normalize_ai_skills_settings, normalize_loaded_skills, 
     AiSkillContent, AiSkillSource, AiSkillSummary, AiSkillsSettings, DEFAULT_AI_SKILLS_SETTINGS,
 };
 pub use write::{

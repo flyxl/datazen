@@ -15,7 +15,15 @@
 //! - `workflow_form.rs` — `WorkflowForm.tsx` (the visual workflow editor
 //!   form: the draft model, field/variable/step editors, the command-input
 //!   schema editor and the two footer variants).
-//!
+
+//! - `workflow_draft_convert.rs` — `workflowDraftConvert.ts` (T223) — the
+//!   definition ↔ draft conversion pair (the edit panel's entry draft, the
+//!   save path's definition).
+//! - `workflow_panel_guards.rs` — `workflowPanelGuards.ts` (T223) — the panel
+//!   guards, `panelExecutionResult` and `panelTabLabel` with its labels bag
+//!   and clock reads.
+//! - `yaml_lint.rs` — `yamlLint.ts` (T244) — the parameter-reference pairing
+//!   pass the yaml editor mounts as its lint.
 //! - `workflow_page.rs` — `WorkflowPage.tsx` (T145; the ledger's older
 //!   numbering says T147) — the page-level assembly: the toolbar, the
 //!   workflows/history sidebar, the panel tab bar, the variables + execute
@@ -36,6 +44,22 @@ pub(crate) mod step_result_utils;
 pub(crate) mod workflow_page;
 // T070: the page's edit pane (T145) is the form's production consumer.
 pub(crate) mod workflow_form;
+// T223: the definition ↔ draft conversion pair — the page's edit entry and
+// save path call it through the full-definition host seam.
+pub(crate) mod workflow_draft_convert;
+// T223: the panel guards file's own surface — the guards, the result read
+// and the tab label (the page's tab strip and the enum's method delegate).
+pub(crate) mod workflow_panel_guards;
+// T244: the yaml lint pass — the yaml editor (T200) mounts its gutter over
+// these diagnostics.
+pub(crate) mod yaml_lint;
+// T265: the yaml syntax highlighting — the yaml editor (T200) mounts it
+// over the document surface.
+pub(crate) mod yaml_mode;
+// T200: the yaml editor's chrome — the document surface with the yaml
+// highlighting, the line-number and lint gutters (the page's edit pane is
+// its production consumer).
+pub(crate) mod workflow_yaml_editor;
 
 // The family's re-exported view models (the page's own helpers ride through
 // `workflow_page::*`; the page reaches the action bar, the result panel and

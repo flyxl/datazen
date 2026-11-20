@@ -4,6 +4,12 @@
 //! interface can run before the desktop and HTTP adapters exist.
 
 mod ai_memory_correction;
+// T228: the memory-settings normalizers and the message-block parser —
+// pure functions over the persistence JSON and chat markdown.
+mod ai_memory_settings;
+// T228: the fenced-block splitter and the SQL probe.
+mod ai_message_blocks;
+mod ai_memory_patterns;
 mod ai_sessions;
 mod ai_store_types;
 mod ai_streaming;
@@ -30,6 +36,14 @@ mod relative_time;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
 mod tabs;
+// `pub mod` — the second public module: the T211 types aggregate (the
+// `types/index.ts` port) is the family's ONE import surface, so its module
+// path `datazen_ui_api::types::…` is the Rust twin of React's `'../types'`
+// import path. Its own re-export surface mirrors the React file's export
+// list exactly; the new vocabulary also rides the crate root through the
+// `pub use types::{…}` block below, the family convention (see the module's
+// docs for the full ownership map and the surface law).
+pub mod types;
 
 use std::collections::HashMap;
 
@@ -42,6 +56,18 @@ use datazen_driver_api::{ConnectionConfig as DriverConnectionConfig, SslMode as 
 pub use ai_memory_correction::{
     AiMemoryCommands, MemoryCorrectionSubmission, SchemaStaleSubmission,
     mark_stale_for_schema_drops, submit_memory_correction_if_needed,
+};
+pub use ai_memory_patterns::{
+    HistorySort, MemoryPatternCommands, MemoryPatternExtractionInput, MemoryPatternScheduler,
+    QueryHistoryPage, QueryHistoryPageParams, SubmitDecision, extract_memory_patterns_if_needed,
+    extract_once, MEMORY_PATTERN_MIN_OCCURRENCES, MEMORY_PATTERN_WINDOW_DAYS,
+};
+// T228's two lib halves ride the crate root the family way.
+pub use ai_memory_settings::{
+    normalize_ai_settings_config, normalize_memory_settings, memory_mode_for,
+};
+pub use ai_message_blocks::{
+    CodeBlockSegment, MessageSegment, TextSegment, is_sql_code_block, parse_message_segments,
 };
 pub use ai_sessions::{
     ActiveConnectionEntry, ActiveConnections, AiSessionBackend, AiSessionStore, ExportFormat,
@@ -184,6 +210,35 @@ pub use sql_path_prefix::{
 };
 pub use sql_schema_drop_targets::{SqlSchemaDropTarget, parse_schema_drop_targets};
 pub use tabs::{Tab, TabKind, Tabs};
+// The T211 types aggregate: the members React's `types/index.ts` declares or
+// re-exports that no earlier family module had already landed at the root
+// (every already-rooted sibling name — the connection/context/filter/
+// keyset/ai blocks above — the aggregate re-exports from `types` without
+// redefining, so they appear here exactly once; `ResultProvenance` and
+// `SessionHandle` root via the `metadata` block above, so the aggregate
+// re-exports them from `types::metadata` without a second root import). The backend-client legs
+// React imports without re-exporting (`UserPreferences`,
+// `ExecutionSettings`, `StoredValuePresentationSettings`) stay reachable
+// only inside `types::client_settings`/`types::value_presentation` — the
+// aggregate surface mirrors React's own import-only reachability.
+pub use types::{
+    AppSettings, ChangedColumnDiff, CheckConstraintDiffEntry, ColumnDiffEntry, ColumnInfo,
+    CommandAccessLevel, CommandCategory, Counter, DefaultTableSort, DriverCommandDefinition,
+    DriverCommandMetadata, DriverSaveDialogSpec, ErrorHandlingConfig, ErrorHandlingStrategy,
+    FavoriteQuery, GridDensity, HistoryEntry, HistoryListItem, Id, KeyDetail, KeyEntry,
+    KeyScanResult, LogLevel, McpApprovalDecision, McpApprovalRequest, McpAuditDecision,
+    McpAuditRecord, McpHttpTransport, McpHttpStatus, McpPermissionMode, MergeSource,
+    MultiQueryResult, OnboardingState, QueryResult, QueryStreamEvent, ResultCompleteness,
+    RuntimeResultBinding, SessionContext, SessionContextConfidence,
+    SortCondition, SqlExecutionStrategy, SqlFormatOptions, StatementResult,
+    SyncObjectKind, TableCompareStatus, TableComparison, TableDataResult, TableOptionsDiff,
+    TableOptionsSnapshot, TableSchemaDiff, Timestamp, TransactionState, TransformColumn,
+    TunnelSource, TunnelUsage, WritableMapping, WorkflowBlock, WorkflowBlockRetry,
+    WorkflowBlockType, WorkflowDefinition, WorkflowExecuteRequest, WorkflowIdRequest,
+    WorkflowOutput, WorkflowRunGetRequest, WorkflowRunListItem, WorkflowRunRecord,
+    WorkflowRunsListRequest, WorkflowSaveRequest, WorkflowSchedule, WorkflowStep,
+    WorkflowStepType, WorkflowVisibility, WorkflowYamlSaveRequest, is_valid_mcp_server_id,
+};
 
 /// One foreign key: this table's columns (a compound key stays together), the
 /// target table and its columns.

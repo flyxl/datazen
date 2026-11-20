@@ -43,6 +43,45 @@ pub(crate) fn code_palette(dark: bool) -> CodePalette {
     }
 }
 
+/// Syntax-highlighting colors for the workflow YAML editor (T265's port of
+/// `yamlMode.ts`'s `--cm-*` token mapping). The four tags the React file
+/// shares with the SQL palette reuse those values (comment/propertyName/
+/// string/number ride `--cm-*` twins of the same hues); the three it adds —
+/// atom literals (`true`/`null`…, React `--cm-operator`), punctuation
+/// (flow markers and `${param}` refs, React `--cm-punctuation`) and the
+/// foreground ink — stay explicit literals here under the same rule: kit
+/// has no dedicated syntax tokens.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct YamlPalette {
+    pub comment: Color,
+    pub keyword: Color,
+    pub string: Color,
+    pub number: Color,
+    pub atom: Color,
+    pub punctuation: Color,
+    pub foreground: Color,
+}
+
+pub(crate) fn yaml_palette(dark: bool, foreground: Color) -> YamlPalette {
+    let code = code_palette(dark);
+    let (atom, punctuation) = if dark {
+        // kit 无对应 token: yaml atom literal (React --cm-operator)
+        (rune::oklch(0.74, 0.11, 70.0), rune::oklch(0.66, 0.02, 250.0))
+    } else {
+        // kit 无对应 token: yaml atom literal (React --cm-operator)
+        (rune::oklch(0.50, 0.13, 70.0), rune::oklch(0.45, 0.03, 250.0))
+    };
+    YamlPalette {
+        comment: code.comment,
+        keyword: code.keyword,
+        string: code.string,
+        number: code.number,
+        atom,
+        punctuation,
+        foreground,
+    }
+}
+
 /// Data-grid chrome and cell background colors.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct GridPalette {

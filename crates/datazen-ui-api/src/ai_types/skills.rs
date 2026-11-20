@@ -1,12 +1,13 @@
-//! Skills settings and skill listings — React `types/ai.ts` lines 85–116.
-//!
-//! `lib/aiSkills.ts` (tasklist T230) is the behavior half (directory
-//! scanning, `normalizeLoadedSkills`); this file carries only the type
-//! contracts and the `defaultAiSkillsSettings` constant.
+//! Skills settings and skill listings — React `types/ai.ts` lines 85–116,
+//! plus the two pure normalizers of `lib/aiSkills.ts` (T228's dependency
+//! leg, ported with it: the directory-scanning half of that file stays with
+//! the host-side port that owns the filesystem).
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+
+use super::chat::AiLoadedSkill;
 
 /// React `AiSkillsSettings`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -90,8 +91,144 @@ pub struct AiSkillContent {
     pub metadata: BTreeMap<String, String>,
 }
 
+
+/// React `normalizeAiSkillsSettings` — fill fields omitted by configs
+/// written before T17: the defaults carry, the booleans only trust `true`,
+/// `customDir` only a string, and `selected` keeps its first occurrence of
+/// each string (a `new Set` over the string filter — duplicate ids and
+/// non-string junk die).
+pub fn normalize_ai_skills_settings(skills: Option<&serde_json::Value>) -> AiSkillsSettings {
+    let mut out = DEFAULT_AI_SKILLS_SETTINGS;
+    let Some(obj) = skills.and_then(serde_json::Value::as_object) else {
+        return out;
+    };
+    out.enabled = obj.get("enabled") == Some(&serde_json::Value::Bool(true));
+    out.auto_use = obj.get("autoUse") == Some(&serde_json::Value::Bool(true));
+    out.custom_dir = match obj.get("customDir") {
+        Some(serde_json::Value::String(dir)) => Some(dir.clone()),
+        _ => None,
+    };
+    out.selected = match obj.get("selected") {
+        Some(serde_json::Value::Array(items)) => {
+            let mut seen = Vec::new();
+            for item in items {
+                if let serde_json::Value::String(id) = item {
+                    if !seen.contains(id) {
+                        seen.push(id.clone());
+                    }
+                }
+            }
+            seen
+        }
+        _ => Vec::new(),
+    };
+    out
+}
+
+/// React `normalizeLoadedSkills` — read session metadata written by this
+/// version or an older one: an array of entries keeps the ones with a
+/// non-blank `name`, filling `id`/`source`/`loadedAt` legs that are absent
+/// or not strings (`loadedAt`'s `new Date().toISOString()` default takes the
+/// caller-supplied now — this crate is wasm-pure with no clock of its own,
+/// the `MetadataClock` ruling).
+pub fn normalize_loaded_skills(value: &serde_json::Value, now_iso: &str) -> Vec<AiLoadedSkill> {
+    let Some(entries) = value.as_array() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for entry in entries {
+        let Some(record) = entry.as_object() else {
+            continue;
+        };
+        let name = match record.get("name") {
+            Some(serde_json::Value::String(name)) if !name.trim().is_empty() => name.clone(),
+            _ => continue,
+        };
+        let string_leg = |key: &str| -> Option<String> {
+            match record.get(key) {
+                Some(serde_json::Value::String(value)) => Some(value.clone()),
+                _ => None,
+            }
+        };
+        let loaded_at = record
+            .get("loadedAt")
+            .and_then(|value| value.as_str())
+            .map(str::to_owned)
+            .unwrap_or_else(|| now_iso.to_owned());
+        out.push(AiLoadedSkill {
+            id: string_leg("id"),
+            name,
+            source: string_leg("source"),
+            loaded_at,
+        });
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    /// The React suite (`__tests__/aiSkills.test.ts`) — T228's dependency
+    /// leg carries this file's two functions, so its suite ports here.
+    #[test]
+    fn defaults_and_validates_selected_stable_ids() {
+        assert_eq!(normalize_ai_skills_settings(None).selected, Vec::<String>::new());
+        let stored = serde_json::json!({
+            "enabled": true,
+            "customDir": null,
+            "autoUse": false,
+            "selected": ["user:one", "user:one", 3],
+        });
+        let normalized = normalize_ai_skills_settings(Some(&stored));
+        assert_eq!(normalized.selected, vec!["user:one".to_owned()]);
+        assert!(normalized.enabled);
+        assert!(!normalized.auto_use);
+        assert_eq!(normalized.custom_dir, None);
+    }
+
+    #[test]
+    fn keeps_skill_ids_when_restoring_a_persisted_session() {
+        let stored = serde_json::json!([
+            { "id": "user:one", "name": "one", "source": "user", "loadedAt": "2026-01-01T00:00:00Z" },
+            { "name": "legacy", "loadedAt": "2026-01-01T00:00:00Z" },
+        ]);
+        let loaded = normalize_loaded_skills(&stored, "2026-06-01T00:00:00Z");
+        assert_eq!(
+            loaded,
+            vec![
+                AiLoadedSkill {
+                    id: Some("user:one".into()),
+                    name: "one".into(),
+                    source: Some("user".into()),
+                    loaded_at: "2026-01-01T00:00:00Z".into(),
+                },
+                AiLoadedSkill {
+                    id: None,
+                    name: "legacy".into(),
+                    source: None,
+                    loaded_at: "2026-01-01T00:00:00Z".into(),
+                },
+            ]
+        );
+    }
+
+    /// Beyond the React suite — the blank-name rejection and the
+    /// now-iso default leg.
+    #[test]
+    fn a_blank_name_dies_and_the_now_leg_backfills_loadedat() {
+        let stored = serde_json::json!([
+            { "name": "  " },
+            { "id": 5, "name": "keep" },
+            "junk",
+        ]);
+        let loaded = normalize_loaded_skills(&stored, "2026-06-01T00:00:00Z");
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].name, "keep");
+        assert_eq!(loaded[0].id, None, "a non-string id dies to None");
+        assert_eq!(loaded[0].loaded_at, "2026-06-01T00:00:00Z");
+    }
+
     use super::*;
 
     fn decode<T: serde::de::DeserializeOwned>(wire: serde_json::Value) -> T {
