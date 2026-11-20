@@ -1046,6 +1046,15 @@ mod ui_store;
 // T471 independent audit: toggle storms with ordered writes, stale stored
 // values, fullscreen interleavings, storage handoff round-trips.
 mod ui_store_audit;
+
+// T405: the dirty-cell words (null/empty words, JSON serialisation, the
+// expression marker, tooltip and aria labels).
+mod dirty_cell_text;
+// T405: the foreign-key jump wording (single-column, composite, resolving).
+mod fk_cell_text;
+// T405: the one-open-editor registry (registration, replacement, the
+// identity-guarded unregister, the commit verdict).
+mod active_editor;
 // T293: the tab-closed notification (panelCloseNotifier).
 mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the
