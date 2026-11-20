@@ -14,12 +14,14 @@ pub(crate) mod document_connection_view;
 pub(crate) mod export_dialog;
 pub(crate) mod ddl_view;
 pub(crate) mod er;
+pub(crate) mod foreign_keys_view;
 pub(crate) mod create_database_dialog;
 pub(crate) mod create_schema_dialog;
 pub(crate) mod create_user_dialog;
 pub(crate) mod content_view_dialogs;
 pub(crate) mod content_view_drawers;
 pub(crate) mod execute_sql_file_dialog;
+pub(crate) mod home;
 
 mod connections;
 mod connections_home;

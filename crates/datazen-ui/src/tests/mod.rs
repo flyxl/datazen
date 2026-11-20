@@ -33,6 +33,12 @@ mod er_node_audit;
 mod er_diagram_view;
 // T372 independent audit: collapse seeding, zoom clamps, pins and counts.
 mod er_diagram_view_audit;
+// T418: the standalone HomeHero + McpPromoBar ports (keys, counts, real copy
+// wake deadline and two-window/two-theme geometry).
+mod home_hero_promo;
+// T418 independent audit: host command copy, re-time, keyed marker, badge cap,
+// exact 2000ms wake, visible-rect geometry and exact copy locale keys.
+mod home_hero_promo_audit;
 
 // T004: the column-statistics dialog's four branches, dismissal and bounds.
 mod column_stats_audit;
@@ -548,6 +554,10 @@ mod batch_export_audit;
 // T016 fix retest: independent D1/D2 verification.
 mod batch_export_retest;
 
+// T409: ConnectionCardList port (cards, sorting/filter, paging, host ports, geometry).
+mod connection_card_list;
+// T409 independent audit: engine chip, connecting button, keyboard, filter, geometry.
+mod card_list_audit;
 // T144: the React ConnectionWorkspaceHome port (hero counts, card keys,
 // filter, MCP copy feedback with a real wake, KV-slot takeover, geometry).
 mod connection_workspace_home;
@@ -997,6 +1007,10 @@ mod ddl_view;
 // T322 independent audit: exact 2000ms wake, copied deadline, visible-rect
 // geometry and a whitespace-only DDL probe.
 mod ddl_view_audit;
+// T400: ForeignKeysView port (states, FK rows/chips, navigation, geometry).
+mod foreign_keys_view;
+// T400 independent audit: callback-free composition, header titles, dense rows.
+mod foreign_keys_view_audit;
 
 
 // T136: the log-scale tooltip port (the __orig__ formatter arms, the JS
