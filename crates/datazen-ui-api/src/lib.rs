@@ -4,6 +4,11 @@
 //! interface can run before the desktop and HTTP adapters exist.
 
 mod ai_memory_correction;
+// T228: the memory-settings normalizers and the message-block parser —
+// pure functions over the persistence JSON and chat markdown.
+mod ai_memory_settings;
+// T228: the fenced-block splitter and the SQL probe.
+mod ai_message_blocks;
 mod ai_memory_patterns;
 mod ai_sessions;
 mod ai_store_types;
@@ -56,6 +61,13 @@ pub use ai_memory_patterns::{
     HistorySort, MemoryPatternCommands, MemoryPatternExtractionInput, MemoryPatternScheduler,
     QueryHistoryPage, QueryHistoryPageParams, SubmitDecision, extract_memory_patterns_if_needed,
     extract_once, MEMORY_PATTERN_MIN_OCCURRENCES, MEMORY_PATTERN_WINDOW_DAYS,
+};
+// T228's two lib halves ride the crate root the family way.
+pub use ai_memory_settings::{
+    normalize_ai_settings_config, normalize_memory_settings, memory_mode_for,
+};
+pub use ai_message_blocks::{
+    CodeBlockSegment, MessageSegment, TextSegment, is_sql_code_block, parse_message_segments,
 };
 pub use ai_sessions::{
     ActiveConnectionEntry, ActiveConnections, AiSessionBackend, AiSessionStore, ExportFormat,
