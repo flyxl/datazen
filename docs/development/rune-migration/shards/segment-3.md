@@ -169,4 +169,4 @@
 - [ ] T491 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncSelectionState.ts
 - [ ] T494 · windows/data-sync · 0.30d · windows/data-sync/useDataSyncWizardNavigation.ts
 - [ ] T497 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncWizardState.ts
-- [ ] T500 · windows/data-sync · 0.60d · windows/data-sync/utils.ts windows/data-transfer/transferLimitationKeys.ts
+- [x] T500 · windows/data-sync · 0.60d · windows/data-sync/utils.ts windows/data-transfer/transferLimitationKeys.ts
