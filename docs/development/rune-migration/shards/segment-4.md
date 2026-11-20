@@ -78,7 +78,7 @@
 - [x] T233 · hooks · 0.30d · hooks/useCompactToolbar.ts
 - [x] T237 · commands · 0.90d · commands/dashboard.ts
 - [x] T242 · components/sql-editor · 0.90d · components/sql-editor/metadata/findRelation.ts components/sql-editor/metadata/metadataCache.ts components/sql-editor/metadata/types.ts
-- [ ] T244 · windows/settings · 0.90d · windows/settings/DataCleanupSection.tsx
+- [x] T244 · windows/settings · 0.90d · windows/settings/DataCleanupSection.tsx
 - [x] T247 · windows/onboarding · 1.00d · windows/onboarding/steps/WelcomeStep.tsx windows/onboarding/WizardFooter.tsx
 - [ ] T250 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffSelectionSteps.tsx
 - [x] T253 · lib/valuePresentation · 0.80d · lib/valuePresentation/timestampContribution.ts
