@@ -614,6 +614,7 @@ mod ai_chat_panel_audit;
 // T009-S2: AiChatPanel ChatBubble (tool/reasoning/content/memory/remember/streaming/cancelled/questions).
 mod ai_chat_panel_bubble;
 mod ai_message_content;
+mod ai_message_content_audit;
 // T009-S2 independent audit: fresh vectors, dual-channel geometry, settle_all reproduction.
 mod ai_chat_panel_bubble_audit;
 // T009-S3: AiChatPanel header (tabs, migration banners, agent-mode row + template select, profile row, share-editor row).
