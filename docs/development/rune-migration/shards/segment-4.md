@@ -148,7 +148,7 @@
 - [ ] T413 · hooks · 0.90d · hooks/useSettingsSync.ts
 - [ ] T415 · commands · 0.90d · commands/transfer.ts
 - [ ] T417 · windows/settings · 0.50d · windows/settings/SnippetEditDialog.tsx
-- [ ] T420 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffUnifiedObjects.ts
+- [x] T420 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffUnifiedObjects.ts
 - [x] T422 · hooks · 0.30d · hooks/useTableForeignKeys.ts
 - [ ] T424 · commands · 0.90d · commands/transferJobs.ts
 - [ ] T426 · windows/settings · 0.90d · windows/settings/SqlSnippetsCard.tsx
