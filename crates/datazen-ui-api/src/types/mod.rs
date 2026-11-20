@@ -105,6 +105,10 @@ mod table_settings;
 // twin of React's own import path).
 pub mod theme;
 mod value_presentation;
+// T295: the wapp host contract mirror — off the aggregate's re-export
+// surface the same way (the wapps views import `'../types/wapp'`
+// directly).
+pub mod wapp;
 mod workflow;
 
 // ── Re-export group: `types/connection.ts`'s facade vocabulary (T128) ───────
