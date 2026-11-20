@@ -443,7 +443,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T424 · commands · 0.90d · commands/transferJobs.ts
 - [ ] T425 · components/DataTable · 0.90d · components/DataTable/useDataTableClipboardDom.ts
 - [ ] T426 · windows/settings · 0.90d · windows/settings/SqlSnippetsCard.tsx
-- [ ] T427 · windows/connection · 0.50d · windows/connection/home/RecentQueriesList.tsx
+- [x] T427 · windows/connection · 0.50d · windows/connection/home/RecentQueriesList.tsx
 - [ ] T428 · windows/data-sync · 0.90d · windows/data-sync/selectionScope.ts
 - [ ] T429 · lib · 0.30d · lib/createDismissPrefs.ts
 - [ ] T430 · hooks · 0.90d · hooks/useThemeSync.ts
@@ -458,7 +458,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T439 · stores · 0.30d · stores/schemaStoreHelpers.ts
 - [ ] T440 · commands · 0.90d · commands/wapps.ts
 - [ ] T441 · windows/settings · 0.90d · windows/settings/TunnelDeleteDialog.tsx
-- [ ] T442 · windows/connection · 3.70d · windows/connection/ImportDialog.tsx · split
+- [x] T442 · windows/connection · 3.70d · windows/connection/ImportDialog.tsx · split
 - [ ] T443 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncEndpoints.ts · split
 - [ ] T444 · lib · 0.80d · lib/dangerousSql.ts
 - [ ] T445 · hooks · 0.90d · hooks/useValuePresentation.ts
