@@ -33,6 +33,10 @@ mod er_table_node;
 // T361 independent audit: rendered height vs packed metric, dot placement,
 // select/drag ports and wide-node geometry.
 mod er_node_audit;
+// T372: ErDiagramView port (schema forwarding, exports, canvas keys, geometry).
+mod er_diagram_view;
+// T372 independent audit: collapse seeding, zoom clamps, pins and counts.
+mod er_diagram_view_audit;
 
 // T004: the column-statistics dialog's four branches, dismissal and bounds.
 mod column_stats_audit;
