@@ -50,6 +50,9 @@ mod global_object_search;
 mod tree_status_dot;
 // T489: the panel tab strip (React keys, roving focus, host actions, 48pt header).
 mod panel_tab_bar;
+// T489 independent audit: context menu, label edges, active underline, locale
+// tablist label and visible-rect geometry of the pinned strip.
+mod panel_tab_bar_audit;
 // T475 independent audit: help tooltip, full-round radius, exact parsing and
 // visible-rect containment of every drawn pip.
 mod tree_status_dot_audit;
