@@ -1043,6 +1043,9 @@ mod content_bar_audit;
 // T471: the shell layout store (seeds, persisted sidebar mode, dialog
 // slot, platform-probed fullscreen sync).
 mod ui_store;
+// T471 independent audit: toggle storms with ordered writes, stale stored
+// values, fullscreen interleavings, storage handoff round-trips.
+mod ui_store_audit;
 // T293: the tab-closed notification (panelCloseNotifier).
 mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the
