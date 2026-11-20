@@ -52,6 +52,9 @@ mod sql_editor_extensions_audit;
 // T172: the AI settings section shell (context dir, models block,
 // strict-egress safeguard), audited against the React JSX.
 mod ai_settings_section_audit;
+// T185: the useColumnResize hook (DB-12 by-name widths), audited against
+// computeColumnWidths.test.ts + useColumnResize.persist.test.tsx.
+mod use_column_resize_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;
