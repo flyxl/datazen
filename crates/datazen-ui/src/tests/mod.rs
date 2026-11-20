@@ -825,6 +825,11 @@ mod table_data_dirty_index;
 // values, anchor under ambiguity, expressions, the delete-mark flip).
 mod table_data_dirty_index_audit;
 
+// T158: the new-row draft transitions + the enum-candidate cache
+// (draft id minting, read helpers, every transition's effect and no-op
+// branch, the plan-trio reset, the pending_changes invariant).
+mod table_data_draft_inserts;
+
 // T129: the platform port contracts (updater wire types, window routing,
 // the exporter port, the §7.4 binding registry).
 mod platform_contracts;
