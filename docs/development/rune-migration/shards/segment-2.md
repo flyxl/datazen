@@ -30,7 +30,7 @@
 - [x] T326 · lib · 2.00d · lib/batchExportJob.ts · split
 - [x] T340 · lib · 0.90d · lib/bootstrapIconResolver.ts lib/buildConnectionUrl.ts lib/buildEditorSchema.ts
 - [x] T352 · lib · 0.60d · lib/cellEditorCandidates.ts lib/chart/colors.ts
-- [ ] T364 · lib · 0.80d · lib/commandSchema.ts lib/connectionClipboard.ts
+- [x] T364 · lib · 0.80d · lib/commandSchema.ts lib/connectionClipboard.ts
 - [x] T375 · lib · 0.30d · lib/connectionConfig.ts
 - [ ] T385 · lib · 0.90d · lib/connectionEditor.ts
 - [ ] T394 · lib · 0.80d · lib/connectionFormModel.ts lib/connectionGroups.ts
