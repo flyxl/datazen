@@ -496,16 +496,16 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T477 · lib · 0.90d · lib/driverCapabilities.ts
 - [ ] T478 · stores · 0.90d · stores/updateReminderStore.ts
 - [ ] T479 · windows/settings · 1.30d · windows/settings/ai/useModelProfileDraft.ts · split
-- [ ] T480 · windows/connection · 0.90d · windows/connection/ObjectBrowser.tsx
+- [x] T480 · windows/connection · 0.90d · windows/connection/ObjectBrowser.tsx
 - [ ] T481 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncRefs.ts
 - [ ] T482 · lib · 0.60d · lib/driverCommandIds.ts lib/endpointIdentity.ts
 - [ ] T483 · stores · 0.90d · stores/wappStore.ts
 - [ ] T484 · windows/settings · 0.90d · windows/settings/settingsSections.ts windows/wapps/permissionLabels.ts windows/workflow/draftBridge.ts
-- [ ] T485 · windows/connection · 1.30d · windows/connection/PanelContentRenderer.tsx · split
+- [x] T485 · windows/connection · 1.30d · windows/connection/PanelContentRenderer.tsx · split
 - [ ] T486 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncRunState.ts
 - [ ] T487 · lib · 0.80d · lib/ensureNamespace.ts lib/erNodeContextMenu.ts
 - [ ] T488 · stores · 0.60d · stores/workspacePanelStateStore.ts stores/workspaceTabsStore.ts
-- [ ] T489 · windows/connection · 0.90d · windows/connection/PanelTabBar.tsx
+- [x] T489 · windows/connection · 0.90d · windows/connection/PanelTabBar.tsx
 - [ ] T490 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncSelection.ts · split
 - [ ] T491 · lib · 0.60d · lib/errors.ts lib/exportCapability.ts
 - [ ] T492 · windows/connection · 0.30d · windows/connection/PendingPlanDialog.tsx

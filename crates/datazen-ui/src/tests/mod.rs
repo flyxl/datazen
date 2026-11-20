@@ -44,6 +44,11 @@ mod import_dialog;
 mod global_object_search;
 // T475: the navigator status pip (colour/aria mapping, idle no-op, geometry).
 mod tree_status_dot;
+// T489: the panel tab strip (React keys, roving focus, host actions, 48pt header).
+mod panel_tab_bar;
+// T489 independent audit: context menu, label edges, active underline, locale
+// tablist label and visible-rect geometry of the pinned strip.
+mod panel_tab_bar_audit;
 // T475 independent audit: help tooltip, full-round radius, exact parsing and
 // visible-rect containment of every drawn pip.
 mod tree_status_dot_audit;
@@ -673,6 +678,8 @@ mod value_search_audit;
 mod navigator_tree_row;
 // T470 independent audit: Space activation, KV click, context menus, chevron isolation, ARIA label, rect geometry.
 mod navigator_tree_row_audit;
+// T485: PanelContentRenderer port (slot routing, KV relay, states, actions, geometry).
+mod panel_content_renderer;
 // T144: the React ConnectionWorkspaceHome port (hero counts, card keys,
 // filter, MCP copy feedback with a real wake, KV-slot takeover, geometry).
 mod connection_workspace_home;
@@ -1179,6 +1186,10 @@ mod foreign_keys_view_audit;
 mod indexes_view;
 // T448 independent audit: dialect method sets, name helpers and load fallback.
 mod indexes_view_audit;
+// T480: ObjectBrowser port (tabs, rows/identity, context menus, DDL flow, states, geometry).
+mod object_browser;
+// T480 independent audit: DDL/execute answers, running gate and menu teardown.
+mod object_browser_audit;
 
 
 // T136: the log-scale tooltip port (the __orig__ formatter arms, the JS
