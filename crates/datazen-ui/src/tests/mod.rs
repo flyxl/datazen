@@ -1066,6 +1066,11 @@ mod workspace_tabs_store;
 // T486: the per-mode view-state snapshots (save/restore, dashboard-only
 // clear, full clear).
 mod workspace_panel_state_store;
+
+// T486 independent audits: boundary closes, closeByWapp fallbacks,
+// interleaved mode-switching sessions.
+mod workspace_tabs_store_audit;
+mod workspace_panel_state_store_audit;
 // T293: the tab-closed notification (panelCloseNotifier).
 mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the
