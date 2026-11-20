@@ -451,7 +451,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T432 · commands · 0.90d · commands/tunnel.ts
 - [ ] T433 · components/DataTable · 2.40d · components/DataTable/useDataTableContextMenu.ts · split
 - [ ] T434 · windows/settings · 0.90d · windows/settings/TableDataSettingsSection.tsx
-- [ ] T435 · windows/connection · 0.90d · windows/connection/home/ShortcutFooter.tsx
+- [x] T435 · windows/connection · 0.90d · windows/connection/home/ShortcutFooter.tsx
 - [ ] T436 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncComparison.ts · split
 - [ ] T437 · lib · 0.90d · lib/crossWindowBus.ts
 - [ ] T438 · hooks · 1.30d · hooks/useTransferJobRun.ts · split
