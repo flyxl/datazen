@@ -61,7 +61,7 @@
 - [x] T185 · hooks · 0.50d · hooks/useColumnResize.ts
 - [x] T190 · commands · 0.90d · commands/connection.ts
 - [x] T196 · components/sql-editor · 2.00d · components/sql-editor/fold/foldCompartment.ts · split
-- [ ] T198 · windows/settings · 0.90d · windows/settings/AiToolBridgeSection.tsx
+- [x] T198 · windows/settings · 0.90d · windows/settings/AiToolBridgeSection.tsx
 - [x] T200 · windows/workspace · 0.90d · windows/workspace/WorkspaceView.tsx
 - [x] T201 · windows/dashboard · 1.30d · windows/dashboard/WidgetEditorDrawer.tsx · split
 - [x] T203 · windows/onboarding · 0.90d · windows/onboarding/steps/ManualConnectionStep.tsx
