@@ -61,7 +61,7 @@
 - [x] T292 · lib/session · 0.90d · lib/session/tableSession.ts
 - [x] T300 · components/connection · 0.80d · components/connection/WebSocketTunnelFields.tsx components/chart/AxisConfigurator.tsx
 - [x] T305 · windows/connection · 0.90d · windows/connection/DatabaseObjectView.tsx
-- [ ] T311 · lib/session · 0.90d · lib/session/targetCommand.ts
+- [x] T311 · lib/session · 0.90d · lib/session/targetCommand.ts
 - [x] T318 · components/connection · 0.60d · components/connection/tunnelFieldContracts.ts components/connection/useConnectionClipboardFill.ts
 - [x] T322 · windows/connection · 0.50d · windows/connection/DDLView.tsx
 - [ ] T327 · lib/session · 0.60d · lib/session/targetCommandPhase.ts lib/settingsExport.ts

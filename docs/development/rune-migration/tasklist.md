@@ -327,7 +327,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T308 · windows/data-sync · 1.30d · windows/data-sync/DiffDetail.tsx · split
 - [ ] T309 · windows/schema-diff · 1.30d · windows/schema-diff/SchemaDiffWindow.tsx · split
 - [ ] T310 · lib · 0.80d · lib/backupProgress.ts lib/base64.ts
-- [ ] T311 · lib/session · 0.90d · lib/session/targetCommand.ts
+- [x] T311 · lib/session · 0.90d · lib/session/targetCommand.ts
 - [ ] T312 · lib/valuePresentation · 0.30d · lib/valuePresentation/valuePresentationSave.ts
 - [ ] T313 · hooks · 0.90d · hooks/useGridKeyboardNav.ts
 - [ ] T314 · stores · 0.90d · stores/panelExecCleanup.ts
