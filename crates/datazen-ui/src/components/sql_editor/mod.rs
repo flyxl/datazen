@@ -78,6 +78,11 @@ pub(crate) mod multi_cursor_pointer;
 /// injected — T615's sqlFormat).
 pub(crate) mod format_editor_document;
 
+/// `components/sql-editor/snippets/` (T370+): the SQL snippet
+/// template system — the `SqlSnippetItem` contract first; the builtin
+/// library (T347) and the completion source (T359) follow.
+pub(crate) mod snippets;
+
 pub(crate) mod completion;
 #[allow(unused_imports)] // consumers land with the S2/S3 slices
 pub(crate) use completion::{
