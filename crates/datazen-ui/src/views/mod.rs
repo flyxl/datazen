@@ -26,6 +26,7 @@ mod connections_home;
 mod dashboards_workflows;
 mod modals;
 mod navigation;
+pub(crate) mod navigator;
 mod settings;
 mod structure;
 mod tools_ops;

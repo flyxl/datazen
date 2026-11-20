@@ -43,6 +43,9 @@ mod home_hero_promo;
 // T442: the ImportDialog wizard port (mapping plan, keys, host actions, slot
 // composition and two-window/two-theme geometry).
 mod import_dialog;
+// T460: GlobalObjectSearch + NavigatorDialogs ports (search journey, host
+// actions, confirm children and two-window/two-theme geometry).
+mod global_object_search;
 // T442 independent audit: running footer, Start action, sample, mapped pairs,
 // Select write-back and visible-rect geometry across all phases.
 mod import_dialog_audit;
