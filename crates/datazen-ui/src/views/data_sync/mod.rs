@@ -7,6 +7,7 @@
 //! | `DataSyncEndpointStep.tsx` | `data_sync_endpoint_step` | T114 |
 //! | `DataSyncJobStatusPanel.tsx` | `data_sync_job_status_panel` | T148 |
 //! | `RecordsetEditor.tsx` | `recordset_editor` (SyncRecordsetEditor) | T360 |
+//! | `useDataSyncFeedback.ts` | `use_data_sync_feedback` | T459 |
 
 pub(crate) mod data_sync_compare_step;
 pub(crate) mod data_sync_dialogs;
@@ -17,6 +18,8 @@ pub(crate) mod data_sync_options_step;
 pub(crate) mod options_bar;
 pub(crate) mod recordset_editor;
 pub(crate) mod sql_preview;
+pub(crate) mod use_data_sync_feedback;
+pub(crate) mod utils;
 
 #[allow(unused_imports)] // the Data Sync window track is the production consumer
 pub(crate) use data_sync_endpoint_step::{DataSyncEndpointStep, DataSyncEndpointStepVm, SyncProfile};
@@ -55,3 +58,6 @@ pub(crate) use sql_preview::{SqlPreview, SqlPreviewVm};
 
 #[allow(unused_imports)] // the Data Sync options step (T203) is the production consumer
 pub(crate) use options_bar::OptionsBar;
+
+#[allow(unused_imports)] // the Data Sync window track (T268) is the production consumer
+pub(crate) use use_data_sync_feedback::DataSyncFeedback;

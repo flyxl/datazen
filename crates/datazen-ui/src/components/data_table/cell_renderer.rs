@@ -400,7 +400,9 @@ pub(crate) fn plan(vm: &CellRendererVm, dark: bool) -> CellPlan {
 
 /// React's `String(value)` for a JSON value: arrays join their elements with
 /// commas (`Array.prototype.toString`), objects become `[object Object]`.
-fn js_string(value: &Value) -> String {
+/// Shared with the dirty-cell tooltip (T405), whose non-object branch is the
+/// same `String(value)`.
+pub(crate) fn js_string(value: &Value) -> String {
     match value {
         Value::Null => "null".to_owned(),
         Value::Bool(flag) => flag.to_string(),

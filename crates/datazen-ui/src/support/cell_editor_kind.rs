@@ -4,6 +4,11 @@
 //! This is a projection of [`CellType`]: the grid's editor control must agree
 //! with the colour it paints, so the decision is made once here rather than
 //! inline in the grid.
+//!
+//! The error half of the same TS file (`CellValueErrorReason`, the sentence
+//! vocabulary `cellValueErrorMessageKey` keys on) is mirrored below — it
+//! landed with the active-editor registry (T405), whose `commit()` returns
+//! one.
 #![allow(dead_code)] // consumers: T015 GridCell (which editor to open)
 
 use crate::support::cell_types::CellType;
@@ -191,5 +196,46 @@ mod tests {
         uuid.value_code_points = INLINE_TEXT_MAX_CODE_POINTS + 10;
         uuid.has_line_break = true;
         assert_eq!(resolve_cell_editor_kind(uuid), CellEditorKind::Text);
+    }
+}
+
+/// Why an input could not be turned into a write intent — the TS file's
+/// `CellValueErrorReason` union.
+///
+/// Every reason has its own sentence in the interface (05 §8); the editor
+/// shows it inline and the paste path reports it per cell. The spelling
+/// matches the React union member-for-member, so a wire or test that
+/// prints it can compare against the same strings.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CellValueErrorReason {
+    EmptyNotNull,
+    InvalidNumber,
+    InvalidInteger,
+    InvalidBoolean,
+    InvalidDate,
+    InvalidTime,
+    InvalidDateTime,
+    InvalidJson,
+    InvalidUuid,
+    TooLarge,
+    NotEditable,
+}
+
+impl CellValueErrorReason {
+    /// The React union's string member (`'emptyNotNull'`, …).
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::EmptyNotNull => "emptyNotNull",
+            Self::InvalidNumber => "invalidNumber",
+            Self::InvalidInteger => "invalidInteger",
+            Self::InvalidBoolean => "invalidBoolean",
+            Self::InvalidDate => "invalidDate",
+            Self::InvalidTime => "invalidTime",
+            Self::InvalidDateTime => "invalidDateTime",
+            Self::InvalidJson => "invalidJson",
+            Self::InvalidUuid => "invalidUuid",
+            Self::TooLarge => "tooLarge",
+            Self::NotEditable => "notEditable",
+        }
     }
 }

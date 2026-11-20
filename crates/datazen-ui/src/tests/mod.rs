@@ -1030,6 +1030,8 @@ mod ai_egress_notice;
 mod ai_egress_notice_audit;
 // T185: the filter-draft helpers (filterUtils).
 mod table_data_filter_utils;
+// T412: the schema-store metadata identity keys (schemaMetadataKeys.ts).
+mod schema_metadata_keys;
 // T210: grid-selection geometry and state transitions (DB-01).
 mod table_data_grid_selection;
 // T210 independent audit: fresh vectors (render order disagreeing with
@@ -1037,6 +1039,9 @@ mod table_data_grid_selection;
 mod table_data_grid_selection_audit;
 // T185 independent audit: fresh vectors for the filter-draft helpers.
 mod table_data_filter_utils_audit;
+// T412 independent audit: the key decoded back with serde_json and its
+// eight dimensions asserted one by one.
+mod schema_metadata_keys_audit;
 // T167: ConnectionShareDialogHost (state, callback wiring, keys, geometry).
 mod connection_share_host;
 // T167 independent audit: independent i18n formatter pin, exact 1500ms wake +
@@ -1048,6 +1053,43 @@ mod content_bar_ports;
 // T173 independent audit: preserved inner ER testid, React detail/AI titles,
 // KV slot branches and adversarial two-size two-theme geometry.
 mod content_bar_audit;
+
+// T471: the shell layout store (seeds, persisted sidebar mode, dialog
+// slot, platform-probed fullscreen sync).
+mod ui_store;
+// T471 independent audit: toggle storms with ordered writes, stale stored
+// values, fullscreen interleavings, storage handoff round-trips.
+mod ui_store_audit;
+
+// T405: the dirty-cell words (null/empty words, JSON serialisation, the
+// expression marker, tooltip and aria labels).
+mod dirty_cell_text;
+// T405: the foreign-key jump wording (single-column, composite, resolving).
+mod fk_cell_text;
+// T405: the one-open-editor registry (registration, replacement, the
+// identity-guarded unregister, the commit verdict).
+mod active_editor;
+// T405 independent audits: fresh vectors (nested JSON serialisation, edge
+// labels, replacement chains, verdict distinctness).
+mod dirty_cell_text_audit;
+mod fk_cell_text_audit;
+mod active_editor_audit;
+// T486: the workspace tabs store (stable key, idempotent open, the close
+// neighbor rule, closeByWapp).
+mod workspace_tabs_store;
+// T486: the per-mode view-state snapshots (save/restore, dashboard-only
+// clear, full clear).
+mod workspace_panel_state_store;
+
+// T486 independent audits: boundary closes, closeByWapp fallbacks,
+// interleaved mode-switching sessions.
+mod workspace_tabs_store_audit;
+mod workspace_panel_state_store_audit;
+// T500: the Data Sync utilities and the transfer limitation keys.
+mod data_sync_utils;
+// T500 independent audit: fresh vectors (sort order, branch picks, i18n
+// resolvability of the limitation keys).
+mod data_sync_utils_audit;
 // T293: the tab-closed notification (panelCloseNotifier).
 mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the
@@ -1184,6 +1226,14 @@ mod data_sync_endpoint_step;
 // T114 independent audit: fresh vectors (empty profile list, pre-selected
 // id, pre-held name text, the dismissal close path, narrow-window notice).
 mod data_sync_endpoint_step_audit;
+
+// T459: the Data Sync feedback state (four cells, plain-value setters,
+// close-keeps-message).
+mod use_data_sync_feedback;
+
+// T459 independent audit: interleaved writer sequences, two instances,
+// error round-trip across a progress reset.
+mod use_data_sync_feedback_audit;
 
 // T148: the Data Sync job status panel (loose Number() semantics, verdict
 // label branches, committed fallback chain, banner/list truthiness,

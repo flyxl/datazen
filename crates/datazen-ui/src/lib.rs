@@ -87,10 +87,16 @@ pub(crate) mod panel_close_notifier;
 pub(crate) mod query_run_request_store;
 // T421: the schema request tracker (schemaRequestTracker.ts).
 pub(crate) mod schema_request_tracker;
+pub(crate) mod schema_metadata_keys;
 mod search_state;
 mod schema_workflows_state;
 mod tools_state;
 mod workflow_page_state;
+// T471: the shell layout store (uiStore.ts).
+pub(crate) mod ui_store;
+// T486: the workspace tabs store and the per-mode view-state snapshots.
+pub(crate) mod workspace_tabs_store;
+pub(crate) mod workspace_panel_state_store;
 mod workspace_state;
 mod wapps_state;
 pub(crate) mod ui;

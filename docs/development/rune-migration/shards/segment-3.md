@@ -135,9 +135,9 @@
 - [ ] T396 · components/DataTable · 3.20d · components/DataTable/VirtualBody.tsx · split
 - [ ] T399 · windows/data-sync · 0.90d · windows/data-sync/compareReport.ts
 - [ ] T403 · stores · 0.80d · stores/schemaColumnBatcher.ts stores/schemaColumnLoader.ts
-- [ ] T405 · components/DataTable · 0.90d · components/DataTable/dirtyCellText.ts components/DataTable/editors/activeEditor.ts components/DataTable/fkCellText.ts
+- [x] T405 · components/DataTable · 0.90d · components/DataTable/dirtyCellText.ts components/DataTable/editors/activeEditor.ts components/DataTable/fkCellText.ts
 - [ ] T408 · windows/data-sync · 0.30d · windows/data-sync/dataSyncTypes.ts
-- [ ] T412 · stores · 0.90d · stores/schemaMetadataKeys.ts
+- [x] T412 · stores · 0.90d · stores/schemaMetadataKeys.ts
 - [ ] T414 · components/DataTable · 0.90d · components/DataTable/fkSelectorText.ts components/DataTable/gridClipboardBridge.ts components/DataTable/rowHeight.ts
 - [ ] T417 · windows/data-sync · 0.90d · windows/data-sync/mappingView.ts
 - [x] T421 · stores · 0.30d · stores/schemaRequestTracker.ts
@@ -153,20 +153,20 @@
 - [ ] T450 · stores · 0.30d · stores/schemaStoreState.ts
 - [ ] T453 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncExplain.ts
 - [ ] T456 · stores · 1.30d · stores/settingsStore.ts · split
-- [ ] T459 · windows/data-sync · 0.30d · windows/data-sync/useDataSyncFeedback.ts
+- [x] T459 · windows/data-sync · 0.30d · windows/data-sync/useDataSyncFeedback.ts
 - [ ] T461 · stores · 1.30d · stores/tableDataStore.ts · split
 - [ ] T464 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncJobLifecycle.ts
 - [ ] T466 · stores · 0.90d · stores/tunnelStore.ts
 - [ ] T469 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncOptions.ts
-- [ ] T471 · stores · 0.90d · stores/uiStore.ts
+- [x] T471 · stores · 0.90d · stores/uiStore.ts
 - [ ] T474 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncProfiles.ts · split
 - [ ] T476 · stores · 0.90d · stores/updateReminderStore.ts
 - [ ] T479 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncRefs.ts
 - [ ] T481 · stores · 0.90d · stores/wappStore.ts
 - [ ] T484 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncRunState.ts
-- [ ] T486 · stores · 0.60d · stores/workspacePanelStateStore.ts stores/workspaceTabsStore.ts
+- [x] T486 · stores · 0.60d · stores/workspacePanelStateStore.ts stores/workspaceTabsStore.ts
 - [ ] T488 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncSelection.ts · split
 - [ ] T491 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncSelectionState.ts
 - [ ] T494 · windows/data-sync · 0.30d · windows/data-sync/useDataSyncWizardNavigation.ts
 - [ ] T497 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncWizardState.ts
-- [ ] T500 · windows/data-sync · 0.60d · windows/data-sync/utils.ts windows/data-transfer/transferLimitationKeys.ts
+- [x] T500 · windows/data-sync · 0.60d · windows/data-sync/utils.ts windows/data-transfer/transferLimitationKeys.ts
