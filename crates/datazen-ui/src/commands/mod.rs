@@ -9,6 +9,8 @@
 //! own tasks.
 
 pub(crate) mod adb;
+/// T130: the artifact export command (one call, the two-arm receipt).
+pub(crate) mod artifact;
 // T377: the schema-diff commands shell (pure helpers, wire folding, the
 // job-observer bus and the submit→poll→resolve machine).
 pub(crate) mod schema_diff;
