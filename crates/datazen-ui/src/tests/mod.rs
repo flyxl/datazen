@@ -1071,6 +1071,8 @@ mod workspace_panel_state_store;
 // interleaved mode-switching sessions.
 mod workspace_tabs_store_audit;
 mod workspace_panel_state_store_audit;
+// T500: the Data Sync utilities and the transfer limitation keys.
+mod data_sync_utils;
 // T293: the tab-closed notification (panelCloseNotifier).
 mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the

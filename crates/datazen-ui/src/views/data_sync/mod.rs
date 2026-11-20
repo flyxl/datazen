@@ -19,6 +19,7 @@ pub(crate) mod options_bar;
 pub(crate) mod recordset_editor;
 pub(crate) mod sql_preview;
 pub(crate) mod use_data_sync_feedback;
+pub(crate) mod utils;
 
 #[allow(unused_imports)] // the Data Sync window track is the production consumer
 pub(crate) use data_sync_endpoint_step::{DataSyncEndpointStep, DataSyncEndpointStepVm, SyncProfile};
