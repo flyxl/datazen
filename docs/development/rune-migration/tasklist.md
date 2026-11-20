@@ -334,7 +334,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T315 · stores/tableData · 0.50d · stores/tableData/selectionActions.ts
 - [ ] T316 · commands · 0.90d · commands/history.ts
 - [ ] T317 · components/DataTable · 0.90d · components/DataTable/editors/EnumCellEditor.tsx components/DataTable/editors/JsonCellEditor.tsx components/DataTable/editors/LongTextCellEditor.tsx
-- [ ] T318 · components/connection · 0.60d · components/connection/tunnelFieldContracts.ts components/connection/useConnectionClipboardFill.ts
+- [x] T318 · components/connection · 0.60d · components/connection/tunnelFieldContracts.ts components/connection/useConnectionClipboardFill.ts
 - [ ] T319 · components/ai · 1.30d · components/ai/WorkflowChatPanel.tsx · split
 - [ ] T320 · components/sql-editor · 2.00d · components/sql-editor/paste/multipleSelections.ts · split
 - [ ] T321 · windows/settings · 0.90d · windows/settings/LanguagePacksCard.tsx
