@@ -830,6 +830,12 @@ mod table_data_dirty_index_audit;
 // branch, the plan-trio reset, the pending_changes invariant).
 mod table_data_draft_inserts;
 
+// T158 independent audit: base-36 boundaries, order authority under a
+// manual order, duplicate-id appends, self-duplication, sibling order
+// preservation, typed JSON writes, drafts surviving the reset, empty
+// enum-candidate list semantics.
+mod table_data_draft_inserts_audit;
+
 // T129: the platform port contracts (updater wire types, window routing,
 // the exporter port, the §7.4 binding registry).
 mod platform_contracts;
