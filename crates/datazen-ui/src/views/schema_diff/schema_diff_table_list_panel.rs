@@ -164,7 +164,7 @@ impl<'a, S: 'static> SchemaDiffTableListPanel<'a, S> {
         let active = self.selected_table == Some(name);
         // `tableHasDiff?.[name]` — absent map or absent entry is `undefined`
         // (no badge), Some(true) is the badge, Some(false) the hint.
-        let has_diff = Some(self.table_has_diff.and_then(|map| map.get(name)).copied().unwrap_or(true));
+        let has_diff = self.table_has_diff.and_then(|map| map.get(name)).copied();
 
         let mut row_el = row()
             .key(format!("schema-diff-table-row-{name}"))
@@ -179,7 +179,7 @@ impl<'a, S: 'static> SchemaDiffTableListPanel<'a, S> {
             .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
             .fill(if active {
                 // React `active && 'bg-surface-alt'`.
-                rune::Color::TRANSPARENT
+                k.c.layer_01
             } else {
                 rune::Color::TRANSPARENT
             });
@@ -190,7 +190,7 @@ impl<'a, S: 'static> SchemaDiffTableListPanel<'a, S> {
         if let Some(on_select) = &self.on_select {
             let on_select = Rc::clone(on_select);
             let name = name.to_owned();
-            row_el = row_el.on_press(move |s: &mut S| on_select(s, String::new()));
+            row_el = row_el.on_press(move |s: &mut S| on_select(s, name.clone()));
         }
 
         row_el = row_el.child(
@@ -211,7 +211,7 @@ impl<'a, S: 'static> SchemaDiffTableListPanel<'a, S> {
                     .pt(1.5)
                     .pb(1.5) // React px-1.5 py-0.5
                     .radius(3.0) // React rounded
-                    .fill(k.alpha(k.c.warning.fg, 0.10)), // bg-warning/15
+                    .fill(k.alpha(k.c.warning.fg, 0.15)), // bg-warning/15
             );
         } else if has_diff == Some(false) {
             row_el = row_el.child(

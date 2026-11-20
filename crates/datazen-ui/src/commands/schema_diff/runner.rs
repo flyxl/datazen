@@ -182,7 +182,9 @@ pub(crate) fn prepare_plan_request(params: &PreparePlanParamsVm) -> serde_json::
         map.insert("targetTableNames".to_owned(), json!(names));
     }
     if let Some(names) = &params.target_only_table_names {
-        map.insert("targetOnlyTableNames".to_owned(), json!(names));
+        if !names.is_empty() {
+            map.insert("targetOnlyTableNames".to_owned(), json!(names));
+        }
     }
     if let Some(schema) = &params.source_schema {
         map.insert("sourceSchema".to_owned(), json!(schema));
@@ -359,7 +361,7 @@ pub(crate) fn execute_deploy_request(params: &ExecuteDeployParamsVm) -> serde_js
 // ---- the submit→poll→resolve machine -----------------------------------------
 
 /// React's poll cadence: `wait(400)` between `getJobDetails` calls.
-pub(crate) const SCHEMA_DIFF_POLL_INTERVAL_MS: i64 = 500;
+pub(crate) const SCHEMA_DIFF_POLL_INTERVAL_MS: i64 = 400;
 
 /// What the resolved run produced (`result.prepared` / `detail.deployResult`).
 #[derive(Clone, Debug, PartialEq)]
@@ -605,7 +607,7 @@ impl SchemaDiffJobRun {
                     .details
                     .error
                     .clone()
-                    .unwrap_or_else(|| "unavailable".to_owned());
+                    .unwrap_or_else(|| "planUnavailable".to_owned());
                 Err(format!(
                     "Schema Diff plan job ended in {} ({})",
                     details.details.state.as_str(),

@@ -100,7 +100,7 @@ pub(crate) struct RollbackCompletenessCountsVm {
 pub(crate) fn rollback_completeness_counts(plan: &SchemaDiffPlanVm) -> RollbackCompletenessCountsVm {
     let total = plan.statements.len();
     let missing = plan.rollback_completeness.missing.len();
-    RollbackCompletenessCountsVm { complete: total, missing }
+    RollbackCompletenessCountsVm { complete: total - missing, missing }
 }
 
 /// React `TypeSuggestion`.
@@ -254,7 +254,7 @@ impl SchemaDiffJobDetailsVm {
     /// React's poll-loop terminal test:
     /// `details.details.job.state !== 'queued' && … !== 'running'`.
     pub(crate) fn job_terminal(&self) -> bool {
-        !matches!(self.details.state, JobState::Queued)
+        !matches!(self.details.state, JobState::Queued | JobState::Running)
     }
 }
 
@@ -335,8 +335,8 @@ fn normalize_requirement(raw: PlanRequirementWire) -> PlanRequirementVm {
             match dot {
                 Some(dot) if dot > 0 => PlanRequirementVm {
                     kind: PlanRequirementKindVm::Unsupported,
-                    table: unsupported.operation[dot + 1..].to_owned(),
-                    column: unsupported.operation[..dot].to_owned(),
+                    table: unsupported.operation[..dot].to_owned(),
+                    column: unsupported.operation[dot + 1..].to_owned(),
                     reason: unsupported.reason,
                 },
                 _ => PlanRequirementVm {

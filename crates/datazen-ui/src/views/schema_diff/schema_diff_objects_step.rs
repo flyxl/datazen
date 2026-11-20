@@ -139,7 +139,7 @@ impl<'a, S: 'static> SchemaDiffObjectsStep<'a, S> {
         }
 
         // --- The list branch. ---
-        let enabled_count = self.tables.len();
+        let enabled_count = self.tables.iter().filter(|row| row.enabled).count();
         let mut panel = col()
             .key("schema-diff-objects-panel")
             .w_full()
@@ -171,8 +171,8 @@ impl<'a, S: 'static> SchemaDiffObjectsStep<'a, S> {
             .child(
                 text(
                     t("schemaDiff.objectsSelected")
-                        .replace("{count}", &self.tables.len().to_string())
-                        .replace("{total}", &enabled_count.to_string()),
+                        .replace("{count}", &enabled_count.to_string())
+                        .replace("{total}", &self.tables.len().to_string()),
                 )
                 .key("schema-diff-objects-count")
                 .font(type_sm())
@@ -234,7 +234,7 @@ impl<'a, S: 'static> SchemaDiffObjectsStep<'a, S> {
         if let Some(on_toggle) = &self.on_toggle {
             let on_toggle = Rc::clone(on_toggle);
             let name = pick.name.clone();
-            checkbox = checkbox.on_toggle(move |s: &mut S| on_toggle(s, String::new()));
+            checkbox = checkbox.on_toggle(move |s: &mut S| on_toggle(s, name.clone()));
         }
         row_el = row_el
             .child(checkbox.build(k))
@@ -256,7 +256,7 @@ impl<'a, S: 'static> SchemaDiffObjectsStep<'a, S> {
 fn origin_badge(name: &str, origin: TablePickOriginVm, dark: bool) -> El {
     let k = kit(dark);
     let (key, color) = match origin {
-        TablePickOriginVm::TargetOnly => ("schemaDiff.targetOnly", k.c.text_muted),
+        TablePickOriginVm::TargetOnly => ("schemaDiff.targetOnly", k.c.danger.fg),
         TablePickOriginVm::SourceOnly => ("schemaDiff.sourceOnly", k.c.text_muted),
         TablePickOriginVm::Both => ("schemaDiff.sourceAndTarget", k.c.text_muted),
     };
