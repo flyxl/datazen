@@ -803,6 +803,10 @@ mod source_filter_editor;
 // plan list, the footer buttons, the close/confirm callbacks, geometry).
 mod data_transfer_execute_confirm_dialog;
 
+// T225 independent audit: the epoch restamp, the same-name pair key, the
+// vertical containment with eight plans, the missing-callback mount.
+mod data_transfer_execute_confirm_dialog_audit;
+
 // T202 independent audit: the Enter commit chain, the disabled inert
 // remove, the middle-of-three removal, double add, the and default
 // display, the short-drafts defence.
