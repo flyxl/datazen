@@ -20,8 +20,9 @@
 //!   the padded step area plus the footer — as ONE `El`, exactly the shape
 //!   `OnboardingWindow::wizard` mounts. The host reads the window's
 //!   `completion_action()` getter for React's `onComplete` prop.
-//! - `useReducer(wizardReducer, INITIAL_STATE)` is `wizardState.ts` (T323,
-//!   later): the machine's outputs arrive as feed-in parameters —
+//! - `useReducer(wizardReducer, INITIAL_STATE)` is `wizardState.ts`
+//!   (T323, landed: `wizard_state.rs`): the machine's outputs arrive as
+//!   feed-in parameters —
 //!   [`OnboardingWizard::step`] / [`OnboardingWizard::entry`] (the branch
 //!   selectors), [`OnboardingWizard::can_continue`]
 //!   (`canContinueFromStepOne(state)`) and
@@ -31,12 +32,17 @@
 //!   behind the action slots [`OnboardingWizard::on_skip`] /
 //!   [`OnboardingWizard::on_back`] / [`OnboardingWizard::on_continue`] /
 //!   [`OnboardingWizard::on_finish`] / [`OnboardingWizard::on_open`], which
-//!   the host wires to its dispatch. The [`Step`] / [`Entry`] /
-//!   [`ImportApp`] / [`ImportSource`] seam types live here until T323 lands
-//!   the state machine and absorbs them (the T021→T287 absorb pattern).
-//! - `onboardingGate.ts` (T268, later): `handleOpen`'s
+//!   the host wires to its dispatch. The [`Step`] / [`Entry`] seam types
+//!   are absorbed into `wizard_state.rs` (T323) and re-exported here
+//!   under their T114 names (the T021→T287 absorb pattern — every existing
+//!   import path stays untouched); [`ImportApp`] is absorbed into
+//!   `use_detected_import_source.rs` (T306, the import track) and
+//!   re-exported here the same way; [`ImportSource`] stays here until the
+//!   import track's remaining tasks absorb it.
+//! - `onboardingGate.ts` (T268, landed: `onboarding_gate`): `handleOpen`'s
 //!   `updateSettings({ onboarding: completedOnboardingState() })` — the
-//!   completed-state payload is the host's feed-in at its `on_open` seam.
+//!   completed-state payload (`onboarding_gate::completed_onboarding_state`)
+//!   is the host's feed-in at its `on_open` seam.
 //!   This module contributes the sample-database directive
 //!   ([`OnboardingWizard::post_onboarding_sample`]: the
 //!   `entry === 'sample' && connectionName` gate plus this file's
@@ -53,8 +59,9 @@
 //!   forces a key); credentials typed → `requestSave`, whose high-risk
 //!   egress confirmation reports back through the draft's `onSaved` seam as
 //!   the host's `FINISH { aiLabel }` dispatch.
-//! - `useDetectedImportSource` (T306, later): the detection pre-check is a
-//!   host concern; the wizard keeps only what the React file itself owns —
+//! - `useDetectedImportSource` (T306, landed:
+//!   `use_detected_import_source.rs`): the detection pre-check is a host
+//!   concern; the wizard keeps only what the React file itself owns —
 //!   the `importSource` `useState('file')`
 //!   ([`OnboardingWizard::import_source`], fed to `ImportStep` as
 //!   `initialSource` at the host's slot build) and the `useEffect` that
@@ -81,7 +88,8 @@
 //!   row and the step indicator keep ending on the same bottom line
 //!   (T287's one rule) before T247 fills it.
 //! - `visibleStepNumber` (this file's test-helper export) stays an export
-//!   ([`visible_step_number`]); its `stepIndexFor` core is the T323 seam.
+//!   ([`visible_step_number`]); its `stepIndexFor` core is the T323 seam,
+//!   absorbed into [`super::wizard_state::step_index_for`].
 //!
 //! ## Keys
 //!
@@ -122,51 +130,20 @@ use std::rc::Rc;
 use rune::{col, El, ScrollSpec};
 
 use super::onboarding_layout::WIZARD_FOOTER_HEIGHT;
+// The T323 absorb: the journey's step/entry enums live in `wizard_state.rs`
+// now; they are re-exported here under their T114 names so the shell's,
+// the steps' and the audits' import paths stay untouched (the
+// onboarding_layout ← brand_sidebar precedent).
+pub(crate) use super::wizard_state::{Entry, Step};
+// The T306 absorb: the import-track app enum lives in
+// `use_detected_import_source.rs` now (the detection hook owns
+// `IMPORT_APP_ORDER`, its ordered universe, and the probe ids); it is
+// re-exported here under its T114 name so the steps'/audits' import
+// paths stay untouched (the same precedent).
+pub(crate) use super::use_detected_import_source::ImportApp;
 
 /// The wizard's action slots (`Rc<dyn Fn(&mut S)>`, the crate convention).
 type ActionFn<S> = Rc<dyn Fn(&mut S) + 'static>;
-
-/// React `Step` (`wizardState.ts:15`): the journey's four screens.
-///
-/// A seam type — `wizardState.ts` is T323's port; when it lands, the state
-/// machine absorbs this enum (and [`Entry`]) and this module re-imports it,
-/// the T021→T287 absorb pattern.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Step {
-    /// S0 — the welcome / entry choice.
-    S0,
-    /// S1 — step 1 of 2, entry-specific.
-    S1,
-    /// S2 — step 2 of 2, always the AI provider step.
-    S2,
-    /// S3 — done.
-    S3,
-}
-
-/// React `EntryType` (`wizardState.ts:16`): which screen step 1 renders for
-/// the entry picked in S0. A T323 seam type (see [`Step`]).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Entry {
-    /// The connection form (its own Save is the way forward).
-    Manual,
-    /// The inline import form.
-    Import,
-    /// The sample dataset panel.
-    Sample,
-}
-
-/// React `ConnectionImportApp`
-/// (`components/connection/ConnectionShareDialog.tsx:13`): the five clients
-/// whose local config the import entry can pre-detect. A seam type — the
-/// import track (T177/T306) absorbs it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ImportApp {
-    Dbx,
-    Navicat,
-    Datagrip,
-    Dbeaver,
-    Tableplus,
-}
 
 /// React `ConnectionImportSource` (`ConnectionShareDialog.tsx:15`):
 /// `'file' | ConnectionImportApp` — the wizard's own `importSource` state.
@@ -583,18 +560,8 @@ fn seat(key: &'static str, fed: Option<El>) -> El {
 /// tests can assert the visible step number): the step indicator's number —
 /// `None` on the entry (S0) and done (S3) screens.
 pub(crate) fn visible_step_number(step: Step) -> Option<u8> {
-    match step_index_for(step) {
+    match super::wizard_state::step_index_for(step) {
         0 => None,
         index => Some(index),
-    }
-}
-
-/// React `stepIndexFor` (`wizardState.ts:169`) — the T323 seam: the state
-/// machine's port absorbs this mapping (step dots exist only for 1 and 2).
-fn step_index_for(step: Step) -> u8 {
-    match step {
-        Step::S1 => 1,
-        Step::S2 => 2,
-        Step::S0 | Step::S3 => 0,
     }
 }

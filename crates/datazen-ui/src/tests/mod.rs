@@ -1121,7 +1121,65 @@ mod onboarding_window_audit;
 // T114: the onboarding wizard port (the step host: the step seats, the
 // footer wiring + seat, the completion handlers' seams).
 mod onboarding_wizard_audit;
-
 // T192: the bar chart engine port (the shared log-hint pipeline, bar
 // rectangle geometry, the LabelList, hit-band routing and the tooltips).
 mod bar_chart_renderer;
+
+// T148: the onboarding AI provider step port (the journey framing around
+// the shared ModelProfileForm inline variant: the step tag, heading,
+// subtitle, the bordered form card, the security note and the optional
+// hint, and the hasCredentials journey link).
+mod ai_provider_step_audit;
+// T247: the onboarding wizard footer port (the shared chrome height, the
+// step dots + label, the skip/back/continue/finish visibility and
+// disabled rules, and the four action wirings).
+mod wizard_footer_audit;
+// T247: the onboarding welcome step port (the S0 column and header, the
+// three stacked entry cards with their accent wells, the FASTEST pill,
+// the detected-client sub-line, and the three entry actions).
+mod welcome_step_audit;
+// T203: the onboarding manual-connection step port (the S1 manual frame:
+// the driver sidebar with its search/query/availability filters and
+// popularity order, the shared connection form body in its window
+// variant, and the Test/Save footer with the result line and the
+// `tested` Save gate).
+mod manual_connection_step_audit;
+// T226: the onboarding sample step port (the S1 sample panel: the seeding
+// journey's three states and once-per-entry guard, the status card's
+// ready/failed/preparing chrome, the path/connection/error lines, and
+// the readyConnectionName prop's ready-but-still-preparing branch).
+mod sample_step_audit;
+// T177: the onboarding import step port (the S1 inline import form: the
+// six-source picker with detected checkmarks and the selection write, the
+// bordered card carrying the shared import fields, the written-gated
+// success banner with its imported/updated split, and the submit footer
+// with the primaryActionLabel memo and the detecting line).
+mod import_step_audit;
+// T177: the onboarding done step port (the S3 summary: the centered check
+// well, the connectionSummary value branches, the skipped rows' muted
+// ink, the sample-entry hint with its stripped-and-bolded <b> segments,
+// and the open button's exit action).
+mod done_step_audit;
+// T323: bridge to the wizard-state machine's inline suite (pure-logic
+// convention — the tests live inside the module they test).
+mod wizard_state;
+// T323: bridge to the schema-diff limitation keys' inline suite.
+mod schema_diff_limitation_keys;
+// T306: bridge to the detected-import-source hook's inline suite (the
+// useDetectedImportSource port — probe order/hits, the enabled effect and
+// the cancelled-round guard).
+mod use_detected_import_source;
+// T268: bridge to the onboarding gate's inline suite (the onboardingGate
+// port — the show/hide decision and the versioned exit payload).
+mod onboarding_gate;
+// T363: bridge to the schema-diff object identity key's inline suite (the
+// schemaDiffObjectIdentity port — the JSON.stringify identity fold).
+mod schema_diff_object_identity;
+// T351: bridge to the schema-diff object discovery run's inline suite (the
+// schemaDiffObjectDiscovery port — the failure diagnostics, the host seam
+// orchestration and the table-pick pairing).
+mod schema_diff_object_discovery;
+// T351: bridge to the table-pick seam module's inline suite (the
+// schemaDiffTableNames.ts merge the discovery run returns; T374 owns the
+// rest of that React file).
+mod schema_diff_table_names;

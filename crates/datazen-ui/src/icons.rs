@@ -260,6 +260,16 @@ pub(crate) static ICON_CHECK: rune::Icon = rune::Icon {
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 6 9 17l-5-5\"/>",
 };
+/// T177: the done step's own inline check glyph — `DoneStep.tsx` renders a
+/// hand-drawn 24-view check (`<path d="m4 12.5 5 5L20 6.5" />` at
+/// stroke-width 2.4), slightly bolder and lower-anchored than lucide's
+/// `check` above. Body verbatim from the React file (its own SVG, not a
+/// lucide icon).
+pub(crate) static ICON_DONE_CHECK: rune::Icon = rune::Icon {
+    name: "done-check",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2.4\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m4 12.5 5 5L20 6.5\"/>",
+};
 pub(crate) static ICON_STAR: rune::Icon = rune::Icon {
     name: "star",
     view: 24.0,
@@ -475,6 +485,36 @@ pub(crate) static ICON_UPLOAD: rune::Icon = rune::Icon {
     name: "upload",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"7 8 12 3 17 8\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"12\" x2=\"12\" y1=\"3\" y2=\"15\"/>",
+};
+
+/// T148: lucide `info`, the security-note glyph in the onboarding journey's
+/// AI provider step (`AiProviderStep.tsx` uses `Info`). Body verified
+/// against lucide-react 0.487.0's `info` node (a 10-radius circle with the
+/// stem and the dot of the "i").
+pub(crate) static ICON_INFO: rune::Icon = rune::Icon {
+    name: "info",
+    view: 24.0,
+    body: "<circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"12\" cy=\"12\" r=\"10\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 16v-4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 8h.01\"/>",
+};
+
+/// T247: lucide `arrow-right`, the trailing glyph on the onboarding journey's
+/// three S0 entry cards (`WelcomeStep.tsx` uses `ArrowRight`). Body verified
+/// against lucide-react 0.487.0's `arrow-right` (a west-east stem plus the
+/// east chevron).
+pub(crate) static ICON_ARROW_RIGHT: rune::Icon = rune::Icon {
+    name: "arrow-right",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5 12h14\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m12 5 7 7-7 7\"/>",
+};
+
+/// T247: lucide `flask-conical`, the sample-dataset glyph on the onboarding
+/// journey's third S0 entry card (`WelcomeStep.tsx` uses `FlaskConical`).
+/// Body verified against lucide-react 0.487.0's `flask-conical` (the conical
+/// flask outline, its fill line and the neck cap).
+pub(crate) static ICON_FLASK_CONICAL: rune::Icon = rune::Icon {
+    name: "flask-conical",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M6.453 15h11.094\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M8.5 2h7\"/>",
 };
 
 pub(crate) fn section_icon(section: Section) -> &'static rune::Icon {

@@ -43,7 +43,6 @@ pub(crate) const WIZARD_FOOTER_HEIGHT: f32 = 42.0;
 
 /// React `WIZARD_FOOTER_PX_CLASS` (`px-[48px]`, 48px → 36pt): the
 /// right-hand footer's horizontal rhythm.
-#[allow(dead_code)] // the WizardFooter port (T247) is the consumer
 pub(crate) const WIZARD_FOOTER_PX: f32 = 36.0;
 
 /// React `WIZARD_ASIDE_PX_CLASS` (`px-[34px]`, 34px → 25.5pt): the brand
