@@ -104,7 +104,7 @@
 - [ ] T309 · windows/schema-diff · 1.30d · windows/schema-diff/SchemaDiffWindow.tsx · split
 - [x] T312 · lib/valuePresentation · 0.30d · lib/valuePresentation/valuePresentationSave.ts
 - [ ] T313 · hooks · 0.90d · hooks/useGridKeyboardNav.ts
-- [ ] T316 · commands · 0.90d · commands/history.ts
+- [x] T316 · commands · 0.90d · commands/history.ts
 - [ ] T320 · components/sql-editor · 2.00d · components/sql-editor/paste/multipleSelections.ts · split
 - [ ] T321 · windows/settings · 0.90d · windows/settings/LanguagePacksCard.tsx
 - [x] T323 · windows/onboarding · 0.80d · windows/onboarding/wizardState.ts windows/schema-diff/schemaDiffLimitationKeys.ts
