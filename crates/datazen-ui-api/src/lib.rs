@@ -30,10 +30,9 @@ mod ai_sessions;
 mod ai_store_types;
 mod ai_streaming;
 mod ai_types;
-// T326: the lib/batchExportJob.ts port — batch export state machine, the
-// per-table metadata loop, the single combined exporter call and the
-// idempotent cancel handle. Split into types/runner (≤800 lines each).
 mod batch_export_job;
+mod backup_progress;
+mod base64;
 mod chart_types;
 mod connection_types;
 mod connection_views;
@@ -188,9 +187,6 @@ pub use ai_types::{
     ExplainSuggestion, ModelInfo, PromptTemplate, ProviderListItem, StreamChunkPayload,
     StreamChunkUsage, StreamErrorPayload, DEFAULT_AI_MEMORY_SETTINGS, DEFAULT_AI_SKILLS_SETTINGS,
 };
-// T326: the React lib/batchExportJob.ts surface — the three entry points,
-// their option shapes and the export vocabulary (including the commands/file
-// wire mirrors this file needs before T298 lands).
 pub use batch_export_job::{
     export_single_table_structure_via_rust, export_single_table_via_rust, run_batch_export_job,
     BatchExportColumn, BatchExportDataFormat, BatchExportMode, BatchExportOutputMode,
@@ -199,6 +195,14 @@ pub use batch_export_job::{
     SingleFetchOutcome, SingleTableExportOptions, SingleTableExportResult, SingleTableFetchConfig,
     SingleTableFetchScope, SingleTableStructureExportOptions, SingleTableStructureExportResult,
 };
+pub use backup_progress::{
+    append_progress_log, backup_progress_ratio, format_backup_progress, format_restore_progress,
+    BackupDumpPhase, BackupProgressPayload, ProgressLogPump, Translate, KEY_LOG_OMITTED,
+    KEY_PROGRESS_OBJECT, KEY_PROGRESS_PREPARING, KEY_PROGRESS_WRITING, KEY_RESTORE_PREPARING,
+    KEY_RESTORE_PROGRESS, KEY_RESTORE_SUCCESS, KEY_RESTORING, KEY_SUCCESS, MAX_PROGRESS_LOG_CHARS,
+    MAX_PROGRESS_LOG_LINES,
+};
+pub use base64::{base64_to_bytes, bytes_to_base64, Base64DecodeError};
 pub use chart_types::{
     AggregationType, ChartConfig, ChartDataPoint, ChartDataPointValue, ChartField,
     ChartRecommendation, ChartSortBy, ChartType, InferredFieldType,
