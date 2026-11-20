@@ -1,6 +1,6 @@
-//! The three table-read settings the aggregate re-exports — ported from
-//! React `packages/frontend/src/types/settings.ts` via
-//! `packages/frontend/src/types/index.ts` (tasklist T211).
+//! The table-read settings the aggregate re-exports — ported from React
+//! `packages/frontend/src/types/settings.ts` (tasklist T255; the aggregate
+//! slice landed with `types/index.ts`, T211).
 //!
 //! React's `types/index.ts` re-exports `DefaultTableSort`, `GridDensity`
 //! and `RowCountMode` from `./settings` — the three settings a table read
@@ -11,12 +11,12 @@
 //! The same file also declares the default constants
 //! (`DEFAULT_ROW_COUNT_MODE`, …), which the aggregate does **not**
 //! re-export — React's `types/index.ts` re-exports the three types only,
-//! so the constants stay with the settings-store port that consumes them
-//! (the port's tests below pin the default literals instead).
+//! so the constants live here beside their types (T255) and stay reachable
+//! through the module path `datazen_ui_api::types::table_settings`, the
+//! twin of React's `'../types/settings'` value import.
 //!
-//! No Rust home existed, so this module is the mirror. Pure contracts —
-//! no IO, no state — so the module compiles for wasm32 exactly like its
-//! `chart_types` sibling.
+//! Pure contracts — no IO, no state — so the module compiles for wasm32
+//! exactly like its `chart_types` sibling.
 
 use serde::{Deserialize, Serialize};
 
@@ -105,6 +105,41 @@ impl GridDensity {
     }
 }
 
+/// React `DEFAULT_ROW_COUNT_MODE: RowCountMode = 'auto'` — the default
+/// row-count mode: nobody forces a strategy, the driver decides.
+pub const DEFAULT_ROW_COUNT_MODE: RowCountMode = RowCountMode::Auto;
+
+/// React `DEFAULT_ROW_COUNT_ESTIMATE_THRESHOLD = 200_000` — the default
+/// threshold of the `auto` mode: above this many rows an automatic count
+/// estimates instead of counting. A table of 200 001 rows is not worth a
+/// full `COUNT(*)`.
+pub const DEFAULT_ROW_COUNT_ESTIMATE_THRESHOLD: u64 = 200_000;
+
+/// React `DEFAULT_TABLE_SORT: DefaultTableSort = 'primaryKeyAsc'` — the
+/// default order: the driver's own default, which is the primary key
+/// ascending.
+pub const DEFAULT_TABLE_SORT: DefaultTableSort = DefaultTableSort::PrimaryKeyAsc;
+
+/// React `DEFAULT_GRID_DENSITY: GridDensity = 'standard'` — the default
+/// density: a delta of zero, the behaviour before the setting existed.
+pub const DEFAULT_GRID_DENSITY: GridDensity = GridDensity::Standard;
+
+/// React `DEFAULT_GRID_ALTERNATING_ROWS = true` — alternating row
+/// backgrounds (DB-17). Default `true`: the grid has striped odd rows since
+/// it exists — turning it off is the opt-in.
+pub const DEFAULT_GRID_ALTERNATING_ROWS: bool = true;
+
+/// React `DEFAULT_GRID_ROW_NUMBERS = true` — the row-number gutter (DB-17).
+/// Default `true`: the `#` column has been there since the grid exists.
+/// Turning it off trades the gutter's click-to-select affordance for one
+/// more column of data.
+pub const DEFAULT_GRID_ROW_NUMBERS: bool = true;
+
+/// React `DEFAULT_GRID_AUTO_HIDE_SCROLLBAR = false` — auto-hide grid
+/// scrollbars (DB-17). Default `false`: scrollbars stay visible — the
+/// pre-setting behaviour. On, they appear only while the grid is hovered.
+pub const DEFAULT_GRID_AUTO_HIDE_SCROLLBAR: bool = false;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,7 +153,6 @@ mod tests {
         serde_json::to_value(value)
             .unwrap_or_else(|error| panic!("wire encode failed: {error}"))
     }
-
     #[test]
     fn the_table_read_settings_keep_their_literals() {
         let modes = [
@@ -159,16 +193,20 @@ mod tests {
 
     #[test]
     fn the_settings_file_default_literals_stay_pinned() {
-        // React types/settings.ts's constants — DEFAULT_ROW_COUNT_MODE,
-        // DEFAULT_ROW_COUNT_ESTIMATE_THRESHOLD (200_000), DEFAULT_TABLE_SORT,
-        // DEFAULT_GRID_DENSITY — are not on the aggregate's export surface
-        // (types/index.ts re-exports the three types only), but their
-        // literals are the settings-store port's contract, so pin the enum
-        // spellings here: nobody forces a strategy, and the default order
-        // is the primary key ascending, the default density the delta of
-        // zero.
-        assert_eq!(RowCountMode::Auto.as_str(), "auto");
-        assert_eq!(DefaultTableSort::PrimaryKeyAsc.as_str(), "primaryKeyAsc");
-        assert_eq!(GridDensity::Standard.as_str(), "standard");
+        // React types/settings.ts's constants (T255): the file's seven
+        // defaults, pinned by literal. They are NOT on the aggregate's
+        // export surface (types/index.ts re-exports the three types only,
+        // and this module's constants mirror that reachability: the module
+        // path, not the family root) — nobody forces a strategy, the default
+        // order is the primary key ascending, the default density is the
+        // delta of zero, and the chrome toggles keep their pre-setting
+        // behaviour.
+        assert_eq!(DEFAULT_ROW_COUNT_MODE, RowCountMode::Auto);
+        assert_eq!(DEFAULT_ROW_COUNT_ESTIMATE_THRESHOLD, 200_000);
+        assert_eq!(DEFAULT_TABLE_SORT, DefaultTableSort::PrimaryKeyAsc);
+        assert_eq!(DEFAULT_GRID_DENSITY, GridDensity::Standard);
+        assert!(DEFAULT_GRID_ALTERNATING_ROWS);
+        assert!(DEFAULT_GRID_ROW_NUMBERS);
+        assert!(!DEFAULT_GRID_AUTO_HIDE_SCROLLBAR);
     }
 }
