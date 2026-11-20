@@ -124,6 +124,9 @@ pub(crate) fn er_relation_legend<S: 'static>(
         .w_full()
         .gap(8.0)
         .center_y()
+        // React puts `opacity-60` on the whole predicted row, not just its
+        // count, so the swatch, label and count all dim together.
+        .opacity(if vm.prediction_enabled { 1.0 } else { 0.6 })
         .child(predicted_swatch(dark))
         .child(
             text(t("erDiagram.legendPredicted"))
@@ -136,15 +139,14 @@ pub(crate) fn er_relation_legend<S: 'static>(
                 })
                 .wrap(),
         );
-    let count = text(vm.predicted_count.to_string())
-        .key(PREDICTED_COUNT_KEY)
-        .font(k.ty.text_xsmall)
-        .color(k.c.text_muted);
-    predicted = predicted.child(if vm.prediction_enabled {
-        count
-    } else {
-        count.opacity(0.6)
-    });
+    // The count inherits the row's opacity; no count-only dim here (that would
+    // double-apply it and leave the swatch/label bright).
+    predicted = predicted.child(
+        text(vm.predicted_count.to_string())
+            .key(PREDICTED_COUNT_KEY)
+            .font(k.ty.text_xsmall)
+            .color(k.c.text_muted),
+    );
 
     let label = if vm.prediction_enabled {
         t("erDiagram.predictionOn")
