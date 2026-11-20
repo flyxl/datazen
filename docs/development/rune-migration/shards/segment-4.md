@@ -26,7 +26,7 @@
 - [x] T069 · windows/dashboard · 0.80d · windows/dashboard/ChartWidgetTile.tsx
 - [x] T072 · windows/onboarding · 0.90d · windows/onboarding/OnboardingWindow.tsx
 - [x] T076 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffExecutionPanels.tsx
-- [ ] T084 · lib/sqlDialects · 0.80d · lib/sqlDialects/identifierQuoting.ts lib/sqlDialects/index.ts
+- [x] T084 · lib/sqlDialects · 0.80d · lib/sqlDialects/identifierQuoting.ts lib/sqlDialects/index.ts
 - [x] T086 · lib/valuePresentation · 0.80d · lib/valuePresentation/columnPresentation.ts
 - [ ] T087 · hooks · 0.90d · hooks/useAiEditorGrant.ts
 - [ ] T096 · commands · 1.30d · commands/ai.ts · split
