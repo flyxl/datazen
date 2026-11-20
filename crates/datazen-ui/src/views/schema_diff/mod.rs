@@ -52,3 +52,6 @@ pub(crate) mod use_schema_diff_unified_objects;
 // T402: the wizard's job-result restore (history stays separate;
 // only a locally-submitted job's deploy result is adopted).
 pub(crate) mod use_schema_diff_job_restore;
+// T325: the window's job section (the status panel + the window
+// error strip).
+pub(crate) mod schema_diff_window_job_section;
