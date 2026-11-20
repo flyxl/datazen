@@ -10,4 +10,6 @@ pub(crate) mod schema_diff_object_identity;
 // (schemaDiffObjectDiscovery.ts; the schemaDiffTableNames.ts merge rides
 // along as its seam module until T374 ports the full file).
 pub(crate) mod schema_diff_object_discovery;
+// T269: the wizard's table list rail (SchemaDiffTableListPanel.tsx).
+pub(crate) mod schema_diff_table_list_panel;
 pub(crate) mod schema_diff_table_names;

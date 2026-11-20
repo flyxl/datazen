@@ -793,3 +793,6 @@ mod schema_diff_table_names;
 // T377: the commands/schemaDiff.ts port — pure helpers, wire payload
 // shapes, tagged-enum folding and the submit→poll→resolve machine.
 mod commands_schema_diff;
+// T269: the schema-diff table list rail (row keys, selection, hasDiff
+// badge states, empty hint, pinned width).
+mod schema_diff_table_list_panel_audit;
