@@ -338,7 +338,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T319 · components/ai · 1.30d · components/ai/WorkflowChatPanel.tsx · split
 - [ ] T320 · components/sql-editor · 2.00d · components/sql-editor/paste/multipleSelections.ts · split
 - [ ] T321 · windows/settings · 0.90d · windows/settings/LanguagePacksCard.tsx
-- [ ] T322 · windows/connection · 0.50d · windows/connection/DDLView.tsx
+- [x] T322 · windows/connection · 0.50d · windows/connection/DDLView.tsx
 - [ ] T323 · windows/onboarding · 0.80d · windows/onboarding/wizardState.ts windows/schema-diff/schemaDiffLimitationKeys.ts
 - [ ] T324 · windows/data-sync · 0.60d · windows/data-sync/EndpointsBar.tsx windows/data-sync/ExecuteBar.tsx
 - [ ] T325 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffWindowJobSection.tsx

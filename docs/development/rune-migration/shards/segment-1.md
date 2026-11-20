@@ -63,7 +63,7 @@
 - [x] T305 · windows/connection · 0.90d · windows/connection/DatabaseObjectView.tsx
 - [ ] T311 · lib/session · 0.90d · lib/session/targetCommand.ts
 - [x] T318 · components/connection · 0.60d · components/connection/tunnelFieldContracts.ts components/connection/useConnectionClipboardFill.ts
-- [ ] T322 · windows/connection · 0.50d · windows/connection/DDLView.tsx
+- [x] T322 · windows/connection · 0.50d · windows/connection/DDLView.tsx
 - [ ] T327 · lib/session · 0.60d · lib/session/targetCommandPhase.ts lib/settingsExport.ts
 - [ ] T333 · components/connection · 1.30d · components/connection/useConnectionForm.ts · split
 - [ ] T337 · windows/connection · 3.60d · windows/connection/DocumentConnectionView.tsx · split
