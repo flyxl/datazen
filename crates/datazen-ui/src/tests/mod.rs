@@ -382,6 +382,8 @@ mod connection_card_list;
 mod card_list_audit;
 // T427: RecentQueriesList port (rows, sources, relative time, actions, geometry).
 mod recent_queries_list;
+// T427 independent audit: inert ports, relative-time boundaries and row role.
+mod recent_queries_list_audit;
 // T144: the React ConnectionWorkspaceHome port (hero counts, card keys,
 // filter, MCP copy feedback with a real wake, KV-slot takeover, geometry).
 mod connection_workspace_home;
