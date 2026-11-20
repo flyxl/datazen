@@ -34,6 +34,7 @@ mod batch_export_job;
 mod backup_progress;
 mod base64;
 mod chart_types;
+mod connection_config;
 mod connection_types;
 mod connection_views;
 mod context_items;
@@ -206,6 +207,9 @@ pub use base64::{base64_to_bytes, bytes_to_base64, Base64DecodeError};
 pub use chart_types::{
     AggregationType, ChartConfig, ChartDataPoint, ChartDataPointValue, ChartField,
     ChartRecommendation, ChartSortBy, ChartType, InferredFieldType,
+};
+pub use connection_config::{
+    clone_connection_config_for_ipc, to_ipc_connection_config, PlainConfigAssertion,
 };
 pub use connection_types::{
     ConnectionConfig, ContextEntry, DatabaseObject, DatabaseObjectKind, DatabaseType,
