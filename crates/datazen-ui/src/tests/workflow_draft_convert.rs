@@ -584,3 +584,44 @@ fn the_tab_label_reads_the_labels_bag_the_draft_name_and_the_clocks() {
     );
 }
 
+
+// ==== T223 audit round ==========================================================
+//
+// The pins below close mutation survivors: every probe mutation survived the
+// port's first 9 tests red-handed and now dies on its pin. The React
+// positions cite `packages/frontend/src/windows/workflow/workflowDraftConvert.ts`.
+
+#[test]
+fn the_step_fields_carry_regardless_of_their_kind() {
+    // React 17-25 maps every field of every step with no kind gate — sql,
+    // prompt, connection and database ride on the command and ai steps the
+    // same as the query ones (only command/input are command-gated, React
+    // 24-25). Three probe mutations gating sql/prompt/connection to their
+    // "own" kinds survived the suite; these pins close them (and database
+    // with them).
+    let mut def = definition();
+    def.steps[1].sql = Some("SELECT 0".to_owned());
+    def.steps[1].prompt = Some("unused".to_owned());
+    def.steps[1].connection = Some("pg-alt".to_owned());
+    def.steps[1].database = Some("alt-db".to_owned());
+    def.steps[2].sql = Some("SELECT 9".to_owned());
+    def.steps[2].connection = Some("pg-alt2".to_owned());
+    def.steps[2].database = Some("alt-db2".to_owned());
+    let draft = workflow_definition_to_draft(&def);
+
+    let c = &draft.steps[1];
+    assert_eq!(c.kind, WorkflowStepKind::Command);
+    assert_eq!(c.sql, "SELECT 0", "sql rides a command step ungated");
+    assert_eq!(c.prompt.text, "unused", "prompt rides a command step ungated");
+    assert_eq!(c.connection.as_deref(), Some("pg-alt"));
+    assert_eq!(c.database.as_deref(), Some("alt-db"));
+    assert_eq!(c.command.as_deref(), Some("fs.copy"));
+
+    let a = &draft.steps[2];
+    assert_eq!(a.kind, WorkflowStepKind::Ai);
+    assert_eq!(a.sql, "SELECT 9");
+    assert_eq!(a.prompt.text, "summarise");
+    assert_eq!(a.connection.as_deref(), Some("pg-alt2"));
+    assert_eq!(a.database.as_deref(), Some("alt-db2"));
+    assert!(a.command.is_none() && a.input.is_empty(), "the command legs stay gated");
+}
