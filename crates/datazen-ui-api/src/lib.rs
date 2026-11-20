@@ -12,6 +12,15 @@ mod ai_message_blocks;
 mod ai_memory_patterns;
 // T251: the provider preset table, its PRD order and the backend normalizer.
 mod ai_providers;
+// T291: the three safety-gate presets and their identity/locality predicates.
+mod ai_safety_presets;
+// T291: the React `lib/aiSkills.ts` surface — its two normalizers already
+// live in `ai_types` (T228/T230); this module re-exports them and pins the
+// file's contract without forking a second implementation.
+mod ai_skills;
+// T291: the Any Column filter expansion (DBR-04) and its narrow cell-type
+// projection (`cellTypes.ts`/`valueSearch.ts` are not ported into this crate).
+mod any_column_filter;
 // T272: the query-error AI action adapters — pure descriptors over raw JSON.
 mod ai_query_actions;
 mod ai_sessions;
@@ -78,6 +87,24 @@ pub use ai_message_blocks::{
 pub use ai_providers::{
     DEEP_SEEK_PROVIDER, LOCAL_CLI_PROVIDER_TYPES, OLLAMA_PROVIDER, PROVIDER_ORDER,
     is_known_provider_type, is_local_cli_provider, normalize_ai_providers, provider_preset,
+};
+// T291: the React `lib/aiSafetyPresets.ts` surface — the three named gates,
+// the default/detection helpers and the local-endpoint predicate.
+pub use ai_safety_presets::{
+    CLOUD_STRICT_PRESET, ENTERPRISE_BALANCED_PRESET, LOCAL_TRUST_PRESET, AiSafetyPresetType,
+    detect_safety_preset, get_default_safety_gate, is_local_endpoint, preset_from_str,
+    safety_preset,
+};
+// T291: the React `lib/aiSkills.ts` surface. `normalize_loaded_skills` is
+// already rooted through `ai_sessions` (T230), so only the settings
+// normalizer is added here — no duplicate root name.
+pub use ai_skills::normalize_ai_skills_settings;
+// T291: the React `lib/anyColumnFilter.ts` surface — the expansion, its
+// options/result and the type-resolution vocabulary it speaks.
+pub use any_column_filter::{
+    DEFAULT_CELL_TYPE_RULES, AnyColumnExpansion, AnyColumnFilterOptions, CellType, CellTypeHints,
+    CellTypeMatch, CellTypeRule, ValueSearchTypeGroup, ValueSearchTypeScope,
+    expand_any_column_filter, resolve_cell_type,
 };
 // T272: the React `lib/aiQueryActions.ts` surface — the guarded context
 // builder, the three action descriptors and their param helpers.
