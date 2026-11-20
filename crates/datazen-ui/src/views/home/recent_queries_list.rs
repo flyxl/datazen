@@ -393,15 +393,27 @@ fn recent_row<S: 'static>(
                 .truncate(),
         );
     if let Some(on_select) = &host.on_select {
-        let id = entry.id.clone();
-        let on_select = on_select.clone();
-        row_el = row_el.on_press(move |state: &mut S| on_select(state, &id));
+        let press_id = entry.id.clone();
+        let key_id = entry.id.clone();
+        let on_press = on_select.clone();
+        let on_key = on_select.clone();
+        // Rune routes Space to the native `on_press` of a focused button but
+        // passes Return to `on_key`, so Enter needs this explicit binding.
+        row_el = row_el
+            .on_press(move |state: &mut S| on_press(state, &press_id))
+            .on_key(move |state: &mut S, ev: &KeyEvent, _tx: &mut Tx| {
+                if row_activates(ev) {
+                    on_key(state, &key_id);
+                    true
+                } else {
+                    false
+                }
+            });
     }
     row_el.role("button").focusable(host.on_select.is_some())
 }
 
 /// React's keyboard activation for a history row (Enter or Space only).
-#[allow(dead_code)] // helper; remove when the host wires the row.
 pub(crate) fn row_activates(key: &KeyEvent) -> bool {
     // Rune delivers Space as `Text(" ")`, matching the runtime's key mapping.
     matches!(key.key, Key::Enter) || matches!(&key.key, Key::Text(text) if text == " ")

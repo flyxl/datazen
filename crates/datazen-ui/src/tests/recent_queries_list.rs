@@ -215,6 +215,34 @@ fn keyboard_activation_matches_enter_and_space_only() {
 }
 
 #[test]
+fn enter_and_space_activate_the_focused_history_row() {
+    let mut probe = Probe::default();
+    probe.vm.entries = vec![entry("hist-1", "SELECT 1;", 10_000)];
+    probe.vm.saved_connections = saved();
+    probe.vm.now_ms = 1_700_000_000_000;
+    let mut rt = runtime(probe, (960.0, 640.0));
+    rt.frame(0.0);
+    click(&mut rt, "connections-recent-row-hist-1");
+    assert_eq!(rt.state.calls.borrow().as_slice(), ["select:hist-1"]);
+
+    rt.key(KeyEvent { key: Key::Enter, mods: rune::Mods::default() });
+    rt.frame(0.0);
+    assert_eq!(
+        rt.state.calls.borrow().as_slice(),
+        ["select:hist-1", "select:hist-1"],
+        "React pins Enter activation on the focused row"
+    );
+
+    rt.key(KeyEvent { key: Key::Text(" ".to_owned()), mods: rune::Mods::default() });
+    rt.frame(0.0);
+    assert_eq!(
+        rt.state.calls.borrow().as_slice(),
+        ["select:hist-1", "select:hist-1", "select:hist-1"],
+        "React pins Space activation on the focused row"
+    );
+}
+
+#[test]
 fn empty_and_loading_states_keep_the_pinned_keys() {
     let mut rt = runtime(Probe::default(), (960.0, 640.0));
     rt.frame(0.0);
