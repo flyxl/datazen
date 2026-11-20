@@ -39,6 +39,13 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+### 四段最新合流 push（2026-11-20，用户明确指示 push）
+
+- seg1/2/3/4 最新代码以 4 个真 merge commit 合入父分支：`521af02dd`(seg1, tip c75292a05) → `2c2673de0`(seg2, e392bc177) → `d75c40f17`(seg3, 28856c392 — 首次纳入) → `cd55d8279`(seg4, 1823af18b)；父分支 `44f875d8b → cd55d8279`（122 commits，fast-forward，无覆盖）。
+- 冲突解决：seg2 tests/mod.rs 双方 mod 声明合并去重；seg4 ai/mod.rs/view/mod.rs/tests/mod.rs 合并 + 可见性 union；target_claim.rs add/add 保留 seg1 T162 无重复 API + 追加 seg4 内联测试；基线修复仍在（workflow-workspace、无 ordered.reverse）。零断言弱化，零冲突标记。
+- **验证**：三 crate `cargo check` 全 PASS；各段 tester 在各自 worktree gate 全绿；本轮 gate test 步骤编译完成（293 warnings、无 error）但 Apple ld 在链接 ~818MB __TEXT 二进制时报分支范围超限（`B/BL out of range`），ld-classic 同样失败、opt-level=z 被 OOM kill——纯本机 toolchain 尺寸限制，非代码/测试失败。用户明确指示接受风险 push。
+- 各段仍在活跃推进（合流为快照），seg3/seg4 合流后又有新提交，后续按节奏再合。环境恢复（重启/换工具链）后应补跑全量 gate。
+
 ### 三段合流 push（2026-11-20，用户裁决选 1：接受风险）
 
 - seg1（50→59 commits）/seg2（8→24）/seg4（20→40）以 3 个真 merge commit 合入父分支：`96176166b`(seg1) → `79f6c92de`(seg2) → `ef9f18aac`(seg4)，父分支 `ef70b6f11 → ef9f18aac`（81 commits，fast-forward，无覆盖）。
