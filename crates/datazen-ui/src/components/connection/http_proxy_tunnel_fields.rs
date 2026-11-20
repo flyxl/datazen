@@ -5,12 +5,12 @@
 //! password) plus a localized hint. There is no local validation in that source:
 //! the form owns validation errors, so no error key is invented here.
 //!
-//! ## Local contract (removal stage)
+//! ## Contract
 //!
-//! `HttpProxyTunnelFieldsValue` from React `tunnelFieldContracts.ts` has no
-//! Rust DTO yet; [`HttpProxyValue`] mirrors its values with `TextEdit`s for the
-//! editable strings. Remove it when that contract is ported and drive the
-//! component from the shared value.
+//! [`HttpProxyValue`] is `HttpProxyTunnelFieldsValue` re-exported from
+//! `tunnel_field_contracts`, the single definition site. Existing callers keep
+//! the old local name; remove the re-export when they import the contract
+//! directly.
 //!
 //! ## Keys
 //!
@@ -30,62 +30,9 @@ use crate::ui::select::Select;
 
 const ROOT: &str = "new-conn-http-proxy-fields";
 
-/// React `HttpProxyTunnelFieldsValue['httpProxyScheme']` — the onChange maps
-/// anything but `"https"` back to `"http"`.
-#[allow(dead_code)] // contract mirror; remove when tunnelFieldContracts is ported.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum HttpProxyScheme {
-    Http,
-    Https,
-}
-
-#[allow(dead_code)] // contract mirror; remove when tunnelFieldContracts is ported.
-impl HttpProxyScheme {
-    pub(crate) fn from_value(value: &str) -> Self {
-        if value == "https" {
-            Self::Https
-        } else {
-            Self::Http
-        }
-    }
-
-    pub(crate) fn value(self) -> &'static str {
-        match self {
-            Self::Http => "http",
-            Self::Https => "https",
-        }
-    }
-
-    /// The kit select matches `current` against option labels.
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::Http => "HTTP",
-            Self::Https => "HTTPS",
-        }
-    }
-}
-
-/// Local mirror of the React value: text edits for the five strings and the
-/// discrete scheme. Removable with the contract above.
-#[allow(dead_code)] // contract mirror; remove when tunnelFieldContracts is ported.
-#[derive(Clone, Debug, Default)]
-pub(crate) struct HttpProxyValue {
-    pub host: TextEdit,
-    pub port: TextEdit,
-    pub scheme: HttpProxyScheme,
-    /// Rune's Select needs its open state from the caller; React keeps it inside
-    /// the Select. Remove with the contract mirror above.
-    pub scheme_open: bool,
-    pub username: TextEdit,
-    pub password: TextEdit,
-    pub timeout: TextEdit,
-}
-
-impl Default for HttpProxyScheme {
-    fn default() -> Self {
-        Self::Http
-    }
-}
+pub(crate) use super::tunnel_field_contracts::{
+    HttpProxyScheme, HttpProxyTunnelFieldsValue as HttpProxyValue,
+};
 
 type EditFn<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static>;
 type SchemeFn<S> = Rc<dyn Fn(&mut S, HttpProxyScheme) + 'static>;

@@ -33,69 +33,9 @@ use crate::ui::label::Label;
 use crate::ui::path_input::PathInput;
 use crate::ui::toggle::Checkbox;
 
-/// React `SshAuthMethod`.
-#[allow(dead_code)] // contract mirror; remove when tunnelFieldContracts lands.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SshAuthMethod {
-    Password,
-    PrivateKey,
-    Agent,
-}
-
-#[allow(dead_code)] // contract mirror; remove with the enum.
-impl SshAuthMethod {
-    pub(crate) fn from_value(value: &str) -> Self {
-        match value {
-            "private_key" => Self::PrivateKey,
-            "agent" => Self::Agent,
-            _ => Self::Password,
-        }
-    }
-
-    pub(crate) fn value(self) -> &'static str {
-        match self {
-            Self::Password => "password",
-            Self::PrivateKey => "private_key",
-            Self::Agent => "agent",
-        }
-    }
-
-    fn label(self) -> &'static str {
-        match self {
-            Self::Password => "newConn.authPassword",
-            Self::PrivateKey => "newConn.authKey",
-            Self::Agent => "newConn.authAgent",
-        }
-    }
-}
-
-/// Every value the SSH editor reads/writes, mirroring React's form subset.
-#[allow(dead_code)] // VM surface; owned by the connection form host.
-#[derive(Clone, Debug, Default)]
-pub(crate) struct SshFieldsState {
-    pub enabled: bool,
-    pub host: TextEdit,
-    pub port: TextEdit,
-    pub username: TextEdit,
-    pub auth_method: SshAuthMethod,
-    pub password: TextEdit,
-    pub key_path: TextEdit,
-    pub passphrase: TextEdit,
-    pub jump_enabled: bool,
-    pub jump_host: TextEdit,
-    pub jump_port: TextEdit,
-    pub jump_username: TextEdit,
-    pub jump_auth_method: SshAuthMethod,
-    pub jump_password: TextEdit,
-    pub jump_key_path: TextEdit,
-    pub jump_passphrase: TextEdit,
-}
-
-impl Default for SshAuthMethod {
-    fn default() -> Self {
-        Self::Password
-    }
-}
+pub(crate) use super::tunnel_field_contracts::{
+    SshAuthMethod, SshTunnelFieldsValue as SshFieldsState,
+};
 
 /// Discrete presses the editor asks the host to apply.
 #[allow(dead_code)] // VM surface; consumer: the connection form host.
