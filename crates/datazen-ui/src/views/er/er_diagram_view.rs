@@ -199,7 +199,11 @@ impl ErDiagramState {
 
     pub(crate) fn set_viewport(&mut self, x: f32, y: f32, zoom: f32) {
         // React rounds x/y but leaves zoom as reported.
-        self.viewport = Viewport { x: x.round() as i32, y: y.round() as i32, zoom };
+        self.viewport = Viewport {
+            x: math_round(x) as i32,
+            y: math_round(y) as i32,
+            zoom,
+        };
     }
 
     pub(crate) fn zoom_in(&mut self) {
@@ -225,6 +229,16 @@ impl ErDiagramState {
 
     pub(crate) fn relation_count(&self) -> usize {
         self.declared_count() + self.predicted_count()
+    }
+}
+
+/// JS `Math.round`: ties go toward +∞, unlike Rust's `f32::round` (away from 0).
+/// Non-finite values pass through unchanged, as they do in JS.
+fn math_round(value: f32) -> f32 {
+    if value.is_finite() {
+        (value + 0.5).floor()
+    } else {
+        value
     }
 }
 

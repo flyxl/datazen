@@ -245,6 +245,21 @@ fn absent_viewport_is_a_noop_and_failures_are_swallowed() {
 }
 
 #[test]
+fn math_round_matches_js_on_negative_halves() {
+    let mut state = ErDiagramState::new("sess", "db", None);
+    state.set_viewport(-3.5, -2.5, 1.0);
+    assert_eq!(
+        (state.viewport.x, state.viewport.y),
+        (-3, -2),
+        "JS Math.round on negative halves; left: ({}, {}) right: (-3, -2)",
+        state.viewport.x,
+        state.viewport.y
+    );
+    state.set_viewport(3.5, 2.5, 1.0);
+    assert_eq!((state.viewport.x, state.viewport.y), (4, 3), "positive halves round up");
+}
+
+#[test]
 fn zoom_pan_fit_relayout_search_and_collapse_update_view_state() {
     let mut state = ErDiagramState::new("sess", "db", None);
     state.set_viewport(10.4, -3.6, 1.0);
