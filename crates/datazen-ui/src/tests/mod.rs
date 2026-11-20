@@ -1055,6 +1055,11 @@ mod fk_cell_text;
 // T405: the one-open-editor registry (registration, replacement, the
 // identity-guarded unregister, the commit verdict).
 mod active_editor;
+// T405 independent audits: fresh vectors (nested JSON serialisation, edge
+// labels, replacement chains, verdict distinctness).
+mod dirty_cell_text_audit;
+mod fk_cell_text_audit;
+mod active_editor_audit;
 // T293: the tab-closed notification (panelCloseNotifier).
 mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the
