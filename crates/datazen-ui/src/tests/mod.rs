@@ -24,6 +24,15 @@ mod tree_rowmath_audit;
 mod er_relation_legend;
 // T349 independent audit: row dimming, count extremes, inert toggle, constants.
 mod er_legend_audit;
+// T361: ER table node port (columns/badges, collapse, handles, host callbacks, geometry).
+mod er_table_node;
+// T361 independent audit: rendered height vs packed metric, dot placement,
+// select/drag ports and wide-node geometry.
+mod er_node_audit;
+// T372: ErDiagramView port (schema forwarding, exports, canvas keys, geometry).
+mod er_diagram_view;
+// T372 independent audit: collapse seeding, zoom clamps, pins and counts.
+mod er_diagram_view_audit;
 
 // T004: the column-statistics dialog's four branches, dismissal and bounds.
 mod column_stats_audit;
@@ -485,6 +494,10 @@ mod use_connection_form;
 mod use_connection_import;
 // T346 independent audit: stale guard variants, dismissed picker and VM flags.
 mod use_connection_import_audit;
+// T358: useTunnelFormState hook ported as an immediate-mode slice + effects.
+mod use_tunnel_form_state;
+// T358 independent audit: port validity, WebSocket/SSH kinds and reset defaults.
+mod use_tunnel_form_state_audit;
 // T333 independent audit: failed commands, driver validation, file/port rules,
 // derived flags, edit-mode type changes and tunnel auth configs.
 mod use_form_audit;
@@ -927,11 +940,20 @@ mod content_view;
 // host pinned keys and the 800-line / no-bare-panic source contract.
 mod content_view_audit;
 
+// T382: ExecuteSqlFileDialog port (keys, validation, host ports, overlay geometry).
+mod execute_sql_file_dialog;
+// T382 independent audit: running close guard, empty banner, log, real slot.
+mod exec_sql_audit;
 // T223: ContentViewDialogs host (keys, open gates, callbacks, geometry).
 mod content_view_dialogs;
 // T223 independent audit: cancel/header routing, database fallback, slot
 // integration geometry and the source-contract guard.
 mod content_view_dialogs_audit;
+// T391: ExportDialog port (option tables, scope correction, columns, states, slot).
+mod export_dialog;
+// T391 independent audit: export guards, entire-table fallback, visible-rect
+// geometry and Select label/openability probes.
+mod export_dialog_audit;
 // T266: CreateDatabaseDialog + CreateSchemaDialog ports.
 mod create_db_schema_dialogs;
 // T266 independent audit: blank-name guard, failure retry, schema spec words,

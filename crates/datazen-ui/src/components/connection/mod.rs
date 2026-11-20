@@ -24,4 +24,5 @@ pub(crate) mod tunnel_field_contracts;
 pub(crate) mod use_connection_clipboard_fill;
 pub(crate) mod use_connection_form;
 pub(crate) mod use_connection_import;
+pub(crate) mod use_tunnel_form_state;
 pub(crate) mod websocket_tunnel_fields;

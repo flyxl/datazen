@@ -374,10 +374,10 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T355 · stores/tableData · 1.00d · stores/tableData/stagePasteWrites.ts stores/tableData/tableColumnLayoutPreferences.ts
 - [ ] T356 · commands · 0.90d · commands/query.ts
 - [x] T357 · components/DataTable · 0.30d · components/DataTable/GridKeyboardHints.tsx
-- [ ] T358 · components/connection · 1.30d · components/connection/useTunnelFormState.ts · split
+- [x] T358 · components/connection · 1.30d · components/connection/useTunnelFormState.ts · split
 - [ ] T359 · components/sql-editor · 2.00d · components/sql-editor/snippets/snippetCompletionSource.ts · split
 - [ ] T360 · windows/settings · 1.30d · windows/settings/MemorySection.tsx · split
-- [ ] T361 · windows/connection · 2.00d · windows/connection/er/TableNode.tsx · split
+- [x] T361 · windows/connection · 2.00d · windows/connection/er/TableNode.tsx · split
 - [ ] T362 · windows/data-sync · 0.90d · windows/data-sync/RecordsetEditor.tsx
 - [ ] T363 · windows/schema-diff · 0.90d · windows/schema-diff/schemaDiffObjectIdentity.ts
 - [ ] T364 · lib · 0.80d · lib/commandSchema.ts lib/connectionClipboard.ts
@@ -388,7 +388,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [x] T369 · components/DataTable · 0.80d · components/DataTable/Pagination.tsx
 - [ ] T370 · components/sql-editor · 0.30d · components/sql-editor/snippets/types.ts
 - [ ] T371 · windows/settings · 0.90d · windows/settings/PromptSettingsSection.tsx
-- [ ] T372 · windows/connection · 2.20d · windows/connection/ErDiagramView.tsx · split
+- [x] T372 · windows/connection · 2.20d · windows/connection/ErDiagramView.tsx · split
 - [ ] T373 · windows/data-sync · 0.90d · windows/data-sync/SqlPreview.tsx
 - [ ] T374 · windows/schema-diff · 0.60d · windows/schema-diff/schemaDiffTableNames.ts windows/schema-diff/useSchemaDiffClipboardFeedback.ts
 - [ ] T375 · lib · 0.30d · lib/connectionConfig.ts
@@ -398,7 +398,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T379 · commands · 0.90d · commands/schemaDiff.ts
 - [ ] T380 · components/DataTable · 0.90d · components/DataTable/QuickLookDialog.tsx
 - [ ] T381 · windows/settings · 0.30d · windows/settings/SettingHint.tsx
-- [ ] T382 · windows/connection · 0.50d · windows/connection/ExecuteSqlFileDialog.tsx
+- [x] T382 · windows/connection · 0.50d · windows/connection/ExecuteSqlFileDialog.tsx
 - [ ] T383 · windows/data-sync · 0.50d · windows/data-sync/TableListPanel.tsx
 - [ ] T384 · windows/schema-diff · 1.30d · windows/schema-diff/useSchemaDiffEndpoints.ts · split
 - [ ] T385 · lib · 0.90d · lib/connectionEditor.ts
@@ -407,7 +407,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T388 · commands · 0.90d · commands/settings.ts
 - [x] T389 · components/DataTable · 0.80d · components/DataTable/TableHeader.tsx
 - [ ] T390 · windows/settings · 1.30d · windows/settings/SettingsContent.tsx · split
-- [ ] T391 · windows/connection · 1.30d · windows/connection/ExportDialog.tsx · split
+- [x] T391 · windows/connection · 1.30d · windows/connection/ExportDialog.tsx · split
 - [ ] T392 · windows/data-sync · 0.90d · windows/data-sync/clientSqlPreview.ts
 - [ ] T393 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffJobLifecycle.ts
 - [ ] T394 · lib · 0.80d · lib/connectionFormModel.ts lib/connectionGroups.ts

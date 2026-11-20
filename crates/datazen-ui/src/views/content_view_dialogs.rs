@@ -26,6 +26,10 @@ use rune_kit::{Button, ButtonVariant, ControlSize, Kit};
 use crate::i18n::t;
 use crate::ui::dialog::Dialog;
 use crate::ui::kit::kit;
+use crate::views::execute_sql_file_dialog::{
+    execute_sql_file_dialog, ExecuteSqlFileHostPort, ExecuteSqlFileState, ExecuteSqlFileVm,
+    SqlFileRequest,
+};
 use crate::views::create_database_dialog::{
     build_snapshot as build_db_snapshot, AdminCreateAction, AdminCreateState, DB_SPEC,
 };
@@ -113,14 +117,44 @@ pub(crate) fn build<S: 'static>(
     layer: &mut Vec<El>,
     on_action: &Rc<dyn Fn(&mut S, DialogAction)>,
 ) {
+    build_with_export::<S>(vm, dark, layer, on_action, None);
+}
+
+/// Same host with an optional real ExportDialog snapshot. The standalone
+/// `build` keeps T223's structural shell; a host that owns the export form can
+/// compose the real dialog here.
+#[allow(dead_code)] // composition entry point; remove when the host owns the export form.
+pub(crate) fn build_with_export<S: 'static>(
+    vm: &DialogsVm,
+    dark: bool,
+    layer: &mut Vec<El>,
+    on_action: &Rc<dyn Fn(&mut S, DialogAction)>,
+    export_vm: Option<&super::export_dialog::ExportVm>,
+) {
     let Some(ctx) = vm.conn_ctx.as_ref() else {
         return;
     };
     let k: &'static Kit = kit(dark);
 
-    // Export: React gates on all three of open / tableName / connCtx.
+    // Export: the real dialog replaces T223's structural shell when a host
+    // snapshot is supplied; its actions map onto the existing callback surface.
     if vm.export_open {
-        if let Some(table) = vm.export_table_name.as_deref() {
+        if let Some(export_vm) = export_vm {
+            use crate::views::export_dialog::{build as build_export, ExportAction};
+            let adapter: Rc<dyn Fn(&mut S, ExportAction)> = {
+                let on_action = on_action.clone();
+                Rc::new(move |s: &mut S, action: ExportAction| match action {
+                    ExportAction::Close => on_action(s, DialogAction::CloseExport),
+                    ExportAction::Export | ExportAction::SetFormat(_) | ExportAction::SetScope(_)
+                    | ExportAction::ToggleColumn(_) | ExportAction::SelectAll
+                    | ExportAction::ClearAll | ExportAction::ResetDefault
+                    | ExportAction::CancelExport => on_action(s, DialogAction::CloseExport),
+                    // Select open/close is VM-local; it is not a host command.
+                    ExportAction::FormatSelectOpen(_) | ExportAction::ScopeSelectOpen(_) => {}
+                })
+            };
+            build_export::<S>(export_vm, Some(adapter), dark, layer);
+        } else if let Some(table) = vm.export_table_name.as_deref() {
             let body = format!(
                 "{} · {} · {} · {} / {}",
                 table,
@@ -201,31 +235,27 @@ pub(crate) fn build<S: 'static>(
         );
     }
 
+    // T382: the real ExecuteSqlFileDialog replaces T223's structural stand-in.
+    // The host port maps its close/execute requests onto T223's existing
+    // `DialogAction` surface so callers keep their contract.
     if vm.sql_file_open {
-        let body = format!(
-            "{} · {} · {}",
-            ctx.connection_name,
-            database_of(vm),
-            ctx.db_session_id
-        );
-        shell(
-            k,
-            layer,
-            "content-view-sql-file-dialog",
-            t("common.executeSqlFile"),
-            on_action,
-            &body,
-            Some("sql-file-status"),
-            row().child(
-                Button::new(t("sqlFile.selectAndRun"))
-                    .variant(ButtonVariant::Contrast)
-                    .control_size(ControlSize::ExtraLarge)
-                    .on_press(close(on_action, DialogAction::Executed))
-                    .build(k)
-                    .key("sql-file-execute"),
-            ),
-            dark,
-        );
+        let close_action = on_action.clone();
+        let execute_action = on_action.clone();
+        let host = ExecuteSqlFileHostPort {
+            on_close: Some(Rc::new(move |s: &mut S| close_action(s, DialogAction::CloseSqlFile))),
+            on_execute: Some(Rc::new(move |s: &mut S, _request: SqlFileRequest| {
+                execute_action(s, DialogAction::Executed)
+            })),
+            ..ExecuteSqlFileHostPort::default()
+        };
+        let sql_vm = ExecuteSqlFileVm {
+            open: true,
+            connection_name: ctx.connection_name.clone(),
+            database: vm.current_database.clone().or_else(|| vm.initial_database.clone()),
+            db_session_id: ctx.db_session_id.clone(),
+            state: ExecuteSqlFileState::default(),
+        };
+        execute_sql_file_dialog(&sql_vm, dark, layer, host);
     }
 
     // T266: the real create dialogs replace the structural shells. The host
