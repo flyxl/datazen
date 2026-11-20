@@ -1060,6 +1060,12 @@ mod active_editor;
 mod dirty_cell_text_audit;
 mod fk_cell_text_audit;
 mod active_editor_audit;
+// T486: the workspace tabs store (stable key, idempotent open, the close
+// neighbor rule, closeByWapp).
+mod workspace_tabs_store;
+// T486: the per-mode view-state snapshots (save/restore, dashboard-only
+// clear, full clear).
+mod workspace_panel_state_store;
 // T293: the tab-closed notification (panelCloseNotifier).
 mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the

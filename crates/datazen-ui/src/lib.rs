@@ -94,6 +94,9 @@ mod tools_state;
 mod workflow_page_state;
 // T471: the shell layout store (uiStore.ts).
 pub(crate) mod ui_store;
+// T486: the workspace tabs store and the per-mode view-state snapshots.
+pub(crate) mod workspace_tabs_store;
+pub(crate) mod workspace_panel_state_store;
 mod workspace_state;
 mod wapps_state;
 pub(crate) mod ui;
