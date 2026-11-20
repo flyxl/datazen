@@ -39,6 +39,9 @@ pub(crate) mod named_views;
 // T377: the schema-diff commands shell (pure helpers, wire folding, the
 // job-observer bus and the submit→poll→resolve machine).
 pub(crate) mod schema_diff;
+/// T397: the structure-editor command pair (capabilities + the plan's
+/// target-command shapers).
+pub(crate) mod structure;
 // T094: the AI command family (ai_*/mcp_*/prompt_* legacy shapers, the
 // workflow domain-client slice, the stream-event edges).
 pub(crate) mod ai;
