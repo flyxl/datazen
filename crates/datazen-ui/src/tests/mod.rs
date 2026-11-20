@@ -1082,6 +1082,9 @@ mod mapping_view;
 // T417 independent audit: fresh vectors (mixed counters, NUL page keys,
 // target-keyed merges, idempotent disabling, label-key resolvability).
 mod mapping_view_audit;
+// T497: the Data Sync wizard state (nine cells, the reset composite,
+// the two step arrays).
+mod use_data_sync_wizard_state;
 // T293: the tab-closed notification (panelCloseNotifier).
 mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the
