@@ -266,3 +266,77 @@ fn slots_fit_both_windows_in_both_palettes() {
         }
     }
 }
+
+// ── T485 independent audit (appended; reuses this module's Probe) ──────────
+
+/// React `formatPanelContextPath` (`packages/frontend/src/lib/panelContextPath.ts`)
+/// trims each part and joins with a dot (`panelContextPath.test.ts` pins
+/// `'Local PG.app.public'`). The port joins with `" · "` and does not trim.
+#[test]
+fn audit_context_path_uses_react_dot_separator_and_trims() {
+    assert_eq!(
+        format_context_path("Local PG", Some("app"), Some("public")),
+        "Local PG.app.public",
+        "React joins the breadcrumb with a dot"
+    );
+    assert_eq!(
+        format_context_path("Redis", Some("  "), None),
+        "Redis",
+        "React trims a whitespace-only part away"
+    );
+    assert_eq!(
+        format_context_path("Local MySQL", Some("app"), None),
+        "Local MySQL.app"
+    );
+}
+
+/// React's table SubTabBar passes `database: panel.database ?? currentDatabase`
+/// (`PanelContentRenderer.tsx:224-228`). The port's `sub_tab_bar` reads only
+/// `panel.database`, dropping the session's current database.
+#[test]
+fn audit_table_context_path_falls_back_to_current_database() {
+    let mut p = probe(PanelType::Table);
+    p.panel.as_mut().unwrap().database = None;
+    p.current_database = Some("app".to_owned());
+    p.panel.as_mut().unwrap().table_schema = Some("public".to_owned());
+    let rt = runtime(p, (1440.0, 816.0));
+    assert_eq!(
+        element(&rt, "panel-context-path").text.as_deref(),
+        Some("Local.app.public"),
+        "the sub-tab breadcrumb must use the current-database fallback"
+    );
+}
+
+/// React's create-table gate is `isMultiDb && !database` where `database` is
+/// `createPanel.database ?? currentDatabase` (`PanelContentRenderer.tsx:377`,
+/// `:531`). The port tests `panel.database.is_none()` only.
+#[test]
+fn audit_create_table_uses_current_database_before_showing_loading() {
+    let mut p = probe(PanelType::CreateTable);
+    p.panel.as_mut().unwrap().database = None;
+    p.panel.as_mut().unwrap().multi_db_without_database = true;
+    p.current_database = Some("app".to_owned());
+    let rt = runtime(p, (1440.0, 816.0));
+    assert!(
+        !has(&rt, "panel-slot-create-table-loading"),
+        "a current database satisfies the create-table gate; no loading placeholder"
+    );
+    assert!(has(&rt, "panel-slot-create-table"), "the editor slot renders instead");
+}
+
+/// React always mounts the KV connection view for a KV panel, even without a
+/// relay (`PanelContentRenderer.tsx:105-120`, pinned by the KV-slot test's
+/// "without a relay" case). The port's `on_view` port is the only way a host
+/// can mount that view, and it is skipped when no atom is given.
+#[test]
+fn audit_kv_host_port_is_notified_even_without_a_relay() {
+    let mut p = probe(PanelType::ServerStatus);
+    p.panel.as_mut().unwrap().database_type = "kvredis".to_owned();
+    p.current_database = Some("db7".to_owned());
+    let rt = runtime(p, (1440.0, 816.0));
+    assert!(has(&rt, "panel-kv-view"), "the KV branch is mounted");
+    assert!(
+        rt.state.kv_received.borrow().is_some(),
+        "the host must be told to mount the KV view even without a slot atom"
+    );
+}
