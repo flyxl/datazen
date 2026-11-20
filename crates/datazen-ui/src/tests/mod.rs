@@ -70,6 +70,9 @@ mod use_column_stats_audit;
 // T220: the selection-aware beautifier command (reindent, statement
 // cursor anchoring, the rejection guard), audited against the React suite.
 mod format_editor_document_audit;
+// T222: the appearance section (color scheme, theme packs, the orphan
+// hint), audited against AppearanceSection.test.tsx.
+mod appearance_section_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;
