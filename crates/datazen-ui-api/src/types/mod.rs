@@ -100,6 +100,10 @@ mod query;
 mod sync_diff;
 mod table_data;
 mod table_settings;
+// T276: the theme preference facade — off the aggregate's re-export surface
+// (React's types/theme.ts has its own importers; the module path is the
+// twin of React's own import path).
+pub mod theme;
 mod value_presentation;
 mod workflow;
 
