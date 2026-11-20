@@ -2769,6 +2769,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "chrono-tz",
+ "datazen-driver-api",
  "datazen-ui-api",
  "futures",
  "iana-time-zone",
