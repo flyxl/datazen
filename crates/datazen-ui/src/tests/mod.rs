@@ -319,3 +319,8 @@ mod workflow_yaml_editor;
 // T014: the export success panel and the filter bar ports.
 mod export_success_panel;
 mod filter_bar;
+
+// T052 (X-class): the `@datazen/frontend` package entry is a pure re-export
+// barrel; the receipt pins its public surface and each export's Rune
+// equivalent (or its honest single-window / host-owned gap).
+mod index_surface;
