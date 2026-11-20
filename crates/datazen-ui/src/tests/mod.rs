@@ -798,6 +798,11 @@ mod data_sync_endpoint_step;
 // id, pre-held name text, the dismissal close path, narrow-window notice).
 mod data_sync_endpoint_step_audit;
 
+// T148: the Data Sync job status panel (loose Number() semantics, verdict
+// label branches, committed fallback chain, banner/list truthiness,
+// button mounts + disabled logic + callbacks, window-width geometry).
+mod data_sync_job_status_panel;
+
 // T125: the persisted-connections store (display helpers over the T403
 // placeholder subset, load/refetch chains, group edits, per-connection moves).
 mod connection_store;
