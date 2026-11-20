@@ -799,6 +799,10 @@ mod mapping_gate_notice;
 // the disabled inertness, geometry).
 mod source_filter_editor;
 
+// T225: the transfer execute-confirm dialog (the write-mode intro, the
+// plan list, the footer buttons, the close/confirm callbacks, geometry).
+mod data_transfer_execute_confirm_dialog;
+
 // T202 independent audit: the Enter commit chain, the disabled inert
 // remove, the middle-of-three removal, double add, the and default
 // display, the short-drafts defence.
