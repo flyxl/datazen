@@ -407,7 +407,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T388 · commands · 0.90d · commands/settings.ts
 - [x] T389 · components/DataTable · 0.80d · components/DataTable/TableHeader.tsx
 - [ ] T390 · windows/settings · 1.30d · windows/settings/SettingsContent.tsx · split
-- [ ] T391 · windows/connection · 1.30d · windows/connection/ExportDialog.tsx · split
+- [x] T391 · windows/connection · 1.30d · windows/connection/ExportDialog.tsx · split
 - [ ] T392 · windows/data-sync · 0.90d · windows/data-sync/clientSqlPreview.ts
 - [ ] T393 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffJobLifecycle.ts
 - [ ] T394 · lib · 0.80d · lib/connectionFormModel.ts lib/connectionGroups.ts

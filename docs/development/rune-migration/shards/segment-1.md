@@ -73,7 +73,7 @@
 - [x] T361 · windows/connection · 2.00d · windows/connection/er/TableNode.tsx · split
 - [x] T372 · windows/connection · 2.20d · windows/connection/ErDiagramView.tsx · split
 - [x] T382 · windows/connection · 0.50d · windows/connection/ExecuteSqlFileDialog.tsx
-- [ ] T391 · windows/connection · 1.30d · windows/connection/ExportDialog.tsx · split
+- [x] T391 · windows/connection · 1.30d · windows/connection/ExportDialog.tsx · split
 - [ ] T400 · windows/connection · 0.90d · windows/connection/ForeignKeysView.tsx
 - [ ] T409 · windows/connection · 0.90d · windows/connection/home/ConnectionCardList.tsx
 - [ ] T418 · windows/connection · 0.60d · windows/connection/home/HomeHero.tsx windows/connection/home/McpPromoBar.tsx
