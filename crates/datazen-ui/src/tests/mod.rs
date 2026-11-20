@@ -426,6 +426,8 @@ mod connection_navigator_tree_audit;
 // T465: NavigatorToolbar port (React testids/i18n, host actions, optional
 // buttons, controlled search input and two-size two-theme geometry).
 mod navigator_toolbar;
+// T465 independent audit: structural heights/keys and partial port wiring.
+mod navigator_toolbar_audit;
 
 // T068: MigrationJobFailureNotice (fail-closed refusal notice).
 mod migration_failure_notice;
