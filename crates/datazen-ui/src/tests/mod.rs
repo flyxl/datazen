@@ -40,6 +40,12 @@ mod er_diagram_view_audit;
 // T418: the standalone HomeHero + McpPromoBar ports (keys, counts, real copy
 // wake deadline and two-window/two-theme geometry).
 mod home_hero_promo;
+// T442: the ImportDialog wizard port (mapping plan, keys, host actions, slot
+// composition and two-window/two-theme geometry).
+mod import_dialog;
+// T442 independent audit: running footer, Start action, sample, mapped pairs,
+// Select write-back and visible-rect geometry across all phases.
+mod import_dialog_audit;
 // T418 independent audit: host command copy, re-time, keyed marker, badge cap,
 // exact 2000ms wake, visible-rect geometry and exact copy locale keys.
 mod home_hero_promo_audit;

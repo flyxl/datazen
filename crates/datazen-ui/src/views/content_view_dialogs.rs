@@ -30,6 +30,9 @@ use crate::views::execute_sql_file_dialog::{
     execute_sql_file_dialog, ExecuteSqlFileHostPort, ExecuteSqlFileState, ExecuteSqlFileVm,
     SqlFileRequest,
 };
+use crate::views::import_dialog::{
+    build as build_import, ImportAction, ImportDialogVm, ImportVmFn,
+};
 use crate::views::create_database_dialog::{
     build_snapshot as build_db_snapshot, AdminCreateAction, AdminCreateState, DB_SPEC,
 };
@@ -117,7 +120,7 @@ pub(crate) fn build<S: 'static>(
     layer: &mut Vec<El>,
     on_action: &Rc<dyn Fn(&mut S, DialogAction)>,
 ) {
-    build_with_export::<S>(vm, dark, layer, on_action, None);
+    build_with_options::<S>(vm, dark, layer, on_action, None, None, None);
 }
 
 /// Same host with an optional real ExportDialog snapshot. The standalone
@@ -130,6 +133,34 @@ pub(crate) fn build_with_export<S: 'static>(
     layer: &mut Vec<El>,
     on_action: &Rc<dyn Fn(&mut S, DialogAction)>,
     export_vm: Option<&super::export_dialog::ExportVm>,
+) {
+    build_with_options::<S>(vm, dark, layer, on_action, export_vm, None, None);
+}
+
+/// Same host with an optional real import-wizard snapshot. T223's structural
+/// import shell stays in [`build`]; a host that owns the import VM composes the
+/// real port here. Its actions map onto T223's existing callback surface so
+/// callers keep their contract.
+#[allow(dead_code)] // composition entry point; remove when the host owns the import wizard.
+pub(crate) fn build_with_import<S: 'static>(
+    vm: &DialogsVm,
+    dark: bool,
+    layer: &mut Vec<El>,
+    on_action: &Rc<dyn Fn(&mut S, DialogAction)>,
+    import_vm: Option<&ImportDialogVm>,
+    import_vm_edit: Option<ImportVmFn<S>>,
+) {
+    build_with_options::<S>(vm, dark, layer, on_action, None, import_vm, import_vm_edit);
+}
+
+fn build_with_options<S: 'static>(
+    vm: &DialogsVm,
+    dark: bool,
+    layer: &mut Vec<El>,
+    on_action: &Rc<dyn Fn(&mut S, DialogAction)>,
+    export_vm: Option<&super::export_dialog::ExportVm>,
+    import_vm: Option<&ImportDialogVm>,
+    import_vm_edit: Option<ImportVmFn<S>>,
 ) {
     let Some(ctx) = vm.conn_ctx.as_ref() else {
         return;
@@ -206,33 +237,73 @@ pub(crate) fn build_with_export<S: 'static>(
     }
 
     if vm.import_open {
-        let table = vm.import_table_name.clone().unwrap_or_default();
-        let body = format!(
-            "{} · {} · {}",
-            table,
-            vm.import_schema.as_deref().unwrap_or(""),
-            vm.import_database.as_deref().unwrap_or("")
-        );
-        let import_action = DialogAction::CloseImport {
-            table,
-            schema: vm.import_schema.clone(),
-            database: vm.import_database.clone(),
-        };
-        shell(
-            k,
-            layer,
-            "content-view-import-dialog",
-            t("common.importData"),
-            on_action,
-            &body,
-            Some("import-summary"),
-            Button::new(t("import.import"))
-                .variant(ButtonVariant::Contrast)
-                .control_size(ControlSize::ExtraLarge)
-                .on_press(close(on_action, import_action))
-                .build(k),
-            dark,
-        );
+        if let Some(import_vm) = import_vm {
+            // The host owns the wizard VM and every command; this seam only
+            // forwards close/confirm onto T223's callback surface. Select and
+            // form edits are VM-local and intentionally produce no host call.
+            let adapter: Rc<dyn Fn(&mut S, ImportAction)> = {
+                let on_action = on_action.clone();
+                let cancel = DialogAction::CloseImport {
+                    table: String::new(),
+                    schema: None,
+                    database: None,
+                };
+                let confirm = DialogAction::CloseImport {
+                    table: vm.import_table_name.clone().unwrap_or_default(),
+                    schema: vm.import_schema.clone(),
+                    database: vm.import_database.clone(),
+                };
+                Rc::new(move |s: &mut S, action: ImportAction| match action {
+                    ImportAction::Close => on_action(s, cancel.clone()),
+                    ImportAction::Start | ImportAction::ResetForAnother => {
+                        on_action(s, confirm.clone())
+                    }
+                    ImportAction::PickFile
+                    | ImportAction::SetEncoding(_)
+                    | ImportAction::SetDelimiter(_)
+                    | ImportAction::SetQuoteChar(_)
+                    | ImportAction::SetFirstRowIsHeader(_)
+                    | ImportAction::SetEmptyUnquotedAs(_)
+                    | ImportAction::SetSheetName(_)
+                    | ImportAction::SetTargetTable(_)
+                    | ImportAction::SetMappingMode(_)
+                    | ImportAction::SetOverride { .. }
+                    | ImportAction::SetOnError(_)
+                    | ImportAction::SetCommitMode(_)
+                    | ImportAction::CancelImport
+                    | ImportAction::SetOpenSelect(_) => {}
+                })
+            };
+            build_import::<S>(import_vm, Some(adapter), import_vm_edit, dark, layer);
+        } else {
+            let table = vm.import_table_name.clone().unwrap_or_default();
+            let body = format!(
+                "{} · {} · {}",
+                table,
+                vm.import_schema.as_deref().unwrap_or(""),
+                vm.import_database.as_deref().unwrap_or("")
+            );
+            let import_action = DialogAction::CloseImport {
+                table,
+                schema: vm.import_schema.clone(),
+                database: vm.import_database.clone(),
+            };
+            shell(
+                k,
+                layer,
+                "content-view-import-dialog",
+                t("common.importData"),
+                on_action,
+                &body,
+                Some("import-summary"),
+                Button::new(t("import.import"))
+                    .variant(ButtonVariant::Contrast)
+                    .control_size(ControlSize::ExtraLarge)
+                    .on_press(close(on_action, import_action))
+                    .build(k),
+                dark,
+            );
+        }
     }
 
     // T382: the real ExecuteSqlFileDialog replaces T223's structural stand-in.
