@@ -22,7 +22,7 @@
 - [ ] T095 · extensions · 0.80d · extensions/generated.ts
 - [x] T118 · lib · 0.80d · lib/cellEditorKind.ts
 - [x] T152 · lib · 0.60d · lib/dataTypeColors.ts components/DataTable/editors/toEditString.ts
-- [ ] T251 · lib · 0.50d · lib/aiProviders.ts
+- [x] T251 · lib · 0.50d · lib/aiProviders.ts
 - [ ] T261 · components/chart · 2.00d · components/chart/renderers/ScatterChartRenderer.tsx · split
 - [ ] T272 · lib · 0.80d · lib/aiQueryActions.ts
 - [ ] T291 · lib · 0.90d · lib/aiSafetyPresets.ts lib/aiSkills.ts lib/anyColumnFilter.ts
