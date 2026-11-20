@@ -474,4 +474,26 @@ mod tests {
         assert_eq!(RelatedTableOrigin::Declared.as_str(), "declared");
         assert_eq!(RelatedTableOrigin::Predicted.as_str(), "predicted");
     }
+
+    #[test]
+    fn the_boost_constants_are_the_react_literals() {
+        // [tester] Supplementary: React's own suite asserts the constants
+        // symbolically (`boost: DECLARED_RELATION_BOOST`) or through
+        // hand-built literal hints, so swapping the two constants — or
+        // drifting either literal — escapes its net; only the ordering
+        // tests would notice. The literals are the public scoring contract
+        // (query completions rank by them), so they are pinned at their
+        // source, then once more end-to-end through the declared path.
+        assert_eq!(DECLARED_RELATION_BOOST, 20);
+        assert_eq!(PREDICTED_RELATION_BOOST, 12);
+
+        let orders = PredictionTable {
+            declared_foreign_keys: vec![declared_fk(&["user_id"], "users", &["id"])],
+            ..base_orders()
+        };
+        assert_eq!(
+            related_table_hints(&[orders, users()]),
+            vec![hint("users", RelatedTableOrigin::Declared, 20, "orders")]
+        );
+    }
 }
