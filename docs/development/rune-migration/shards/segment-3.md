@@ -139,7 +139,7 @@
 - [ ] T408 · windows/data-sync · 0.30d · windows/data-sync/dataSyncTypes.ts
 - [x] T412 · stores · 0.90d · stores/schemaMetadataKeys.ts
 - [ ] T414 · components/DataTable · 0.90d · components/DataTable/fkSelectorText.ts components/DataTable/gridClipboardBridge.ts components/DataTable/rowHeight.ts
-- [ ] T417 · windows/data-sync · 0.90d · windows/data-sync/mappingView.ts
+- [x] T417 · windows/data-sync · 0.90d · windows/data-sync/mappingView.ts
 - [x] T421 · stores · 0.30d · stores/schemaRequestTracker.ts
 - [ ] T423 · components/DataTable · 0.90d · components/DataTable/useDataTableClipboardDom.ts
 - [ ] T426 · windows/data-sync · 0.90d · windows/data-sync/selectionScope.ts
