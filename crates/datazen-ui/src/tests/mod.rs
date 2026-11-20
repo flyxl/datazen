@@ -794,6 +794,10 @@ mod data_transfer_terminal_results_audit;
 // derived reason, the nothing-renders branches, the alert role, geometry).
 mod mapping_gate_notice;
 
+// T176 independent audit: whitespace vectors, the disabled create-new,
+// the empty row list, receipt-over-reason order, banner/text nesting.
+mod mapping_gate_notice_audit;
+
 // T114: the Data Sync endpoint step (scope reconfirmation, profile
 // controls: name input, profile select, save/load/delete gates).
 mod data_sync_endpoint_step;
