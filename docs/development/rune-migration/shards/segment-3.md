@@ -111,7 +111,7 @@
 - [ ] T328 · stores/tableData · 2.00d · stores/tableData/stageCellValue.ts · split
 - [ ] T330 · components/DataTable · 0.90d · components/DataTable/editors/NumberCellEditor.tsx components/DataTable/editors/TemporalCellEditor.tsx components/DataTable/editors/TextCellEditor.tsx
 - [ ] T332 · components/ai · 1.30d · components/ai/WorkflowPanel.tsx · split
-- [ ] T336 · windows/data-sync · 0.50d · windows/data-sync/MappingPanel.tsx
+- [x] T336 · windows/data-sync · 0.50d · windows/data-sync/MappingPanel.tsx
 - [ ] T340 · stores · 0.90d · stores/panelResultEdit.ts
 - [ ] T341 · stores/tableData · 2.00d · stores/tableData/stageEdit.ts · split
 - [ ] T343 · components/DataTable · 0.80d · components/DataTable/GridCell.tsx
