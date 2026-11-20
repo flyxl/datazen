@@ -48,6 +48,12 @@ pub(crate) mod sql_editor_context_menu;
 #[allow(unused_imports)] // `toggle_sql_line_comments` keeps its pre-T155 path stable
 pub(crate) use sql_editor_context_menu::toggle_sql_line_comments;
 
+/// `components/sql-editor/extensions/{executionState,types}.ts` (T170):
+/// the execution-state field machine (start/cancel/finish, the running-
+/// target match), the frame-degrade rules and the statement/execution
+/// target contracts the frame and gutter extensions share.
+pub(crate) mod extensions;
+
 pub(crate) mod completion;
 #[allow(unused_imports)] // consumers land with the S2/S3 slices
 pub(crate) use completion::{

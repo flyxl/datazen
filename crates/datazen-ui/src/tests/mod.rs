@@ -46,6 +46,9 @@ mod use_column_presentation_session_hook_audit;
 // T163: the app-data backup/import shapers, audited against the React
 // source literal (command names, payload keys, the merged-IPC decisions).
 mod commands_backup_audit;
+// T170: the extensions execution-state machine + frame rules, audited
+// against extensions/__tests__/executionState.test.ts.
+mod sql_editor_extensions_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;
