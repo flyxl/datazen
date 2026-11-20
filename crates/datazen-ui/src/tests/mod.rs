@@ -42,6 +42,11 @@ mod import_dialog;
 // T460: GlobalObjectSearch + NavigatorDialogs ports (search journey, host
 // actions, confirm children and two-window/two-theme geometry).
 mod global_object_search;
+// T475: the navigator status pip (colour/aria mapping, idle no-op, geometry).
+mod tree_status_dot;
+// T475 independent audit: help tooltip, full-round radius, exact parsing and
+// visible-rect containment of every drawn pip.
+mod tree_status_dot_audit;
 // T460 independent audit: result cap, sort, match reason, empty-old rename and
 // visible-rect geometry.
 mod global_object_search_audit;
@@ -664,6 +669,10 @@ mod recent_queries_list_audit;
 mod database_value_search_dialog;
 // T454 independent audit: Enter-to-start, rounded seconds, resume, picker, busy.
 mod value_search_audit;
+// T470: NavigatorTreeRow port (13 variants, ARIA equivalence, host actions, geometry).
+mod navigator_tree_row;
+// T470 independent audit: Space activation, KV click, context menus, chevron isolation, ARIA label, rect geometry.
+mod navigator_tree_row_audit;
 // T144: the React ConnectionWorkspaceHome port (hero counts, card keys,
 // filter, MCP copy feedback with a real wake, KV-slot takeover, geometry).
 mod connection_workspace_home;
@@ -682,6 +691,11 @@ mod connection_navigator_tree;
 // Independent T067 audit: isolated keyboard branches, active-descendant
 // mounted-row contract, filter trim/case, key preservation and object geometry.
 mod connection_navigator_tree_audit;
+// T465: NavigatorToolbar port (React testids/i18n, host actions, optional
+// buttons, controlled search input and two-size two-theme geometry).
+mod navigator_toolbar;
+// T465 independent audit: structural heights/keys and partial port wiring.
+mod navigator_toolbar_audit;
 
 // T068: MigrationJobFailureNotice (fail-closed refusal notice).
 mod migration_failure_notice;

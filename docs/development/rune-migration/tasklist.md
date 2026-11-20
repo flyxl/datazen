@@ -481,17 +481,17 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T462 · lib · 3.30d · lib/dataTableContextMenu.ts · split
 - [ ] T463 · stores · 1.30d · stores/tableDataStore.ts · split
 - [ ] T464 · windows/settings · 0.90d · windows/settings/UpdateSection.tsx
-- [ ] T465 · windows/connection · 0.50d · windows/connection/navigator/NavigatorToolbar.tsx
+- [x] T465 · windows/connection · 0.50d · windows/connection/navigator/NavigatorToolbar.tsx
 - [ ] T466 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncJobLifecycle.ts
 - [ ] T467 · lib · 0.90d · lib/dedicatedDbSession.ts
 - [ ] T468 · stores · 0.90d · stores/tunnelStore.ts
 - [ ] T469 · windows/settings · 0.80d · windows/settings/ValuePresentationRuleEditor.tsx
-- [ ] T470 · windows/connection · 1.30d · windows/connection/navigator/NavigatorTreeRow.tsx · split
+- [x] T470 · windows/connection · 1.30d · windows/connection/navigator/NavigatorTreeRow.tsx · split
 - [ ] T471 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncOptions.ts
 - [ ] T472 · lib · 0.90d · lib/defaultSort.ts lib/docsUrls.ts lib/documentScrollLock.ts
 - [ ] T473 · stores · 0.90d · stores/uiStore.ts
 - [ ] T474 · windows/settings · 1.30d · windows/settings/ValuePresentationSettingsSection.tsx · split
-- [ ] T475 · windows/connection · 0.90d · windows/connection/navigator/treeStatusDot.tsx
+- [x] T475 · windows/connection · 0.90d · windows/connection/navigator/treeStatusDot.tsx
 - [ ] T476 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncProfiles.ts · split
 - [ ] T477 · lib · 0.90d · lib/driverCapabilities.ts
 - [ ] T478 · stores · 0.90d · stores/updateReminderStore.ts

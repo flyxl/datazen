@@ -83,9 +83,9 @@
 - [x] T448 · windows/connection · 1.30d · windows/connection/IndexesView.tsx · split
 - [x] T454 · windows/connection · 1.30d · windows/connection/navigator/DatabaseValueSearchDialog.tsx · split
 - [x] T460 · windows/connection · 1.00d · windows/connection/navigator/GlobalObjectSearch.tsx windows/connection/navigator/NavigatorDialogs.tsx
-- [ ] T465 · windows/connection · 0.50d · windows/connection/navigator/NavigatorToolbar.tsx
-- [ ] T470 · windows/connection · 1.30d · windows/connection/navigator/NavigatorTreeRow.tsx · split
-- [ ] T475 · windows/connection · 0.90d · windows/connection/navigator/treeStatusDot.tsx
+- [x] T465 · windows/connection · 0.50d · windows/connection/navigator/NavigatorToolbar.tsx
+- [x] T470 · windows/connection · 1.30d · windows/connection/navigator/NavigatorTreeRow.tsx · split
+- [x] T475 · windows/connection · 0.90d · windows/connection/navigator/treeStatusDot.tsx
 - [ ] T480 · windows/connection · 0.90d · windows/connection/ObjectBrowser.tsx
 - [ ] T485 · windows/connection · 1.30d · windows/connection/PanelContentRenderer.tsx · split
 - [ ] T489 · windows/connection · 0.90d · windows/connection/PanelTabBar.tsx
