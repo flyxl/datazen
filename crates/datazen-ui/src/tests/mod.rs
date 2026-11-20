@@ -1103,6 +1103,9 @@ mod data_sync_objects_step_audit;
 // T286: TransferPairingNote + CompareSummary (reason/generic word, five
 // counters, button mounts, the copied word).
 mod compare_summary;
+// T286 independent audit: the disabled channel, geometry both sizes, the
+// light-theme note with its margin.
+mod compare_summary_audit;
 // T293: the tab-closed notification (panelCloseNotifier).
 mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the
