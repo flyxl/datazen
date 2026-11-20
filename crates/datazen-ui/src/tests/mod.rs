@@ -58,6 +58,9 @@ mod use_column_resize_audit;
 // T190: the connection command family + the in-flight connect joiner,
 // audited against commands/__tests__/connection.test.ts.
 mod commands_connection_audit;
+// T196: the fold compartment's host gate (codeFolding on the shared
+// bag), audited against foldCompartment.test.ts's setting-gate group.
+mod fold_compartment_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;

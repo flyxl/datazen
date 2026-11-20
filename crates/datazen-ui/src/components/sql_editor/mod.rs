@@ -54,6 +54,11 @@ pub(crate) use sql_editor_context_menu::toggle_sql_line_comments;
 /// target contracts the frame and gutter extensions share.
 pub(crate) mod extensions;
 
+/// `components/sql-editor/fold/foldCompartment.ts` (T196, split): the
+/// `fold` Pro compartment's host gate (the `codeFolding` key on the
+/// shared settings bag). The registry itself is T335.
+pub(crate) mod fold;
+
 pub(crate) mod completion;
 #[allow(unused_imports)] // consumers land with the S2/S3 slices
 pub(crate) use completion::{
