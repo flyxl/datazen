@@ -405,6 +405,8 @@ mod recent_queries_list_audit;
 mod database_value_search_dialog;
 // T454 independent audit: Enter-to-start, rounded seconds, resume, picker, busy.
 mod value_search_audit;
+// T470: NavigatorTreeRow port (13 variants, ARIA equivalence, host actions, geometry).
+mod navigator_tree_row;
 // T144: the React ConnectionWorkspaceHome port (hero counts, card keys,
 // filter, MCP copy feedback with a real wake, KV-slot takeover, geometry).
 mod connection_workspace_home;
