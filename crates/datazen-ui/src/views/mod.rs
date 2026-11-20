@@ -23,6 +23,7 @@ pub(crate) mod home;
 pub(crate) mod import_dialog;
 pub(crate) mod navigator;
 pub(crate) mod object_browser;
+pub(crate) mod panel_content_renderer;
 
 mod connections;
 mod connections_home;

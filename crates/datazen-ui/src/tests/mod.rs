@@ -414,6 +414,8 @@ mod value_search_audit;
 mod navigator_tree_row;
 // T470 independent audit: Space activation, KV click, context menus, chevron isolation, ARIA label, rect geometry.
 mod navigator_tree_row_audit;
+// T485: PanelContentRenderer port (slot routing, KV relay, states, actions, geometry).
+mod panel_content_renderer;
 // T144: the React ConnectionWorkspaceHome port (hero counts, card keys,
 // filter, MCP copy feedback with a real wake, KV-slot takeover, geometry).
 mod connection_workspace_home;
