@@ -1100,6 +1100,9 @@ mod data_sync_objects_step;
 // T177 independent audit: geometry both sizes/branches, inspecting
 // precedence, the disabled-set pass-through, light theme.
 mod data_sync_objects_step_audit;
+// T286: TransferPairingNote + CompareSummary (reason/generic word, five
+// counters, button mounts, the copied word).
+mod compare_summary;
 // T293: the tab-closed notification (panelCloseNotifier).
 mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the
