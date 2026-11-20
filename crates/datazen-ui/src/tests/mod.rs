@@ -248,6 +248,8 @@ mod table_session;
 // T292 independent audit: absent namespace fields and a controller with no
 // snapshot.
 mod table_session_audit;
+// T311: lib/session/targetCommand.ts port (target derivation + admission).
+mod target_command;
 
 
 // Independent re-audit of merged T0-07 menu base.

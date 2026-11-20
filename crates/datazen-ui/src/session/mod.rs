@@ -15,3 +15,4 @@ pub(crate) mod run_editor_explain;
 pub(crate) mod run_editor_query;
 pub(crate) mod session_prompts;
 pub(crate) mod table_session;
+pub(crate) mod target_command;
