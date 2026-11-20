@@ -22,6 +22,9 @@ pub(crate) mod schema_diff_table_list_panel;
 pub(crate) mod schema_diff_right_panel;
 // T229: the two saved-setup dialogs (import config + profile naming).
 pub(crate) mod schema_diff_saved_setup_dialogs;
+// T250: the wizard's two selection steps (endpoints bar + objects
+// step over the unified picker seam).
+pub(crate) mod schema_diff_selection_steps;
 // T075: the wizard's per-step execution surfaces
 // (SchemaDiffExecutionPanels.tsx: compare row, plan step, deploy step).
 pub(crate) mod schema_diff_execution_panels;

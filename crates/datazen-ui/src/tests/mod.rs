@@ -85,6 +85,9 @@ mod commands_dashboard_audit;
 // T244: the history-data cleanup section (scope, retention, confirm,
 // purge messages), audited against DataCleanupSection.test.tsx.
 mod data_cleanup_section_audit;
+// T250: the wizard's two selection steps (endpoints bar + objects step
+// over the picker seam), audited against the React JSX.
+mod schema_diff_selection_steps_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;
