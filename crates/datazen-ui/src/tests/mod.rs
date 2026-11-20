@@ -46,6 +46,9 @@ mod import_dialog;
 // T460: GlobalObjectSearch + NavigatorDialogs ports (search journey, host
 // actions, confirm children and two-window/two-theme geometry).
 mod global_object_search;
+// T460 independent audit: result cap, sort, match reason, empty-old rename and
+// visible-rect geometry.
+mod global_object_search_audit;
 // T442 independent audit: running footer, Start action, sample, mapped pairs,
 // Select write-back and visible-rect geometry across all phases.
 mod import_dialog_audit;
