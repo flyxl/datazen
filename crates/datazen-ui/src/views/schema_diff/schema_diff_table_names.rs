@@ -254,7 +254,7 @@ pub(crate) fn enabled_table_names(picks: &[SchemaDiffTablePickVm]) -> Vec<String
 pub(crate) fn enabled_source_table_names(picks: &[SchemaDiffTablePickVm]) -> Vec<String> {
     picks
         .iter()
-        .filter(|row| row.enabled)
+        .filter(|row| row.enabled && row.origin != TablePickOriginVm::TargetOnly)
         .map(|row| row.source_name.clone().unwrap_or_else(|| row.name.clone()))
         .collect()
 }
