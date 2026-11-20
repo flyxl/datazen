@@ -131,7 +131,7 @@
 - [x] T374 · windows/schema-diff · 0.60d · windows/schema-diff/schemaDiffTableNames.ts windows/schema-diff/useSchemaDiffClipboardFeedback.ts
 - [x] T376 · hooks · 0.30d · hooks/useMigrationJobHydration.ts
 - [x] T379 · commands · 0.90d · commands/schemaDiff.ts
-- [ ] T381 · windows/settings · 0.30d · windows/settings/SettingHint.tsx
+- [x] T381 · windows/settings · 0.30d · windows/settings/SettingHint.tsx
 - [ ] T384 · windows/schema-diff · 1.30d · windows/schema-diff/useSchemaDiffEndpoints.ts · split
 - [ ] T386 · hooks · 0.90d · hooks/usePlatform.ts
 - [ ] T388 · commands · 0.90d · commands/settings.ts
