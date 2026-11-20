@@ -207,7 +207,17 @@ fn quote_ident(value: &str, q: &str) -> String {
 fn has_index_dialect(database_type: &str) -> bool {
     matches!(
         database_type,
-        "postgresql" | "mysql" | "mariadb" | "sqlite" | "duckdb"
+        "postgresql"
+            | "mysql"
+            | "mariadb"
+            | "sqlite"
+            | "duckdb"
+            | "sqlserver"
+            | "clickhouse"
+            | "oracle"
+            | "elasticsearch"
+            | "mongodb"
+            | "generic"
     )
 }
 
@@ -222,6 +232,8 @@ pub(crate) fn supported_methods(database_type: &str) -> Vec<IndexMethod> {
             IndexMethod::Gist,
         ],
         "mysql" | "mariadb" => vec![IndexMethod::BTree, IndexMethod::Hash],
+        "sqlserver" | "clickhouse" | "duckdb" | "oracle" | "elasticsearch" | "mongodb"
+        | "generic" => vec![IndexMethod::BTree, IndexMethod::Hash],
         _ => vec![IndexMethod::BTree],
     }
 }
@@ -270,7 +282,10 @@ pub(crate) fn build_drop_index_sql(
 ) -> String {
     let q = quote_char(database_type);
     let index = quote_ident(index_name, q);
-    if matches!(database_type, "mysql" | "mariadb") {
+    if matches!(
+        database_type,
+        "mysql" | "mariadb" | "sqlserver" | "clickhouse"
+    ) {
         format!("DROP INDEX {index} ON {}", quote_ident(table_name, q))
     } else {
         format!("DROP INDEX {index}")

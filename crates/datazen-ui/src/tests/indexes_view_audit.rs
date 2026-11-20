@@ -4,8 +4,8 @@
 //! sets / quote chars, the pure name helpers, and the error alert role.
 
 use crate::views::indexes_view::{
-    quote_char, suggested_index_name, supported_methods, IndexMethod, IndexesIdentity,
-    IndexesViewState, ERROR_KEY,
+    build_create_index_sql, build_drop_index_sql, quote_char, suggested_index_name,
+    supported_methods, IndexMethod, IndexesIdentity, IndexesViewState, ERROR_KEY,
 };
 
 #[test]
@@ -20,6 +20,56 @@ fn builtin_dialect_method_sets_and_quote_chars_are_pinned() {
     assert_eq!(quote_char("mariadb"), "`");
     assert_eq!(quote_char("postgresql"), "\"");
     assert_eq!(quote_char("sqlite"), "\"");
+}
+
+#[test]
+fn standard_index_dialects_are_complete() {
+    // React's `standardIndex(dropPattern)` (extra.ts:71-87): methods
+    // `['btree','hash']`, one create form, and a drop pattern per dialect.
+    let cols = vec!["id".to_owned()];
+    assert!(
+        !build_create_index_sql("sqlserver", "users", "idx_foo", &cols, false, IndexMethod::BTree)
+            .is_empty(),
+        "React offers Hash on SQL Server, so the dialect must build create SQL"
+    );
+    let standard = [
+        "sqlserver",
+        "clickhouse",
+        "duckdb",
+        "oracle",
+        "elasticsearch",
+        "mongodb",
+        "generic",
+    ];
+    for dialect in standard {
+        assert_eq!(
+            supported_methods(dialect),
+            vec![IndexMethod::BTree, IndexMethod::Hash],
+            "standardIndex methods on {dialect}"
+        );
+        assert_eq!(
+            build_create_index_sql(
+                dialect,
+                "users",
+                "idx_foo",
+                &cols,
+                false,
+                IndexMethod::BTree
+            ),
+            "CREATE INDEX \"idx_foo\" ON \"users\" (\"id\")",
+            "standardIndex create form on {dialect}"
+        );
+        let expected_drop = if matches!(dialect, "sqlserver" | "clickhouse") {
+            "DROP INDEX \"idx_foo\" ON \"users\""
+        } else {
+            "DROP INDEX \"idx_foo\""
+        };
+        assert_eq!(
+            build_drop_index_sql(dialect, "idx_foo", "users"),
+            expected_drop,
+            "standardIndex drop pattern on {dialect}"
+        );
+    }
 }
 
 #[test]
