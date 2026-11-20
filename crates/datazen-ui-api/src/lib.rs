@@ -18,6 +18,10 @@ mod ai_sessions;
 mod ai_store_types;
 mod ai_streaming;
 mod ai_types;
+// T310 (seg2 lib): the backup-progress formatting/bounding and base64 wire
+// helpers, ported verbatim from `lib/backupProgress.ts` / `lib/base64.ts`.
+mod backup_progress;
+mod base64;
 mod chart_types;
 mod connection_types;
 mod connection_views;
@@ -143,6 +147,18 @@ pub use ai_types::{
     ExplainSuggestion, ModelInfo, PromptTemplate, ProviderListItem, StreamChunkPayload,
     StreamChunkUsage, StreamErrorPayload, DEFAULT_AI_MEMORY_SETTINGS, DEFAULT_AI_SKILLS_SETTINGS,
 };
+// T310 (seg2 lib): the React `lib/backupProgress.ts` surface — the two status
+// formatters, the ratio derivation, the bounded log pump and its constants.
+pub use backup_progress::{
+    append_progress_log, backup_progress_ratio, format_backup_progress, format_restore_progress,
+    BackupDumpPhase, BackupProgressPayload, ProgressLogPump, Translate, KEY_LOG_OMITTED,
+    KEY_PROGRESS_OBJECT, KEY_PROGRESS_PREPARING, KEY_PROGRESS_WRITING, KEY_RESTORE_PREPARING,
+    KEY_RESTORE_PROGRESS, KEY_RESTORE_SUCCESS, KEY_RESTORING, KEY_SUCCESS, MAX_PROGRESS_LOG_CHARS,
+    MAX_PROGRESS_LOG_LINES,
+};
+// T310 (seg2 lib): the React `lib/base64.ts` surface — the two byte helpers
+// and the decode error type.
+pub use base64::{base64_to_bytes, bytes_to_base64, Base64DecodeError};
 pub use chart_types::{
     AggregationType, ChartConfig, ChartDataPoint, ChartDataPointValue, ChartField,
     ChartRecommendation, ChartSortBy, ChartType, InferredFieldType,
