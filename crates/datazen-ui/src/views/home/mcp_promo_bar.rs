@@ -106,6 +106,7 @@ pub(crate) fn mcp_copied(state: &AppState) -> bool {
 
 /// Build the promo bar. The copy button emits [`McpPromoAction::Copy`] through
 /// [`apply_mcp_promo_action`] so the feedback is a real timed wake, not a flag.
+#[allow(dead_code)] // consumer: the connections-home host that mounts this view (not landed); delete when it replaces the inline promo bar.
 pub(crate) fn build_mcp_promo_bar(
     vm: &McpPromoVm,
     state: &AppState,
@@ -169,6 +170,7 @@ pub(crate) fn build_mcp_promo_bar(
 
 /// The ghost copy button flips icon + label while the real feedback deadline
 /// is live, then reverts when the host poll clears the marker.
+#[allow(dead_code)] // consumer: build_mcp_promo_bar, itself awaiting the connections-home host mount; delete with that wiring.
 fn copy_button(command: String, state: &AppState, dark: bool) -> El {
     let copied = mcp_copied(state);
     let label = if copied {

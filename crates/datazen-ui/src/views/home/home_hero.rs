@@ -128,6 +128,7 @@ pub(crate) fn badge_cluster(vm: &HomeHeroVm, theme: tok::Theme, dark: bool) -> E
 }
 
 /// Build the hero. Keys match the A1 home so the existing probes keep working.
+#[allow(dead_code)] // consumer: the connections-home host that mounts this view (not landed); delete when it replaces the inline hero.
 pub(crate) fn build_home_hero(vm: &HomeHeroVm, theme: tok::Theme, dark: bool) -> El {
     let (line, spans) = counts_line(vm, theme.text);
     let mut hero = row()
