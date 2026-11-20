@@ -12,6 +12,8 @@ mod ai_message_blocks;
 mod ai_memory_patterns;
 // T251: the provider preset table, its PRD order and the backend normalizer.
 mod ai_providers;
+// T272: the query-error AI action adapters — pure descriptors over raw JSON.
+mod ai_query_actions;
 mod ai_sessions;
 mod ai_store_types;
 mod ai_streaming;
@@ -76,6 +78,18 @@ pub use ai_message_blocks::{
 pub use ai_providers::{
     DEEP_SEEK_PROVIDER, LOCAL_CLI_PROVIDER_TYPES, OLLAMA_PROVIDER, PROVIDER_ORDER,
     is_known_provider_type, is_local_cli_provider, normalize_ai_providers, provider_preset,
+};
+// T272: the React `lib/aiQueryActions.ts` surface — the guarded context
+// builder, the three action descriptors and their param helpers.
+pub use ai_query_actions::{
+    bound_params_from_json, build_explain_action, build_fix_sql_action,
+    build_query_diagnosis_context, build_retry_action, equal_bound_params, BoundParamValue,
+    BoundParams, ExplainActionDescriptor, FixSqlActionDescriptor, PromptConnectionContext,
+    QueryActionBuildFailure, QueryActionBuildResult, QueryActionBuildSuccess, QueryActionError,
+    QueryActionErrorCode, QueryDiagnosisContext, QueryDiagnosisContextLike, QueryDiagnosisParams,
+    QueryPromptContext, RetryActionDescriptor, RetryRequest, RetryValidation,
+    RetryValidationFailure, RetryValidationInput, RetryValidationSuccess,
+    SanitizedConnectionContext, SanitizedJson, SqlDiff, SqlEditorDraft,
 };
 pub use ai_sessions::{
     ActiveConnectionEntry, ActiveConnections, AiSessionBackend, AiSessionStore, ExportFormat,

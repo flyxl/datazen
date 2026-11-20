@@ -1480,3 +1480,8 @@ mod generated_driver_surface;
 // barrel; the receipt pins its public surface and each export's Rune
 // equivalent (or its honest single-window / host-owned gap).
 mod index_surface;
+
+// T261: the scatter chart engine port (the numeric X/Y domains, the point
+// view-box mapping, null/NaN gaps, both formatCompact axes, the single palette
+// slot, the plain tooltip + cursor, the hit raster and the two-size window fit).
+mod scatter_chart_renderer;
