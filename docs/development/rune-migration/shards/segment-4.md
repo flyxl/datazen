@@ -80,7 +80,7 @@
 - [x] T242 · components/sql-editor · 0.90d · components/sql-editor/metadata/findRelation.ts components/sql-editor/metadata/metadataCache.ts components/sql-editor/metadata/types.ts
 - [x] T244 · windows/settings · 0.90d · windows/settings/DataCleanupSection.tsx
 - [x] T247 · windows/onboarding · 1.00d · windows/onboarding/steps/WelcomeStep.tsx windows/onboarding/WizardFooter.tsx
-- [ ] T250 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffSelectionSteps.tsx
+- [x] T250 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffSelectionSteps.tsx
 - [x] T253 · lib/valuePresentation · 0.80d · lib/valuePresentation/timestampContribution.ts
 - [ ] T254 · hooks · 0.90d · hooks/useConnectionCommand.ts
 - [ ] T258 · commands · 1.30d · commands/database.ts · split
