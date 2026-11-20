@@ -33,7 +33,7 @@
 - [x] T364 · lib · 0.80d · lib/commandSchema.ts lib/connectionClipboard.ts
 - [x] T375 · lib · 0.30d · lib/connectionConfig.ts
 - [x] T385 · lib · 0.90d · lib/connectionEditor.ts
-- [ ] T394 · lib · 0.80d · lib/connectionFormModel.ts lib/connectionGroups.ts
+- [x] T394 · lib · 0.80d · lib/connectionFormModel.ts lib/connectionGroups.ts
 - [x] T403 · lib · 1.30d · lib/connectionLocator.ts · split
 - [x] T029 · lib/connectionViews · 0.90d · lib/connectionViews/types.ts lib/contextItems.ts lib/contextMenuPosition.ts
 - [ ] T412 · lib · 0.90d · lib/connectionShare.ts
