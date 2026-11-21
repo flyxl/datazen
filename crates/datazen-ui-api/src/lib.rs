@@ -27,6 +27,7 @@ mod mcp_agent_config;
 mod migration_verification;
 mod migration_window_prefill;
 mod path_picker;
+mod query_context_path;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -261,6 +262,14 @@ pub use migration_window_prefill::{
 };
 pub use path_picker::{
     PathPicker, PathPickerFileFilter, PickPathInput, pick_path, web_path_picker,
+};
+pub use query_context_path::{
+    PATH_HIERARCHY_PLACEHOLDER_SELECTOR_SEGMENTS, NamespaceNode, PathHierarchySelectorSegment,
+    QueryContextResolveOpts, SplitDatabasePin, auto_complete_path_hierarchy_path,
+    build_path_hierarchy_database_pin, build_path_hierarchy_selector_segments,
+    infer_sql_relation_path, namespace_roots_from, path_hierarchy_connection_root,
+    path_hierarchy_relative_namespace_path, path_hierarchy_selector_segments_for_ui,
+    paths_equal, resolve_query_context_path, split_path_hierarchy_database_pin, unquote_ident,
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
