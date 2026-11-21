@@ -25,6 +25,7 @@ mod connection_views;
 mod context_items;
 mod diff_detail;
 mod context_menu_position;
+mod workflow_chat_panel;
 // `pub mod` — the crate's only public module: the T159 dashboard facade
 // keeps its display `DashboardWidget` here, but that root name is held
 // by the N13 workspace stub below (whose `datazen-ui` consumers are out
@@ -170,6 +171,16 @@ pub use connection_views::{
     NodeContextMenuPayload, ObjectKind, TableContextInput, TableSqlActionKind,
 };
 pub use context_items::{ContextItem, ContextKind, SplitContextItems, split_context_items};
+pub use workflow_chat_panel::{
+    answer_questions_params, build_send_request, connection_options, copied_block_index,
+    extract_workflow_yaml, handle_new_chat_reset, handle_stop, is_configured_gate, is_last_assistant,
+    is_user, questions_visible, save_yaml, selected_database, selected_db_session_id,
+    streaming_bubble_visible, thinking_visible, validation_connections, yaml_actions_visible,
+    ActiveSessionSnapshot, MultiDbProvider, NewChatReset, SaveSuccess, SendRequest,
+    WorkflowChatPanelPorts, WorkflowChatState, ParsedWorkflowDefinition, WorkflowPanelConnection,
+    WorkflowSaveError, WorkflowValidationConnection, COPIED_FEEDBACK_MS, SAVE_OK_RESET_MS,
+    WORKFLOW_CHAT_PANEL_GAP,
+};
 pub use diff_detail::{
     cell_view, clear_all_op, diff_rows, footer_visible, format_cell, is_changed, is_empty_state,
     key_label, max_cols, next_disabled, operation_allowed, operation_badge_class, page_count,
