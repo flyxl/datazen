@@ -47,6 +47,17 @@ pub(crate) mod install_language_pack_dialog;
 /// with their error strips, and the runtime connected list with its
 /// expandable tool inventories.
 pub(crate) mod mcp_client_section;
+/// `windows/settings/McpSettingsSection.tsx` (T348, split): the MCP
+/// host service's administration surface — the stdio toggle, the HTTP
+/// listener block, the permission modes, the connection allowlist, the
+/// scope textareas, the agent snippet card, the exposed tools and the
+/// audit log.
+pub(crate) mod mcp_settings_section;
+/// T348's state half: the view-models, the flow plans, the scope and
+/// tools rules and the carried mcpAgentConfig pure functions (split
+/// for the file-size rule; T557 absorbs the carry).
+pub(crate) mod mcp_settings_section_state;
+
 /// T336's state half: the view-models, the env converters, the form
 /// draft and the section state machine (split for the file-size rule).
 pub(crate) mod mcp_client_section_state;

@@ -915,3 +915,7 @@ mod use_grid_clipboard;
 // their actions, the add/edit form's guards and build, the runtime
 // list's expandable tool inventory).
 mod mcp_client_section_audit;
+// T348: the MCP settings section (the stdio toggle, the HTTP listener
+// block, the permission modes, the allowlist, the scopes, the agent
+// snippet card, the tools list and the audit table).
+mod mcp_settings_section_audit;
