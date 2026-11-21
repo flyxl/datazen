@@ -156,6 +156,8 @@ mod sql_bind_params;
 mod sql_completion_context;
 mod sql_completions;
 mod sql_file_execution;
+mod sql_generator;
+mod sql_namespace_ops;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
 mod sql_statement_range;
@@ -884,6 +886,15 @@ pub use sql_completion_context::{
 pub use sql_completions::{
     keyword_completions, sql_function_completions, SqlFunctionCompletion,
     DEFAULT_SQL_COMPLETION_DIALECT, SQL_COMPLETION_KEYWORDS,
+};
+pub use sql_generator::{
+    format_table_identifier, generate_table_sql, BaseTableSqlGenerator, GeneratedSqlType,
+    TableSqlDialect,
+};
+pub use sql_namespace_ops::{
+    collect_table_leaf_names, merge_namespace_path, namespace_branch_child_names,
+    namespace_child_names, namespace_has_child as namespace_tree_has_child, omit_table_leaf,
+    overlay_column_map_owned, NamespaceMergeKind,
 };
 pub use sql_editor_defaults::{
     infer_default_schema, infer_default_table, table_clause_fingerprint,
