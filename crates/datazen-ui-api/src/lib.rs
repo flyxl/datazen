@@ -111,6 +111,7 @@ mod import_execution;
 mod keyset_paging;
 mod keyset_types;
 mod kv_ai_context;
+mod locale_sync;
 mod kv_slot_state;
 mod kv_workspace;
 mod metadata;
@@ -571,6 +572,10 @@ pub use kv_ai_context::{
 pub use kv_slot_state::{
     create_kv_slot_state, get_kv_slot_state, prune_kv_slot_states,
     reset_kv_slot_states_for_tests, KvSlotSnapshot, KvSlotState,
+};
+pub use locale_sync::{
+    apply_language, current_language, start_locale_sync, Defer, Deferred, LocaleEnginePorts,
+    SettingsLanguageStore, DEFAULT_LOCALE,
 };
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
