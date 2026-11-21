@@ -675,3 +675,5 @@ mod execution_summary_card;
 mod result_find_bar;
 // T528: ServerStatusView port (cards/charts, tabs, header actions, states, geometry).
 mod server_status_view;
+// T534: StructureView port (column rows, badges, highlight, edit action, states, geometry).
+mod structure_view;

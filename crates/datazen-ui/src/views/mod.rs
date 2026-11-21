@@ -34,6 +34,7 @@ pub(crate) mod result_workspace;
 pub(crate) mod server_status_view;
 pub(crate) mod set_value_date_dialog;
 pub(crate) mod structure_column_table;
+pub(crate) mod structure_view;
 
 mod connections;
 mod connections_home;
