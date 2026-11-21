@@ -1669,3 +1669,9 @@ mod table_data_insert_location;
 // the composite match, negative/float orderings, the unorderable turn,
 // the populated-order-set invalidation).
 mod table_data_insert_location_audit;
+
+// T236: the detail drawer (coder tests: the search filter, the multi-row
+// gate, the Quick Look helpers, the field classification, the display-text
+// chain, the blob line, the commit semantics, the editor keys, BUG-005's
+// enter/exit cycle, and the mounted drawer's probes).
+mod detail_panel;
