@@ -179,6 +179,7 @@ mod transfer_pairing;
 mod tunnel_deletion;
 mod tunnel_draft;
 mod update_reminder_schedule;
+mod wapp_bridge;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
 // path `datazen_ui_api::types::…` is the Rust twin of React's `'../types'`
@@ -1016,6 +1017,20 @@ pub use update_reminder_schedule::{
     dispatch_event, on_interval_tick, start_update_reminder_schedule,
     stop_update_reminder_schedule, ScheduleDeps, ScheduleHandle, CHECK_INTERVAL_MS, CHANNEL_AUTO,
     EVENT_FOCUS, EVENT_ONLINE, EVENT_VISIBILITY_CHANGE, VISIBILITY_VISIBLE,
+};
+pub use wapp_bridge::{
+    err_envelope, host_ready_envelope, is_request_envelope, is_wapp_command_allowed, ok_envelope,
+    parse_command_invoke, parse_i18n_key, parse_notify, parse_request, parse_storage,
+    response_type_of, route_for, theme_apply_envelope, theme_snapshot_value, timeout_disposition,
+    to_public_connection, as_nonempty_string, looks_like_not_found, AttachBridgeOptions,
+    BridgeApiError, BridgeConnectionSummary, BridgeEffect, BridgeErrorPayload, BridgeErrorCode,
+    BridgeState, BridgeTarget, CommandInvokeInput, ConnectionConfigLike, NotifyInput,
+    StorageInput, TimeoutDisposition, WappBridge, WappBridgeHost, WappErrEnvelope,
+    WappOkEnvelope, WappRequestEnvelope, WappResponseEnvelope, API_ROUTES, BRIDGE_CHANNEL,
+    BRIDGE_ERROR_CODES, ERROR_MESSAGE_LIMIT_CHARS, MAX_INFLIGHT_REQUESTS, MAX_REQUEST_ID_CHARS,
+    NOTIFY_MIN_INTERVAL_MS, REQUEST_TIMEOUT_MS, SESSION_REQUEST_LIMIT, WAPP_BRIDGE_DOM_GAP,
+    WAPP_BRIDGE_EVENT_GAP, WAPP_BRIDGE_HANDLER_GAP, WAPP_BRIDGE_IPC_GAP, WAPP_BRIDGE_SURFACE,
+    WAPP_COMMAND_DENYLIST,
 };
 pub use theme_tokens::{
     build_theme_snapshot, ThemeSnapshot, ThemeSnapshotInput, THEME_SNAPSHOT_VERSION, THEME_TOKENS,
