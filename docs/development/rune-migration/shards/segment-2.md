@@ -103,7 +103,7 @@
 - [x] T597 · lib · 0.30d · lib/schemaResourceCache.ts
 - [x] T599 · lib · 0.80d · lib/schemaTreeContextMenu.ts
 - [x] T601 · lib · 0.80d · lib/serverStatusTrends.ts
-- [ ] T603 · lib · 0.80d · lib/setValueActions.ts lib/splash.ts
+- [x] T603 · lib · 0.80d · lib/setValueActions.ts lib/splash.ts
 - [ ] T605 · lib · 0.80d · lib/sqlBindParams.ts
 - [ ] T607 · lib · 2.00d · lib/sqlCompletionContext.ts · split
 - [ ] T609 · lib · 2.00d · lib/sqlCompletions.ts · split
