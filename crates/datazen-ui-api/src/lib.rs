@@ -107,6 +107,8 @@ mod import_connection_file;
 mod import_data;
 mod import_execution;
 mod keyset_types;
+mod kv_ai_context;
+mod kv_slot_state;
 mod metadata;
 mod platform_shared;
 mod relation_prediction;
@@ -548,6 +550,13 @@ pub use import_execution::{
     ImportSqlOptions, ImportStreamEvent, ImportStreamProgress, ImportTransport,
     PlanImportChunksOptions, IMPORT_DEFAULT_MAX_BATCHES_PER_CHUNK,
     IMPORT_DEFAULT_MAX_ROWS_PER_BATCH, IMPORT_DEFAULT_MAX_SQL_BYTES, IMPORT_STREAM_GAP,
+};
+pub use kv_ai_context::{
+    build_kv_ai_context, compose_kv_ai_message, has_kv_ai_facts, KvAiContext, KvAiFacts,
+};
+pub use kv_slot_state::{
+    create_kv_slot_state, get_kv_slot_state, prune_kv_slot_states,
+    reset_kv_slot_states_for_tests, KvSlotSnapshot, KvSlotState,
 };
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
