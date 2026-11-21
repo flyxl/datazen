@@ -18,6 +18,7 @@ mod export_dialog_shared;
 mod extract_sql;
 mod filter_expression;
 mod fk_navigation_actions;
+mod grid_keyboard;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -179,9 +180,16 @@ pub use filter_expression::{
 };
 pub use fk_navigation_actions::{
     FkActionDeps, FkActionEffects, FkJumpError, FkJumpOutcome, FkNavEntry, FkNavOrigin, FkNavState,
-    FkOrigin, GRID_ERROR_CODES, OpenForeignKeyTargetInput, Panel, PanelKind, PanelState,
-    TableChangeContext, TableIdentity, classify_grid_error, host_error_message,
-    open_foreign_key_target,
+    GRID_ERROR_CODES, OpenForeignKeyTargetInput, Panel, PanelKind, PanelState,
+    TableIdentity, classify_grid_error, host_error_message, open_foreign_key_target,
+};
+pub use grid_keyboard::{
+    CellCoord, CellRange, EMPTY_ROW_MODE_SELECTION, GridEdge, GridKeyCommand, GridKeyEventLike,
+    GridKeyIntent, GridKeyboardContext, GridNativeKeyEventLike, GridPageDirection, GridSelection,
+    GridSelectionMode, cell_coord_equals, clamp_cell_coord, clamp_grid_cursor, coord_at,
+    grid_cursor_equals, is_ime_composing_key, move_cell_focus, read_grid_key_intent,
+    resolve_grid_key_command, resolve_keyboard_cursor, resolve_page_delta,
+    selection_from_anchor_focus, to_grid_key_event_like,
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
