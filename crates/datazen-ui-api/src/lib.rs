@@ -46,6 +46,7 @@ mod relation_prediction;
 mod relative_time;
 mod run_to_chart;
 mod run_to_result;
+mod scalar_cell_editors;
 mod selection_actions;
 mod stage_cell_value;
 mod sql_path_prefix;
@@ -281,6 +282,11 @@ pub use relative_time::{
 };
 pub use run_to_chart::{ChartTransformResult, has_renderable_chart, widget_run_to_chart_data};
 pub use run_to_result::widget_run_to_statement_result;
+pub use scalar_cell_editors::{
+    build_number_view, build_temporal_view, build_text_view, common_flags, CommonEditorFlags,
+    FocusStrategy, NumberEditorView, ScalarEditorInput, TemporalEditorView, TemporalKindValue,
+    TextEditorView, DEFAULT_TEMPORAL_KIND, SCALAR_CELL_EDITORS_GAP, SCALAR_CELL_EDITORS_SURFACE,
+};
 pub use selection_actions::{
     apply_begin_cell_selection, apply_clear_grid_selection, apply_grid_selection,
     apply_reconcile_selection, apply_row_mode_transition, apply_row_select,
