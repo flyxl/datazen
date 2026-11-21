@@ -1131,6 +1131,21 @@ mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the
 // same change, stranger unsubscribes, per-panel independence).
 mod panel_close_notifier_audit;
+
+// T274: the metadata-identity binder seam, the pane-focus writer, and
+// the pane key space (coder vectors: the inert-before-register
+// announce, the record and dispose, the replaced-binder guard; the
+// dead-panel drop, the focus write and null-pane removal, the
+// cross-tab guarantee; the bare-id default, the composite's
+// decomposition, panel membership, the map-order key list, pane args
+// and the focused-pane resolution).
+mod pane_identity;
+
+// T274 independent audit: fresh vectors (the binder's replacement and
+// double-dispose, the focus writer's stranger-write edge and the
+// active-id truthiness, every built key's round trip, the strict
+// panel membership with a prefix trap).
+mod pane_identity_audit;
 // T385: the query-run request bridge (immediate accept, ordered queue,
 // flush-on-mount, unregister drops both).
 mod query_run_request_store;

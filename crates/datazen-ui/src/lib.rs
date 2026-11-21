@@ -106,6 +106,11 @@ mod workflow_page_state;
 pub(crate) mod ui_store;
 // T232: the foreign-key navigation stack (fkNavigationStore.ts).
 pub(crate) mod fk_navigation_store;
+// T274: the metadata-identity binder seam, the pane-focus writer, and
+// the pane key space (metadataIdentityBinding.ts / paneFocus.ts / paneKeys.ts).
+pub(crate) mod metadata_identity_binding;
+pub(crate) mod pane_focus;
+pub(crate) mod pane_keys;
 // T486: the workspace tabs store and the per-mode view-state snapshots.
 pub(crate) mod workspace_tabs_store;
 pub(crate) mod workspace_panel_state_store;
