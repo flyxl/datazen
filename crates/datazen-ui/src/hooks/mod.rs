@@ -37,6 +37,10 @@ pub(crate) mod use_i18n;
 /// T341b: the keyboard-shortcut registry (spec grammar, scope gates,
 /// first-match-wins resolution).
 pub(crate) mod use_keyboard_shortcuts;
+/// T353: the leaf-side read of a KV panel's selected key (the
+/// host-owned relay's scalar, the AI button / assistant drawer's input).
+pub(crate) mod use_kv_slot_selected_key;
+
 // T525/T527 seam: the grid keyboard semantics + the composing guard,
 // carried for the grid hooks until their own ledger tasks land (the
 // T041 mirror convention).
