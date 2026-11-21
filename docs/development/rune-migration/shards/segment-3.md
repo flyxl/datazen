@@ -85,7 +85,7 @@
 - [x] T254 · stores/tableData · 0.30d · stores/tableData/panelSeed.ts
 - [x] T257 · components/DataTable · 0.80d · components/DataTable/DetailPanelToggle.tsx components/DataTable/DraftRow.tsx
 - [x] T260 · components/ai · 0.90d · components/ai/ExplainPanel.tsx
-- [ ] T262 · components · 0.80d · components/StatusBar.tsx components/ThemedIcon.tsx
+- [x] T262 · components · 0.80d · components/StatusBar.tsx components/ThemedIcon.tsx
 - [ ] T267 · windows/data-transfer · 0.90d · windows/data-transfer/TransferMappingStep.tsx
 - [ ] T268 · windows/data-sync · 1.30d · windows/data-sync/DataSyncWindow.tsx · split
 - [ ] T274 · stores · 0.90d · stores/metadataIdentityBinding.ts stores/paneFocus.ts stores/paneKeys.ts
