@@ -21,6 +21,7 @@ mod ai_store_types;
 mod ai_streaming;
 mod ai_types;
 mod chart_types;
+mod compare_report;
 mod connection_types;
 mod connection_views;
 mod context_items;
@@ -183,6 +184,10 @@ pub use ai_types::{
 pub use chart_types::{
     AggregationType, ChartConfig, ChartDataPoint, ChartDataPointValue, ChartField,
     ChartRecommendation, ChartSortBy, ChartType, InferredFieldType,
+};
+pub use compare_report::{
+    build_compare_report_json, build_compare_report_text, summarize_compare, CompareReportRow,
+    CompareSummaryStats,
 };
 pub use connection_types::{
     ConnectionConfig, ContextEntry, DatabaseObject, DatabaseObjectKind, DatabaseType,
