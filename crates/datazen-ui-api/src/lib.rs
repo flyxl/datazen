@@ -85,6 +85,7 @@ mod tabs;
 mod table_data_state;
 mod update_reminder_store;
 mod virtual_body;
+mod wapp_store;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
 // path `datazen_ui_api::types::…` is the Rust twin of React's `'../types'`
@@ -566,6 +567,12 @@ pub use update_reminder_store::{
     is_check_due, progress_patch, restart_allowed, restart_error_patch, StatePatch, UpdateCheckResult,
     UpdateOutcome, UpdateProgress, UpdateReminderState, UPDATE_CHECK_INTERVAL_MS,
     UPDATE_REMINDER_GAP, UPDATE_REMINDER_SURFACE,
+};
+pub use wapp_store::{
+    by_id, fetch_patch, listener_decision, optimistic_toggle, remove_effects, set_enabled_effects,
+    should_refetch_on_event, to_error_message, FetchPatch, ListenerDecision, ListenerResult,
+    MutationEffects, WappError, WappStoreState, WAPP_STORE_GAP, WAPP_STORE_SURFACE,
+    WAPPS_CHANGED_EVENT,
 };
 pub use virtual_body::{
     build_cell_input, build_column_editor_info_from_defs, build_row_cell_views, cell_id,
