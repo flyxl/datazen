@@ -14,6 +14,7 @@ mod docs_urls;
 mod document_scroll_lock;
 mod ensure_namespace;
 mod er_node_context_menu;
+mod export_dialog_shared;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -147,6 +148,12 @@ pub use ensure_namespace::{
 pub use er_node_context_menu::{
     ErMenuAction, ErMenuItem, ErNodeContextMenuHandlers, ErNodeContextMenuLabels,
     build_er_node_context_menu_items,
+};
+pub use export_dialog_shared::{
+    ARRAY_EXPORT_FORMAT_OPTIONS, OBJECT_EXPORT_FORMAT_OPTIONS, SHARED_EXPORT_FORMAT_OPTIONS,
+    BuildExportFormatOptions, BuildExportScopeOptions, DisabledReasonKey, EntireTableAvailability,
+    ExportFormatOption, ExportScopeOption, FormatOptionSpec, ScopeLabels,
+    build_export_format_options, build_export_scope_options,
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
