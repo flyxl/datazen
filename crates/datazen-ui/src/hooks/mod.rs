@@ -44,6 +44,11 @@ pub(crate) mod use_kv_slot_selected_key;
 /// language (the stable-key ready gate; the packs themselves are
 /// compiled in under the T018 ruling).
 pub(crate) mod use_locale_domains;
+/// T384: the OS detection hook (the user-agent parse, the probe
+/// cache, the synchronous first frame; absorbed `Platform` from the
+/// sql_editor_context_menu carry).
+pub(crate) mod use_platform;
+
 
 
 // T525/T527 seam: the grid keyboard semantics + the composing guard,
