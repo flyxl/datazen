@@ -145,6 +145,7 @@ mod result_editability;
 mod resolve_ui_language;
 mod row_to_record;
 mod run_predefined_edit;
+mod schema_diff_limitations_prefs;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
 mod tabs;
@@ -801,6 +802,11 @@ pub use resolve_ui_language::{
 pub use row_to_record::row_to_record;
 pub use run_predefined_edit::{
     predefined_edit_command, run_predefined_edit, NativeMenuPredefined,
+};
+pub use schema_diff_limitations_prefs::{
+    clear_schema_diff_limitations_dismissed, create_schema_diff_limitations_dismiss_prefs,
+    is_schema_diff_limitations_dismissed, set_schema_diff_limitations_dismissed,
+    SCHEMA_DIFF_LIMITATIONS_DISMISSED_KEY,
 };
 pub use sql_path_prefix::{
     QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
