@@ -9,6 +9,7 @@
 //! | `AiChatPanel.tsx` (input area, T009-S5) | `ai_chat_input_area` (+ `ai_chat_input_area_state`) |
 //! | `AiChatPanel.tsx` (panel shell + session wiring, T009-S6) | `ai_chat_panel_state` + `ai_chat_panel_shell` (+ `ai_chat_panel_types`, `ai_chat_panel_state_seed`) |
 //! | `AiCodeBlock.tsx` (T060) | `ai_code_block` (+ `ai_code_block_state`) |
+//! | `DiagnosisPanel.tsx` (T239) | `diagnosis_panel` |
 //!
 //! These components are wired by the `AiChatPanel` / `ChatBubble` track
 //! (T009 slices after S1). The production consumer is the `Section`
@@ -83,8 +84,15 @@ pub(crate) mod ai_egress_notice;
 pub(crate) mod ai_session_history;
 pub(crate) mod ai_input;
 pub(crate) mod context_picker;
+pub(crate) mod diagnosis_panel;
 
 pub(crate) use ai_egress_notice::{AiEgressNotice, ContextItem, ContextKind};
+/// T239: the failed query's AI diagnosis strip (the unconfigured notice,
+/// the header with the manual re-diagnose and close controls, and the four
+/// body states). The query workspace wiring task is the mount point.
+pub(crate) use diagnosis_panel::{
+    diagnose_request, DiagnosisPanel, DiagnosisPanelState, DiagnoseRequest, BODY_MAX_HEIGHT,
+};
 #[allow(unused_imports)] // the AiInput wiring task is the production consumer
 pub(crate) use context_picker::{
     matches_query, table_label, ContextEntry, ContextPicker, ContextPickerState, PickerCategory,

@@ -491,6 +491,16 @@ pub(crate) static ICON_STETHOSCOPE: rune::Icon = rune::Icon {
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M11 2v2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5 2v2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5 3H4a2 2 0 0 0-2 2v4a6 6 0 0 0 12 0V5a2 2 0 0 0-2-2h-1\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M8 15a6 6 0 0 0 12 0v-3\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"20\" cy=\"10\" r=\"2\"/>",
 };
 
+/// T239: lucide `arrow-down-to-line`, the apply-suggested glyph in the
+/// diagnosis panel (`DiagnosisPanel.tsx` uses `ArrowDownToLine`). Paths
+/// verified against `lucide-static@0.487.0/icons/arrow-down-to-line.svg`
+/// (the shaft to y=17, the head at the bottom, the underline at y=21).
+pub(crate) static ICON_ARROW_DOWN_TO_LINE: rune::Icon = rune::Icon {
+    name: "arrow-down-to-line",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 17V3\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m6 11 6 6 6-6\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M19 21H5\"/>",
+};
+
 /// T112: lucide `pause`, the monitor-pause glyph in the dashboard panel's
 /// toolbar (`DashboardPanel.tsx` uses `Pause`; `Play` above is its resume
 /// twin). Body verified against lucide-react 0.487.0's `pause` node (two
