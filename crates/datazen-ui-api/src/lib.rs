@@ -7,6 +7,7 @@ mod ai_memory_correction;
 mod cell_editor_candidates;
 mod connection_editor;
 mod connection_share;
+mod cross_window_bus;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -101,6 +102,10 @@ pub use connection_editor::{
 pub use connection_share::{
     ConnectionImportSource, ConnectionShareMode, ConnectionShareState,
     close_connection_share_dialog, open_connection_share_dialog,
+};
+pub use cross_window_bus::{
+    CHANNEL_NAME, CrossWindowMessage, CrossWindowRail, cross_window_rail, make_message,
+    matches_event, payload_of,
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
