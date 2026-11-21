@@ -30,6 +30,7 @@ mod path_picker;
 mod query_context_path;
 mod result_find_replace;
 mod row_count_strategy;
+mod schema_diff_confirm;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -286,6 +287,9 @@ pub use result_find_replace::{
     replace_text, row_matches,
 };
 pub use row_count_strategy::{CountStrategyInput, resolve_count_strategy};
+pub use schema_diff_confirm::{
+    DESTRUCTIVE_CONFIRM_TOKEN, CanRunDeployOptions, can_confirm_destructive_deploy, can_run_deploy,
+};
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
 };
