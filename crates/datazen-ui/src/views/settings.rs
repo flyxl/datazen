@@ -114,6 +114,13 @@ pub(crate) mod update_section;
 // T469: the global value-presentation rule's edit form (the
 // validated save, the same-road sample preview).
 pub(crate) mod value_presentation_rule_editor;
+// T474's split half: the draft / preview pure family (the stored
+// read, the PRD §4 anchors, the same-road preview).
+pub(crate) mod value_presentation_section_helpers;
+// T474: the time-display settings section (the draft + explicit
+// save, the T11 per-path sync, the editable rule list over T469's
+// editor).
+pub(crate) mod value_presentation_settings_section;
 // T453: the tunnel settings section (the secret-free list, the
 // usage batch, the copy action, the three dialog mounts).
 pub(crate) mod tunnel_settings_section;
