@@ -619,6 +619,8 @@ mod object_browser;
 mod pending_plan_dialog;
 // T501: ExecutionStrategyAskModal port (strategy options, actions, geometry).
 mod execution_strategy_ask_modal;
+// T501 independent audit: preview boundaries and missing-current card.
+mod execution_strategy_ask_modal_audit;
 // T492 independent audit: no-insert description, statement order, empty fields.
 mod pending_plan_dialog_audit;
 // T480 independent audit: DDL/execute answers, running gate and menu teardown.
