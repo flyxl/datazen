@@ -130,6 +130,8 @@ mod object_browser_context_menu;
 mod object_filter;
 mod panel_context_path;
 mod platform_shared;
+mod process_list_result;
+mod product_features;
 mod relation_prediction;
 mod relative_time;
 mod sql_path_prefix;
@@ -701,6 +703,13 @@ pub use named_views::{
     NAMED_VIEW_EXPORT_VERSION,
 };
 pub use panel_context_path::{format_panel_context_path, PanelContextPathArgs};
+pub use process_list_result::{
+    command_result_columns, command_result_rows, default_process_columns, process_column_label_key,
+    process_record_to_row, ProcessColumnDef,
+};
+pub use product_features::{
+    is_product_feature_enabled, ProductFeatureKey, PRODUCT_FEATURE_KEYS,
+};
 pub use metadata::{
     BatchFlush, CurrentCallContext, CurrentProvenanceContext, ExecutionTarget,
     InvalidationDecision, InvalidationReason, MetadataBatcher, MetadataBatcherOptions,
