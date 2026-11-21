@@ -77,7 +77,7 @@
 - [x] T545 · lib · 0.80d · lib/kvAiContext.ts lib/kvSlotState.ts
 - [x] T547 · lib · 0.60d · lib/kvWorkspaceCapabilities.ts lib/kvWorkspaceSlots.ts
 - [ ] T549 · lib · 0.90d · lib/languagePackRuntime.ts
-- [ ] T551 · lib · 0.90d · lib/loadBatchExportTable.ts
+- [x] T551 · lib · 0.90d · lib/loadBatchExportTable.ts
 - [ ] T553 · lib · 0.90d · lib/localeSync.ts
 - [ ] T555 · lib · 0.80d · lib/mainWindowContextMenu.ts
 - [ ] T557 · lib · 0.90d · lib/mcpAgentConfig.ts
