@@ -27,6 +27,7 @@ mod connection_views;
 mod context_items;
 mod data_sync_comparison;
 mod data_sync_endpoints;
+mod data_sync_explain;
 mod diff_detail;
 mod data_sync_bars;
 mod data_table_clipboard_dom;
@@ -285,6 +286,12 @@ pub use data_sync_endpoints::{
     DATA_SYNC_ENDPOINTS_GAP, DATA_SYNC_ENDPOINTS_SURFACE,
     EXPERIMENTAL_PAIR_KEY as ENDPOINTS_EXPERIMENTAL_PAIR_KEY, LOAD_DATABASES_FAILED_KEY,
     SESSION_FAILED_KEY, UNSUPPORTED_PAIR_KEY, VERIFIED_MIGRATION_TYPES,
+};
+pub use data_sync_explain::{
+    begin_explain, build_explain_prompt, build_explain_report, explain_gate, explain_request,
+    failure_explain, success_explain, ExplainEffects, ExplainInput, ExplainRequest,
+    DATA_SYNC_EXPLAIN_GAP, DATA_SYNC_EXPLAIN_SURFACE, EXPLAIN_DIFF_FAILED_KEY,
+    EXPLAIN_DIFF_NO_AI_KEY, EXPLAIN_DIFF_PROMPT_KEY,
 };
 pub use data_table_clipboard_dom::{
     bind_clipboard_dom, handle_copy, handle_paste, is_editable_target, resolve_copy_target,
