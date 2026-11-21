@@ -12,7 +12,7 @@ pub use serialize::{
 };
 pub use types::{
     ClipboardCellCoord, ClipboardDelimiter, ClipboardFormat, ClipboardMatrix, ClipboardParseResult,
-    GridClipboardRange, PasteParseErrorCode, PasteParseRefusal, PasteProblem, PasteProblemCode,
+    GridClipboardAnchor, GridClipboardRange, PasteParseErrorCode, PasteParseRefusal, PasteProblem, PasteProblemCode,
     SerializeCellsOptions, GRID_PASTE_CHUNK_CELLS, GRID_PASTE_CONFIRM_CELLS, GRID_PASTE_MAX_BYTES,
     GRID_PASTE_MAX_CELLS,
 };

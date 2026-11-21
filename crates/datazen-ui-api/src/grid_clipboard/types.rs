@@ -34,6 +34,8 @@ pub struct ClipboardCellCoord {
     pub column_name: String,
 }
 
+pub type GridClipboardAnchor = ClipboardCellCoord;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GridClipboardRange {
     pub top_row: i64,
@@ -89,22 +91,39 @@ pub enum ClipboardParseResult {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PasteProblemCode {
+    Empty,
+    TooLarge,
+    RaggedRow,
     UnclosedQuote,
+    NoWritableCell,
+    OutOfBounds,
+    ReadOnly,
+    NotNullEmpty,
+    ColumnMismatch,
 }
 
 impl PasteProblemCode {
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Empty => "grid.paste.empty",
+            Self::TooLarge => "grid.paste.tooLarge",
+            Self::RaggedRow => "grid.paste.raggedRow",
             Self::UnclosedQuote => "grid.paste.unclosedQuote",
+            Self::NoWritableCell => "grid.paste.noWritableCell",
+            Self::OutOfBounds => "grid.paste.outOfBounds",
+            Self::ReadOnly => "grid.cell.readOnly",
+            Self::NotNullEmpty => "grid.paste.notNullEmpty",
+            Self::ColumnMismatch => "grid.paste.columnMismatch",
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PasteProblem {
     pub code: PasteProblemCode,
     pub row: Option<i64>,
-    pub column: Option<i64>,
+    pub column: Option<String>,
+    pub detail: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

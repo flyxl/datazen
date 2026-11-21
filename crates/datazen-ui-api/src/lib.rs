@@ -96,6 +96,7 @@ mod global_text_selection;
 mod grid_clipboard;
 mod grid_errors;
 mod grid_event_guards;
+mod grid_paste_plan;
 mod history_groups;
 mod host_error_message;
 mod host_lucide_map;
@@ -530,9 +531,17 @@ pub use grid_clipboard::{
     escape_markdown_cell_text_value, escape_markdown_field, parse_clipboard_matrix,
     serialize_clipboard_cells, sniff_clipboard_delimiter, to_clipboard_range, utf8_byte_length,
     ClipboardCellCoord, ClipboardDelimiter, ClipboardFormat, ClipboardMatrix, ClipboardParseResult,
-    GridClipboardRange, PasteParseErrorCode, PasteParseRefusal, PasteProblem, PasteProblemCode,
+    GridClipboardAnchor, GridClipboardRange, PasteParseErrorCode, PasteParseRefusal, PasteProblem,
+    PasteProblemCode,
     SerializeCellsOptions, GRID_PASTE_CHUNK_CELLS, GRID_PASTE_CONFIRM_CELLS, GRID_PASTE_MAX_BYTES,
     GRID_PASTE_MAX_CELLS,
+};
+pub use grid_paste_plan::{
+    clear_clipboard_source, clear_row_copy, column_writability, normalize_clipboard_text,
+    peek_clipboard_source, peek_row_copy, pending_cell_key, plan_paste, record_clipboard_source,
+    record_row_copy, row_copy_for_clipboard_text, source_for_clipboard_text, table_change_key,
+    CellPasteWrite, ClipboardSource, ColumnWritability, ColumnWritabilityReason, PasteAlignment,
+    PasteOverflow, PastePlan, PastePlanOptions, RowCopyPayload,
 };
 // The T234 keyset paging vocabulary: the aggregate (`types/index`)
 // re-exports everything `types/keyset.ts` declares, so the crate root
