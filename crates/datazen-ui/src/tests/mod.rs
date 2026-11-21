@@ -1724,6 +1724,22 @@ mod transfer_job_result_panel;
 // boundary-backed ok verdict, the cancel disposition propagation).
 mod transfer_job_result_panel_audit;
 
+// T267: the transfer mapping step (coder tests: the enabled-filter and
+// find-else-first derivations, the effect's correction query, the seed
+// carrying mode and disabled, the empty notice, the per-item keys and
+// two-line text, the empty-target dash, the editor mount over the
+// selected table, one kit root, and the select / update / commit
+// channels through real presses and the target-table submit).
+mod transfer_mapping_step;
+
+// T267 independent audit: fresh vectors (the empty notice's exact
+// locale value, the multi-byte names riding keys/text/arrow verbatim,
+// the seeded mode deciding the editor's type columns, the list staying
+// pressable while the editor is disabled, the sidebar's 224pt width
+// and source order at both themes inside the minimum window, and the
+// long target's single-line clip).
+mod transfer_mapping_step_audit;
+
 // T253: the installed-language-pack store (coder tests: the fetch
 // seam's two endings, the remove seam's refetch hand-off and the
 // failure's error, the changed listener's once-latch with the three

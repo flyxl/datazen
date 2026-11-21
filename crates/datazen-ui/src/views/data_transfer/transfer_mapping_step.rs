@@ -25,6 +25,7 @@
 //! | one table item | `data-transfer-mapping-table-item-{source}` |
 //! | item name line | `{base}-name` |
 //! | item target line | `{base}-target` |
+//! | the editor's flex slot (internal) | `data-transfer-mapping-editor-slot` |
 //!
 //! **The root key is on loan.** The window port (T147-S3) holds
 //! `data-transfer-mapping-step` on its own step column while the seam
@@ -72,6 +73,13 @@
 //!   arrow line); the kit button is a single-line fixed-height
 //!   control, so the port follows the navigator's two-line list-item
 //!   shape instead (`role` + `focusable` + `on_press`).
+//! * **The editor mounts in a flex slot.** React gives the editor
+//!   `flex-1` in the step row (basis 0, the sidebar's leftovers); the
+//!   shell's own root is `w_full`, which as a plain row child would
+//!   ask for the whole row and overflow past the fixed sidebar. The
+//!   mount therefore wraps the shell in the editor's flex slot
+//!   (basis 0, grow, shrink) and the editor fills it — the same
+//!   geometry React's flex-1 produces.
 //!
 //! The props' own doc comment travels with the port verbatim in intent:
 //! `disabled` is forwarded to the editor, not used to dim this
@@ -370,7 +378,8 @@ impl<'a, S: 'static> TransferMappingStep<'a, S> {
     /// The editor mount (React 77-86): the column-mapping shell over
     /// the selected table — `onChange` wrapping `onUpdateTable(
     /// selected.sourceTable, patch)` (83), the target submit wrapping
-    /// `onTargetTableCommit(selected.sourceTable)` (84).
+    /// `onTargetTableCommit(selected.sourceTable)` (84) — mounted in
+    /// the editor's flex slot (see the module docs).
     fn editor_mount(&self, dark: bool, layer: &mut Vec<El>, selected: &TransferTableVm) -> El {
         let mut editor = ColumnMappingEditor::<S>::new(self.editor);
         if let Some(editor_mut) = &self.editor_mut {
@@ -389,6 +398,9 @@ impl<'a, S: 'static> TransferMappingStep<'a, S> {
             let source = selected.source_table.clone();
             editor = editor.on_target_table_blur(move |s: &mut S| on_commit(s, source.clone()));
         }
-        editor.build(dark, layer)
+        col()
+            .key("data-transfer-mapping-editor-slot")
+            .grow(1.0)
+            .child(editor.build(dark, layer))
     }
 }
