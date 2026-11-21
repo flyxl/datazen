@@ -9,6 +9,7 @@
 //! | `RecordsetEditor.tsx` | `recordset_editor` (SyncRecordsetEditor) | T360 |
 //! | `useDataSyncFeedback.ts` | `use_data_sync_feedback` | T459 |
 //! | `DataSyncWindow.tsx` — state model (the composition seams) | `data_sync_window_state` | T268-S1 |
+//! | `DataSyncWindow.tsx` — rendering | `data_sync_window` | T268-S2 |
 
 pub(crate) mod data_sync_compare_step;
 pub(crate) mod data_sync_dialogs;
@@ -29,6 +30,7 @@ pub(crate) mod compare_summary;
 pub(crate) mod data_sync_result_step;
 pub(crate) mod data_sync_preview_step;
 pub(crate) mod data_sync_wizard_nav;
+pub(crate) mod data_sync_window;
 pub(crate) mod data_sync_window_state;
 
 #[allow(unused_imports)] // the Data Sync window track is the production consumer
@@ -73,7 +75,10 @@ pub(crate) use options_bar::OptionsBar;
 pub(crate) use use_data_sync_feedback::DataSyncFeedback;
 #[allow(unused_imports)] // the Data Sync window rendering (T268-S2) is the production consumer
 pub(crate) use data_sync_window_state::{
-    DataSyncEndpointsSeam, DataSyncExecutionSeam, DataSyncExplainSeam, DataSyncNavigationSeam,
-    DataSyncOptionsSeam, DataSyncProfilesSeam, DataSyncRowSelectionSeam, DataSyncRunStateSeam,
-    DataSyncSelectionSeam, DataSyncWindowEdits, DataSyncWindowVm, DataSyncComparisonSeam,
+    DataSyncDialogEpochs, DataSyncEndpointsSeam, DataSyncExecutionSeam, DataSyncExplainSeam,
+    DataSyncNavigationSeam, DataSyncOptionsSeam, DataSyncProfilesSeam, DataSyncRowSelectionSeam,
+    DataSyncRunStateSeam, DataSyncSelectionSeam, DataSyncWindowEdits, DataSyncWindowVm,
+    DataSyncComparisonSeam,
 };
+#[allow(unused_imports)] // the app's window wiring is the production consumer
+pub(crate) use data_sync_window::DataSyncWindow;

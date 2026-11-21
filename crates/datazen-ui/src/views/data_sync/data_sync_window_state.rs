@@ -81,6 +81,7 @@ use super::data_sync_compare_step::{
 use super::data_sync_job_status_panel::DataSyncJobStatusPanelVm;
 use super::data_sync_preview_step::DataSyncSelectedRow;
 use super::data_sync_result_step::DataSyncExecutionResult;
+use super::sql_preview::SqlPreviewVm;
 use super::use_data_sync_feedback::DataSyncFeedback;
 use super::use_data_sync_wizard_state::{
     DataSyncWizardState, NARROW_WIZARD_STEPS, WIZARD_STEPS, WizardStep,
@@ -224,6 +225,21 @@ pub(crate) struct DataSyncNavigationSeam {
     pub compare_disabled: bool,
 }
 
+/// The four dialog epochs the window bumps every time it opens a
+/// dialog (the T074 port's controlled contract: a reopened dialog
+/// restarts at the top).
+#[derive(Clone, Debug, Default)]
+pub(crate) struct DataSyncDialogEpochs {
+    /// The error dialog's epoch.
+    pub error: u64,
+    /// The delete-confirm dialog's epoch.
+    pub delete_confirm: u64,
+    /// The explain dialog's epoch.
+    pub explain: u64,
+    /// The execute-confirm dialog's epoch.
+    pub execute_confirm: u64,
+}
+
 /// The window's whole state: the two owned ports plus the pending
 /// hooks' seams. Every field the render half (T268-S2) reads lives
 /// here; the host feeds the seams when the owning tasks land.
@@ -257,6 +273,12 @@ pub(crate) struct DataSyncWindowVm {
     pub explain: DataSyncExplainSeam,
     /// `useDataSyncWizardNavigation` (T494).
     pub navigation: DataSyncNavigationSeam,
+    /// The preview's controlled state (T371's contract: the host owns
+    /// the statements, the filter, the loading flag and the copy
+    /// feedback; the preview step forwards its three callbacks).
+    pub preview: SqlPreviewVm,
+    /// The four dialog epochs (the T074 port's contract).
+    pub dialog_epochs: DataSyncDialogEpochs,
 }
 
 impl DataSyncWindowVm {
