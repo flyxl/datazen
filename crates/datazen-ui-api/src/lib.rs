@@ -160,6 +160,7 @@ mod tabs;
 // `pub use types::{…}` block below, the family convention (see the module's
 // docs for the full ownership map and the surface law).
 pub mod types;
+pub mod schema_object_search;
 
 use std::collections::HashMap;
 
@@ -822,6 +823,13 @@ pub use schema_diff_limitations_prefs::{
     clear_schema_diff_limitations_dismissed, create_schema_diff_limitations_dismiss_prefs,
     is_schema_diff_limitations_dismissed, set_schema_diff_limitations_dismissed,
     SCHEMA_DIFF_LIMITATIONS_DISMISSED_KEY,
+};
+pub use schema_object_search::{
+    filter_object_search_results_by_type, filter_schema_objects_by_type, group_object_search_results,
+    group_schema_objects, matching_columns, object_type_order, search_schema_objects,
+    table_matches_object_search, ObjectSearchFilters, ObjectSearchMatchField,
+    ObjectSearchObjectType, ObjectSearchResult, ObjectSearchResultGroup, ObjectSearchSourceKind,
+    SchemaObjectIndex, SchemaObjectIndexEntry, SchemaObjectSearchIndex,
 };
 pub use sql_path_prefix::{
     QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
