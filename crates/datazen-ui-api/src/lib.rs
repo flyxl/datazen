@@ -609,9 +609,9 @@ pub use virtual_body::{
 // only inside `types::client_settings`/`types::value_presentation` — the
 // aggregate surface mirrors React's own import-only reachability.
 pub use tunnel_store::{
-    begin_load, error_message, new_tunnel_id, plan_create, plan_remove, plan_update, plan_usage,
-    settle_load, usage_from_lists, TunnelCreatePlan, TunnelInput, TunnelStoreEffect,
-    TunnelStoreState, TUNNEL_STORE_GAP, TUNNEL_STORE_SURFACE,
+    begin_load as begin_tunnel_load, error_message, new_tunnel_id, plan_create, plan_remove,
+    plan_update, plan_usage, settle_load, usage_from_lists, TunnelCreatePlan, TunnelInput,
+    TunnelStoreEffect, TunnelStoreState, TUNNEL_STORE_GAP, TUNNEL_STORE_SURFACE,
 };
 pub use types::{
     AppSettings, ChangedColumnDiff, CheckConstraintDiffEntry, ColumnDiffEntry, ColumnInfo,
