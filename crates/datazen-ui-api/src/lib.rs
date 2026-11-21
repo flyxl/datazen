@@ -119,6 +119,7 @@ mod kv_workspace;
 mod load_batch_export_table;
 mod main_window_context_menu;
 mod metadata;
+mod migration_job_hydration;
 mod platform_shared;
 mod relation_prediction;
 mod relative_time;
@@ -646,6 +647,12 @@ pub use main_window_context_menu::{
     build_main_blank_context_menu_items, build_main_connection_context_menu_items,
     build_main_group_context_menu_items, invoke as invoke_main_window, MainWindowAction,
     MainWindowConnectionHandlers, MainWindowContextMenuLabels, MainWindowMenuItem, MoveTarget,
+};
+pub use migration_job_hydration::{
+    bind_backend_client, bound_backend_client, classify_job_view, hydrate_migration_jobs,
+    is_stale_plan_error, job_kinds, latest_apply_job, update_migration_job_projection,
+    ErrorLike as MigrationErrorLike, GetJobFn, JobClassification, JobState, JobView, ListJobsFn,
+    MigrationJobClient, MigrationWindow, MigrationJobHydration, STALE_PLAN_ERROR_CODES,
 };
 pub use metadata::{
     BatchFlush, CurrentCallContext, CurrentProvenanceContext, ExecutionTarget,
