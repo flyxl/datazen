@@ -99,7 +99,7 @@
 - [x] T589 · lib · 0.80d · lib/schemaCache.ts lib/schemaChangingSql.ts
 - [x] T591 · lib · 0.90d · lib/schemaDiffConfirm.ts
 - [x] T593 · lib · 0.30d · lib/schemaDiffLimitationsPrefs.ts
-- [ ] T595 · lib · 0.80d · lib/schemaObjectSearch.ts
+- [x] T595 · lib · 0.80d · lib/schemaObjectSearch.ts
 - [ ] T597 · lib · 0.30d · lib/schemaResourceCache.ts
 - [ ] T599 · lib · 0.80d · lib/schemaTreeContextMenu.ts
 - [ ] T601 · lib · 0.80d · lib/serverStatusTrends.ts
