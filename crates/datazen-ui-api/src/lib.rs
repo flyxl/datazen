@@ -88,6 +88,8 @@ mod filter_db_types;
 mod filter_operators;
 mod filter_types;
 mod fk_navigation;
+mod fk_selector;
+mod global_text_selection;
 mod keyset_types;
 mod metadata;
 mod platform_shared;
@@ -462,6 +464,17 @@ pub use fk_navigation::{
     pick_anchor_row, scroll_top_for_anchor_row, AnchorInput, AnchorResult, FkBreadcrumbModel,
     FkFilterTarget, FkGroupAffordance, FkIndex, FkNavInput, FkNavTargetIdentity, GridViewport,
     NavValue, FK_NAV_MAX_DEPTH,
+};
+pub use fk_selector::{
+    candidates_to_picker_options, fk_group_is_pickable, format_fk_candidate,
+    index_fk_candidate_sources, FkCandidateGroup, FkCandidateSource, FkCandidateSourceIndex,
+    FK_SELECTOR_CANDIDATE_LIMIT,
+};
+pub use global_text_selection::{
+    is_interactive_control, is_native_selectable, is_selectable, is_selectable_hint,
+    should_prevent_select_all, ContextMenuSuppressor, DragMouseDownInput, DragSelectionGuard,
+    RightDragSuppressor, SelectAllTarget, SelectionSnapshot, DOM_GAP_SURFACES,
+    INTERACTIVE_CONTROL_SELECTOR, NATIVE_SELECTABLE_SELECTOR, SELECTABLE_HINT_SELECTOR,
 };
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
