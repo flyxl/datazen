@@ -1780,3 +1780,17 @@ mod explain_panel;
 // SQL-less suggestion, the asymmetric raw counts, the unconfigured
 // panel never analyzing, the window-wide geometry sweep).
 mod explain_panel_audit;
+
+// T262: the themed icon and the status bar (coder tests: the 36-name
+// catalog, the default resolver's degradations, the mounted lucide
+// branch at its sizes, the unknown-name ? badge, the fallback prop, the
+// placeholder badge with its tone's fill, the url branch's picture slot
+// ready or blank, and the status bar's two slots with their geometry and
+// their empty mounts).
+mod themed_icon;
+
+// T262 independent audit: fresh vectors (the catalog tail mounting one
+// glyph each, the ? badge's white ink, the placeholder's verbatim
+// labels, the default resolver's edge ids, the failing decode's blank
+// slot, the one-sided light-mode bar geometry).
+mod themed_icon_audit;
