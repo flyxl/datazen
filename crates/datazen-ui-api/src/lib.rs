@@ -26,6 +26,7 @@ mod language_pack_runtime;
 mod mcp_agent_config;
 mod migration_verification;
 mod migration_window_prefill;
+mod path_picker;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -249,6 +250,9 @@ pub use migration_window_prefill::{
     PREFILL_KEYS, PrefillSide, apply_migration_endpoint_prefill, build_migration_window_url_params,
     pick_prefill_database, pick_prefill_schema, read_migration_prefill_from_url,
     resolve_default_database,
+};
+pub use path_picker::{
+    PathPicker, PathPickerFileFilter, PickPathInput, pick_path, web_path_picker,
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
