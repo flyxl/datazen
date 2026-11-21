@@ -47,7 +47,7 @@
 - [x] T467 · lib · 0.90d · lib/dedicatedDbSession.ts
 - [x] T472 · lib · 0.90d · lib/defaultSort.ts lib/docsUrls.ts lib/documentScrollLock.ts
 - [ ] T477 · lib · 0.90d · lib/driverCapabilities.ts
-- [ ] T482 · lib · 0.60d · lib/driverCommandIds.ts lib/endpointIdentity.ts
+- [x] T482 · lib · 0.60d · lib/driverCommandIds.ts lib/endpointIdentity.ts
 - [ ] T487 · lib · 0.80d · lib/ensureNamespace.ts lib/erNodeContextMenu.ts
 - [ ] T491 · lib · 0.60d · lib/errors.ts lib/exportCapability.ts
 - [ ] T494 · lib · 2.00d · lib/exportData.ts · split
