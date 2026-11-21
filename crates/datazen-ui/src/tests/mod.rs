@@ -1875,3 +1875,13 @@ mod themed_icon;
 // labels, the default resolver's edge ids, the failing decode's blank
 // slot, the one-sided light-mode bar geometry).
 mod themed_icon_audit;
+// T282: the theme toggle (coder vectors: the current-option
+// derivation, the trigger's icon and tooltip, the open popover's scrim
+// and three options, the accented current, the press journeys, the
+// escape channel).
+mod theme_toggle;
+// T282 independent audit: fresh vectors (the un-resolved honest
+// placeholder, the option words verbatim, the theme-stable key set
+// inside the minimum window, the resolver seam, the anchored geometry).
+mod theme_toggle_audit;
+
