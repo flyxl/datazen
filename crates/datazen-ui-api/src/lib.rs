@@ -150,6 +150,7 @@ mod schema_cache;
 mod schema_changing_sql;
 mod schema_diff_limitations_prefs;
 mod schema_tree_context_menu;
+mod sql_completion_context;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
 mod tabs;
@@ -845,6 +846,14 @@ pub use server_status_trends::{
     TrendPrevSample, TrendSeries, TrendSeriesDef, TrendTimeAxis, TrendUpdateInput,
     TrendUpdateResult, COMMAND_KEYS, DEFAULT_MIN_WINDOW_MS, DEFAULT_REFRESH_PERIOD_MS,
     HISTORY_MAX, HISTORY_WINDOW_MS, TICK_STEP_CANDIDATES_MS, TREND_SERIES,
+};
+pub use sql_completion_context::{
+    contextual_keyword_completion, contextual_schema_completion, detect_alias_dot_context,
+    extract_qualifier_parts, filter_completions_by_kind, filter_keywords_by_kind,
+    infer_sql_completion_kind, is_table_context, last_bare_sql_keyword,
+    last_bare_sql_keyword_with_offset, CompletionContextInput, CompletionOption, CompletionOutcome,
+    CompletionResult, CompletionSourceFn, SqlCompletionKind, COLUMN_CONTEXT_ALLOWED_KEYWORDS,
+    TABLE_CONTEXT_ALLOWED_KEYWORDS,
 };
 pub use sql_path_prefix::{
     QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
