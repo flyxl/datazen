@@ -5,6 +5,7 @@
 
 mod ai_memory_correction;
 mod app_root_surface;
+mod cell_editors;
 // T228: the memory-settings normalizers and the message-block parser —
 // pure functions over the persistence JSON and chat markdown.
 mod ai_memory_settings;
@@ -68,6 +69,12 @@ pub use app_root_surface::{
     APP_CHUNK_LOAD_MARKS, APP_DEFAULT_COMPONENT, APP_DEFAULT_WINDOW_KIND, APP_DOM_GAP,
     APP_GLOBAL_HOSTS, APP_MOUNT_MARK, APP_SELECTION_INSTALLERS, APP_SHELL_WRAPPERS,
     APP_WINDOW_ROUTES,
+};
+pub use cell_editors::{
+    build_enum_view, build_json_view, build_long_text_view, enum_key_decision, json_indent_of,
+    reformat_json, text_area, EnumEditorInput, EnumEditorMode, JsonAction, JsonEditorInput,
+    JsonEditorView, KeyDecision, LoadButtonView, LongTextEditorInput, SelectOption, TextAreaView,
+    CELL_EDITORS_GAP, CELL_EDITORS_SURFACE,
 };
 pub use ai_memory_patterns::{
     HistorySort, MemoryPatternCommands, MemoryPatternExtractionInput, MemoryPatternScheduler,
