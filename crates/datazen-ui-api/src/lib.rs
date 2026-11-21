@@ -171,6 +171,9 @@ mod sync_taxonomy;
 mod table_schema_for_sql;
 mod table_sql_actions;
 mod tabs;
+mod transfer_limitations_prefs;
+mod transfer_pairing;
+mod tunnel_deletion;
 mod theme_tokens;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
@@ -977,6 +980,19 @@ pub use theme_pack_apply::{
     THEME_PACK_STYLE_ID, WAPP_THEME_PACK_PREFIX,
 };
 pub use tabs::{Tab, TabKind, Tabs};
+pub use transfer_limitations_prefs::{
+    clear_transfer_limitations_dismissed, create_transfer_limitations_dismiss_prefs,
+    is_transfer_limitations_dismissed, set_transfer_limitations_dismissed,
+    TRANSFER_LIMITATIONS_DISMISSED_KEY,
+};
+pub use transfer_pairing::{
+    is_transfer_target_supported, resolve_transfer_pairing, TransferPairingResult, TransferPath,
+    TransferRegistry,
+};
+pub use tunnel_deletion::{
+    delete_tunnel_and_unbind, unbind_connection_patch, DeleteTunnel, DeleteTunnelDeps,
+    DeleteTunnelOutcome, GetConnections, SaveConnection, KEY_DELETE_FAILED, KEY_UNBIND_FAILED,
+};
 pub use theme_tokens::{
     build_theme_snapshot, ThemeSnapshot, ThemeSnapshotInput, THEME_SNAPSHOT_VERSION, THEME_TOKENS,
     THEME_TOKENS_DOM_GAP,
