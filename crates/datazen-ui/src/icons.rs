@@ -54,6 +54,20 @@ pub(crate) static ICON_PANEL_LEFT_OPEN: rune::Icon = rune::Icon {
     view: 24.0,
     body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9 3v18\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m14 9 3 3-3 3\"/>",
 };
+// T257: the detail-panel toggle's pair (lucide `panel-right-close` /
+// `panel-right-open`): the divider sits at x=15 and the chevron shows the
+// direction it moves on a press — right to close the right drawer, left to
+// reopen it.
+pub(crate) static ICON_PANEL_RIGHT_CLOSE: rune::Icon = rune::Icon {
+    name: "panel-right-close",
+    view: 24.0,
+    body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 3v18\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m8 9 3 3-3 3\"/>",
+};
+pub(crate) static ICON_PANEL_RIGHT_OPEN: rune::Icon = rune::Icon {
+    name: "panel-right-open",
+    view: 24.0,
+    body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 3v18\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m10 15-3-3 3-3\"/>",
+};
 pub(crate) static ICON_X: rune::Icon = rune::Icon {
     name: "x",
     view: 24.0,
