@@ -131,7 +131,7 @@
 - [x] T387 · stores · 0.30d · stores/queryRunRequestStore.ts
 - [x] T389 · components/DataTable · 0.80d · components/DataTable/TableHeader.tsx
 - [x] T392 · windows/data-sync · 0.90d · windows/data-sync/clientSqlPreview.ts
-- [ ] T396 · stores · 0.80d · stores/runningExecutionClose.ts
+- [x] T396 · stores · 0.80d · stores/runningExecutionClose.ts
 - [ ] T398 · components/DataTable · 3.20d · components/DataTable/VirtualBody.tsx · split
 - [ ] T401 · windows/data-sync · 0.90d · windows/data-sync/compareReport.ts
 - [ ] T405 · stores · 0.80d · stores/schemaColumnBatcher.ts stores/schemaColumnLoader.ts
