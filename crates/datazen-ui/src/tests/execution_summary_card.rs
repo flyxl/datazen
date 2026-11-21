@@ -169,3 +169,30 @@ fn geometry_fits_both_sizes_in_both_themes() {
         }
     }
 }
+
+// ── T522 independent audit (appended; reuses this module's Scene) ────────
+
+/// React renders the SQL block and copies for any truthy `result.sql`
+/// (`ExecutionSummaryCard.tsx:56,20-23`); `"   "` is truthy, so React shows the
+/// copy button and emits the copy. The port's press guard uses `trim()`, so a
+/// whitespace-only SQL copy is silently dropped.
+#[test]
+fn audit_whitespace_sql_copy_matches_react_truthiness() {
+    let vm = ExecutionSummaryCardVm {
+        result: SummaryResultVm {
+            sql: "   ".to_owned(),
+            rows_affected: None,
+            execution_time_ms: 0,
+        },
+        copied: false,
+    };
+    let mut rt = runtime(scene(vm, false, true), DESIGN);
+    assert!(has_key(&rt, COPY_KEY), "React renders the code block for any truthy sql");
+    click(&mut rt, COPY_KEY);
+    assert_eq!(
+        *rt.state.actions.borrow(),
+        [SummaryAction::CopySql { sql: "   ".to_owned() }],
+        "React copies any truthy sql; actions {:?}",
+        rt.state.actions.borrow()
+    );
+}

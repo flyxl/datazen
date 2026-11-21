@@ -252,3 +252,76 @@ fn geometry_fits_both_sizes_in_both_themes() {
         }
     }
 }
+
+// ── T522 independent audit (appended; reuses this module's Scene) ────────
+
+use rune::{Key, KeyEvent, Mods};
+
+/// React gates Replace All with a real `disabled={busy || plan.length === 0}`
+/// on a `<button>` (`ResultFindBar.tsx:224-233`), so a click on it fires nothing.
+/// The port models the gate only with `focusable(!next_disabled)` while still
+/// wiring `on_press` unconditionally — check whether a pointer press is inert.
+#[test]
+fn audit_disabled_replace_all_is_inert_with_empty_plan() {
+    let mut empty = vm();
+    empty.plan.clear();
+    let mut rt = runtime(scene(empty, true), DESIGN);
+    assert!(!element(&rt, REPLACE_ALL_KEY).focusable, "Replace All is not focusable with empty plan");
+    click(&mut rt, REPLACE_ALL_KEY);
+    assert!(
+        rt.state.actions.borrow().is_empty(),
+        "an empty-plan Replace All must be inert like React's disabled button; actions {:?}",
+        rt.state.actions.borrow()
+    );
+}
+
+/// Same gate while a write is in flight.
+#[test]
+fn audit_disabled_replace_all_is_inert_while_busy() {
+    let mut busy = vm();
+    busy.busy = true;
+    let mut rt = runtime(scene(busy, true), DESIGN);
+    click(&mut rt, REPLACE_ALL_KEY);
+    assert!(
+        rt.state.actions.borrow().is_empty(),
+        "a busy Replace All must be inert like React's disabled button; actions {:?}",
+        rt.state.actions.borrow()
+    );
+}
+
+/// React's needle onKeyDown does nothing on Enter unless `canReplace &&
+/// plan.length > 0` (`ResultFindBar.tsx:136-147`). The port emits an extra
+/// `SetNeedle` on Enter when there is no replace path — check that divergence.
+#[test]
+fn audit_enter_without_replace_path_emits_no_extra_action() {
+    let mut blocked = vm();
+    blocked.can_replace = false;
+    let mut rt = runtime(scene(blocked, true), DESIGN);
+    let (x, y) = rt.find(NEEDLE_KEY).unwrap_or_else(|| panic!("needle laid out"));
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    rt.frame(1.0 / 60.0);
+    rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+    rt.frame(1.0 / 60.0);
+    assert!(
+        rt.state.actions.borrow().is_empty(),
+        "React does nothing on Enter without a replace path; actions {:?}",
+        rt.state.actions.borrow()
+    );
+}
+
+/// Same inertness gate for Replace Next while a write is in flight with a
+/// non-empty plan (React's `disabled={busy || plan.length === 0}`).
+#[test]
+fn audit_disabled_replace_next_is_inert_while_busy() {
+    let mut busy = vm();
+    busy.busy = true;
+    let mut rt = runtime(scene(busy, true), DESIGN);
+    assert!(!element(&rt, REPLACE_NEXT_KEY).focusable, "Replace Next not focusable while busy");
+    click(&mut rt, REPLACE_NEXT_KEY);
+    assert!(
+        rt.state.actions.borrow().is_empty(),
+        "a busy Replace Next must be inert; actions {:?}",
+        rt.state.actions.borrow()
+    );
+}
