@@ -180,6 +180,7 @@ mod tunnel_deletion;
 mod tunnel_draft;
 mod update_reminder_schedule;
 mod wapp_bridge;
+mod wapp_i18n;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
 // path `datazen_ui_api::types::…` is the Rust twin of React's `'../types'`
@@ -1031,6 +1032,11 @@ pub use wapp_bridge::{
     NOTIFY_MIN_INTERVAL_MS, REQUEST_TIMEOUT_MS, SESSION_REQUEST_LIMIT, WAPP_BRIDGE_DOM_GAP,
     WAPP_BRIDGE_EVENT_GAP, WAPP_BRIDGE_HANDLER_GAP, WAPP_BRIDGE_IPC_GAP, WAPP_BRIDGE_SURFACE,
     WAPP_COMMAND_DENYLIST,
+};
+pub use wapp_i18n::{
+    is_wapp_i18n_key_valid, is_wapp_i18n_locale_valid, resolve_wapp_string,
+    wapp_i18n_candidates, wapp_i18n_dictionary_path, WappDictionary, WappI18n, WappI18nDeps,
+    WAPP_I18N_GAP, WAPP_I18N_SURFACE,
 };
 pub use theme_tokens::{
     build_theme_snapshot, ThemeSnapshot, ThemeSnapshotInput, THEME_SNAPSHOT_VERSION, THEME_TOKENS,
