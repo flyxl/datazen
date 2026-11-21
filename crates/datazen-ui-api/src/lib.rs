@@ -30,6 +30,7 @@ mod data_sync_endpoints;
 mod data_sync_execution;
 mod data_sync_explain;
 mod data_sync_job_lifecycle;
+mod data_sync_run_state;
 mod data_sync_options;
 mod diff_detail;
 mod data_sync_bars;
@@ -307,6 +308,10 @@ pub use data_sync_job_lifecycle::{
     VerifyRequest, VerifyResponse, CancelOutcome, DATA_SYNC_JOB_LIFECYCLE_GAP,
     DATA_SYNC_JOB_LIFECYCLE_SURFACE, JOB_POLL_INTERVAL_MS, RECOVERY_ENDPOINT_MISMATCH_KEY,
     RECOVERY_MANUAL_REVIEW_KEY, RECOVERY_RECORDED_KEY, RECOVERY_SELECT_ENDPOINTS_KEY,
+};
+pub use data_sync_run_state::{
+    DataSyncRunState, DataSyncConflict, DataSyncExecutionOutcome, DataSyncExecutionResult, SetAction,
+    DATA_SYNC_RUN_STATE_GAP, DATA_SYNC_RUN_STATE_SURFACE,
 };
 pub use data_sync_explain::{
     begin_explain, build_explain_prompt, build_explain_report, explain_gate, explain_request,
