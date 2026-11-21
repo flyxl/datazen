@@ -296,7 +296,8 @@ fn strategy_button<S: 'static>(
 /// the toolbar's scroll viewport.
 pub(super) fn strategy_menu<S: 'static>(
     on_action: &Option<ActionFn<S>>,
-    dark: bool,
+    // dark is resolved by the caller's kit; drop this param when the menu uses themed tokens.
+    _dark: bool,
 ) -> El {
     let mut menu = col().key("execution-strategy-menu").role("menu").gap(2.0);
     for strategy in ExecutionStrategy::ALL {

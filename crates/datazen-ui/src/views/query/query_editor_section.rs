@@ -37,7 +37,9 @@ use crate::ui::kit::kit;
 mod context;
 mod toolbar;
 
-pub(crate) use context::{qb_context_key, qb_is_open, qb_needs_rebind, qb_rebind_action};
+pub(crate) use context::{qb_context_key, qb_is_open, qb_needs_rebind};
+#[allow(unused_imports)] // host/test seam; consumer: the query-panel host + tests; drop when the host reads the rebind action directly.
+pub(crate) use context::qb_rebind_action;
 
 /// React `SqlExecutionStrategy`.
 #[allow(dead_code)] // VM mirror; consumed by the dropdown and tests.

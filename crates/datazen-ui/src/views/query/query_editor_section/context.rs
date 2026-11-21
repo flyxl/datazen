@@ -8,6 +8,29 @@
 
 use super::{QueryEditorAction, QueryEditorSectionVm};
 
+/// The escaping `JSON.stringify` applies to one string element: quote,
+/// backslash, the named C0 controls, and `\\u00xx` for every other C0 byte.
+/// Non-ASCII is emitted verbatim, as JSON.stringify does.
+fn json_string(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 2);
+    out.push('"');
+    for ch in value.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{8}' => out.push_str("\\b"),
+            '\u{c}' => out.push_str("\\f"),
+            other if (other as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", other as u32)),
+            other => out.push(other),
+        }
+    }
+    out.push('"');
+    out
+}
+
 /// React `JSON.stringify([connectionId ?? '', dbSessionId, selectedDatabase ?? '', selectedSchema ?? ''])`.
 #[allow(dead_code)] // pure helper; consumed by the view and tests.
 pub(crate) fn qb_context_key(
@@ -24,7 +47,7 @@ pub(crate) fn qb_context_key(
     ];
     let body = parts
         .iter()
-        .map(|part| format!("\"{part}\""))
+        .map(|part| json_string(part))
         .collect::<Vec<_>>()
         .join(",");
     format!("[{body}]")

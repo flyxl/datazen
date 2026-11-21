@@ -67,6 +67,20 @@ fn rebind_gate_requires_an_open_available_builder_with_a_stale_context() {
 }
 
 #[test]
+fn qb_context_key_json_escapes_quote_backslash_and_controls() {
+    // React uses JSON.stringify([...]), so these bytes must be escaped the
+    // same way or a database/schema containing them rebinds the wrong draft.
+    assert_eq!(
+        qb_context_key("c\"x", "s\\y", Some("app"), Some("a\"b\\c\nd")),
+        r#"["c\"x","s\\y","app","a\"b\\c\nd"]"#
+    );
+    assert_eq!(
+        qb_context_key("c", "s", Some("a\tb\r"), Some("x\u{8}\u{c}\u{1}y")),
+        r#"["c","s","a\tb\r","x\b\f\u0001y"]"#
+    );
+}
+
+#[test]
 fn execution_strategy_labels_are_all_exact_locale_keys() {
     for (strategy, key) in [
         (ExecutionStrategy::CurrentStatement, "query.executionStrategy.currentStatement"),
