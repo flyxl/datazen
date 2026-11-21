@@ -27,6 +27,7 @@ mod context_items;
 mod diff_detail;
 mod data_sync_bars;
 mod context_menu_position;
+mod data_table_bits;
 mod grid_cell;
 mod quick_look_dialog;
 mod workflow_chat_panel;
@@ -260,6 +261,12 @@ pub use grid_cell::{
     StickyStyle, CLASS_BASE, CLASS_DIRTY_BG, CLASS_DIRTY_BORDER, CLASS_DIRTY_MARK, CLASS_FK_JUMP,
     CLASS_FK_PICK, CLASS_STICKY, CLASS_STICKY_OVERLAY, CELL_TEST_ID, EDITOR_KIND_ENUM,
     FkTextFn, ROLE_GRIDCELL,
+};
+pub use data_table_bits::{
+    bridge_availability, density_row_height_delta, fk_selector_label, fk_text_with_selector,
+    row_height_for_density, ClipboardCellCoord, FkSelectorTranslator, GridClipboardHandlers,
+    GridClipboardRange, GridCopyTarget, DATA_TABLE_BITS_GAP, DATA_TABLE_BITS_SURFACE,
+    DATA_TABLE_ROW_HEIGHT, FK_SELECTOR_PICK_FROM_KEY,
 };
 pub use quick_look_dialog::{
     build_quick_look, binary_value_bytes, bytes_to_base64, is_blob_type, is_json_value,
