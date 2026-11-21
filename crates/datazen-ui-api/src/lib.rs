@@ -280,8 +280,8 @@ pub use grid_cell::{
 pub use data_table_bits::{
     bridge_availability, density_row_height_delta, fk_selector_label, fk_text_with_selector,
     row_height_for_density, ClipboardCellCoord, FkSelectorTranslator, GridClipboardHandlers,
-    GridClipboardRange, GridCopyTarget, DATA_TABLE_BITS_GAP, DATA_TABLE_BITS_SURFACE,
-    DATA_TABLE_ROW_HEIGHT, FK_SELECTOR_PICK_FROM_KEY,
+    GridClipboardRange, DATA_TABLE_BITS_GAP, DATA_TABLE_BITS_SURFACE, DATA_TABLE_ROW_HEIGHT,
+    FK_SELECTOR_PICK_FROM_KEY,
 };
 pub use quick_look_dialog::{
     build_quick_look, binary_value_bytes, bytes_to_base64, is_blob_type, is_json_value,
