@@ -127,7 +127,7 @@
 - [ ] T377 · stores · 0.90d · stores/queryExecActions.ts
 - [ ] T378 · stores/tableData · 0.90d · stores/tableData/types.ts
 - [ ] T380 · components/DataTable · 0.90d · components/DataTable/QuickLookDialog.tsx
-- [ ] T383 · windows/data-sync · 0.50d · windows/data-sync/TableListPanel.tsx
+- [x] T383 · windows/data-sync · 0.50d · windows/data-sync/TableListPanel.tsx
 - [x] T387 · stores · 0.30d · stores/queryRunRequestStore.ts
 - [x] T389 · components/DataTable · 0.80d · components/DataTable/TableHeader.tsx
 - [x] T392 · windows/data-sync · 0.90d · windows/data-sync/clientSqlPreview.ts
