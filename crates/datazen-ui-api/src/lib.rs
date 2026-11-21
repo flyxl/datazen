@@ -151,6 +151,7 @@ mod schema_cache;
 mod schema_changing_sql;
 mod schema_diff_limitations_prefs;
 mod schema_tree_context_menu;
+mod sql_bind_params;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
 mod tabs;
@@ -849,6 +850,15 @@ pub use server_status_trends::{
     TrendPrevSample, TrendSeries, TrendSeriesDef, TrendTimeAxis, TrendUpdateInput,
     TrendUpdateResult, COMMAND_KEYS, DEFAULT_MIN_WINDOW_MS, DEFAULT_REFRESH_PERIOD_MS,
     HISTORY_MAX, HISTORY_WINDOW_MS, TICK_STEP_CANDIDATES_MS, TREND_SERIES,
+};
+pub use sql_bind_params::{
+    DEFAULT_ENABLE_AT, DEFAULT_ENABLE_DOLLAR_NAMED, DEFAULT_ENABLE_DOLLAR_POSITIONAL,
+    DEFAULT_ENABLE_QUESTION, DEFAULT_ENABLE_TEMPLATE, ParamValue, SqlBindPayloadV2, SqlParam,
+    SqlParamDialectPolicy, SqlParamFilter, SqlParamKind, SqlParamOccurrence, SqlParamOccurrenceV2,
+    SqlParamStableId, SqlParamSyntax, build_bind_payload_v2, coerce_param_value,
+    default_dialect_policy, get_param_label, is_sensitive_param_name, param_fingerprint,
+    params_to_payload, parse_sql_param_occurrences, parse_sql_params, sensitive_param_names,
+    substitute_sql_params,
 };
 pub use sql_path_prefix::{
     QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
