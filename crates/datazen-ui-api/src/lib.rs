@@ -164,6 +164,7 @@ mod sql_statement_range;
 mod sql_transaction_guard;
 mod startup_timer;
 mod surface_bg_cache;
+mod sync_pairing;
 mod tabs;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
@@ -921,6 +922,12 @@ pub use startup_timer::{
 pub use surface_bg_cache::{
     css_color_to_hex, is_safe_css_hex, persist_surface_background, DEFAULT_SURFACE_DARK,
     DEFAULT_SURFACE_LIGHT, SURFACE_BG_CACHE_GAP,
+};
+pub use sync_pairing::{
+    compute_sync_pairing_state, normalize_driver_id, normalize_sync_family, sync_category,
+    sync_path_from_str, view_to_result, PairingView, SyncCategory, SyncConnection, SyncPairingCache,
+    SyncPairingResult, SyncPairingState, SyncPath, SyncRegistryMeta,
+    SYNC_PAIRING_CACHE_DELIMITER,
 };
 pub use tabs::{Tab, TabKind, Tabs};
 // The T211 types aggregate: the members React's `types/index.ts` declares or
