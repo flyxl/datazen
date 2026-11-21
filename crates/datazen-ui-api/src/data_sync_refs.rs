@@ -3,7 +3,10 @@ mod tests;
 
 use std::collections::BTreeSet;
 
-use crate::{DataSyncJobKind, DataSyncSelectedRow, DataSyncSyncState, DataSyncTableSelection};
+use crate::{
+    DataSyncJobKind, DataSyncSelectedRow, DataSyncSyncState, DataSyncTableMapping,
+    DataSyncTableSelection,
+};
 
 pub const DATA_SYNC_REFS_SURFACE: [&str; 3] = [
     "useDataSyncRefs",
@@ -16,14 +19,6 @@ pub const DATA_SYNC_REFS_GAP: [&str; 3] = [
     "async promise timing behind each mutable ref",
     "loadedPageRef Set identity across page reloads",
 ];
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DataSyncTableMapping {
-    pub source_table: String,
-    pub target_table: String,
-    pub enabled: bool,
-    pub source_filter: Option<String>,
-}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct DataSyncSharedRefs {

@@ -305,8 +305,7 @@ pub use data_sync_execution::{
     TableSelection, DATA_SYNC_EXECUTION_GAP, DATA_SYNC_EXECUTION_SURFACE,
 };
 pub use data_sync_refs::{
-    create_data_sync_refs, DataSyncSharedRefs, DataSyncTableMapping, DATA_SYNC_REFS_GAP,
-    DATA_SYNC_REFS_SURFACE,
+    create_data_sync_refs, DataSyncSharedRefs, DATA_SYNC_REFS_GAP, DATA_SYNC_REFS_SURFACE,
 };
 pub use data_sync_job_lifecycle::{
     DataSyncJobLifecycle, DataSyncJobDetails, EndpointSession, Endpoints, FeedbackSink,
