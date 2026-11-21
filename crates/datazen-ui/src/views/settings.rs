@@ -104,6 +104,13 @@ pub(crate) mod tunnel_edit_dialog;
 // T459: the tunnel live-probe dialog (the target inputs, the
 // kind-scoped honesty note, the elapsed/error answers).
 pub(crate) mod tunnel_test_dialog;
+// T638's carried lib (segment 2 — until it lands): the updater's
+// pure core (channel/variant reasoning, the manifest defence, the
+// progress/result contracts).
+pub(crate) mod updater;
+// T464: the update card (the three channel faces, the check /
+// download / restart flows, the restart confirm).
+pub(crate) mod update_section;
 // T453: the tunnel settings section (the secret-free list, the
 // usage batch, the copy action, the three dialog mounts).
 pub(crate) mod tunnel_settings_section;
