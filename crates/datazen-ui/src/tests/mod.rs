@@ -1710,3 +1710,16 @@ mod sql_syntax_preview;
 // tiling with the italic pair, the unknown theme's mounted fallback, and
 // the narrow-surface wrap growth).
 mod sql_syntax_preview_audit;
+
+// T246: the transfer job result panel (coder tests: the five-bucket
+// progress line with the unreadable-is-zero rule, the plan identity,
+// the counter dialect bridge, the in-flight card's three lines, the
+// refusal notice with the re-review wire, the settled verdict mount,
+// and the attrs mirror's six pairs in both palettes).
+mod transfer_job_result_panel;
+
+// T246 independent audit: fresh vectors (the fractional / negative /
+// padded counter forms, the in-flight card's zh-CN strings and label
+// wire, the stalePlan refusal severity with the audit prefix, the
+// boundary-backed ok verdict, the cancel disposition propagation).
+mod transfer_job_result_panel_audit;
