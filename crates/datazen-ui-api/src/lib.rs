@@ -6,6 +6,7 @@
 mod ai_memory_correction;
 mod cell_editor_candidates;
 mod connection_editor;
+mod connection_share;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -43,7 +44,10 @@ mod connection_config;
 mod connection_form_model;
 mod connection_groups;
 mod connection_locator;
+mod connection_share_error;
+mod connection_tab_context_menu;
 mod connection_types;
+mod connection_view_registry;
 mod connection_views;
 mod context_items;
 mod context_menu_position;
@@ -55,6 +59,7 @@ mod context_menu_position;
 // names reach the outside world through the module path while everything
 // else re-exports at the root (see `dashboard_types`' docs).
 pub mod dashboard_types;
+mod dismiss_prefs;
 mod filter_types;
 mod keyset_types;
 mod metadata;
@@ -92,6 +97,10 @@ pub use cell_editor_candidates::{
 };
 pub use connection_editor::{
     ConnectionEditorState, close_new_connection_dialog, open_new_connection_dialog,
+};
+pub use connection_share::{
+    ConnectionImportSource, ConnectionShareMode, ConnectionShareState,
+    close_connection_share_dialog, open_connection_share_dialog,
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
@@ -256,6 +265,15 @@ pub use connection_locator::{
     ConnectionLocatorUsageState, ConnectionMatch, ConnectionMatchReason, ConnectionSection,
     ExpandKey, SchemaSlice, PINNED_GROUP_KEY, RECENT_CONNECTION_LIMIT, RECENT_GROUP_KEY,
 };
+pub use connection_share_error::{
+    format_connection_import_success, ipc_connection_share_error, translate_connection_share_error,
+    ConnectionImportResult, ShareErrorSource,
+};
+pub use connection_tab_context_menu::{
+    build_connection_tab_context_menu_items, BuildConnectionTabContextMenuArgs,
+    ConnectionTabAction, ConnectionTabContextMenuHandlers, ConnectionTabContextMenuLabels,
+    ConnectionTabMenuItem,
+};
 pub use connection_types::{
     ConnectionConfig, ContextEntry, DatabaseObject, DatabaseObjectKind, DatabaseType,
     DriverCapabilities, ExplainPlanDetail, ExplainPlanNode, ExplainResult,
@@ -264,6 +282,9 @@ pub use connection_types::{
     ResolveForeignKeyTargetsRequest, SavedTunnel, SavedTunnelKind, ServerInfo, SshAuthMethod,
     SshTunnelConfig, SslMode, TableInfo, TableSchema, TableType, TunnelKind, Value, WebSocketMode,
     WebSocketTunnelConfig,
+};
+pub use connection_view_registry::{
+    get_connection_view, is_builtin_document_mode, ConnectionViewSelection, BUILTIN_DOCUMENT_MODE,
 };
 pub use connection_views::{
     ConnectionOpenTarget, ConnectionViewActions, ConnectionViewProps, NewQueryContext,
@@ -292,6 +313,7 @@ pub use dashboard_types::{
 // The T188 filter vocabulary: the aggregate (`types/index`) re-exports
 // everything `types/filters.ts` declares, so the crate root carries the
 // same names.
+pub use dismiss_prefs::{create_dismiss_prefs, DismissPrefs};
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
     FilterOperator, SHARED_FILTER_OPERATORS,

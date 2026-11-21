@@ -36,9 +36,9 @@
 - [x] T394 · lib · 0.80d · lib/connectionFormModel.ts lib/connectionGroups.ts
 - [x] T403 · lib · 1.30d · lib/connectionLocator.ts · split
 - [x] T029 · lib/connectionViews · 0.90d · lib/connectionViews/types.ts lib/contextItems.ts lib/contextMenuPosition.ts
-- [ ] T412 · lib · 0.90d · lib/connectionShare.ts
-- [ ] T421 · lib · 0.90d · lib/connectionShareError.ts lib/connectionTabContextMenu.ts lib/connectionViews/index.ts
-- [ ] T429 · lib · 0.30d · lib/createDismissPrefs.ts
+- [x] T412 · lib · 0.90d · lib/connectionShare.ts
+- [x] T421 · lib · 0.90d · lib/connectionShareError.ts lib/connectionTabContextMenu.ts lib/connectionViews/index.ts
+- [x] T429 · lib · 0.30d · lib/createDismissPrefs.ts
 - [ ] T437 · lib · 0.90d · lib/crossWindowBus.ts
 - [ ] T444 · lib · 0.80d · lib/dangerousSql.ts
 - [ ] T450 · lib · 0.50d · lib/databaseTypes.ts
