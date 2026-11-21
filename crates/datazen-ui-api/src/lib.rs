@@ -29,6 +29,7 @@ mod data_sync_comparison;
 mod data_sync_endpoints;
 mod data_sync_execution;
 mod data_sync_refs;
+mod data_sync_wizard_navigation;
 mod data_sync_explain;
 mod data_sync_job_lifecycle;
 mod data_sync_options;
@@ -306,6 +307,11 @@ pub use data_sync_execution::{
 };
 pub use data_sync_refs::{
     create_data_sync_refs, DataSyncSharedRefs, DATA_SYNC_REFS_GAP, DATA_SYNC_REFS_SURFACE,
+};
+pub use data_sync_wizard_navigation::{
+    can_go_next, compare_disabled, is_busy, next_step, plan_go_back, plan_go_next, previous_step,
+    step_index, NavigationEffect, NavigationInput, WizardStep, DATA_SYNC_WIZARD_NAVIGATION_GAP,
+    WIZARD_STEPS,
 };
 pub use data_sync_job_lifecycle::{
     DataSyncJobLifecycle, DataSyncJobDetails, EndpointSession, Endpoints, FeedbackSink,
