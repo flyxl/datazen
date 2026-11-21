@@ -56,7 +56,7 @@
 - [x] T503 · lib · 0.60d · lib/exportTableStructure.ts lib/extractQuestions.ts
 - [ ] T505 · lib · 0.50d · lib/extractSql.ts
 - [ ] T507 · lib · 0.90d · lib/fetchRelationDdl.ts
-- [ ] T509 · lib · 0.30d · lib/filterDbTypes.ts
+- [x] T509 · lib · 0.30d · lib/filterDbTypes.ts
 - [ ] T511 · lib · 0.80d · lib/filterExpression.ts
 - [ ] T513 · lib · 0.80d · lib/filterOperators.ts
 - [ ] T515 · lib · 0.50d · lib/fkNavigation.ts
