@@ -93,6 +93,8 @@ mod fk_referenced_by;
 mod fk_selector;
 mod global_text_selection;
 mod grid_clipboard;
+mod grid_errors;
+mod grid_event_guards;
 mod keyset_types;
 mod metadata;
 mod platform_shared;
@@ -492,6 +494,13 @@ pub use global_text_selection::{
     should_prevent_select_all, ContextMenuSuppressor, DragMouseDownInput, DragSelectionGuard,
     RightDragSuppressor, SelectAllTarget, SelectionSnapshot, DOM_GAP_SURFACES,
     INTERACTIVE_CONTROL_SELECTOR, NATIVE_SELECTABLE_SELECTOR, SELECTABLE_HINT_SELECTOR,
+};
+pub use grid_errors::{
+    classify_grid_error, GridErrorCode, PasteProblem, GRID_ERROR_CODES, GRID_ERROR_NAMESPACE,
+    REGISTERED_PREFIXES,
+};
+pub use grid_event_guards::{
+    is_composing_event, is_editable_target, ComposingEventLike, EDITABLE_TARGET_SELECTOR,
 };
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
