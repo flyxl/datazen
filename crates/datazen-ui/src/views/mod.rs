@@ -41,6 +41,9 @@ pub(crate) mod structure_view;
 pub(crate) mod table_filter_toolbar;
 pub(crate) mod table_clipboard_status;
 pub(crate) mod table_fk_breadcrumb;
+pub(crate) mod table_fk_error_banner;
+pub(crate) mod table_load_error_state;
+pub(crate) mod table_no_primary_key_tip;
 
 mod connections;
 mod connections_home;
