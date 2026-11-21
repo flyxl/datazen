@@ -116,7 +116,7 @@
 - [x] T625 · lib · 0.90d · lib/syncPairing.ts
 - [x] T627 · lib · 0.30d · lib/syncTaxonomy.ts
 - [x] T629 · lib · 1.30d · lib/tableChanges.ts · split
-- [ ] T631 · lib · 0.80d · lib/tableSchemaForSql.ts lib/tableSqlActions.ts
+- [x] T631 · lib · 0.80d · lib/tableSchemaForSql.ts lib/tableSqlActions.ts
 - [ ] T632 · lib · 2.00d · lib/themeEditorColors.ts · split
 - [x] T633 · lib · 1.30d · lib/themePackApply.ts · split
 - [x] T634 · lib · 0.30d · lib/themeTokens.ts
