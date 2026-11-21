@@ -182,3 +182,14 @@ fn empty_type_and_case_insensitive_kind_are_ported() {
     assert_eq!(PickerKind::from_str("DaTeTiMe"), PickerKind::DateTime);
     assert_eq!(PickerKind::from_str("other"), PickerKind::Date);
 }
+
+#[test]
+fn confirm_applies_then_closes_in_order() {
+    let mut rt = runtime(scene(vm(), true), (1440.0, 816.0));
+    click(&mut rt, "set-value-date-apply");
+    assert_eq!(
+        rt.state.actions.borrow().as_slice(),
+        &[SetValueDateAction::Apply("2026-01-01".to_owned()), SetValueDateAction::Close],
+        "React confirm calls onClose after onApply"
+    );
+}

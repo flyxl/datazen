@@ -131,10 +131,17 @@ pub(crate) fn build<S: 'static>(
         .build(k)
         .key("set-value-date-cancel");
     let apply_value = vm.draft.text.clone();
+    let apply_callback = on_action.clone();
     let apply = Button::new(t("common.confirm"))
         .variant(ButtonVariant::Contrast)
         .control_size(ControlSize::Regular)
-        .on_press(emit(&on_action, SetValueDateAction::Apply(apply_value)))
+        .on_press(move |s: &mut S| {
+            if let Some(callback) = &apply_callback {
+                callback(s, SetValueDateAction::Apply(apply_value.clone()));
+                // React's confirm handler calls onApply(draft) then onClose().
+                callback(s, SetValueDateAction::Close);
+            }
+        })
         .build(k)
         .key("set-value-date-apply");
 

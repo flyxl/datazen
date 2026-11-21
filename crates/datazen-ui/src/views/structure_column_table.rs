@@ -477,12 +477,17 @@ fn text_field<S: 'static>(
     let key = format!("{field_name}{id}");
     let id = id.to_owned();
     let mut input = TextField::new(&key, edit).grow().height(28.0);
-    if let Some(accessor) = edits.clone() {
-        let accessor = accessor.clone();
-        input = input.on_edit(move |s: &mut S| accessor(s, &id, field));
+    if enabled {
+        if let Some(accessor) = edits.clone() {
+            let accessor = accessor.clone();
+            input = input.on_edit(move |s: &mut S| accessor(s, &id, field));
+        } else {
+            input = input.disabled(true);
+        }
     } else {
+        // React sets disabled={!canRename} etc.; a capability-denied input
+        // must not take a caret or mutate the draft.
         input = input.disabled(true);
     }
-    let _ = enabled;
     input.build(dark)
 }

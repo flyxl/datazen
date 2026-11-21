@@ -301,3 +301,24 @@ fn sort_reverses_and_orders_by_name() {
 //    fail on `set-value-date-apply`.
 // 2. Dropping the PK→nullable patch made `toggles_emit_patches_and_primary_key_clears_nullability`
 //    fail on `a primary key is never nullable`.
+
+#[test]
+fn capability_denied_name_input_does_not_mutate_the_draft() {
+    let mut state = vm();
+    let mut caps = all_caps();
+    caps.rename_column = false;
+    state.caps = Some(caps);
+    let mut rt = runtime(scene(state, true), (1440.0, 816.0));
+    let (x, y) = rt.find("structure-column-name-c1").unwrap_or_else(|| panic!("name field is laid out"));
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    rt.frame(0.0);
+    rt.paste("SHOULD_NOT_APPLY");
+    rt.frame(0.0);
+    let name = rt.state.vm.columns.iter().find(|item| item.id == "c1").map(|item| item.name.text.clone());
+    assert_eq!(name.as_deref(), Some("id"), "React disables the name input when renameColumn is denied");
+    let input = rt.elements().into_iter()
+        .find(|e| e.key.as_deref() == Some("structure-column-name-c1"))
+        .unwrap_or_else(|| panic!("name field is laid out"));
+    assert!(!input.focusable, "a capability-denied field is disabled");
+}
