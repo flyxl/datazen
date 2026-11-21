@@ -179,6 +179,7 @@ mod transfer_pairing;
 mod tunnel_deletion;
 mod tunnel_draft;
 mod update_reminder_schedule;
+mod updater;
 mod wapp_asset_origin;
 mod wapp_bridge;
 // `pub mod` — the second public module: the T211 types aggregate (the
@@ -1018,6 +1019,13 @@ pub use update_reminder_schedule::{
     dispatch_event, on_interval_tick, start_update_reminder_schedule,
     stop_update_reminder_schedule, ScheduleDeps, ScheduleHandle, CHECK_INTERVAL_MS, CHANNEL_AUTO,
     EVENT_FOCUS, EVENT_ONLINE, EVENT_VISIBILITY_CHANGE, VISIBILITY_VISIBLE,
+};
+pub use updater::{
+    check_for_updates, current_variant, download_and_install_update, get_update_channel,
+    has_updater_channel, is_updater_supported, manifest_belongs_to_build, maybe_check_on_startup,
+    normalize_sku, read_manifest_variant, relaunch_to_apply_update, UpdateChannel,
+    UpdateCheckResult, UpdaterBuildConfig, UpdaterLog, UpdaterLogLevel, UpdateProgress,
+    StartupCheckPlan,
 };
 pub use wapp_asset_origin::{
     build_wapp_asset_src, build_wapp_icon_src, configure_wapp_asset_resolver,
