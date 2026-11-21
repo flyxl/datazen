@@ -132,7 +132,7 @@
 - [x] T389 · components/DataTable · 0.80d · components/DataTable/TableHeader.tsx
 - [x] T392 · windows/data-sync · 0.90d · windows/data-sync/clientSqlPreview.ts
 - [x] T396 · stores · 0.80d · stores/runningExecutionClose.ts
-- [ ] T398 · components/DataTable · 3.20d · components/DataTable/VirtualBody.tsx · split
+- [x] T398 · components/DataTable · 3.20d · components/DataTable/VirtualBody.tsx · split
 - [x] T401 · windows/data-sync · 0.90d · windows/data-sync/compareReport.ts
 - [x] T405 · stores · 0.80d · stores/schemaColumnBatcher.ts stores/schemaColumnLoader.ts
 - [x] T407 · components/DataTable · 0.90d · components/DataTable/dirtyCellText.ts components/DataTable/editors/activeEditor.ts components/DataTable/fkCellText.ts
