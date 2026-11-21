@@ -42,6 +42,9 @@ pub(crate) mod sample;
 /// T388: the settings commands (the kernel/half-port split, the
 /// flattenShared transform and the merge order).
 pub(crate) mod settings;
+/// T415: the data-transfer legacy command family (the typed wire
+/// contracts + the eleven invoke shapers).
+pub(crate) mod transfer;
 /// T406: the Data Sync commands (the dataSync domain rail, the two
 /// legacy faces, the selection folding, the poll/apply chains and
 /// the plan staging).
