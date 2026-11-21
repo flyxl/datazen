@@ -121,6 +121,9 @@ mod main_window_context_menu;
 mod metadata;
 mod migration_job_hydration;
 mod migration_job_verdict;
+mod native_context_menu;
+mod object_browser_context_menu;
+mod object_filter;
 mod platform_shared;
 mod relation_prediction;
 mod relative_time;
@@ -599,6 +602,18 @@ pub use migration_job_verdict::{
     is_plan_consumed_rejection, read_job_counter, sum_job_counters, CancelDisposition,
     CommitBoundaryFacts, JobCounterValue, MigrationJobVerdict, MigrationJobVerdictInput,
     UncertaintyReason, VerdictSeverity, PIPELINE_BUDGET_BYTES,
+};
+pub use native_context_menu::{DRIVER_SDK_MENU_GAP, NATIVE_CONTEXT_MENU_SURFACE};
+pub use object_browser_context_menu::{
+    build_object_browser_editor_menu_items, build_object_browser_list_menu_items,
+    native_edit_menu_items, NativeEditItem, ObjectBrowserEditorMenuHandlers,
+    ObjectBrowserEditorMenuLabels, ObjectBrowserListMenuHandlers, ObjectBrowserListMenuLabels,
+    ObjectBrowserMenuAction, ObjectBrowserMenuItem,
+};
+pub use object_filter::{
+    filter_table_items, get_object_filter, is_system_database_name, is_system_schema_name,
+    match_name_pattern, matches_table_name_filter, should_show_database, should_show_schema,
+    with_object_filter_options, ObjectFilterPrefs,
 };
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
