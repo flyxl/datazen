@@ -533,40 +533,36 @@ fn datetime_re(text: &str) -> Option<(i32, u32, u32, u32, u32, u32)> {
 
 /// `ZONED_DATETIME_RE` (`DATETIME_RE` + an optional fraction and an
 /// optional zone). The captures the checks read are the same six.
+///
+/// The zone is `Z` or `[+-]\d{2}:?\d{2}` — six bytes with the colon
+/// (`+08:00`), five without (`+0800`).
 fn zoned_datetime_re(text: &str) -> Option<(i32, u32, u32, u32, u32, u32)> {
-    // Split the zone off first: the offset is optional and may be `Z`
-    // or `[+-]\d{2}:?\d{2}`.
     let mut rest = text;
-    let mut zone_len = 0;
+    // The `Z` shorthand at the very end.
     if let Some(at) = rest.rfind('Z') {
         if at + 1 == rest.len() {
-            zone_len = 1;
             rest = &rest[..at];
         }
-    }
-    if zone_len == 0 {
-        // `[+-]\d{2}:?\d{2}` at the end.
-        let tail = rest.get(rest.len().saturating_sub(5)..).or_else(|| rest.get(rest.len().saturating_sub(4)..));
-        if let Some(tail) = tail {
-            let bytes = tail.as_bytes();
-            let (offset_len, ok) = if bytes[0] == b'+' || bytes[0] == b'-' {
-                if bytes.len() == 5 && bytes[3] == b':' {
-                    (5, bytes[1..3].iter().all(u8::is_ascii_digit) && bytes[4].is_ascii_digit())
-                } else if bytes.len() == 4 {
-                    (4, bytes[1..].iter().all(u8::is_ascii_digit))
-                } else {
-                    (0, false)
-                }
-            } else {
-                (0, false)
-            };
-            if ok {
-                zone_len = offset_len;
-                rest = &text[..text.len() - zone_len];
-            }
-        }
     } else {
-        rest = &text[..text.len() - 1];
+        // `[+-]\d{2}:?\d{2}` at the end — six bytes with the colon,
+        // five without.
+        let six = rest.len() >= 6 && {
+            let bytes = &rest.as_bytes()[rest.len() - 6..];
+            (bytes[0] == b'+' || bytes[0] == b'-')
+                && bytes[3] == b':'
+                && bytes[1..3].iter().all(|b| b.is_ascii_digit())
+                && bytes[4..6].iter().all(|b| b.is_ascii_digit())
+        };
+        let five = !six && rest.len() >= 5 && {
+            let bytes = &rest.as_bytes()[rest.len() - 5..];
+            (bytes[0] == b'+' || bytes[0] == b'-')
+                && bytes[1..5].iter().all(|b| b.is_ascii_digit())
+        };
+        if six {
+            rest = &rest[..rest.len() - 6];
+        } else if five {
+            rest = &rest[..rest.len() - 5];
+        }
     }
     // An optional fractional second before the zone.
     if let Some(at) = rest.rfind('.') {
