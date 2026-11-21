@@ -59,6 +59,7 @@ mod run_to_result;
 mod running_execution_close;
 mod scalar_cell_editors;
 mod schema_column_loading;
+mod schema_store;
 mod selection_actions;
 mod selection_scope;
 mod stage_cell_value;
@@ -396,6 +397,20 @@ pub use schema_column_loading::{
     RelationColumn, RelationColumns, RelationRef, SchemaItem, SessionMetadataIdentity,
     DEFAULT_BATCH_DEBOUNCE_MS, RELATION_COLUMN_BATCH_SIZE, SCHEMA_COLUMN_LOADING_GAP,
     SCHEMA_COLUMN_LOADING_SURFACE,
+};
+pub use schema_store::{
+    apply_patch, bind_metadata_identity, cache_path_items, collect_table_leaf_names,
+    commit_connection_patch, compute_is_multi_database, connection_field,
+    create_empty_connection_schema, empty_snapshot_field, is_schema_grouping_schema,
+    is_system_database_name, known_table_names, latest_identity, load_databases_decision,
+    merge_namespace, merge_namespace_path, namespace_tree_of, omit_table_leaf,
+    parse_path_hierarchy_database_entry, patch_connection_schema, path_key,
+    record_session_error, register_path_aliases, remove_connection, remove_relation, reset_store,
+    resolve_preferred_database, resolve_visible_databases, schema_of_relation, set_active_connection,
+    set_current_database, set_current_schema, set_loaded_tables, set_selected, toggle_expand,
+    DatabaseTypeMeta, LoadDatabasesDecision, LoadForConnectionOptions, NamespaceMergeKind,
+    PathDatabaseEntry, SchemaPatch, SchemaSessionState, SchemaStoreSnapshot, SchemaTableInfo,
+    SetLoadedTablesOptions, SCHEMA_STORE_GAP, SCHEMA_STORE_SURFACE,
 };
 pub use selection_actions::{
     apply_begin_cell_selection, apply_clear_grid_selection, apply_grid_selection,
