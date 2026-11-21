@@ -67,6 +67,8 @@ mod result_workspace_audit;
 // T530: date-value dialog + structure column table.
 mod set_value_date_dialog;
 mod structure_column_table;
+// T536: the one-line table clipboard status (paste summary, problems, deadline).
+mod table_clipboard_status;
 // T524 independent audit: any-column not-contains, replace-all splicing and
 // non-contains operator planning, checked against React resultFindReplace.
 mod result_table_view_audit;
