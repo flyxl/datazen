@@ -158,15 +158,20 @@ pub(crate) fn parsed_filter_outcome(
             .iter()
             .map(|column| column.name.to_lowercase())
             .collect();
+        // React's `new Set(...)` over the trimmed columns: case-
+        // SENSITIVE dedup (`EMAIL` and `email` are two entries), the
+        // first-seen order.
+        let mut seen: HashSet<String> = HashSet::new();
         let mut unknown: Vec<String> = Vec::new();
         for filter in filters {
             let column = filter.column.trim();
-            if !column.is_empty() && !known.contains(&column.to_lowercase()) {
+            if !column.is_empty()
+                && !known.contains(&column.to_lowercase())
+                && seen.insert(column.to_owned())
+            {
                 unknown.push(column.to_owned());
             }
         }
-        unknown.sort();
-        unknown.dedup();
         if !unknown.is_empty() {
             return ParsedFilterOutcome::UnknownColumns(unknown);
         }

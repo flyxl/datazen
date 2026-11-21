@@ -1882,6 +1882,18 @@ mod nl2_sql_panel;
 // generations, the whitespace guard, the theme-stable key set, the
 // unconfigured words verbatim, the citation journey at both themes).
 mod nl2_sql_panel_audit;
+// T299: the NL filter input (coder vectors: the table-change reset, the
+// parsed outcome's four branches with the stale-context drop and the
+// unknown-column validation, the sentence, the three mounts, the parsing
+// swap, the four status lines, the press journeys, the unwired model
+// text).
+mod nl_filter_input;
+// T299 independent audit: fresh vectors (the Unicode membership
+// honesty, the empty-parse-with-matching-context apply, the
+// theme-stable key set inside the minimum window, the parsing word and
+// the clear help verbatim).
+mod nl_filter_input_audit;
+
 
 
 // T260 independent audit: fresh vectors (the object-but-not-result-set

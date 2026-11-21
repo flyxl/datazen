@@ -98,7 +98,7 @@
 - [x] T293 · stores · 0.30d · stores/panelCloseNotifier.ts
 - [x] T294 · stores/tableData · 0.80d · stores/tableData/pendingEditActions.ts
 - [x] T297 · components/DataTable · 0.80d · components/DataTable/editors/CellEditorHost.tsx
-- [ ] T299 · components/ai · 0.90d · components/ai/NlFilterInput.tsx
+- [x] T299 · components/ai · 0.90d · components/ai/NlFilterInput.tsx
 - [x] T301 · components · 0.30d · components/WindowChromeFallback.tsx
 - [ ] T305 · windows/data-transfer · 0.90d · windows/data-transfer/transferMappingView.ts
 - [ ] T306 · windows/data-sync · 1.30d · windows/data-sync/DiffDetail.tsx · split
