@@ -82,7 +82,7 @@
 - [x] T555 · lib · 0.80d · lib/mainWindowContextMenu.ts
 - [x] T557 · lib · 0.90d · lib/mcpAgentConfig.ts
 - [x] T559 · lib · 0.90d · lib/migrationJobHydration.ts
-- [ ] T561 · lib · 1.30d · lib/migrationJobVerdict.ts · split
+- [x] T561 · lib · 1.30d · lib/migrationJobVerdict.ts · split
 - [ ] T563 · lib · 0.60d · lib/migrationVerification.ts lib/migrationWindowPrefill.ts
 - [ ] T565 · lib · 1.30d · lib/namedViews.ts · split
 - [ ] T567 · lib · 0.90d · lib/nativeContextMenu.ts lib/objectBrowserContextMenu.ts lib/objectFilter.ts
