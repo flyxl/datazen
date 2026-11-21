@@ -17,6 +17,7 @@ mod er_node_context_menu;
 mod export_dialog_shared;
 mod extract_sql;
 mod filter_expression;
+mod fk_navigation_actions;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -172,6 +173,12 @@ pub use filter_expression::{
     FlattenedFilterCondition, ParseFailure, ParsedFilterApplication,
     filter_expression_to_conditions, flatten_parts, flatten_to_connectors,
     has_or_group_under_and, parse_filter_expression, parse_filter_for_apply, token_positions,
+};
+pub use fk_navigation_actions::{
+    FkActionDeps, FkActionEffects, FkJumpError, FkJumpOutcome, FkNavEntry, FkNavOrigin, FkNavState,
+    FkOrigin, GRID_ERROR_CODES, OpenForeignKeyTargetInput, Panel, PanelKind, PanelState,
+    TableChangeContext, TableIdentity, classify_grid_error, host_error_message,
+    open_foreign_key_target,
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
