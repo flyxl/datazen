@@ -580,7 +580,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T561 · lib · 1.30d · lib/migrationJobVerdict.ts · split
 - [ ] T562 · windows/connection · 2.00d · windows/connection/er/buildErGraph.ts · split
 - [ ] T563 · lib · 0.60d · lib/migrationVerification.ts lib/migrationWindowPrefill.ts
-- [ ] T564 · windows/connection · 2.00d · windows/connection/er/interactionState.ts · split
+- [x] T564 · windows/connection · 2.00d · windows/connection/er/interactionState.ts · split
 - [ ] T565 · lib · 1.30d · lib/namedViews.ts · split
 - [ ] T566 · windows/connection · 2.00d · windows/connection/er/layoutErGraph.ts · split
 - [ ] T567 · lib · 0.90d · lib/nativeContextMenu.ts lib/objectBrowserContextMenu.ts lib/objectFilter.ts

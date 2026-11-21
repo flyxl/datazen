@@ -678,3 +678,6 @@ mod server_status_view;
 // T568: nodeMetrics + relationStyle ports (size contract, stroke contract,
 // legend drift guard, rendering-variant pinning).
 mod er_node_metrics;
+// T564: interactionState port (pins, hover neighbourhood/styling, label
+// fitting) over the shared ER graph model.
+mod er_interaction_state;
