@@ -98,7 +98,7 @@
 - [x] T587 · lib · 0.60d · lib/rowToRecord.ts lib/runPredefinedEdit.ts
 - [ ] T589 · lib · 0.80d · lib/schemaCache.ts lib/schemaChangingSql.ts
 - [ ] T591 · lib · 0.90d · lib/schemaDiffConfirm.ts
-- [ ] T593 · lib · 0.30d · lib/schemaDiffLimitationsPrefs.ts
+- [x] T593 · lib · 0.30d · lib/schemaDiffLimitationsPrefs.ts
 - [ ] T595 · lib · 0.80d · lib/schemaObjectSearch.ts
 - [ ] T597 · lib · 0.30d · lib/schemaResourceCache.ts
 - [ ] T599 · lib · 0.80d · lib/schemaTreeContextMenu.ts
