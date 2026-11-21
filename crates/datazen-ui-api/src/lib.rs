@@ -9,6 +9,9 @@ mod connection_editor;
 mod connection_share;
 mod cross_window_bus;
 mod data_fetcher;
+mod default_sort;
+mod docs_urls;
+mod document_scroll_lock;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -116,6 +119,14 @@ pub use data_fetcher::{
     DataFetcherKind, ExportContext, ExportProgress, ExportScope, FetchColumn, FetchOutcome,
     FetchRequest, FetchResult, FetchTableInput, FetchTableSource, ProvidedFormatPlan,
     resolve_fetcher,
+};
+pub use default_sort::{DefaultOrderOverride, resolve_default_table_sort};
+pub use docs_urls::{
+    DOCS_BASE_EN, DOCS_BASE_ZH, DocsSectionId, build_docs_url, is_chinese_ui_language,
+};
+pub use document_scroll_lock::{
+    ScrollAxis, ScrollLockRail, ScrollLockState, ScrollPosition, apply_snap, scroll_lock_rail,
+    snap_targets,
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
