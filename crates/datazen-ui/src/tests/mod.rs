@@ -625,4 +625,5 @@ mod execution_strategy_ask_modal_audit;
 mod pending_plan_dialog_audit;
 // T480 independent audit: DDL/execute answers, running gate and menu teardown.
 mod object_browser_audit;
-
+// T504: QueryBuilderHostAdapter port (catalog, context/rebind, slot mount, host actions, geometry).
+mod query_builder_host_adapter;
