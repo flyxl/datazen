@@ -87,7 +87,7 @@
 - [x] T565 · lib · 1.30d · lib/namedViews.ts · split
 - [ ] T567 · lib · 0.90d · lib/nativeContextMenu.ts lib/objectBrowserContextMenu.ts lib/objectFilter.ts
 - [x] T569 · lib · 0.30d · lib/panelContextPath.ts
-- [ ] T571 · lib · 0.90d · lib/pathPicker.ts
+- [x] T571 · lib · 0.90d · lib/pathPicker.ts
 - [ ] T573 · lib · 0.60d · lib/processListResult.ts lib/productFeatures.ts
 - [ ] T575 · lib · 0.80d · lib/queryContextPath.ts
 - [ ] T577 · lib · 0.90d · lib/queryExecutionViewModel.ts
