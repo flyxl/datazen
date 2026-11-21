@@ -50,6 +50,7 @@ mod panel_store;
 mod panel_types;
 mod platform_shared;
 mod relation_prediction;
+mod query_exec_actions;
 mod relative_time;
 mod run_to_chart;
 mod run_to_result;
@@ -345,6 +346,15 @@ pub use relation_prediction::{
     predict_relations, related_table_boost_map, related_table_hints, singularize,
     split_identifier_words, to_prediction_table_from_schema, to_prediction_tables_from_schemas,
     type_family,
+};
+pub use query_exec_actions::{
+    extract_error, is_cancellation_error, notify_schema_actions, patch_exec,
+    post_success_view_mode, query_error_transition, reduce_query_execution_state, run_start_state,
+    should_apply_event, transition_exec, BindParams as QueryExecBindParams,
+    ExecTable as QueryExecTable, ExecutionError, QueryCancelState as QueryExecActionsCancelState,
+    QueryExecState as QueryExecActionsState, QueryExecutionTransition, QueryTerminalState,
+    SchemaAction, GENERIC_FAILURE_KEY, QUERY_ERROR_QUOTA_CODE, QUERY_EXEC_ACTIONS_GAP,
+    QUERY_EXEC_ACTIONS_SURFACE, QUOTA_MESSAGE_KEY, REFRESH_CONNECTION_EVENT,
 };
 pub use relative_time::{
     RELATIVE_WINDOW_MS, RelativeTimeParts, RelativeTimeUnit, format_relative_time,
