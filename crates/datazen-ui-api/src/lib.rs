@@ -452,8 +452,8 @@ pub use schema_store::{
     set_current_database, set_current_schema, set_loaded_tables, set_selected, toggle_expand,
     DatabaseTypeMeta, LoadDatabasesDecision, LoadForConnectionOptions, NamespaceMergeKind,
     PathDatabaseEntry, SchemaPatch, SchemaSessionState, SchemaStoreSnapshot, SchemaTableInfo,
-    SetLoadedTablesOptions, VisibleDatabases, SCHEMA_STORE_GAP, SCHEMA_STORE_HELPERS_SURFACE,
-    SCHEMA_STORE_SURFACE,
+    SetLoadedTablesOptions, VisibleDatabases, EMPTY_NAMESPACE, SCHEMA_STORE_GAP,
+    SCHEMA_STORE_HELPERS_SURFACE, SCHEMA_STORE_STATE_SURFACE, SCHEMA_STORE_SURFACE,
 };
 pub use schema_store_selectors::{
     active_session_metadata_snapshot, binding_to_relation_requests, editor_relation_key,
