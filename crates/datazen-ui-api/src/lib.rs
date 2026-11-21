@@ -25,6 +25,7 @@ mod compare_report;
 mod connection_types;
 mod connection_views;
 mod context_items;
+mod data_sync_comparison;
 mod diff_detail;
 mod data_sync_bars;
 mod data_table_clipboard_dom;
@@ -256,6 +257,17 @@ pub use data_sync_bars::{
     KEY_EXECUTE_UNAVAILABLE, KEY_SELECTED_ROWS, KEY_TARGET_READ_ONLY, PATH_DIRECT_KEY, PATH_IR_KEY,
     PATH_TEST_ID, READ_ONLY_CLASS, START_DISABLED_TEST_ID, START_TEST_ID, SUPPORTED_CLASS,
     UNSUPPORTED_CLASS, USE_TRANSFER_HINT_KEY,
+};
+pub use data_sync_comparison::{
+    apply_options_to_rows, cancel_actions, clear_job_refs, first_diff_key, is_compared_sync_state,
+    is_current_generation, is_paged_comparison, mark_disabled_tables, merge_compare_into_mappings,
+    next_generation, selected_rows_from_merged, should_keep_cancelled_result, tables_for_compare,
+    toggle_disabled_status, update_source_filter, validate_endpoints, CancelActions,
+    ClearJobRefsInput, ComparisonRow, ComparisonTableRow, ComparisonTableStatus, DataSyncJobKind,
+    DataSyncSyncState, EndpointInput, MappedRow, SelectedComparisonRow, ValidationFailure,
+    DATA_SYNC_COMPARISON_GAP, DATA_SYNC_COMPARISON_SURFACE, DATA_SYNC_DB_REQUIRED_KEY,
+    DATA_SYNC_SAME_DB_KEY, DATA_SYNC_SELECT_BOTH_KEY, DATA_SYNC_TRANSFER_HINT_KEY,
+    SYNC_CANCELLING_EXECUTION_KEY, SYNC_COMPARE_CANCELLED_KEY,
 };
 pub use data_table_clipboard_dom::{
     bind_clipboard_dom, handle_copy, handle_paste, is_editable_target, resolve_copy_target,
