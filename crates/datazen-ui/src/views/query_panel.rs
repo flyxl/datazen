@@ -119,6 +119,8 @@ pub(crate) struct QueryPanelVm {
     pub(crate) history_visible: bool,
     pub(crate) favorites_visible: bool,
     pub(crate) message: MessageDialogVm,
+    /// React's `copied` feedback flag; the host clears it after its deadline.
+    pub(crate) message_copied: bool,
     pub(crate) dangerous_confirm_open: bool,
     pub(crate) switch_tx_confirm_open: bool,
     pub(crate) strategy_ask_open: bool,
@@ -149,13 +151,8 @@ impl QueryPanelVm {
     pub(crate) fn selected_database(&self) -> Option<String> {
         let bound = self.database.as_deref().filter(|db| !db.trim().is_empty());
         if self.namespace_confirmed {
-            return self.observed_database.clone().or_else(|| {
-                if self.is_path_hierarchy {
-                    self.current_database.clone().or_else(|| bound.map(str::to_owned))
-                } else {
-                    bound.map(str::to_owned).or_else(|| self.current_database.clone())
-                }
-            });
+            // React returns observedNamespace.database directly, even when null.
+            return self.observed_database.clone();
         }
         if self.is_path_hierarchy {
             self.current_database
@@ -245,6 +242,9 @@ pub(crate) enum QueryPanelAction {
     ConfirmSwitchTx,
     CancelSwitchTx,
     CloseMessage,
+    /// Copy the result-message text; the host owns the clipboard write and the
+    /// 1500ms feedback deadline.
+    CopyMessage { text: String },
     /// Confirm the strategy ask with a chosen execution mode.
     ChooseStrategy { entire_script: bool },
 }

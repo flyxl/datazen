@@ -61,7 +61,7 @@ fn message_dialog<S: 'static>(
 ) {
     let k = kit(dark);
     let title = match vm.message.kind {
-        MessageKind::Error => t("common.failed"),
+        MessageKind::Error => t("common.error"),
         MessageKind::Success => t("common.success"),
     };
     let mut dialog = Dialog::new(MESSAGE_DIALOG_KEY, title)
@@ -80,6 +80,28 @@ fn message_dialog<S: 'static>(
                         .wrap_anywhere(),
                 ),
         );
+    // React's error dialog also offers a copy action; success hides it. The
+    // clipboard write and the 1500ms feedback revert are host concerns.
+    if vm.message.kind == MessageKind::Error {
+        let label = if vm.message_copied {
+            t("common.copied")
+        } else {
+            t("common.copy")
+        };
+        let mut copy = Button::new(label)
+            .variant(ButtonVariant::Ghost)
+            .control_size(ControlSize::Regular)
+            .build(k)
+            .key("result-message-copy")
+            .help(t("common.copy"));
+        if let Some(callback) = on_action.clone() {
+            let text = vm.message.text.clone();
+            copy = copy.on_press(move |s: &mut S| {
+                callback(s, QueryPanelAction::CopyMessage { text: text.clone() })
+            });
+        }
+        dialog = dialog.footer(copy);
+    }
     let callback = on_action.clone();
     let mut ok = Button::new(t("common.ok"))
         .variant(ButtonVariant::Contrast)
@@ -141,12 +163,12 @@ fn strategy_ask<S: 'static>(
     layer: &mut Vec<El>,
 ) {
     let k = kit(dark);
-    let mut current = Button::new(t("query.historyScopeCurrent"))
+    let mut current = Button::new(t("query.executionStrategy.runCurrent"))
         .variant(ButtonVariant::Neutral)
         .control_size(ControlSize::Small)
         .build(k)
         .key("query-panel-strategy-current");
-    let mut entire = Button::new(t("query.historyScopeAll"))
+    let mut entire = Button::new(t("query.executionStrategy.runEntire"))
         .variant(ButtonVariant::Neutral)
         .control_size(ControlSize::Small)
         .build(k)
