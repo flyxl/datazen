@@ -62,6 +62,7 @@ mod dangerous_sql;
 // else re-exports at the root (see `dashboard_types`' docs).
 pub mod dashboard_types;
 mod database_types;
+mod data_table_context_menu;
 mod dismiss_prefs;
 mod filter_types;
 mod keyset_types;
@@ -334,6 +335,18 @@ pub use database_types::{
     PopularityValue,
     EscapeSqlValue, SqlValueEscaper, SshTunnelAddr, DB_TYPE_POPULARITY_ORDER,
     DEFAULT_MAX_DATABASE_INDEX,
+};
+pub use data_table_context_menu::{
+    build_data_table_context_menu_items, format_row_as_sql_delete, format_row_as_sql_insert,
+    format_row_as_sql_update, format_rows_as_sql_insert, format_rows_as_sql_update, invoke,
+    resolve_data_table_cell_from_event, resolve_data_table_header_col_from_event,
+    resolve_set_value_actions, row_to_named_record, serialize_cells,
+    serialize_data_table_column_values, serialize_data_table_rows_as_csv,
+    serialize_data_table_rows_as_json, serialize_data_table_rows_as_tsv, set_value_action_label,
+    BuildDataTableContextMenuArgs, CellContext, CopyFormat, DataTableContextMenuHandlers,
+    DataTableContextMenuLabels, DomElement, HeaderFreeze, HeaderPresentation, HeaderSort,
+    HeaderStats, MenuAction, NativeMenuItemDef, RowKind, SerializeFormat, SetValueAction,
+    SetValueActionId, SetValueState, LOAD_CANDIDATES_LABEL_KEY,
 };
 pub use dismiss_prefs::{create_dismiss_prefs, DismissPrefs};
 pub use filter_types::{
