@@ -175,9 +175,25 @@ pub(crate) fn build<S: 'static>(
 ) {
     let k = kit(dark);
     let toggle_disabled = vm.disabled || vm.columns.is_empty();
+    // React installs a document mousedown listener that closes the popover on
+    // an outside press. A full-window transparent scrim behind the toggle and
+    // popover carries that intent; the two controls stay above it and keep
+    // their own presses. A disabled filter is inert, so it installs no scrim.
+    if vm.open && !toggle_disabled {
+        let mut scrim = row()
+            .key("table-column-filter-dismiss")
+            .absolute(0.0, 0.0)
+            .w_full()
+            .h_full()
+            .a11y_hidden();
+        let dismiss = emit(on_action, TableColumnFilterAction::Close);
+        scrim = scrim.on_press(move |s: &mut S| dismiss(s));
+        layer.push(scrim);
+    }
     let mut toggle = row()
         .key(TOGGLE_KEY)
         .role("button")
+        .expanded(vm.open)
         .focusable(!toggle_disabled)
         .disabled(toggle_disabled)
         .h(24.0)
