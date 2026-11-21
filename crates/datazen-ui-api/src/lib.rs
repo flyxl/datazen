@@ -170,6 +170,7 @@ mod sync_pairing;
 mod sync_taxonomy;
 mod tabs;
 mod theme_tokens;
+mod total_rows_display;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
 // path `datazen_ui_api::types::…` is the Rust twin of React's `'../types'`
@@ -967,6 +968,9 @@ pub use tabs::{Tab, TabKind, Tabs};
 pub use theme_tokens::{
     build_theme_snapshot, ThemeSnapshot, ThemeSnapshotInput, THEME_SNAPSHOT_VERSION, THEME_TOKENS,
     THEME_TOKENS_DOM_GAP,
+};
+pub use total_rows_display::{
+    can_page_forward, format_row_count, total_rows_view, TotalRowsView,
 };
 // The T211 types aggregate: the members React's `types/index.ts` declares or
 // re-exports that no earlier family module had already landed at the root
