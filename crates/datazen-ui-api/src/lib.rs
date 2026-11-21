@@ -85,6 +85,7 @@ mod extract_questions;
 mod fetch_relation_ddl;
 mod filter_db_types;
 mod filter_types;
+mod fk_navigation;
 mod keyset_types;
 mod metadata;
 mod platform_shared;
@@ -440,6 +441,12 @@ pub use fetch_relation_ddl::{
     RelationDialectProvider, RichClipboardSteps,
 };
 pub use filter_db_types::{filter_db_types_by_query, DbTypeOption};
+pub use fk_navigation::{
+    build_fk_filters, find_foreign_key, fk_nav_key, index_foreign_keys, is_fk_cell_navigable,
+    pick_anchor_row, scroll_top_for_anchor_row, AnchorInput, AnchorResult, FkBreadcrumbModel,
+    FkFilterTarget, FkGroupAffordance, FkIndex, FkNavInput, FkNavTargetIdentity, GridViewport,
+    NavValue, FK_NAV_MAX_DEPTH,
+};
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
     FilterOperator, SHARED_FILTER_OPERATORS,
