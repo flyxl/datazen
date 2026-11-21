@@ -1723,3 +1723,15 @@ mod transfer_job_result_panel;
 // wire, the stalePlan refusal severity with the audit prefix, the
 // boundary-backed ok verdict, the cancel disposition propagation).
 mod transfer_job_result_panel_audit;
+
+// T253: the installed-language-pack store (coder tests: the fetch
+// seam's two endings, the remove seam's refetch hand-off and the
+// failure's error, the changed listener's once-latch with the three
+// retry paths).
+mod language_pack_store;
+
+// T253 independent audit: fresh vectors (the camelCase wire round-trip
+// with the optional pair and the rejects, the repeated-fetch overwrite,
+// the remove-from-failed-load journey, the duplicate-code first match,
+// the latch across a late platform).
+mod language_pack_store_audit;
