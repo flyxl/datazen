@@ -1610,3 +1610,8 @@ mod data_table_shell_audit;
 // walk, the aggregate table's honest edges, the pivot series order, the
 // sort comparators, the scatter null-x rule).
 mod chart_transform_audit;
+
+// T184: the dashboards store's independent audit (the refcount lifecycle,
+// the fetch/load/save/refresh walks, the latest-run pick, both cross-window
+// gates).
+mod dashboard_store_audit;
