@@ -59,7 +59,7 @@
 - [x] T176 · windows/data-transfer · 0.90d · windows/data-transfer/MappingGateNotice.tsx
 - [x] T177 · windows/data-sync · 0.90d · windows/data-sync/DataSyncObjectsStep.tsx
 - [x] T180 · lib/chart · 1.00d · lib/chart/transform.ts lib/columnStats.ts
-- [ ] T184 · stores · 0.90d · stores/dashboardStore.ts
+- [x] T184 · stores · 0.90d · stores/dashboardStore.ts
 - [x] T185 · stores/tableData · 0.30d · stores/tableData/filterUtils.ts
 - [ ] T187 · platform · 2.00d · platform/exportPlan.ts · split
 - [x] T189 · components/DataTable · 0.90d · components/DataTable/DataTableSelectionBar.tsx
