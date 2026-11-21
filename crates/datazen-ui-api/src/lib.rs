@@ -82,6 +82,7 @@ mod table_list_panel;
 mod table_sort_preferences;
 mod tabs;
 mod table_data_state;
+mod update_reminder_store;
 mod virtual_body;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
@@ -558,6 +559,12 @@ pub use tabs::{Tab, TabKind, Tabs};
 pub use table_data_state::{
     AppliedFilter, CellEditLocation, DefaultOrderOverride, FilterLogic, FilterMode, TableState,
     TABLE_DATA_STATE_GAP, TABLE_DATA_STATE_SURFACE,
+};
+pub use update_reminder_store::{
+    begin_check, begin_install, finish_check, install_result_patch, install_start_patch,
+    is_check_due, progress_patch, restart_allowed, restart_error_patch, StatePatch, UpdateCheckResult,
+    UpdateOutcome, UpdateProgress, UpdateReminderState, UPDATE_CHECK_INTERVAL_MS,
+    UPDATE_REMINDER_GAP, UPDATE_REMINDER_SURFACE,
 };
 pub use virtual_body::{
     build_cell_input, build_column_editor_info_from_defs, build_row_cell_views, cell_id,
