@@ -121,6 +121,7 @@ mod main_window_context_menu;
 mod metadata;
 mod migration_job_hydration;
 mod migration_job_verdict;
+mod named_views;
 mod platform_shared;
 mod relation_prediction;
 mod relative_time;
@@ -661,6 +662,14 @@ pub use migration_job_hydration::{
     is_stale_plan_error, job_kinds, latest_apply_job, update_migration_job_projection,
     ErrorLike as MigrationErrorLike, GetJobFn, JobClassification, JobState, JobView, ListJobsFn,
     MigrationJobClient, MigrationWindow, MigrationJobHydration, STALE_PLAN_ERROR_CODES,
+};
+pub use named_views::{
+    build_named_view_export, is_host_filter_operator, named_view_scope_key, named_views_available,
+    normalize_view_name, normalized_name_key, parse_named_view_export, read_view_filters,
+    resolve_import_name, sort_named_views, view_from_table_state, view_names_equal,
+    views_for_scope, BackendClientCapabilities, NamedView, NamedViewExportFile, NamedViewScope,
+    PortFilterCondition, TableStateForView, ViewFilterReadout, ViewFromTableStateOptions,
+    NAMED_VIEW_EXPORT_VERSION,
 };
 pub use metadata::{
     BatchFlush, CurrentCallContext, CurrentProvenanceContext, ExecutionTarget,
