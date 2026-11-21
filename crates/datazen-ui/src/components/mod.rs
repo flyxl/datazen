@@ -31,6 +31,8 @@ pub(crate) mod mcp_approval_host;
 // T195: the web-shape menu bar (MenuBar.tsx).
 pub(crate) mod menu_bar;
 pub(crate) mod sql_editor;
+pub(crate) mod status_bar;
+pub(crate) mod themed_icon;
 // T219: the SQL code block (SqlCodeBlock.tsx).
 pub(crate) mod sql_code_block;
 // T241: the Settings page's static SQL syntax preview
