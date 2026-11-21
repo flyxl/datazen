@@ -29,6 +29,7 @@ mod data_sync_comparison;
 mod diff_detail;
 mod data_sync_bars;
 mod data_table_clipboard_dom;
+mod data_table_context_menu;
 mod context_menu_position;
 mod data_table_bits;
 mod grid_cell;
@@ -276,6 +277,12 @@ pub use data_table_clipboard_dom::{
     resolve_paste_anchor, ClipboardBinding, ClipboardBridge, ClipboardDomInput, ClipboardEvent,
     CopyOutcome, DomTarget, GridCopyTarget, PasteAnchor, PasteEvent, PasteOutcome,
     CLIPBOARD_DOM_GAP,
+};
+pub use data_table_context_menu::{
+    build_menu_bindings, build_menu_labels, resolve_menu_context, ClipboardFormat, CopySource,
+    HeaderColumn, HeaderFreeze, HeaderSort, HitTarget, MenuAction, MenuBindings, MenuCapabilities,
+    MenuContext, MenuEntryId, MenuEvent, MenuInput, MenuLabels, RowState, SetValueActionId,
+    SetValueState, CONTEXT_MENU_DOM_GAP,
 };
 // The T188 filter vocabulary: the aggregate (`types/index`) re-exports
 // everything `types/filters.ts` declares, so the crate root carries the
