@@ -8,6 +8,7 @@ mod cell_editor_candidates;
 mod connection_editor;
 mod connection_share;
 mod cross_window_bus;
+mod data_fetcher;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -108,6 +109,11 @@ pub use connection_share::{
 pub use cross_window_bus::{
     CHANNEL_NAME, CrossWindowMessage, CrossWindowRail, cross_window_rail, make_message,
     matches_event, payload_of,
+};
+pub use data_fetcher::{
+    DataFetcherKind, ExportContext, ExportProgress, ExportScope, FetchColumn, FetchOutcome,
+    FetchRequest, FetchResult, FetchTableInput, FetchTableSource, ProvidedFormatPlan,
+    resolve_fetcher,
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
