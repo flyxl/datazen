@@ -154,7 +154,7 @@
 - [x] T426 · windows/settings · 0.90d · windows/settings/SqlSnippetsCard.tsx
 - [x] T430 · hooks · 0.90d · hooks/useThemeSync.ts
 - [x] T432 · commands · 0.90d · commands/tunnel.ts
-- [ ] T434 · windows/settings · 0.90d · windows/settings/TableDataSettingsSection.tsx
+- [x] T434 · windows/settings · 0.90d · windows/settings/TableDataSettingsSection.tsx
 - [ ] T438 · hooks · 1.30d · hooks/useTransferJobRun.ts · split
 - [ ] T440 · commands · 0.90d · commands/wapps.ts
 - [ ] T441 · windows/settings · 0.90d · windows/settings/TunnelDeleteDialog.tsx

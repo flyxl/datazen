@@ -937,3 +937,6 @@ mod skills_section_audit;
 // add/edit/duplicate dialog flows, the delete confirm, the
 // export/import status line).
 mod sql_snippets_card_audit;
+// T434: the table-data settings section (the row count mode + the
+// auto-only threshold, the default sort, the grid density + toggles).
+mod table_data_settings_section_audit;

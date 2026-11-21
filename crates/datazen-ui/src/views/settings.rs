@@ -85,6 +85,10 @@ pub(crate) mod snippet_edit_dialog;
 // T426: the SQL snippets card (the custom list, the builtin list,
 // the export/import row) over the T417 dialog + the confirm hook.
 pub(crate) mod sql_snippets_card;
+// T434: the table-data settings section (the row count mode + the
+// auto-only threshold, the default sort, the grid density + toggles)
+// with T474's delegated slot.
+pub(crate) mod table_data_settings_section;
 // T408: the AI skills settings panel (the opt-in switches, the
 // custom directory, the discovered listing).
 pub(crate) mod skills_section;
