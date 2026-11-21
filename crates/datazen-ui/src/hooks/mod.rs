@@ -63,3 +63,9 @@ pub(crate) mod use_grid_selection;
 // T395: the per-pane query-execution read (the whole-entry and
 // single-field faces over the pane-key rule).
 mod use_query_exec;
+// T404: the resizable-panel drag machine (the persisted clamp, the
+// measured-start adoption, the reverse axis).
+mod use_resizable;
+// T404: the per-window settings composition (the settings + theme
+// sync mounts; T413/T430 port the syncs themselves).
+mod use_settings;
