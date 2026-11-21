@@ -124,6 +124,7 @@ mod metadata;
 mod migration_job_hydration;
 mod migration_job_verdict;
 mod named_views;
+mod panel_context_path;
 mod platform_shared;
 mod relation_prediction;
 mod relative_time;
@@ -680,6 +681,7 @@ pub use named_views::{
     PortFilterCondition, TableStateForView, ViewFilterReadout, ViewFromTableStateOptions,
     NAMED_VIEW_EXPORT_VERSION,
 };
+pub use panel_context_path::{format_panel_context_path, PanelContextPathArgs};
 pub use metadata::{
     BatchFlush, CurrentCallContext, CurrentProvenanceContext, ExecutionTarget,
     InvalidationDecision, InvalidationReason, MetadataBatcher, MetadataBatcherOptions,
