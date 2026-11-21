@@ -62,6 +62,7 @@ mod sql_path_prefix;
 mod workflow_panel;
 mod sql_schema_drop_targets;
 mod table_list_panel;
+mod table_sort_preferences;
 mod tabs;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
@@ -397,6 +398,10 @@ pub use table_list_panel::{
     TableListRow, TableListView, TableSyncStatus, DATA_SYNC_FILTERS, IDENTICAL_KEY,
     MAPPING_INCOMPATIBLE_KEY, NO_TABLES_MATCH_KEY, ROW_DIFFS_KEY, SEARCH_PLACEHOLDER_KEY,
     TABLE_ITEM_TEST_ID, TABLE_LIST_PANEL_GAP, TABLE_LIST_PANEL_SURFACE,
+};
+pub use table_sort_preferences::{
+    is_sort_condition, persist_table_sorts, read_persisted_table_sorts, table_sort_storage_key,
+    TableSortContext, TABLE_SORT_PREFS_GAP, TABLE_SORT_PREFS_SURFACE, TABLE_SORT_STORAGE_PREFIX,
 };
 pub use tabs::{Tab, TabKind, Tabs};
 // The T211 types aggregate: the members React's `types/index.ts` declares or
