@@ -80,6 +80,8 @@ pub(crate) mod language_packs_card;
 // T381: the "?" help hint (hover/focus tooltip with the 120ms close
 // grace and the focus-retention rule).
 pub(crate) mod setting_hint;
+// T417: the SQL snippet add/edit/duplicate dialog.
+pub(crate) mod snippet_edit_dialog;
 // T408: the AI skills settings panel (the opt-in switches, the
 // custom directory, the discovered listing).
 pub(crate) mod skills_section;
