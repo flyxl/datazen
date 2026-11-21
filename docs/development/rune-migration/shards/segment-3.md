@@ -10,15 +10,15 @@
 - [x] T009 · components/ai · 5.30d · components/ai/AiChatPanel.tsx · split
 - [x] T012 · components · 0.90d · components/AiWriteProposalHost.tsx
 - [x] T013 · components/admin · 0.90d · components/admin/AdminCreateDialog.tsx
-- [x] T014 · components/export · 0.60d · components/export/ExportSuccessPanel.tsx components/FilterBar.tsx
 - [x] T023 · windows/data-transfer · 1.30d · windows/data-transfer/ColumnMappingEditor.tsx · split
 - [x] T024 · windows/data-sync · 0.90d · windows/data-sync/DataSyncCompareStep.tsx
 - [x] T026 · windows/backup · 1.30d · windows/backup/BackupWindow.tsx · split
 - [x] T028 · lib/chart · 0.90d · lib/chart/export.ts
+- [ ] T030 · lib/dashboard · 0.90d · lib/dashboard/runToChart.ts lib/dashboard/runToResult.ts lib/databaseObjectIdentity.ts
 - [x] T039 · stores · 0.90d · stores/activeConnectionStore.ts
 - [x] T041 · stores/tableData · 0.30d · stores/tableData/connectionState.ts
 - [x] T043 · platform · 2.00d · platform/blobTablesExporter.ts · split
-- [x] T050 · app.ts · 0.30d · app.ts
+- [x] T051 · App.tsx · 0.30d · App.tsx
 - [x] T054 · components/ui · 0.30d · components/ui/Spinner.tsx
 - [x] T055 · components/DataTable · 1.30d · components/DataTable/ColumnPresentationDialog.tsx · split
 - [x] T058 · components/query · 0.90d · components/query/QueryArtifactExport.tsx
