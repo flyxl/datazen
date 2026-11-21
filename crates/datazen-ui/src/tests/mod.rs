@@ -67,6 +67,8 @@ mod result_workspace_audit;
 // T530: date-value dialog + structure column table.
 mod set_value_date_dialog;
 mod structure_column_table;
+// T538: TableColumnFilter port (toggle/badge, rows, actions, search, geometry).
+mod table_column_filter;
 // T532: StructureIndexTable + StructurePlanPreview ports (rows/flags/actions, states, geometry).
 mod structure_index_table;
 mod structure_plan_preview;
