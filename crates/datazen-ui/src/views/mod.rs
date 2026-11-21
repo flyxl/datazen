@@ -31,6 +31,7 @@ pub(crate) mod process_list_view;
 pub(crate) mod query_panel;
 pub(crate) mod query;
 pub(crate) mod result_workspace;
+pub(crate) mod server_status_view;
 
 mod connections;
 mod connections_home;
