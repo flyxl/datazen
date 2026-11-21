@@ -39,6 +39,14 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+### Wave29 阈值合流 push（2026-11-22，126 commits）
+
+- 触发：Wave 28 关闭时合计 ahead 122（seg1 13+seg2 36+seg3 62+seg4 11）> 30。
+- 4 个真 merge commit：`095cead10`(seg1, c9aa7a6af) → `124c07559`(seg2, 0d3ee7d0f) → `e0f9e4b87`(seg3, 4717f56f8) → `bd3cb6a90`(seg4, 6c4a49843)；父分支 `db9e47e1b → bd3cb6a90`（126 commits，fast-forward）。
+- 冲突：tests/mod.rs（双方 mod 声明合并去重）；seg3 `datazen-ui-api/src/lib.rs` 11 冲突块（mod + pub use 列表合并）——`cargo check` 又抓到 28 个重复 re-export 名（Panel/QueryExecState/CellCoord 等），保留 parent 根绑定 + 列 seg3 独有名字，0 编译错误；workflow/mod.rs 双方模块合并。icons 0 重复（上轮修复已在父分支）。零断言弱化。
+- gate：test rustc 又卡 U 态 20+ 分钟（swap 17.9/18.4GB 内存压力），按规则 kill 清理，环境性非代码；三 crate check 全 PASS，按授权接受风险 push。
+- push 后残余合计 49（seg1 4+seg3 45）；下个 wave 关闭按阈值继续合。
+
 ### Wave28 阈值合流 push（2026-11-21，176 commits）
 
 - 触发：Wave 27 关闭时合计 ahead 170（seg1 14+seg2 109+seg3 32+seg4 15；合流中 seg2→109、seg3→33）> 30。
