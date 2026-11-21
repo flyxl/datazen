@@ -1695,3 +1695,18 @@ mod diagnosis_panel;
 // long four-change result, the wrapping error card, the request's
 // clone identity and the never-the-original-sql guarantee).
 mod diagnosis_panel_audit;
+
+// T241: the SQL syntax preview (coder tests: the seven-preset lookup
+// with the unknown-id fallback, the background/foreground fallbacks,
+// the one-text span construction — the verbatim sample, the tiling 52
+// spans, the comment italics, the per-slot colours — and the mounted
+// preview's palette-backed fills, texts, paddings and the narrow-surface
+// clip).
+mod sql_syntax_preview;
+
+// T241 independent audit: fresh vectors (the seven labels verbatim, the
+// background/foreground presence matrix, the solarized twins'
+// identical halves, vscode-dark/dracula colour vectors, the byte-range
+// tiling with the italic pair, the unknown theme's mounted fallback, and
+// the narrow-surface wrap growth).
+mod sql_syntax_preview_audit;
