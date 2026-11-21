@@ -153,6 +153,7 @@ mod schema_diff_limitations_prefs;
 mod schema_tree_context_menu;
 mod splash;
 mod sql_completions;
+mod sql_file_execution;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
 mod tabs;
@@ -865,6 +866,11 @@ pub use sql_editor_defaults::{
 pub use sql_completions::{
     keyword_completions, sql_function_completions, SqlFunctionCompletion,
     DEFAULT_SQL_COMPLETION_DIALECT, SQL_COMPLETION_KEYWORDS,
+};
+pub use sql_file_execution::{
+    execution_error_message, sql_file_execution_plan, ConfirmationMode, ExecutionFailure,
+    InvokeOutcome, SqlFileExecutionOutcome, SqlFileExecutionPlan, OVERWRITE_OPTION,
+    RESTORE_PROGRESS_EVENT, RESTORE_SQL_FILE_COMMAND, SQL_FILE_EXECUTION_GAP,
 };
 pub use sql_path_prefix::{
     QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
