@@ -82,6 +82,9 @@ pub(crate) mod language_packs_card;
 pub(crate) mod setting_hint;
 // T417: the SQL snippet add/edit/duplicate dialog.
 pub(crate) mod snippet_edit_dialog;
+// T426: the SQL snippets card (the custom list, the builtin list,
+// the export/import row) over the T417 dialog + the confirm hook.
+pub(crate) mod sql_snippets_card;
 // T408: the AI skills settings panel (the opt-in switches, the
 // custom directory, the discovered listing).
 pub(crate) mod skills_section;

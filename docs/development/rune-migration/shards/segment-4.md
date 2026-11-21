@@ -151,7 +151,7 @@
 - [x] T420 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffUnifiedObjects.ts
 - [x] T422 · hooks · 0.30d · hooks/useTableForeignKeys.ts
 - [x] T424 · commands · 0.90d · commands/transferJobs.ts
-- [ ] T426 · windows/settings · 0.90d · windows/settings/SqlSnippetsCard.tsx
+- [x] T426 · windows/settings · 0.90d · windows/settings/SqlSnippetsCard.tsx
 - [ ] T430 · hooks · 0.90d · hooks/useThemeSync.ts
 - [ ] T432 · commands · 0.90d · commands/tunnel.ts
 - [ ] T434 · windows/settings · 0.90d · windows/settings/TableDataSettingsSection.tsx

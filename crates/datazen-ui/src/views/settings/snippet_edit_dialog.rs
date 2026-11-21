@@ -155,16 +155,15 @@ impl SnippetEditDialogState {
         self.error = None;
     }
 
-    /// `handleSave`'s validation chain and the item build. The
-    /// `edited_id` is the snippet being edited's id (kept); the
-    /// `fresh_id` is the new identity an add/duplicate takes
-    /// (React's `crypto.randomUUID`).
-    pub(crate) fn save(
+    /// The validation chain alone (the same three errors in the
+    /// same order; the error lands in the draft either way) — the
+    /// host's gate before it mints a fresh id.
+    pub(crate) fn validate(
         &mut self,
         edited_id: Option<&str>,
-        fresh_id: &str,
         existing_prefixes: &[String],
-    ) -> Result<SqlSnippetItem, SnippetSaveError> {
+    ) -> Result<(), SnippetSaveError> {
+        let _ = edited_id;
         let trimmed_prefix = self.prefix.text.trim().to_owned();
         let trimmed_template = self.template.text.trim().to_owned();
 
@@ -184,9 +183,26 @@ impl SnippetEditDialogState {
             self.error = Some(SnippetSaveError::TemplateRequired);
             return Err(SnippetSaveError::TemplateRequired);
         }
+        Ok(())
+    }
+
+    /// `handleSave`'s validation chain and the item build. The
+    /// `edited_id` is the snippet being edited's id (kept); the
+    /// `fresh_id` mints the new identity an add/duplicate takes
+    /// (React's `crypto.randomUUID`) and only runs once the
+    /// validation has passed — a refused save never consumes one.
+    pub(crate) fn save(
+        &mut self,
+        edited_id: Option<&str>,
+        fresh_id: impl FnOnce() -> String,
+        existing_prefixes: &[String],
+    ) -> Result<SqlSnippetItem, SnippetSaveError> {
+        self.validate(edited_id, existing_prefixes)?;
+        let trimmed_prefix = self.prefix.text.trim().to_owned();
+        let trimmed_template = self.template.text.trim().to_owned();
 
         let item = SqlSnippetItem {
-            id: edited_id.unwrap_or(fresh_id).to_owned(),
+            id: edited_id.map(str::to_owned).unwrap_or_else(fresh_id),
             prefix: trimmed_prefix.clone(),
             description_key: {
                 let trimmed = self.description.text.trim().to_owned();
@@ -289,6 +305,12 @@ impl<'a, S: 'static> SnippetEditDialog<'a, S> {
         let mut dialog = Dialog::new("snippet-edit-dialog", title)
             .open(true)
             .width(576.0); // max-w-xl
+        // The dismissal policy (the header close, Escape): a dialog
+        // without it mounts nothing — the host's `onClose` is it.
+        if let Some(on_close) = &self.on_close {
+            let on_close = Rc::clone(on_close);
+            dialog = dialog.on_close(move |s: &mut S| on_close(s));
+        }
 
         // The body: the error block + the three fields.
         let mut body = col().key("snippet-edit-body").w_full().gap(16.0);
@@ -460,27 +482,27 @@ mod tests {
         state.seed(true, None, false);
         // Empty prefix.
         assert_eq!(
-            state.save(None, "fresh", &[]),
+            state.save(None, || "fresh".to_owned(), &[]),
             Err(SnippetSaveError::PrefixInvalid)
         );
         assert_eq!(state.error, Some(SnippetSaveError::PrefixInvalid));
         // An invalid shape.
         state.prefix = TextEdit::new("1bad".to_owned());
         assert_eq!(
-            state.save(None, "fresh", &[]),
+            state.save(None, || "fresh".to_owned(), &[]),
             Err(SnippetSaveError::PrefixInvalid)
         );
         // A duplicate (case-insensitive).
         state.prefix = TextEdit::new("SEL*".to_owned());
         assert_eq!(
-            state.save(None, "fresh", &["sel*".to_owned()]),
+            state.save(None, || "fresh".to_owned(), &["sel*".to_owned()]),
             Err(SnippetSaveError::PrefixDuplicate)
         );
         // An empty template.
         state.prefix = TextEdit::new("nuevo*".to_owned());
         state.template = TextEdit::new("   ".to_owned());
         assert_eq!(
-            state.save(None, "fresh", &[]),
+            state.save(None, || "fresh".to_owned(), &[]),
             Err(SnippetSaveError::TemplateRequired)
         );
     }
@@ -493,17 +515,17 @@ mod tests {
         state.description = TextEdit::new("  ".to_owned());
         state.template = TextEdit::new("  SELECT 1;  ".to_owned());
         // The description falls back to the trimmed prefix.
-        let item = state.save(Some("snip-1"), "fresh", &[]).unwrap();
+        let item = state.save(Some("snip-1"), || "fresh".to_owned(), &[]).unwrap();
         assert_eq!(item.id, "snip-1", "the edited id is kept");
         assert_eq!(item.prefix, "nuevo*");
         assert_eq!(item.description_key, "nuevo*");
         assert_eq!(item.template, "SELECT 1;");
         // An add takes the fresh id.
-        let item = state.save(None, "fresh-2", &[]).unwrap();
+        let item = state.save(None, || "fresh-2".to_owned(), &[]).unwrap();
         assert_eq!(item.id, "fresh-2");
         // A kept description.
         state.description = TextEdit::new(" my desc ".to_owned());
-        let item = state.save(None, "fresh-3", &[]).unwrap();
+        let item = state.save(None, || "fresh-3".to_owned(), &[]).unwrap();
         assert_eq!(item.description_key, "my desc");
     }
 }

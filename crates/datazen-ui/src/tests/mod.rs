@@ -933,3 +933,7 @@ mod settings_content_audit;
 // T408: the AI skills settings panel (the opt-in switches, the
 // custom directory, the listing faces).
 mod skills_section_audit;
+// T426: the SQL snippets card (the custom and builtin lists, the
+// add/edit/duplicate dialog flows, the delete confirm, the
+// export/import status line).
+mod sql_snippets_card_audit;
