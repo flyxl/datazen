@@ -131,7 +131,7 @@
 - [x] T643 · lib · 0.90d · lib/wappI18n.ts
 - [x] T644 · lib · 0.30d · lib/windowKind.ts
 - [x] T645 · lib · 0.90d · lib/windowManager.ts
-- [ ] T646 · lib · 0.60d · lib/workflowDraftYaml.ts lib/workflowListContextMenu.ts
+- [x] T646 · lib · 0.60d · lib/workflowDraftYaml.ts lib/workflowListContextMenu.ts
 - [ ] T647 · lib · 0.80d · lib/workflowYaml.ts
 - [x] T079 · lib/metadata · 0.90d · lib/metadata/identity.ts
 - [x] T092 · platform/shared · 0.80d · platform/shared/mcpClient.ts
