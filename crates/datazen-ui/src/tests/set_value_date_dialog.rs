@@ -171,3 +171,14 @@ fn geometry_fits_both_sizes_in_both_themes() {
         }
     }
 }
+
+#[test]
+fn empty_type_and_case_insensitive_kind_are_ported() {
+    let mut state = vm();
+    state.column_type = Some(String::new());
+    assert_eq!(state.description(), t("dataTable.pickDate"));
+    assert_eq!(PickerKind::from_str("date"), PickerKind::Date);
+    assert_eq!(PickerKind::from_str("DATE"), PickerKind::Date);
+    assert_eq!(PickerKind::from_str("DaTeTiMe"), PickerKind::DateTime);
+    assert_eq!(PickerKind::from_str("other"), PickerKind::Date);
+}

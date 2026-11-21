@@ -251,6 +251,51 @@ fn geometry_fits_both_sizes_in_both_themes() {
     }
 }
 
+#[test]
+fn every_capability_flag_maps_exactly() {
+    let caps = all_caps();
+    for control in [
+        Capability::CreateTable,
+        Capability::AddColumn,
+        Capability::RenameColumn,
+        Capability::AlterType,
+        Capability::AlterNullability,
+        Capability::AlterDefault,
+        Capability::AlterPrimaryKey,
+        Capability::CreateIndex,
+        Capability::Comment,
+        Capability::DropColumn,
+        Capability::ReorderColumn,
+    ] {
+        assert!(cap_enabled(Some(&caps), control));
+        assert!(!cap_enabled(None, control));
+    }
+}
+
+#[test]
+fn new_row_is_always_removable_even_when_drop_is_denied() {
+    let mut state = vm();
+    let mut caps = all_caps();
+    caps.drop_column = false;
+    state.caps = Some(caps);
+    let mut rt = runtime(scene(state, true), (1440.0, 816.0));
+    click(&mut rt, "structure-column-remove-c2");
+    assert!(
+        rt.state.actions.borrow().contains(&StructureColumnAction::Remove("c2".to_owned())),
+        "a just-added row is removable even when the driver denies dropColumn"
+    );
+}
+
+#[test]
+fn sort_reverses_and_orders_by_name() {
+    let mut state = vm();
+    state.columns = vec![draft("c1", "zebra", "text"), draft("c2", "apple", "text")];
+    state.sort = Some((0, SortDir::Ascending));
+    assert_eq!(state.row_order(), vec![1, 0]);
+    state.sort = Some((0, SortDir::Descending));
+    assert_eq!(state.row_order(), vec![0, 1]);
+}
+
 // Reverse verification (mutation -> observed failure text -> restored):
 // 1. Removing the `common.confirm` apply label made `dialog_names_column_and_shows_picker_intent`
 //    fail on `set-value-date-apply`.
