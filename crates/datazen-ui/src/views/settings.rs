@@ -89,6 +89,12 @@ pub(crate) mod sql_snippets_card;
 // auto-only threshold, the default sort, the grid density + toggles)
 // with T474's delegated slot.
 pub(crate) mod table_data_settings_section;
+// T441's absorbed lib: the reference-integrity cleanup for
+// delete_tunnel (the unbind-then-delete ordering + the rollback).
+pub(crate) mod tunnel_deletion;
+// T441: the tunnel delete confirmation (the usage read, the
+// affected list, the unbind-then-delete outcome reporting).
+pub(crate) mod tunnel_delete_dialog;
 // T408: the AI skills settings panel (the opt-in switches, the
 // custom directory, the discovered listing).
 pub(crate) mod skills_section;
