@@ -61,6 +61,10 @@ pub(crate) mod table_data_enum_candidates;
 pub(crate) mod table_data_filter_utils;
 // T210: the grid-selection geometry and state transitions (gridSelection.ts).
 pub(crate) mod table_data_grid_selection;
+// T233: the insert-location rule (insertLocation.ts) and the keyset
+// half's state-only arm (keysetActions.ts — the cursor arms await T543).
+pub(crate) mod table_data_insert_location;
+pub(crate) mod table_data_keyset_actions;
 pub(crate) mod components;
 pub(crate) mod ai;
 pub(crate) mod hooks; // the hooks/ ports (T038: useConfirmDialog is its first)

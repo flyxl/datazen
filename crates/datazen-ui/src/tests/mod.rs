@@ -1658,3 +1658,14 @@ mod fk_navigation_store;
 // two-survivor prune, the rewind no-op, the truncated-flag persistence,
 // the empty edges).
 mod fk_navigation_store_audit;
+
+// T233: the insert-location rule and the keyset invalidation (coder
+// tests: the not-applicable gate, the exact identity rule, the
+// candidate maximum rule, the unorderable refusals, the boundary
+// invalidation).
+mod table_data_insert_location;
+
+// T233 independent audit: fresh vectors (the second insert's identity,
+// the composite match, negative/float orderings, the unorderable turn,
+// the populated-order-set invalidation).
+mod table_data_insert_location_audit;
