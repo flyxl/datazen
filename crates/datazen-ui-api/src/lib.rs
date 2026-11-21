@@ -66,6 +66,8 @@ mod database_types;
 mod data_table_context_menu;
 mod dedicated_db_session;
 mod dismiss_prefs;
+mod driver_command_ids;
+mod endpoint_identity;
 mod filter_types;
 mod keyset_types;
 mod metadata;
@@ -360,6 +362,10 @@ pub use dedicated_db_session::{
     DedicatedSideSession, ListDatabasesResult,
 };
 pub use dismiss_prefs::{create_dismiss_prefs, DismissPrefs};
+pub use driver_command_ids::{
+    ESTIMATE_TABLE_ROWS_COMMAND, LIST_PROCESSES_COMMAND, SERVER_STATUS_SNAPSHOT_COMMAND,
+};
+pub use endpoint_identity::{is_same_endpoint_identity, EndpointIdentity};
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
     FilterOperator, SHARED_FILTER_OPERATORS,
