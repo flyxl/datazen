@@ -180,6 +180,7 @@ mod tunnel_deletion;
 mod tunnel_draft;
 mod update_reminder_schedule;
 mod wapp_asset_origin;
+mod window_kind;
 mod wapp_bridge;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
@@ -1024,6 +1025,10 @@ pub use wapp_asset_origin::{
     is_safe_wapp_asset_path, is_valid_wapp_id, parse_wapp_asset_target,
     reset_wapp_asset_resolver, DESKTOP_WAPP_ASSET_RESOLVER, WappAssetQueryMap, WappAssetResolver,
     WappAssetTarget, WEB_WAPP_ASSET_RESOLVER, WAPP_ASSET_CSP, WAPP_ASSET_PATH_PREFIX,
+};
+pub use window_kind::{
+    get_url_param, get_window_kind, reset_window_kind_cache, resolve_window_kind, WindowKind,
+    LEGACY_MAIN_ALIASES,
 };
 pub use wapp_bridge::{
     err_envelope, host_ready_envelope, is_request_envelope, is_wapp_command_allowed, ok_envelope,
