@@ -124,7 +124,7 @@
 - [x] T367 · stores/tableData · 0.30d · stores/tableData/tableSortPreferences.ts
 - [x] T369 · components/DataTable · 0.80d · components/DataTable/Pagination.tsx
 - [x] T373 · windows/data-sync · 0.90d · windows/data-sync/SqlPreview.tsx
-- [ ] T377 · stores · 0.90d · stores/queryExecActions.ts
+- [x] T377 · stores · 0.90d · stores/queryExecActions.ts
 - [ ] T378 · stores/tableData · 0.90d · stores/tableData/types.ts
 - [x] T380 · components/DataTable · 0.90d · components/DataTable/QuickLookDialog.tsx
 - [x] T383 · windows/data-sync · 0.50d · windows/data-sync/TableListPanel.tsx
