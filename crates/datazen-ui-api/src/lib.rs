@@ -17,6 +17,16 @@ mod er_node_context_menu;
 mod export_dialog_shared;
 mod extract_sql;
 mod filter_expression;
+mod fk_navigation_actions;
+mod grid_keyboard;
+mod html_sanitizer;
+mod import_mapping;
+mod keymap;
+mod language_pack_runtime;
+mod mcp_agent_config;
+mod migration_verification;
+mod migration_window_prefill;
+mod path_picker;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -88,8 +98,34 @@ mod filter_db_types;
 mod filter_operators;
 mod filter_types;
 mod fk_navigation;
+mod fk_referenced_by;
+mod fk_selector;
+mod global_text_selection;
+mod grid_clipboard;
+mod grid_errors;
+mod grid_event_guards;
+mod grid_paste_plan;
+mod history_groups;
+mod host_error_message;
+mod host_lucide_map;
+mod icon_ids;
+mod icon_resolver_api;
+mod import_connection_file;
+mod import_data;
+mod import_execution;
+mod keyset_paging;
 mod keyset_types;
+mod kv_ai_context;
+mod locale_sync;
+mod kv_slot_state;
+mod kv_workspace;
+mod load_batch_export_table;
+mod main_window_context_menu;
 mod metadata;
+mod migration_job_hydration;
+mod migration_job_verdict;
+mod named_views;
+mod panel_context_path;
 mod platform_shared;
 mod relation_prediction;
 mod relative_time;
@@ -172,6 +208,52 @@ pub use filter_expression::{
     FlattenedFilterCondition, ParseFailure, ParsedFilterApplication,
     filter_expression_to_conditions, flatten_parts, flatten_to_connectors,
     has_or_group_under_and, parse_filter_expression, parse_filter_for_apply, token_positions,
+};
+pub use fk_navigation_actions::{
+    FkActionDeps, FkActionEffects, FkJumpError, FkJumpOutcome, FkNavEntry, FkNavOrigin, FkNavState,
+    OpenForeignKeyTargetInput, Panel, PanelKind, PanelState, TableChangeContext, TableIdentity,
+    host_error_message, open_foreign_key_target,
+};
+pub use grid_keyboard::{
+    CellCoord, CellRange, EMPTY_ROW_MODE_SELECTION, GridEdge, GridKeyCommand, GridKeyEventLike,
+    GridKeyIntent, GridKeyboardContext, GridNativeKeyEventLike, GridPageDirection, GridSelection,
+    GridSelectionMode, cell_coord_equals, clamp_cell_coord, clamp_grid_cursor, coord_at,
+    grid_cursor_equals, is_ime_composing_key, move_cell_focus, read_grid_key_intent,
+    resolve_grid_key_command, resolve_keyboard_cursor, resolve_page_delta,
+    selection_from_anchor_focus, to_grid_key_event_like,
+};
+pub use html_sanitizer::{
+    HtmlNode, STRIP_TAGS, VOID_TAGS, decode_entities, get_attr, is_event_attr, is_javascript_href,
+    is_strip_tag, is_void_tag, parse_html, regex_sanitize, sanitize_html, serialize_html, set_attr,
+};
+pub use import_mapping::{
+    ImportMappingConflict, ImportMappingEntry, ImportMappingMode, ImportMappingPlan,
+    ImportMatchKind, PlanImportMappingInput, mapping_is_executable, plan_import_mapping,
+};
+pub use keymap::{
+    KEYMAP_ACTIONS, KEYMAP_PRESETS, KeymapAction, KeymapPreset, format_mod_key,
+    format_shortcut_for_display, get_action_shortcut, normalize_shortcut_input,
+    to_code_mirror_key_format, to_shortcut_hook_format,
+};
+pub use language_pack_runtime::{
+    BUILTIN_LOCALES, EnsureOutcome, LanguagePackDeps, LanguagePackMessages, LanguagePackRuntime,
+    ensure_language_pack_messages, is_builtin_locale, reset_language_pack_runtime_for_tests,
+    unload_language_pack,
+};
+pub use mcp_agent_config::{
+    AppExecutablePathResolver, McpAgentSnippet, McpAgentTarget, McpServerEntry,
+    build_mcp_agent_snippet, build_mcp_agent_snippet_default, build_mcp_server_entry,
+    format_mcp_cli_command, initial_app_executable_path,
+};
+pub use migration_verification::{VERIFIED_MIGRATION_TYPES, is_verified_migration_pair};
+pub use migration_window_prefill::{
+    EndpointPrefillEffect, MigrationEndpointConnection, MigrationWindowKind, MigrationWindowPrefill,
+    PREFILL_KEYS, PrefillSide, apply_migration_endpoint_prefill, build_migration_window_url_params,
+    pick_prefill_database, pick_prefill_schema, read_migration_prefill_from_url,
+    resolve_default_database,
+};
+pub use path_picker::{
+    PathPicker, PathPickerFileFilter, PickPathInput, pick_path, web_path_picker,
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
@@ -463,16 +545,147 @@ pub use fk_navigation::{
     FkFilterTarget, FkGroupAffordance, FkIndex, FkNavInput, FkNavTargetIdentity, GridViewport,
     NavValue, FK_NAV_MAX_DEPTH,
 };
+pub use fk_referenced_by::{
+    build_inbound_filters, catalog_key, inbound_catalog, open_referencing_rows,
+    referenced_values_of_row, CatalogScope, CreatedPanel, FkOrigin, GridErrorClassifier,
+    InboundCatalogCache, InboundCatalogFetcher, InboundForeignKeyCatalog, InboundForeignKeyRef,
+    NavEntry, NavOrigin, OpenReferencingRowsInput, OutcomeError, OutcomeErrorCode,
+    ReferencedByOutcome, ReferencingRowsHost, SourcePanelInfo,
+    TableChangeContext as InboundTableChangeContext,
+    MAX_REFERENCING_TABS, NO_REFERENCES_EMPTY, PROBE_FAILED_MESSAGE,
+};
+pub use fk_selector::{
+    candidates_to_picker_options, fk_group_is_pickable, format_fk_candidate,
+    index_fk_candidate_sources, FkCandidateGroup, FkCandidateSource, FkCandidateSourceIndex,
+    FK_SELECTOR_CANDIDATE_LIMIT,
+};
+pub use global_text_selection::{
+    is_interactive_control, is_native_selectable, is_selectable, is_selectable_hint,
+    should_prevent_select_all, ContextMenuSuppressor, DragMouseDownInput, DragSelectionGuard,
+    RightDragSuppressor, SelectAllTarget, SelectionSnapshot, DOM_GAP_SURFACES,
+    INTERACTIVE_CONTROL_SELECTOR, NATIVE_SELECTABLE_SELECTOR, SELECTABLE_HINT_SELECTOR,
+};
+pub use grid_errors::{
+    classify_grid_error, GridErrorCode, GRID_ERROR_CODES, GRID_ERROR_NAMESPACE, REGISTERED_PREFIXES,
+};
+pub use grid_event_guards::{
+    is_composing_event, is_editable_target, ComposingEventLike, EDITABLE_TARGET_SELECTOR,
+};
+pub use history_groups::{
+    find_group_for_database, group_query_history, HistoryGroupEntry, HistoryScope,
+    QueryHistoryGroup, HISTORY_UNKNOWN_DB_KEY,
+};
+pub use host_error_message::{extract_host_error_message, HostError};
+pub use host_lucide_map::{
+    build_host_lucide_by_id, host_lucide_seed, settings_section_icon_id, HOST_LUCIDE_MAP,
+    SETTINGS_SECTION_LUCIDE_MAP,
+};
+pub use icon_ids::{UI_ICON_IDS, UiIconId};
+pub use icon_resolver_api::{
+    default_placeholder_for_db, get_active_icon_resolver, resolve_with_active,
+    set_active_icon_resolver, ui_placeholder, ICON_KIND_LUCIDE, ICON_KIND_PLACEHOLDER,
+    ICON_KIND_URL,
+};
+pub use import_connection_file::{
+    import_file_display_name, import_file_password_policy, ImportPasswordPolicy,
+};
+pub use import_execution::{
+    build_multi_row_insert_sql, execute_import, plan_import_chunks, AbortSignal, ImportBatch,
+    ImportChunk, ImportColumnPair, ImportCommitMode, ImportErrorStrategy, ImportFinalStatus,
+    ImportProgress, ImportProgressStatus, ImportRowFailure, ImportRunResult, ImportSqlDialect,
+    ImportSqlOptions, ImportStreamEvent, ImportStreamProgress, ImportTransport,
+    PlanImportChunksOptions, IMPORT_DEFAULT_MAX_BATCHES_PER_CHUNK,
+    IMPORT_DEFAULT_MAX_ROWS_PER_BATCH, IMPORT_DEFAULT_MAX_SQL_BYTES, IMPORT_STREAM_GAP,
+};
+pub use kv_ai_context::{
+    build_kv_ai_context, compose_kv_ai_message, has_kv_ai_facts, KvAiContext, KvAiFacts,
+};
+pub use kv_slot_state::{
+    create_kv_slot_state, get_kv_slot_state, prune_kv_slot_states,
+    reset_kv_slot_states_for_tests, KvSlotSnapshot, KvSlotState,
+};
+pub use locale_sync::{
+    apply_language, current_language, start_locale_sync, Defer, Deferred, LocaleEnginePorts,
+    SettingsLanguageStore, DEFAULT_LOCALE,
+};
+pub use migration_job_verdict::{
+    derive_cancel_disposition, derive_migration_job_verdict, derive_uncertainty,
+    is_backend_scope_rejection, is_migration_job_in_flight, is_pipeline_budget_interception,
+    is_plan_consumed_rejection, read_job_counter, sum_job_counters, CancelDisposition,
+    CommitBoundaryFacts, JobCounterValue, MigrationJobVerdict, MigrationJobVerdictInput,
+    UncertaintyReason, VerdictSeverity, PIPELINE_BUDGET_BYTES,
+};
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
     FilterOperator, SHARED_FILTER_OPERATORS,
 };
+pub use grid_clipboard::{
+    build_rows_matrix, build_selection_matrix, escape_csv_field, escape_html_cell_text,
+    escape_markdown_cell_text_value, escape_markdown_field, parse_clipboard_matrix,
+    serialize_clipboard_cells, sniff_clipboard_delimiter, to_clipboard_range, utf8_byte_length,
+    ClipboardCellCoord, ClipboardDelimiter, ClipboardFormat, ClipboardMatrix, ClipboardParseResult,
+    GridClipboardAnchor, GridClipboardRange, PasteParseErrorCode, PasteParseRefusal, PasteProblem,
+    PasteProblemCode,
+    SerializeCellsOptions, GRID_PASTE_CHUNK_CELLS, GRID_PASTE_CONFIRM_CELLS, GRID_PASTE_MAX_BYTES,
+    GRID_PASTE_MAX_CELLS,
+};
+pub use grid_paste_plan::{
+    clear_clipboard_source, clear_row_copy, column_writability, normalize_clipboard_text,
+    peek_clipboard_source, peek_row_copy, pending_cell_key, plan_paste, record_clipboard_source,
+    record_row_copy, row_copy_for_clipboard_text, source_for_clipboard_text, table_change_key,
+    CellPasteWrite, ClipboardSource, ColumnWritability, ColumnWritabilityReason, PasteAlignment,
+    PasteOverflow, PastePlan, PastePlanOptions, RowCopyPayload,
+};
+pub use import_data::{
+    decode_import_base64, decode_import_text, dedupe_columns, detect_csv_delimiter,
+    detect_import_format, generate_insert_sql, is_supported_encoding, parse_csv_import,
+    parse_import_data, parse_json_import, parse_xlsx, parse_xlsx_import, CsvParseOptions,
+    ImportDiagnostic, ImportEmptyFieldPolicy, ImportFormat, ImportParseError, ImportParseErrorKind,
+    ImportParseResult, ImportTextDecoder, JsonParseOptions, ParsedData, Utf8TextDecoder,
+    XlsxBookReader, XlsxParseOptions, XlsxParseResult, XlsxWorkbook, IMPORT_ENCODINGS,
+};
 // The T234 keyset paging vocabulary: the aggregate (`types/index`)
 // re-exports everything `types/keyset.ts` declares, so the crate root
 // carries the same names.
+pub use keyset_paging::{
+    apply_paging_info, cursor_for_page, empty_keyset_paging_state, filter_signature,
+    is_usable_boundary, next_request_cursor, order_signature, paging_signature, push_cursor,
+    reanchor, FilterLogic, KeysetCursor, KeysetPagingState, KeysetRequestPlan, PushedCursor,
+    KEYSET_STACK_LIMIT,
+};
 pub use keyset_types::{
     CursorValue, KeysetUnavailableReason, OrderColumn, PagePagingInfo, PagingMode,
 };
+pub use kv_workspace::{
+    capability_key_for_slot, get_kv_slot_component, has_kv_slot_capability, KvDriverMeta,
+    KvSlotComponent, KvSlotComponentProvider, KvSlotMetaProvider, KvSlotName,
+    KvWorkspaceCapabilities, KV_SLOT_NAMES,
+};
+pub use load_batch_export_table::{
+    load_batch_export_table_data, rows_to_records, BatchDdlFetcher, BatchDdlRowExtractor,
+    LoadBatchExportDeps, LoadBatchExportTableParams, RelationSchemaProvider, SchemaFetcher,
+    TableDataFetcher, TableDataRequest, DEFAULT_MAX_ROWS, DEFAULT_PAGE_SIZE,
+};
+pub use main_window_context_menu::{
+    build_main_blank_context_menu_items, build_main_connection_context_menu_items,
+    build_main_group_context_menu_items, invoke as invoke_main_window, MainWindowAction,
+    MainWindowConnectionHandlers, MainWindowContextMenuLabels, MainWindowMenuItem, MoveTarget,
+};
+pub use migration_job_hydration::{
+    bind_backend_client, bound_backend_client, classify_job_view, hydrate_migration_jobs,
+    is_stale_plan_error, job_kinds, latest_apply_job, update_migration_job_projection,
+    ErrorLike as MigrationErrorLike, GetJobFn, JobClassification, JobState, JobView, ListJobsFn,
+    MigrationJobClient, MigrationWindow, MigrationJobHydration, STALE_PLAN_ERROR_CODES,
+};
+pub use named_views::{
+    build_named_view_export, is_host_filter_operator, named_view_scope_key, named_views_available,
+    normalize_view_name, normalized_name_key, parse_named_view_export, read_view_filters,
+    resolve_import_name, sort_named_views, view_from_table_state, view_names_equal,
+    views_for_scope, BackendClientCapabilities, NamedView, NamedViewExportFile, NamedViewScope,
+    PortFilterCondition, TableStateForView, ViewFilterReadout, ViewFromTableStateOptions,
+    NAMED_VIEW_EXPORT_VERSION,
+};
+pub use panel_context_path::{format_panel_context_path, PanelContextPathArgs};
 pub use metadata::{
     BatchFlush, CurrentCallContext, CurrentProvenanceContext, ExecutionTarget,
     InvalidationDecision, InvalidationReason, MetadataBatcher, MetadataBatcherOptions,

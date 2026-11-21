@@ -10,7 +10,7 @@ pub enum SerializeFormat {
     Markdown,
 }
 
-fn cell_to_text(value: &Value, null_literal: &str) -> String {
+pub(crate) fn cell_to_text(value: &Value, null_literal: &str) -> String {
     match value {
         Value::Null => null_literal.to_owned(),
         Value::String(text) => text.clone(),
@@ -22,14 +22,14 @@ fn cell_to_text(value: &Value, null_literal: &str) -> String {
     }
 }
 
-fn table_width(rows: &[Vec<Value>], column_names: &[String]) -> usize {
+pub(crate) fn table_width(rows: &[Vec<Value>], column_names: &[String]) -> usize {
     if !column_names.is_empty() {
         return column_names.len();
     }
     rows.iter().map(Vec::len).max().unwrap_or(0)
 }
 
-fn escape_delimited(text: &str, delimiter: &str) -> String {
+pub(crate) fn escape_delimited(text: &str, delimiter: &str) -> String {
     if text.contains(delimiter) || text.contains('"') || text.contains('\n') || text.contains('\r')
     {
         format!("\"{}\"", text.replace('"', "\"\""))
@@ -38,13 +38,13 @@ fn escape_delimited(text: &str, delimiter: &str) -> String {
     }
 }
 
-fn escape_html_cell(text: &str) -> String {
+pub(crate) fn escape_html_cell(text: &str) -> String {
     text.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
 }
 
-fn escape_markdown_cell_text(text: &str) -> String {
+pub(crate) fn escape_markdown_cell_text(text: &str) -> String {
     text.replace('\\', "\\\\")
         .replace('|', "\\|")
         .replace("\r\n", "\n")

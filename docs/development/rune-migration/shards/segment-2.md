@@ -60,34 +60,34 @@
 - [x] T511 · lib · 0.80d · lib/filterExpression.ts
 - [x] T513 · lib · 0.80d · lib/filterOperators.ts
 - [x] T515 · lib · 0.50d · lib/fkNavigation.ts
-- [ ] T517 · lib · 1.30d · lib/fkNavigationActions.ts · split
-- [ ] T519 · lib · 1.30d · lib/fkReferencedBy.ts · split
-- [ ] T521 · lib · 0.80d · lib/fkSelector.ts lib/globalTextSelection.ts
-- [ ] T523 · lib · 0.80d · lib/gridClipboard.ts
-- [ ] T525 · lib · 0.80d · lib/gridErrors.ts lib/gridEventGuards.ts
-- [ ] T527 · lib · 1.30d · lib/gridKeyboard.ts · split
-- [ ] T529 · lib · 0.80d · lib/gridPastePlan.ts
-- [ ] T531 · lib · 0.90d · lib/historyGroups.ts lib/hostErrorMessage.ts lib/hostLucideMap.ts
-- [ ] T533 · lib · 2.00d · lib/htmlSanitizer.ts · split
-- [ ] T535 · lib · 0.90d · lib/iconIds.ts lib/iconResolver.ts lib/importConnectionFile.ts
-- [ ] T537 · lib · 2.00d · lib/importData.ts · split
-- [ ] T539 · lib · 1.30d · lib/importExecution.ts · split
-- [ ] T541 · lib · 1.00d · lib/importMapping.ts lib/keymap.ts
-- [ ] T543 · lib · 0.80d · lib/keysetPaging.ts
-- [ ] T545 · lib · 0.80d · lib/kvAiContext.ts lib/kvSlotState.ts
-- [ ] T547 · lib · 0.60d · lib/kvWorkspaceCapabilities.ts lib/kvWorkspaceSlots.ts
-- [ ] T549 · lib · 0.90d · lib/languagePackRuntime.ts
-- [ ] T551 · lib · 0.90d · lib/loadBatchExportTable.ts
-- [ ] T553 · lib · 0.90d · lib/localeSync.ts
-- [ ] T555 · lib · 0.80d · lib/mainWindowContextMenu.ts
-- [ ] T557 · lib · 0.90d · lib/mcpAgentConfig.ts
-- [ ] T559 · lib · 0.90d · lib/migrationJobHydration.ts
-- [ ] T561 · lib · 1.30d · lib/migrationJobVerdict.ts · split
-- [ ] T563 · lib · 0.60d · lib/migrationVerification.ts lib/migrationWindowPrefill.ts
-- [ ] T565 · lib · 1.30d · lib/namedViews.ts · split
+- [x] T517 · lib · 1.30d · lib/fkNavigationActions.ts · split
+- [x] T519 · lib · 1.30d · lib/fkReferencedBy.ts · split
+- [x] T521 · lib · 0.80d · lib/fkSelector.ts lib/globalTextSelection.ts
+- [x] T523 · lib · 0.80d · lib/gridClipboard.ts
+- [x] T525 · lib · 0.80d · lib/gridErrors.ts lib/gridEventGuards.ts
+- [x] T527 · lib · 1.30d · lib/gridKeyboard.ts · split
+- [x] T529 · lib · 0.80d · lib/gridPastePlan.ts
+- [x] T531 · lib · 0.90d · lib/historyGroups.ts lib/hostErrorMessage.ts lib/hostLucideMap.ts
+- [x] T533 · lib · 2.00d · lib/htmlSanitizer.ts · split
+- [x] T535 · lib · 0.90d · lib/iconIds.ts lib/iconResolver.ts lib/importConnectionFile.ts
+- [x] T537 · lib · 2.00d · lib/importData.ts · split
+- [x] T539 · lib · 1.30d · lib/importExecution.ts · split
+- [x] T541 · lib · 1.00d · lib/importMapping.ts lib/keymap.ts
+- [x] T543 · lib · 0.80d · lib/keysetPaging.ts
+- [x] T545 · lib · 0.80d · lib/kvAiContext.ts lib/kvSlotState.ts
+- [x] T547 · lib · 0.60d · lib/kvWorkspaceCapabilities.ts lib/kvWorkspaceSlots.ts
+- [x] T549 · lib · 0.90d · lib/languagePackRuntime.ts
+- [x] T551 · lib · 0.90d · lib/loadBatchExportTable.ts
+- [x] T553 · lib · 0.90d · lib/localeSync.ts
+- [x] T555 · lib · 0.80d · lib/mainWindowContextMenu.ts
+- [x] T557 · lib · 0.90d · lib/mcpAgentConfig.ts
+- [x] T559 · lib · 0.90d · lib/migrationJobHydration.ts
+- [x] T561 · lib · 1.30d · lib/migrationJobVerdict.ts · split
+- [x] T563 · lib · 0.60d · lib/migrationVerification.ts lib/migrationWindowPrefill.ts
+- [x] T565 · lib · 1.30d · lib/namedViews.ts · split
 - [ ] T567 · lib · 0.90d · lib/nativeContextMenu.ts lib/objectBrowserContextMenu.ts lib/objectFilter.ts
-- [ ] T569 · lib · 0.30d · lib/panelContextPath.ts
-- [ ] T571 · lib · 0.90d · lib/pathPicker.ts
+- [x] T569 · lib · 0.30d · lib/panelContextPath.ts
+- [x] T571 · lib · 0.90d · lib/pathPicker.ts
 - [ ] T573 · lib · 0.60d · lib/processListResult.ts lib/productFeatures.ts
 - [ ] T575 · lib · 0.80d · lib/queryContextPath.ts
 - [ ] T577 · lib · 0.90d · lib/queryExecutionViewModel.ts
