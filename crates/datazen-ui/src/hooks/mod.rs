@@ -37,3 +37,9 @@ pub(crate) mod use_i18n;
 /// T341b: the keyboard-shortcut registry (spec grammar, scope gates,
 /// first-match-wins resolution).
 pub(crate) mod use_keyboard_shortcuts;
+// T525/T527 seam: the grid keyboard semantics + the composing guard,
+// carried for the grid hooks until their own ledger tasks land (the
+// T041 mirror convention).
+pub(crate) mod grid_keyboard_helpers;
+// T313: the grid keyboard wiring (DB-02).
+pub(crate) mod use_grid_keyboard_nav;
