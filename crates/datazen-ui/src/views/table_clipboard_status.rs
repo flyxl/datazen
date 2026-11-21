@@ -97,7 +97,7 @@ pub(crate) fn describe_problem(problem: &PasteProblem) -> String {
     match problem.code.as_str() {
         "grid.paste.empty" => t("dataTable.pasteEmpty").to_owned(),
         "grid.paste.tooLarge" => t("dataTable.pasteTooLarge")
-            .replace("{cells}", detail)
+            .replace("{cells}", problem.detail.as_deref().unwrap_or("0"))
             .replace("{maxCells}", MAX_PASTE_CELLS),
         "grid.paste.raggedRow" => {
             if detail.is_empty() {
@@ -111,7 +111,8 @@ pub(crate) fn describe_problem(problem: &PasteProblem) -> String {
             }
         }
         "grid.paste.unclosedQuote" => t("dataTable.pasteUnclosedQuote").to_owned(),
-        "grid.paste.outOfBounds" => t("dataTable.pasteClippedToPage").replace("{count}", detail),
+        "grid.paste.outOfBounds" => t("dataTable.pasteClippedToPage")
+            .replace("{count}", problem.detail.as_deref().unwrap_or("0")),
         "grid.paste.noWritableCell" => t("dataTable.pasteNoWritableColumn").to_owned(),
         "grid.paste.notNullEmpty" => t("dataTable.pasteNotAllowedEmpty")
             .replace("{row}", &(problem.row.unwrap_or(0) + 1).to_string())
@@ -134,8 +135,8 @@ pub(crate) fn describe_problem(problem: &PasteProblem) -> String {
         "grid.clipboard.readFailed" => t("dataTable.pasteReadFailed").replace("{shortcut}", "⌘V"),
         "grid.pasteRows.notRowData" => t("dataTable.pasteRowsNotRowData").to_owned(),
         "grid.pasteRows.noWritableColumn" => t("dataTable.pasteRowsNoWritableColumn").to_owned(),
-        // Unknown codes keep their raw detail instead of being swallowed.
-        _ => if detail.is_empty() { problem.code.clone() } else { detail.to_owned() },
+        // React uses `problem.detail ?? problem.code`: Some("") stays empty.
+        _ => problem.detail.clone().unwrap_or_else(|| problem.code.clone()),
     }
 }
 

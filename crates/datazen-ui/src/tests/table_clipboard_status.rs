@@ -102,7 +102,26 @@ fn problem_descriptions_use_exact_keys_and_keep_raw_detail() {
     );
     assert_eq!(
         describe_problem(&problem("grid.paste.unknownCode", "")),
-        "grid.paste.unknownCode"
+        "",
+        "React keeps Some(\"\") rather than falling back to the code"
+    );
+    assert_eq!(
+        describe_problem(&PasteProblem {
+            code: "grid.paste.unknownCode".to_owned(),
+            detail: None,
+            ..Default::default()
+        }),
+        "grid.paste.unknownCode",
+        "only None falls back to the code"
+    );
+    assert_eq!(
+        describe_problem(&PasteProblem {
+            code: "grid.paste.outOfBounds".to_owned(),
+            detail: None,
+            ..Default::default()
+        }),
+        t("dataTable.pasteClippedToPage").replace("{count}", "0"),
+        "a missing detail falls back to 0, not an empty string"
     );
 }
 
