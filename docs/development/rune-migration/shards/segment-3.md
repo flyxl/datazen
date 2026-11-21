@@ -121,7 +121,7 @@
 - [x] T357 · components/DataTable · 0.30d · components/DataTable/GridKeyboardHints.tsx
 - [x] T362 · windows/data-sync · 0.90d · windows/data-sync/RecordsetEditor.tsx
 - [ ] T366 · stores · 0.50d · stores/panelTypes.ts
-- [ ] T367 · stores/tableData · 0.30d · stores/tableData/tableSortPreferences.ts
+- [x] T367 · stores/tableData · 0.30d · stores/tableData/tableSortPreferences.ts
 - [x] T369 · components/DataTable · 0.80d · components/DataTable/Pagination.tsx
 - [x] T373 · windows/data-sync · 0.90d · windows/data-sync/SqlPreview.tsx
 - [ ] T377 · stores · 0.90d · stores/queryExecActions.ts
