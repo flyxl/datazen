@@ -30,6 +30,7 @@ pub(crate) mod privilege_view;
 pub(crate) mod process_list_view;
 pub(crate) mod query_panel;
 pub(crate) mod query;
+pub(crate) mod result_workspace;
 
 mod connections;
 mod connections_home;
