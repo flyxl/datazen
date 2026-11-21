@@ -75,7 +75,7 @@
 - [x] T225 · windows/data-transfer · 0.90d · windows/data-transfer/TransferExecuteConfirmDialog.tsx
 - [x] T226 · windows/data-sync · 0.90d · windows/data-sync/DataSyncPreviewStep.tsx
 - [x] T232 · stores · 0.50d · stores/fkNavigationStore.ts
-- [ ] T233 · stores/tableData · 0.80d · stores/tableData/insertLocation.ts stores/tableData/keysetActions.ts
+- [x] T233 · stores/tableData · 0.80d · stores/tableData/insertLocation.ts stores/tableData/keysetActions.ts
 - [ ] T236 · components/DataTable · 0.80d · components/DataTable/DetailPanel.tsx
 - [ ] T239 · components/ai · 0.90d · components/ai/DiagnosisPanel.tsx
 - [ ] T241 · components · 0.80d · components/SqlEditor.tsx components/SqlSyntaxPreview.tsx
