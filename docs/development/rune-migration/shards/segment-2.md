@@ -91,7 +91,7 @@
 - [x] T573 · lib · 0.60d · lib/processListResult.ts lib/productFeatures.ts
 - [x] T575 · lib · 0.80d · lib/queryContextPath.ts
 - [x] T577 · lib · 0.90d · lib/queryExecutionViewModel.ts
-- [ ] T579 · lib · 0.90d · lib/querySidebarContextMenu.ts lib/queryStream.ts lib/relationMetadata/identity.ts
+- [x] T579 · lib · 0.90d · lib/querySidebarContextMenu.ts lib/queryStream.ts lib/relationMetadata/identity.ts
 - [x] T581 · lib · 0.30d · lib/resolveUiLanguage.ts
 - [ ] T583 · lib · 0.90d · lib/resultEditability.ts
 - [ ] T585 · lib · 0.80d · lib/resultFindReplace.ts lib/rowCountStrategy.ts
