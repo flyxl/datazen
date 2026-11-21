@@ -109,7 +109,7 @@
 - [x] T609 · lib · 2.00d · lib/sqlCompletions.ts · split
 - [x] T611 · lib · 0.50d · lib/sqlEditorDefaults.ts
 - [x] T613 · lib · 0.90d · lib/sqlFileExecution.ts
-- [ ] T615 · lib · 0.80d · lib/sqlFormat.ts lib/sqlFunctionRegistry.ts
+- [x] T615 · lib · 0.80d · lib/sqlFormat.ts lib/sqlFunctionRegistry.ts
 - [x] T617 · lib · 0.80d · lib/sqlGenerator.ts lib/sqlNamespace.ts
 - [x] T621 · lib · 0.90d · lib/sqlStatementRange.ts lib/sqlTransactionGuard.ts lib/startupTimer.ts
 - [x] T623 · lib · 0.90d · lib/surfaceBgCache.ts
