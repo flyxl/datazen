@@ -158,6 +158,9 @@ mod sql_completions;
 mod sql_file_execution;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
+mod sql_statement_range;
+mod sql_transaction_guard;
+mod startup_timer;
 mod tabs;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
@@ -896,6 +899,13 @@ pub use sql_path_prefix::{
     parse_qualified_path_parents, resolve_ensure_segments,
 };
 pub use sql_schema_drop_targets::{SqlSchemaDropTarget, parse_schema_drop_targets};
+pub use sql_statement_range::{get_statement_at_cursor, StatementAtCursorFn, STATEMENT_RANGE_GAP};
+pub use sql_transaction_guard::{
+    analyze_transaction_sql, is_aborted_transaction_error, strip_sql_noise, TransactionSqlAnalysis,
+};
+pub use startup_timer::{
+    format_wall_clock, StartupMark, StartupTimer, STARTUP_TIMER_GAP, WallClockParts,
+};
 pub use tabs::{Tab, TabKind, Tabs};
 // The T211 types aggregate: the members React's `types/index.ts` declares or
 // re-exports that no earlier family module had already landed at the root
