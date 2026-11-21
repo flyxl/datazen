@@ -70,6 +70,7 @@ fn audit_clear_nl2sql_leaves_diagnosis_and_blank_parse_keeps_filters() {
     store.begin_analyze_explain();
     store.complete_analyze_explain(ExplainAnalysis {
         summary: "nested loop".into(),
+    ..Default::default()
     });
     assert_eq!(
         store

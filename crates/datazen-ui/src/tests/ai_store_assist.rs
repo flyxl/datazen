@@ -87,6 +87,7 @@ fn diagnose_and_explain_clear_the_previous_result_before_the_call() {
 
     store.explain_analysis = Some(ExplainAnalysis {
         summary: "old plan".into(),
+    ..Default::default()
     });
     store.begin_analyze_explain();
     assert!(store.explain_analysis.is_none());
@@ -97,6 +98,7 @@ fn diagnose_and_explain_clear_the_previous_result_before_the_call() {
     store.begin_analyze_explain();
     store.complete_analyze_explain(ExplainAnalysis {
         summary: "seq scan".into(),
+        ..Default::default()
     });
     assert!(!store.is_analyzing_explain);
     store.clear_explain_analysis();

@@ -85,8 +85,12 @@ pub(crate) mod ai_session_history;
 pub(crate) mod ai_input;
 pub(crate) mod context_picker;
 pub(crate) mod diagnosis_panel;
+pub(crate) mod explain_panel;
 
 pub(crate) use ai_egress_notice::{AiEgressNotice, ContextItem, ContextKind};
+pub(crate) use explain_panel::{
+    raw_explain_table, AnalyzeExplainRequest, ExplainPanel, ExplainPanelVm, RawExplainTable,
+};
 /// T239: the failed query's AI diagnosis strip (the unconfigured notice,
 /// the header with the manual re-diagnose and close controls, and the four
 /// body states). The query workspace wiring task is the mount point.
