@@ -27,6 +27,11 @@ mod mcp_agent_config;
 mod migration_verification;
 mod migration_window_prefill;
 mod path_picker;
+mod query_context_path;
+mod result_find_replace;
+mod row_count_strategy;
+mod schema_diff_confirm;
+mod schema_resource_cache;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -125,13 +130,54 @@ mod metadata;
 mod migration_job_hydration;
 mod migration_job_verdict;
 mod named_views;
+mod native_context_menu;
+mod object_browser_context_menu;
+mod object_filter;
 mod panel_context_path;
 mod platform_shared;
+mod process_list_result;
+mod product_features;
+mod query_execution_view_model;
+mod query_sidebar_context_menu;
+mod query_stream;
+mod relation_identity;
 mod relation_prediction;
 mod relative_time;
+mod result_editability;
+mod resolve_ui_language;
+mod row_to_record;
+mod run_predefined_edit;
+mod schema_cache;
+mod schema_changing_sql;
+mod schema_diff_limitations_prefs;
+mod schema_tree_context_menu;
+mod splash;
+mod sql_bind_params;
+mod sql_completion_context;
+mod sql_completions;
+mod sql_file_execution;
+mod sql_format;
+mod sql_function_registry;
+mod sql_generator;
+mod sql_namespace_ops;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
+mod sql_statement_range;
+mod sql_transaction_guard;
+mod startup_timer;
+mod surface_bg_cache;
+mod sync_pairing;
+mod sync_taxonomy;
+mod table_schema_for_sql;
+mod table_sql_actions;
 mod tabs;
+mod theme_editor_colors;
+mod theme_tokens;
+mod total_rows_display;
+mod transfer_limitations_prefs;
+mod transfer_pairing;
+mod tunnel_deletion;
+mod tunnel_draft;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
 // path `datazen_ui_api::types::…` is the Rust twin of React's `'../types'`
@@ -140,6 +186,11 @@ mod tabs;
 // `pub use types::{…}` block below, the family convention (see the module's
 // docs for the full ownership map and the surface law).
 pub mod types;
+pub mod schema_object_search;
+pub mod server_status_trends;
+pub mod sql_editor_defaults;
+pub mod table_changes;
+pub mod theme_pack_apply;
 
 use std::collections::HashMap;
 
@@ -254,6 +305,26 @@ pub use migration_window_prefill::{
 };
 pub use path_picker::{
     PathPicker, PathPickerFileFilter, PickPathInput, pick_path, web_path_picker,
+};
+pub use query_context_path::{
+    PATH_HIERARCHY_PLACEHOLDER_SELECTOR_SEGMENTS, NamespaceNode, PathHierarchySelectorSegment,
+    QueryContextResolveOpts, SplitDatabasePin, auto_complete_path_hierarchy_path,
+    build_path_hierarchy_database_pin, build_path_hierarchy_selector_segments,
+    infer_sql_relation_path, namespace_roots_from, path_hierarchy_connection_root,
+    path_hierarchy_relative_namespace_path, path_hierarchy_selector_segments_for_ui,
+    paths_equal, resolve_query_context_path, split_path_hierarchy_database_pin, unquote_ident,
+};
+pub use result_find_replace::{
+    EMPTY_RESULT_FIND_QUERY, ResultFindOperator, ResultFindQuery, ResultReplacePlanItem,
+    cell_matches, cell_text, filter_result_rows, next_plan_item, plan_result_replacements,
+    replace_text, row_matches,
+};
+pub use row_count_strategy::{CountStrategyInput, resolve_count_strategy};
+pub use schema_diff_confirm::{
+    DESTRUCTIVE_CONFIRM_TOKEN, CanRunDeployOptions, can_confirm_destructive_deploy, can_run_deploy,
+};
+pub use schema_resource_cache::{
+    ERROR_TTL_MS, VALUE_TTL_MS, LoadStart, SchemaResourceCache,
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
@@ -615,6 +686,58 @@ pub use migration_job_verdict::{
     CommitBoundaryFacts, JobCounterValue, MigrationJobVerdict, MigrationJobVerdictInput,
     UncertaintyReason, VerdictSeverity, PIPELINE_BUDGET_BYTES,
 };
+pub use native_context_menu::{DRIVER_SDK_MENU_GAP, NATIVE_CONTEXT_MENU_SURFACE};
+pub use query_sidebar_context_menu::{
+    build_favorite_sidebar_context_menu_items, build_history_sidebar_context_menu_items,
+    build_history_sidebar_header_context_menu_items, BuildFavoriteSidebarContextMenuArgs,
+    BuildHistorySidebarContextMenuArgs, BuildHistorySidebarHeaderContextMenuArgs,
+    QuerySidebarFavoriteHandlers, QuerySidebarFavoriteLabels, QuerySidebarHistoryHandlers,
+    QuerySidebarHistoryHeaderHandlers, QuerySidebarHistoryHeaderLabels, QuerySidebarHistoryLabels,
+    QuerySidebarMenuItem,
+};
+pub use query_stream::{apply_query_stream_event, StreamableQueryTab};
+pub use relation_identity::{
+    build_editor_relation_key, fold_segment, has_namespace, qualified_name_text,
+    relation_base_name, relation_identity_key, EditorRelationKey, QualifiedRelationId,
+    SqlIdentifierSegment, SqlRelationSourceKind,
+};
+pub use object_browser_context_menu::{
+    build_object_browser_editor_menu_items, build_object_browser_list_menu_items,
+    native_edit_menu_items, NativeEditItem, ObjectBrowserEditorMenuHandlers,
+    ObjectBrowserEditorMenuLabels, ObjectBrowserListMenuHandlers, ObjectBrowserListMenuLabels,
+    ObjectBrowserMenuAction, ObjectBrowserMenuItem,
+};
+pub use object_filter::{
+    filter_table_items, get_object_filter, is_system_database_name, is_system_schema_name,
+    match_name_pattern, matches_table_name_filter, should_show_database, should_show_schema,
+    with_object_filter_options, ObjectFilterPrefs,
+};
+pub use query_execution_view_model::{
+    get_cancel_action_state, get_cancel_capability, is_cancellation_error,
+    reduce_query_execution_state, to_query_execution_view_model, CancelActionState,
+    CancelCapability, QueryCancelState, QueryExecutionTransition, QueryExecutionViewModel,
+    QueryPhase, QueryTerminalState, QueryExecState,
+};
+pub use result_editability::{
+    grid_read_only_message_key, is_column_editable, origin_channel_writable,
+    resolve_grid_editability, resolve_result_editability, resolve_result_write_back,
+    resolve_row_addressability, GridColumn, GridEditability, GridReadOnlyReason, IdentityColumn,
+    ResultTableRef, ServerEditability, RESULT_ORIGIN_WRITE_BACK_ENABLED,
+};
+pub use schema_cache::{
+    cache_key, composite_cache_key, ddl_cache_key, DdlCacheIdentity, DdlCacheInvalidateScope,
+    SchemaCacheFacade, SchemaObjectKind,
+};
+pub use schema_changing_sql::{
+    is_data_modifying_statement, is_schema_changing_statement, is_schema_mutating_statement,
+    mask_semicolons_in_literals, split_sql_statements, sql_contains_data_modifying,
+    sql_contains_schema_changing_ddl, sql_may_mutate_schema,
+};
+pub use schema_tree_context_menu::{
+    build_schema_tree_context_menu_items, BuildSchemaTreeContextMenuArgs, SchemaTreeAction,
+    SchemaTreeContextMenuHandlers, SchemaTreeContextMenuLabels, SchemaTreeMenuItem,
+    SchemaTreeNodeContextMenuPayload, SchemaTreeNodeKind,
+};
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
     FilterOperator, SHARED_FILTER_OPERATORS,
@@ -686,6 +809,13 @@ pub use named_views::{
     NAMED_VIEW_EXPORT_VERSION,
 };
 pub use panel_context_path::{format_panel_context_path, PanelContextPathArgs};
+pub use process_list_result::{
+    command_result_columns, command_result_rows, default_process_columns, process_column_label_key,
+    process_record_to_row, ProcessColumnDef,
+};
+pub use product_features::{
+    is_product_feature_enabled, ProductFeatureKey, PRODUCT_FEATURE_KEYS,
+};
 pub use metadata::{
     BatchFlush, CurrentCallContext, CurrentProvenanceContext, ExecutionTarget,
     InvalidationDecision, InvalidationReason, MetadataBatcher, MetadataBatcherOptions,
@@ -719,12 +849,175 @@ pub use relative_time::{
     RELATIVE_WINDOW_MS, RelativeTimeParts, RelativeTimeUnit, format_relative_time,
     get_relative_time_parts,
 };
+pub use resolve_ui_language::{
+    normalize_settings_language, resolve_ui_language, SupportedUiLanguage,
+    SUPPORTED_UI_LANGUAGES,
+};
+pub use row_to_record::row_to_record;
+pub use run_predefined_edit::{
+    predefined_edit_command, run_predefined_edit, NativeMenuPredefined,
+};
+pub use schema_diff_limitations_prefs::{
+    clear_schema_diff_limitations_dismissed, create_schema_diff_limitations_dismiss_prefs,
+    is_schema_diff_limitations_dismissed, set_schema_diff_limitations_dismissed,
+    SCHEMA_DIFF_LIMITATIONS_DISMISSED_KEY,
+};
+pub use schema_object_search::{
+    filter_object_search_results_by_type, filter_schema_objects_by_type, group_object_search_results,
+    group_schema_objects, matching_columns, object_type_order, search_schema_objects,
+    table_matches_object_search, ObjectSearchFilters, ObjectSearchMatchField,
+    ObjectSearchObjectType, ObjectSearchResult, ObjectSearchResultGroup, ObjectSearchSourceKind,
+    SchemaObjectIndex, SchemaObjectIndexEntry, SchemaObjectSearchIndex,
+};
+pub use server_status_trends::{
+    align_timestamp, card_rate_from_history, compute_trend_time_axis, desired_tick_count,
+    format_byte_rate, format_bytes, format_rate, latest_series_value, number_from, pick_tick_step,
+    update_trend_history, CommandKey, StatusRecord, TrendAxisOptions, TrendKind, TrendPoint,
+    TrendPrevSample, TrendSeries, TrendSeriesDef, TrendTimeAxis, TrendUpdateInput,
+    TrendUpdateResult, COMMAND_KEYS, DEFAULT_MIN_WINDOW_MS, DEFAULT_REFRESH_PERIOD_MS,
+    HISTORY_MAX, HISTORY_WINDOW_MS, TICK_STEP_CANDIDATES_MS, TREND_SERIES,
+};
+pub use splash::{
+    hide_splash_plan, run_startup_wait_task, HideSplashPlan, StartupSettlement, StartupWaitResult,
+    HIDE_SPLASH_DELAY_MS, SPLASH_DOM_GAP, STARTUP_TASK_GAP,
+};
+pub use sync_taxonomy::normalize_driver_id;
+pub use tunnel_draft::{
+    copy_tunnel_name, draft_to_saved_tunnel, empty_tunnel_draft, is_positive_port,
+    is_tunnel_draft_valid, positive_port, saved_tunnel_to_draft, timeout_seconds,
+    tunnel_draft_problem, HttpProxyDraft, SshDraft, SshJumpDraft, TunnelDraft,
+    TunnelDraftProblem, WebSocketDraft, DEFAULT_HTTP_PROXY_PORT, DEFAULT_SSH_PORT,
+    DEFAULT_TUNNEL_TIMEOUT, SAVED_TUNNEL_KINDS,
+};
+pub use theme_editor_colors::{
+    apply_sql_syntax_preset, build_editor_highlight_rules, default_editor_colors,
+    editor_colors_from_json, editor_colors_with_pack_overlay, find_sql_property_names,
+    is_sql_syntax_theme_id, parse_pack_editor_overlay, read_editor_colors,
+    set_pack_editor_color_overlay, EditorColorContract, EditorColors, ExtendedHighlightColors,
+    HighlightRule, Palette, SqlSyntaxPreset, StyleColors, SyntaxNodeSpan, CM_VARS,
+    CODEMIRROR_COLOR_GAP, CODEMIRROR_HIGHLIGHT_GAP, SQL_SYNTAX_PRESETS,
+};
+pub use sql_bind_params::{
+    DEFAULT_ENABLE_AT, DEFAULT_ENABLE_DOLLAR_NAMED, DEFAULT_ENABLE_DOLLAR_POSITIONAL,
+    DEFAULT_ENABLE_QUESTION, DEFAULT_ENABLE_TEMPLATE, ParamValue, SqlBindPayloadV2, SqlParam,
+    SqlParamDialectPolicy, SqlParamFilter, SqlParamKind, SqlParamOccurrence, SqlParamOccurrenceV2,
+    SqlParamStableId, SqlParamSyntax, build_bind_payload_v2, coerce_param_value,
+    default_dialect_policy, get_param_label, is_sensitive_param_name, param_fingerprint,
+    params_to_payload, parse_sql_param_occurrences, parse_sql_params, sensitive_param_names,
+    substitute_sql_params,
+};
+pub use sql_completion_context::{
+    contextual_keyword_completion, contextual_schema_completion, detect_alias_dot_context,
+    extract_qualifier_parts, filter_completions_by_kind, filter_keywords_by_kind,
+    infer_sql_completion_kind, is_table_context, last_bare_sql_keyword,
+    last_bare_sql_keyword_with_offset, CompletionContextInput, CompletionOption, CompletionOutcome,
+    CompletionResult, CompletionSourceFn, SqlCompletionKind, COLUMN_CONTEXT_ALLOWED_KEYWORDS,
+    TABLE_CONTEXT_ALLOWED_KEYWORDS,
+};
+pub use sql_completions::{
+    keyword_completions, sql_function_completions, SqlFunctionCompletion,
+    DEFAULT_SQL_COMPLETION_DIALECT, SQL_COMPLETION_KEYWORDS,
+};
+pub use sql_format::{
+    LANGUAGE_MAP, SqlDialectLookup, SqlFormatConfig, SqlFormatRequest, SqlFormatter, SqlIndent,
+    default_sql_format_options, format_sql, sql_format_indentation, sql_format_language,
+    DEFAULT_BREAK_BEFORE_BOOLEAN_OPERATORS, DEFAULT_INDENT_STYLE, DEFAULT_KEYWORD_CASE,
+    DEFAULT_LINES_BETWEEN_QUERIES,
+};
+pub use sql_function_registry::{
+    DIALECT_ALIASES, DriverFunctionMeta, DriverFunctionRegistry, FunctionCompletion, FunctionEntry,
+    FunctionParam, build_function_completions, common_functions, get_driver_functions,
+    get_function_entries, resolve_dialect_family, to_sql_function_completions, COMMON_FUNCTION_NAMES,
+};
+pub use sql_generator::{
+    format_table_identifier, generate_table_sql, BaseTableSqlGenerator, GeneratedSqlType,
+    TableSqlDialect,
+};
+pub use sql_namespace_ops::{
+    collect_table_leaf_names, merge_namespace_path, namespace_branch_child_names,
+    namespace_child_names, namespace_has_child as namespace_tree_has_child, omit_table_leaf,
+    overlay_column_map_owned, NamespaceMergeKind,
+};
+pub use sql_editor_defaults::{
+    infer_default_schema, infer_default_table, table_clause_fingerprint,
+    tables_referenced_in_sql, ReferencedRelation, RelationSourceKind, ScopeRelations,
+    StatementRange,
+};
+pub use sql_file_execution::{
+    execution_error_message, sql_file_execution_plan, ConfirmationMode, ExecutionFailure,
+    InvokeOutcome, SqlFileExecutionOutcome, SqlFileExecutionPlan, OVERWRITE_OPTION,
+    RESTORE_PROGRESS_EVENT, RESTORE_SQL_FILE_COMMAND, SQL_FILE_EXECUTION_GAP,
+};
 pub use sql_path_prefix::{
     QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
     parse_qualified_path_parents, resolve_ensure_segments,
 };
 pub use sql_schema_drop_targets::{SqlSchemaDropTarget, parse_schema_drop_targets};
+pub use sql_statement_range::{get_statement_at_cursor, StatementAtCursorFn, STATEMENT_RANGE_GAP};
+pub use sql_transaction_guard::{
+    analyze_transaction_sql, is_aborted_transaction_error, strip_sql_noise, TransactionSqlAnalysis,
+};
+pub use startup_timer::{
+    format_wall_clock, StartupMark, StartupTimer, STARTUP_TIMER_GAP, WallClockParts,
+};
+pub use surface_bg_cache::{
+    css_color_to_hex, is_safe_css_hex, persist_surface_background, DEFAULT_SURFACE_DARK,
+    DEFAULT_SURFACE_LIGHT, SURFACE_BG_CACHE_GAP,
+};
+pub use sync_pairing::{
+    compute_sync_pairing_state, normalize_sync_family, sync_category, sync_path_from_str,
+    view_to_result, PairingView, SyncCategory, SyncConnection, SyncPairingCache,
+    SyncPairingResult, SyncPairingState, SyncPath, SyncRegistryMeta,
+    SYNC_PAIRING_CACHE_DELIMITER,
+};
+pub use table_changes::{
+    build_row_identity, clone_pending_row_change, draft_write_columns,
+    duplicate_row_identity_keys, is_complete_table_change_context, normalize_edit_value,
+    row_identity_key, stable_serialize, table_change_context_key, values_equal, ChangeSeverity,
+    ChangeWarning, ColumnValues, CommitOperation, CommitPendingChangesResponse,
+    CommitPendingChangesResult, CommitStatementResult, CommitStatus, InsertLocation, PendingInsert,
+    PendingRowChange, PendingStatus, PlannedStatement, RefreshStatus, RowChangePlan, RowIdentity,
+    TableChangeContext as TableChangesContext, WriteExpressionId,
+};
+pub use table_schema_for_sql::{
+    build_pseudo_table_schema, fetch_table_schema_for_sql_generation,
+    generate_table_sql_with_fallbacks, FetchTableSchemaInput, GenerateFallbackOptions,
+    ReadCachedSchema, ReadColumnsRow, ReadColumnsValue, ReadRelationColumns, RelationRef,
+};
+pub use table_sql_actions::{
+    build_no_primary_key_edit_template, build_query_open_context, build_safe_table_sql_template,
+    build_table_context, build_table_sql_action, build_table_sql_actions, no_primary_key_edit_spec,
+    quote_table_identifier, QueryOpenContext, QueryOpenFocus, QueryOpenSource, SqlActionExecution,
+    TableActionInput, TableContext, TableSqlAction, TableSqlActionSpec, TABLE_SQL_ACTION_KINDS,
+};
+pub use theme_pack_apply::{
+    classify_theme_pack, encode_wapp_theme_pack_id, invalid_wapp_theme_id_error,
+    join_relative_path, mime_for_path, parse_charts_json, parse_wapp_theme_pack_id, probe_icon,
+    rewrite_css_urls, unknown_theme_pack_error, plan_theme_pack_apply, ThemePackApplyPlan,
+    ThemePackApplyResult, ThemePackSelection, THEME_PACK_APPLY_GAP, THEME_PACK_CHANGED_EVENT,
+    THEME_PACK_STYLE_ID, WAPP_THEME_PACK_PREFIX,
+};
 pub use tabs::{Tab, TabKind, Tabs};
+pub use transfer_limitations_prefs::{
+    clear_transfer_limitations_dismissed, create_transfer_limitations_dismiss_prefs,
+    is_transfer_limitations_dismissed, set_transfer_limitations_dismissed,
+    TRANSFER_LIMITATIONS_DISMISSED_KEY,
+};
+pub use transfer_pairing::{
+    is_transfer_target_supported, resolve_transfer_pairing, TransferPairingResult, TransferPath,
+    TransferRegistry,
+};
+pub use tunnel_deletion::{
+    delete_tunnel_and_unbind, unbind_connection_patch, DeleteTunnel, DeleteTunnelDeps,
+    DeleteTunnelOutcome, GetConnections, SaveConnection, KEY_DELETE_FAILED, KEY_UNBIND_FAILED,
+};
+pub use theme_tokens::{
+    build_theme_snapshot, ThemeSnapshot, ThemeSnapshotInput, THEME_SNAPSHOT_VERSION, THEME_TOKENS,
+    THEME_TOKENS_DOM_GAP,
+};
+pub use total_rows_display::{
+    can_page_forward, format_row_count, total_rows_view, TotalRowsView,
+};
 // The T211 types aggregate: the members React's `types/index.ts` declares or
 // re-exports that no earlier family module had already landed at the root
 // (every already-rooted sibling name — the connection/context/filter/

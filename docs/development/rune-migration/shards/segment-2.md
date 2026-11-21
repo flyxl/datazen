@@ -85,44 +85,44 @@
 - [x] T561 · lib · 1.30d · lib/migrationJobVerdict.ts · split
 - [x] T563 · lib · 0.60d · lib/migrationVerification.ts lib/migrationWindowPrefill.ts
 - [x] T565 · lib · 1.30d · lib/namedViews.ts · split
-- [ ] T567 · lib · 0.90d · lib/nativeContextMenu.ts lib/objectBrowserContextMenu.ts lib/objectFilter.ts
+- [x] T567 · lib · 0.90d · lib/nativeContextMenu.ts lib/objectBrowserContextMenu.ts lib/objectFilter.ts
 - [x] T569 · lib · 0.30d · lib/panelContextPath.ts
 - [x] T571 · lib · 0.90d · lib/pathPicker.ts
-- [ ] T573 · lib · 0.60d · lib/processListResult.ts lib/productFeatures.ts
-- [ ] T575 · lib · 0.80d · lib/queryContextPath.ts
-- [ ] T577 · lib · 0.90d · lib/queryExecutionViewModel.ts
-- [ ] T579 · lib · 0.90d · lib/querySidebarContextMenu.ts lib/queryStream.ts lib/relationMetadata/identity.ts
-- [ ] T581 · lib · 0.30d · lib/resolveUiLanguage.ts
-- [ ] T583 · lib · 0.90d · lib/resultEditability.ts
-- [ ] T585 · lib · 0.80d · lib/resultFindReplace.ts lib/rowCountStrategy.ts
-- [ ] T587 · lib · 0.60d · lib/rowToRecord.ts lib/runPredefinedEdit.ts
-- [ ] T589 · lib · 0.80d · lib/schemaCache.ts lib/schemaChangingSql.ts
-- [ ] T591 · lib · 0.90d · lib/schemaDiffConfirm.ts
-- [ ] T593 · lib · 0.30d · lib/schemaDiffLimitationsPrefs.ts
-- [ ] T595 · lib · 0.80d · lib/schemaObjectSearch.ts
-- [ ] T597 · lib · 0.30d · lib/schemaResourceCache.ts
-- [ ] T599 · lib · 0.80d · lib/schemaTreeContextMenu.ts
-- [ ] T601 · lib · 0.80d · lib/serverStatusTrends.ts
-- [ ] T603 · lib · 0.80d · lib/setValueActions.ts lib/splash.ts
-- [ ] T605 · lib · 0.80d · lib/sqlBindParams.ts
-- [ ] T607 · lib · 2.00d · lib/sqlCompletionContext.ts · split
-- [ ] T609 · lib · 2.00d · lib/sqlCompletions.ts · split
-- [ ] T611 · lib · 0.50d · lib/sqlEditorDefaults.ts
-- [ ] T613 · lib · 0.90d · lib/sqlFileExecution.ts
-- [ ] T615 · lib · 0.80d · lib/sqlFormat.ts lib/sqlFunctionRegistry.ts
-- [ ] T617 · lib · 0.80d · lib/sqlGenerator.ts lib/sqlNamespace.ts
-- [ ] T621 · lib · 0.90d · lib/sqlStatementRange.ts lib/sqlTransactionGuard.ts lib/startupTimer.ts
-- [ ] T623 · lib · 0.90d · lib/surfaceBgCache.ts
-- [ ] T625 · lib · 0.90d · lib/syncPairing.ts
-- [ ] T627 · lib · 0.30d · lib/syncTaxonomy.ts
-- [ ] T629 · lib · 1.30d · lib/tableChanges.ts · split
-- [ ] T631 · lib · 0.80d · lib/tableSchemaForSql.ts lib/tableSqlActions.ts
-- [ ] T632 · lib · 2.00d · lib/themeEditorColors.ts · split
-- [ ] T633 · lib · 1.30d · lib/themePackApply.ts · split
-- [ ] T634 · lib · 0.30d · lib/themeTokens.ts
-- [ ] T635 · lib · 0.90d · lib/totalRowsDisplay.ts
-- [ ] T636 · lib · 0.90d · lib/transferLimitationsPrefs.ts lib/transferPairing.ts lib/tunnelDeletion.ts
-- [ ] T637 · lib · 0.80d · lib/tunnelDraft.ts
+- [x] T573 · lib · 0.60d · lib/processListResult.ts lib/productFeatures.ts
+- [x] T575 · lib · 0.80d · lib/queryContextPath.ts
+- [x] T577 · lib · 0.90d · lib/queryExecutionViewModel.ts
+- [x] T579 · lib · 0.90d · lib/querySidebarContextMenu.ts lib/queryStream.ts lib/relationMetadata/identity.ts
+- [x] T581 · lib · 0.30d · lib/resolveUiLanguage.ts
+- [x] T583 · lib · 0.90d · lib/resultEditability.ts
+- [x] T585 · lib · 0.80d · lib/resultFindReplace.ts lib/rowCountStrategy.ts
+- [x] T587 · lib · 0.60d · lib/rowToRecord.ts lib/runPredefinedEdit.ts
+- [x] T589 · lib · 0.80d · lib/schemaCache.ts lib/schemaChangingSql.ts
+- [x] T591 · lib · 0.90d · lib/schemaDiffConfirm.ts
+- [x] T593 · lib · 0.30d · lib/schemaDiffLimitationsPrefs.ts
+- [x] T595 · lib · 0.80d · lib/schemaObjectSearch.ts
+- [x] T597 · lib · 0.30d · lib/schemaResourceCache.ts
+- [x] T599 · lib · 0.80d · lib/schemaTreeContextMenu.ts
+- [x] T601 · lib · 0.80d · lib/serverStatusTrends.ts
+- [x] T603 · lib · 0.80d · lib/setValueActions.ts lib/splash.ts
+- [x] T605 · lib · 0.80d · lib/sqlBindParams.ts
+- [x] T607 · lib · 2.00d · lib/sqlCompletionContext.ts · split
+- [x] T609 · lib · 2.00d · lib/sqlCompletions.ts · split
+- [x] T611 · lib · 0.50d · lib/sqlEditorDefaults.ts
+- [x] T613 · lib · 0.90d · lib/sqlFileExecution.ts
+- [x] T615 · lib · 0.80d · lib/sqlFormat.ts lib/sqlFunctionRegistry.ts
+- [x] T617 · lib · 0.80d · lib/sqlGenerator.ts lib/sqlNamespace.ts
+- [x] T621 · lib · 0.90d · lib/sqlStatementRange.ts lib/sqlTransactionGuard.ts lib/startupTimer.ts
+- [x] T623 · lib · 0.90d · lib/surfaceBgCache.ts
+- [x] T625 · lib · 0.90d · lib/syncPairing.ts
+- [x] T627 · lib · 0.30d · lib/syncTaxonomy.ts
+- [x] T629 · lib · 1.30d · lib/tableChanges.ts · split
+- [x] T631 · lib · 0.80d · lib/tableSchemaForSql.ts lib/tableSqlActions.ts
+- [x] T632 · lib · 2.00d · lib/themeEditorColors.ts · split
+- [x] T633 · lib · 1.30d · lib/themePackApply.ts · split
+- [x] T634 · lib · 0.30d · lib/themeTokens.ts
+- [x] T635 · lib · 0.90d · lib/totalRowsDisplay.ts
+- [x] T636 · lib · 0.90d · lib/transferLimitationsPrefs.ts lib/transferPairing.ts lib/tunnelDeletion.ts
+- [x] T637 · lib · 0.80d · lib/tunnelDraft.ts
 - [ ] T638 · lib · 0.90d · lib/updater.ts
 - [ ] T639 · lib · 0.90d · lib/updateReminderSchedule.ts
 - [ ] T640 · lib · 1.30d · lib/valueSearch.ts · split
