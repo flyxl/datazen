@@ -49,6 +49,7 @@ mod run_to_result;
 mod scalar_cell_editors;
 mod selection_actions;
 mod stage_cell_value;
+mod stage_edit_actions;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
 mod tabs;
@@ -301,6 +302,9 @@ pub use stage_cell_value::{
     StageCellValueInput, StageCellValueResult, StageEditInput, StageEditResult,
     StageExpressionValueInput, ValueMap, WriteExpressionId, STAGE_CELL_VALUE_GAP,
     STAGE_CELL_VALUE_SURFACE,
+};
+pub use stage_edit_actions::{
+    compute_unstage_delete_result, STAGE_EDIT_ACTIONS_GAP, STAGE_EDIT_ACTIONS_SURFACE,
 };
 pub use sql_path_prefix::{
     QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
