@@ -25,6 +25,7 @@ mod connection_types;
 mod connection_views;
 mod context_items;
 mod diff_detail;
+mod data_sync_bars;
 mod context_menu_position;
 mod workflow_chat_panel;
 // `pub mod` — the crate's only public module: the T159 dashboard facade
@@ -222,6 +223,17 @@ pub use dashboard_types::{
     should_warn_refresh_sec,
 };
 pub use database_object_identity::database_object_identity_key;
+pub use data_sync_bars::{
+    build_endpoints_bar_config, build_execute_bar_view, can_fire, resolve_action_note, ActionNote,
+    ActivePairing, CancelVariant, EndpointsBarConfig, EndpointsLayout, ExecuteBarEvent,
+    ExecuteBarInput, ExecuteBarView, RunVariant, SyncPairingPath, TranslateFn, ACTION_NOTE_CLASS,
+    CANCEL_TEST_ID, COMPARE_LABEL_KEY, CONTAINER_CLASS, DELETE_CLASS, ENDPOINTS_I18N_PREFIX,
+    ENDPOINTS_TEST_ID_PREFIX, EXECUTE_TEST_ID, EXPERIMENTAL_HINT_KEY, EXPERIMENTAL_PAIR_KEY,
+    KEY_CANCEL, KEY_DELETE_WILL_APPLY, KEY_EXECUTE, KEY_EXECUTING,
+    KEY_EXECUTE_UNAVAILABLE, KEY_SELECTED_ROWS, KEY_TARGET_READ_ONLY, PATH_DIRECT_KEY, PATH_IR_KEY,
+    PATH_TEST_ID, READ_ONLY_CLASS, START_DISABLED_TEST_ID, START_TEST_ID, SUPPORTED_CLASS,
+    UNSUPPORTED_CLASS, USE_TRANSFER_HINT_KEY,
+};
 // The T188 filter vocabulary: the aggregate (`types/index`) re-exports
 // everything `types/filters.ts` declares, so the crate root carries the
 // same names.
