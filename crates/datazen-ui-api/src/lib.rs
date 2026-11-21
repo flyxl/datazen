@@ -100,6 +100,7 @@ mod grid_paste_plan;
 mod history_groups;
 mod host_error_message;
 mod host_lucide_map;
+mod import_data;
 mod keyset_types;
 mod metadata;
 mod platform_shared;
@@ -542,6 +543,14 @@ pub use grid_paste_plan::{
     record_row_copy, row_copy_for_clipboard_text, source_for_clipboard_text, table_change_key,
     CellPasteWrite, ClipboardSource, ColumnWritability, ColumnWritabilityReason, PasteAlignment,
     PasteOverflow, PastePlan, PastePlanOptions, RowCopyPayload,
+};
+pub use import_data::{
+    decode_import_base64, decode_import_text, dedupe_columns, detect_csv_delimiter,
+    detect_import_format, generate_insert_sql, is_supported_encoding, parse_csv_import,
+    parse_import_data, parse_json_import, parse_xlsx, parse_xlsx_import, CsvParseOptions,
+    ImportDiagnostic, ImportEmptyFieldPolicy, ImportFormat, ImportParseError, ImportParseErrorKind,
+    ImportParseResult, ImportTextDecoder, JsonParseOptions, ParsedData, Utf8TextDecoder,
+    XlsxBookReader, XlsxParseOptions, XlsxParseResult, XlsxWorkbook, IMPORT_ENCODINGS,
 };
 // The T234 keyset paging vocabulary: the aggregate (`types/index`)
 // re-exports everything `types/keyset.ts` declares, so the crate root

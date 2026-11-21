@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
 use super::types::{ClipboardSource, RowCopyPayload};
-use crate::TableChangeContext;
+use crate::InboundTableChangeContext as TableChangeContext;
 
 static LAST_COPY_SOURCE: Mutex<Option<ClipboardSource>> = Mutex::new(None);
 static LAST_COPIED_TEXT: Mutex<Option<String>> = Mutex::new(None);
