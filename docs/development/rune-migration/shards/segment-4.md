@@ -103,7 +103,7 @@
 - [x] T306 · windows/onboarding · 0.90d · windows/onboarding/useDetectedImportSource.ts
 - [x] T309 · windows/schema-diff · 1.30d · windows/schema-diff/SchemaDiffWindow.tsx · split
 - [x] T312 · lib/valuePresentation · 0.30d · lib/valuePresentation/valuePresentationSave.ts
-- [ ] T313 · hooks · 0.90d · hooks/useGridKeyboardNav.ts
+- [x] T313 · hooks · 0.90d · hooks/useGridKeyboardNav.ts
 - [x] T316 · commands · 0.90d · commands/history.ts
 - [ ] T320 · components/sql-editor · 2.00d · components/sql-editor/paste/multipleSelections.ts · split
 - [ ] T321 · windows/settings · 0.90d · windows/settings/LanguagePacksCard.tsx
