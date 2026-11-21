@@ -217,3 +217,73 @@ fn geometry_fits_both_sizes_in_both_themes() {
         }
     }
 }
+
+// ── T516 independent audit (appended; reuses this module's Scene) ────────
+
+/// React passes `title={t('query.snippetsTitle')}` as the toolbar button's
+/// tooltip (`SnippetMenuButton.tsx:59`). The port maps it to `.help(...)`; that
+/// exact text is untested by the coder suite.
+#[test]
+fn audit_trigger_tooltip_is_the_snippets_title() {
+    let rt = runtime(scene(SnippetMenuButtonVm::default(), true), DESIGN);
+    assert_eq!(
+        element(&rt, "editor-snippets-button").help.as_deref(),
+        Some(t("query.snippetsTitle")),
+        "React's title becomes the button help/tooltip"
+    );
+}
+
+/// React's `iconOnly` trigger keeps the name as aria-label while hiding the
+/// visible text (`SnippetMenuButton.tsx:24,58`). The port must keep the label on
+/// the button element even when icon-only.
+#[test]
+fn audit_icon_only_trigger_keeps_the_aria_label() {
+    let vm = SnippetMenuButtonVm {
+        icon_only: true,
+        ..SnippetMenuButtonVm::default()
+    };
+    let rt = runtime(scene(vm, true), DESIGN);
+    assert_eq!(
+        element(&rt, "editor-snippets-button").label.as_deref(),
+        Some(t("query.snippets")),
+        "icon-only still announces the snippet name"
+    );
+}
+
+/// React's menu comes from the app-wide native context menu: a menu whose items
+/// are clickable (`SnippetMenuButton.tsx:38-49`). The port models it as an
+/// inline `role=menu`/`role=menuitem` tree; those roles are the a11y channel and
+/// were not asserted.
+#[test]
+fn audit_menu_and_items_expose_menu_roles() {
+    let mut rt = runtime(scene(SnippetMenuButtonVm::default(), true), DESIGN);
+    click(&mut rt, "editor-snippets-button");
+    assert_eq!(element(&rt, "snippet-menu").role, "menu");
+    for item in builtin_snippets() {
+        let key = format!("snippet-{}", item.id);
+        assert_eq!(element(&rt, &key).role, "menuitem", "{key} is a menuitem");
+    }
+}
+
+/// With no injected host callback the menu still renders its items, but
+/// pressing one emits nothing (the `if let Some(on_action)` branch in `build`).
+#[test]
+fn audit_no_host_port_renders_items_but_emits_nothing() {
+    // Build directly with no callback — this module's `view()` always wires one.
+    fn no_host_view(s: &Scene, _cx: &mut Cx<Scene>) -> El {
+        build::<Scene>(&s.vm, None, s.dark)
+    }
+    let mut vm = SnippetMenuButtonVm::default();
+    vm.open = true;
+    let scene = scene(vm, true);
+    let dark = scene.dark;
+    let mut rt = Runtime::new(scene, no_host_view, DESIGN, Env { system_dark: dark, scale: 1.0 });
+    rt.frame(0.0);
+    assert!(has_key(&rt, "snippet-menu"));
+    assert!(has_key(&rt, "snippet-select-all"));
+    let (x, y) = rt.find("snippet-select-all").unwrap_or_else(|| panic!("item laid out"));
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    rt.frame(1.0 / 60.0);
+    assert!(rt.state.actions.borrow().is_empty(), "no host port means no emitted action");
+}
