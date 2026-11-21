@@ -164,6 +164,7 @@ mod sql_statement_range;
 mod sql_transaction_guard;
 mod startup_timer;
 mod surface_bg_cache;
+mod sync_taxonomy;
 mod tabs;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
@@ -866,6 +867,7 @@ pub use splash::{
     hide_splash_plan, run_startup_wait_task, HideSplashPlan, StartupSettlement, StartupWaitResult,
     HIDE_SPLASH_DELAY_MS, SPLASH_DOM_GAP, STARTUP_TASK_GAP,
 };
+pub use sync_taxonomy::normalize_driver_id;
 pub use sql_bind_params::{
     DEFAULT_ENABLE_AT, DEFAULT_ENABLE_DOLLAR_NAMED, DEFAULT_ENABLE_DOLLAR_POSITIONAL,
     DEFAULT_ENABLE_QUESTION, DEFAULT_ENABLE_TEMPLATE, ParamValue, SqlBindPayloadV2, SqlParam,
