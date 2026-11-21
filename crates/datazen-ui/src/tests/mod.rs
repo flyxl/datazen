@@ -56,6 +56,8 @@ mod process_list_view;
 mod query_editor_section;
 // T512: the execution-strategy toolbar select (options, check marks, host intent).
 mod execution_strategy_select;
+// T518: the pure query-execution gate state machine (decisions & transitions).
+mod query_execution_gate;
 // T512 independent audit: shared-enum order/title, menu roles, visible-rect
 // geometry of the open dropdown.
 mod execution_strategy_select_audit;
