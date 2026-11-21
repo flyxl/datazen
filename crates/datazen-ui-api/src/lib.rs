@@ -84,6 +84,7 @@ mod export_table_structure;
 mod extract_questions;
 mod fetch_relation_ddl;
 mod filter_db_types;
+mod filter_operators;
 mod filter_types;
 mod keyset_types;
 mod metadata;
@@ -440,6 +441,14 @@ pub use fetch_relation_ddl::{
     RelationDialectProvider, RichClipboardSteps,
 };
 pub use filter_db_types::{filter_db_types_by_query, DbTypeOption};
+pub use filter_operators::{
+    cell_types_for_operator, convert_filter_value, default_operator_for_column,
+    dialect_operators_by_cell_type, filter_operator_metas, like_case_insensitive_for_meta,
+    normalize_operator_for_column, operator_meta, operators_by_cell_type, operators_for_column,
+    operators_for_driver, supported_operators_for_meta, value_input_for, value_input_for_literal,
+    ALL_CELL_TYPES, ALL_OPERATORS, FilterDriverMeta, FilterOperatorGroup, FilterOperatorMeta,
+    FilterValue, FilterValueInputKind,
+};
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
     FilterOperator, SHARED_FILTER_OPERATORS,
