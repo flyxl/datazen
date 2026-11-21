@@ -63,7 +63,7 @@
 - [x] T185 · stores/tableData · 0.30d · stores/tableData/filterUtils.ts
 - [x] T187 · platform · 2.00d · platform/exportPlan.ts · split
 - [x] T189 · components/DataTable · 0.90d · components/DataTable/DataTableSelectionBar.tsx
-- [ ] T193 · components/ai · 0.90d · components/ai/AiSessionHistory.tsx
+- [x] T193 · components/ai · 0.90d · components/ai/AiSessionHistory.tsx
 - [ ] T195 · components · 1.30d · components/MenuBar.tsx · split
 - [x] T202 · windows/data-transfer · 0.90d · windows/data-transfer/SourceFilterEditor.tsx
 - [x] T203 · windows/data-sync · 0.90d · windows/data-sync/DataSyncOptionsStep.tsx
