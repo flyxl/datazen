@@ -65,7 +65,7 @@
 - [x] T521 · lib · 0.80d · lib/fkSelector.ts lib/globalTextSelection.ts
 - [x] T523 · lib · 0.80d · lib/gridClipboard.ts
 - [x] T525 · lib · 0.80d · lib/gridErrors.ts lib/gridEventGuards.ts
-- [ ] T527 · lib · 1.30d · lib/gridKeyboard.ts · split
+- [x] T527 · lib · 1.30d · lib/gridKeyboard.ts · split
 - [ ] T529 · lib · 0.80d · lib/gridPastePlan.ts
 - [ ] T531 · lib · 0.90d · lib/historyGroups.ts lib/hostErrorMessage.ts lib/hostLucideMap.ts
 - [ ] T533 · lib · 2.00d · lib/htmlSanitizer.ts · split
