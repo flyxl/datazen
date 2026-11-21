@@ -85,7 +85,7 @@
 - [x] T561 · lib · 1.30d · lib/migrationJobVerdict.ts · split
 - [x] T563 · lib · 0.60d · lib/migrationVerification.ts lib/migrationWindowPrefill.ts
 - [x] T565 · lib · 1.30d · lib/namedViews.ts · split
-- [ ] T567 · lib · 0.90d · lib/nativeContextMenu.ts lib/objectBrowserContextMenu.ts lib/objectFilter.ts
+- [x] T567 · lib · 0.90d · lib/nativeContextMenu.ts lib/objectBrowserContextMenu.ts lib/objectFilter.ts
 - [x] T569 · lib · 0.30d · lib/panelContextPath.ts
 - [x] T571 · lib · 0.90d · lib/pathPicker.ts
 - [ ] T573 · lib · 0.60d · lib/processListResult.ts lib/productFeatures.ts
