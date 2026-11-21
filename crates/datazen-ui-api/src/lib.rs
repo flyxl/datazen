@@ -50,6 +50,7 @@ mod relation_prediction;
 mod relative_time;
 mod run_to_chart;
 mod run_to_result;
+mod running_execution_close;
 mod scalar_cell_editors;
 mod selection_actions;
 mod stage_cell_value;
@@ -323,6 +324,16 @@ pub use relative_time::{
 };
 pub use run_to_chart::{ChartTransformResult, has_renderable_chart, widget_run_to_chart_data};
 pub use run_to_result::widget_run_to_statement_result;
+pub use running_execution_close::{
+    ask_now_resolution, deadline_from, effective_retry_ms, gate_change_effects, guard_decision,
+    guard_result, host_error_answer, initial_settle_state, is_pane_key_of_panel, no_gate_answer,
+    pane_id_of_pane_key, pane_key, pane_keys_of_panel, panel_id_of_pane_key, running_close_request,
+    running_panes_of, settle_running_panes_step, settled_once, stoppable_panes, AskResolution,
+    GateChangeEffects, GuardDecision, RunningCloseDecision, RunningExecutionRequest, RunningPane,
+    SettleOutcome, SettleState, DEFAULT_PANE_ID, PANE_SEPARATOR, RUNNING_CLOSE_POLL_MS,
+    RUNNING_CLOSE_RETRY_MS, RUNNING_CLOSE_TIMEOUT_MS, RUNNING_EXECUTION_CLOSE_GAP,
+    RUNNING_EXECUTION_CLOSE_SURFACE,
+};
 pub use scalar_cell_editors::{
     build_number_view, build_temporal_view, build_text_view, common_flags, CommonEditorFlags,
     FocusStrategy, NumberEditorView, ScalarEditorInput, TemporalEditorView, TemporalKindValue,
