@@ -72,7 +72,7 @@
 - [x] T535 · lib · 0.90d · lib/iconIds.ts lib/iconResolver.ts lib/importConnectionFile.ts
 - [x] T537 · lib · 2.00d · lib/importData.ts · split
 - [x] T539 · lib · 1.30d · lib/importExecution.ts · split
-- [ ] T541 · lib · 1.00d · lib/importMapping.ts lib/keymap.ts
+- [x] T541 · lib · 1.00d · lib/importMapping.ts lib/keymap.ts
 - [x] T543 · lib · 0.80d · lib/keysetPaging.ts
 - [ ] T545 · lib · 0.80d · lib/kvAiContext.ts lib/kvSlotState.ts
 - [ ] T547 · lib · 0.60d · lib/kvWorkspaceCapabilities.ts lib/kvWorkspaceSlots.ts
