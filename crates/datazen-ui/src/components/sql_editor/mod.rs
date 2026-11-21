@@ -69,6 +69,10 @@ pub(crate) mod create_paste_extensions;
 /// dedicated Escape leaving the multi-cursor state (S1's collapse to a
 /// bare main-head cursor, S0's refusal).
 pub(crate) mod multi_cursor_escape;
+/// T320: the multiple-selections compartment's binding inventory
+/// (the chords, the precedence tiers, the Mod-D guard, the
+/// rectangular-drag filter).
+pub(crate) mod multiple_selections;
 /// T302: the multi-cursor POINTER predicate (the platform chord
 /// CodeMirror's `clickAddsSelectionRange` override had dropped).
 pub(crate) mod multi_cursor_pointer;
