@@ -51,6 +51,7 @@ mod connection_view_registry;
 mod connection_views;
 mod context_items;
 mod context_menu_position;
+mod dangerous_sql;
 // `pub mod` — the crate's only public module: the T159 dashboard facade
 // keeps its display `DashboardWidget` here, but that root name is held
 // by the N13 workspace stub below (whose `datazen-ui` consumers are out
@@ -309,6 +310,12 @@ pub use dashboard_types::{
     WidgetRunStatus, DEFAULT_MONITOR_SETTINGS, DEFAULT_REFRESH, MIN_REFRESH_SEC,
     REFRESH_WARN_BELOW_SEC, clamp_refresh_sec, normalize_refresh_policy,
     should_warn_refresh_sec,
+};
+pub use dangerous_sql::{
+    classify_risk, is_dangerous_write_statement, normalize_fullwidth, scan_sql,
+    sql_contains_dangerous_write, SigKind, SigTok, SqlRiskAssessment, SqlRiskClassification,
+    SqlRiskFinding, SqlRiskFindingType, SqlStatementRange, SqlStatementRisk, SqlToken, SqlTokenKind,
+    DESTRUCTIVE_VERBS, FALSE_SQL_VALUES, MAIN_VERBS, READ_VERBS, WHERE_NEEDS_VERBS, WRITE_VERBS,
 };
 // The T188 filter vocabulary: the aggregate (`types/index`) re-exports
 // everything `types/filters.ts` declares, so the crate root carries the
