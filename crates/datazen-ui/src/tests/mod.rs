@@ -681,3 +681,6 @@ mod er_node_metrics;
 // T564: interactionState port (pins, hover neighbourhood/styling, label
 // fitting) over the shared ER graph model.
 mod er_interaction_state;
+// T566: layoutErGraph port (layered ranks/order/coordinates, grid fallback,
+// parallel-edge collapse, seeded fuzz, 500-table budget).
+mod er_layout_er_graph;

@@ -124,7 +124,7 @@
 - [ ] T560 · windows/connection · 0.90d · windows/connection/contentViewHelpers.ts
 - [ ] T562 · windows/connection · 2.00d · windows/connection/er/buildErGraph.ts · split
 - [x] T564 · windows/connection · 2.00d · windows/connection/er/interactionState.ts · split
-- [ ] T566 · windows/connection · 2.00d · windows/connection/er/layoutErGraph.ts · split
+- [x] T566 · windows/connection · 2.00d · windows/connection/er/layoutErGraph.ts · split
 - [x] T568 · windows/connection · 0.60d · windows/connection/er/nodeMetrics.ts windows/connection/er/relationStyle.ts
 - [ ] T570 · windows/connection · 1.30d · windows/connection/navigator/buildFlatRows.ts · split
 - [ ] T572 · windows/connection · 0.80d · windows/connection/navigator/treeRowAria.ts windows/connection/navigator/types.ts
