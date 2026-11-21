@@ -36,8 +36,48 @@ pub(crate) const TOGGLE_KEY: &str = "er-diagram-toggle-prediction";
 pub(crate) const PANEL_WIDTH: f32 = 224.0;
 const SWATCH_WIDTH: f32 = 24.0;
 const SWATCH_HEIGHT: f32 = 2.0;
-/// `ER_PREDICTED_DASH = '4 3'`.
-pub(crate) const PREDICTED_DASH: (f32, f32) = (4.0, 3.0);
+/// `ER_PREDICTED_DASH = '4 3'` as `(on, off)` points, derived from the
+/// relation-style constant the canvas edges are painted with (T568): the
+/// legend must not keep a second copy that can drift.
+pub(crate) const PREDICTED_DASH: (f32, f32) = dash_points(super::relation_style::ER_PREDICTED_DASH);
+
+/// Parse a `'on off'` dash pattern into points. A malformed pattern falls
+/// back to the canvas default rather than collapsing the swatch to nothing.
+const fn dash_points(pattern: &str) -> (f32, f32) {
+    let bytes = pattern.as_bytes();
+    let mut on: f32 = 4.0;
+    let mut off: f32 = 3.0;
+    let mut index = 0;
+    let mut seen_on = false;
+    let mut value: f32 = 0.0;
+    let mut any_digit = false;
+    // Two space-separated integers in a const fn: hand-rolled, no allocation.
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if byte.is_ascii_digit() {
+            value = value * 10.0 + (byte - b'0') as f32;
+            any_digit = true;
+        } else if byte == b' ' && any_digit {
+            if !seen_on {
+                on = value;
+                seen_on = true;
+            } else {
+                off = value;
+            }
+            value = 0.0;
+            any_digit = false;
+        }
+        index += 1;
+    }
+    if any_digit {
+        if !seen_on {
+            on = value;
+        } else {
+            off = value;
+        }
+    }
+    (on, off)
+}
 
 /// React `ErRelationLegendProps` minus the host callback.
 #[allow(dead_code)] // view VM; consumer: the ER canvas host (not wired).

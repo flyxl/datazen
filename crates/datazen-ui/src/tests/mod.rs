@@ -63,6 +63,19 @@ mod result_workspace_audit;
 // T530: date-value dialog + structure column table.
 mod set_value_date_dialog;
 mod structure_column_table;
+// T538: TableColumnFilter port (toggle/badge, rows, actions, search, geometry).
+mod table_column_filter;
+// T538 independent audit: helper branches, disabled state, React a11y/outside-close.
+mod table_column_filter_audit;
+// T532: StructureIndexTable + StructurePlanPreview ports (rows/flags/actions, states, geometry).
+mod structure_index_table;
+mod structure_plan_preview;
+// T532 independent audit: helper branches, capability gates, plan-preview states.
+mod structure_index_audit;
+// T536: the one-line table clipboard status (paste summary, problems, deadline).
+mod table_clipboard_status;
+// T542: the FK jump breadcrumb (segment labels, host actions, empty/truncated).
+mod table_fk_breadcrumb;
 // T524 independent audit: any-column not-contains, replace-all splicing and
 // non-contains operator planning, checked against React resultFindReplace.
 mod result_table_view_audit;
@@ -2065,3 +2078,20 @@ mod theme_toggle;
 // placeholder, the option words verbatim, the theme-stable key set
 // inside the minimum window, the resolver seam, the anchored geometry).
 mod theme_toggle_audit;
+
+// T534: StructureView port (column rows, badges, highlight, edit action, states, geometry).
+mod structure_view;
+// T568: nodeMetrics + relationStyle ports (size contract, stroke contract,
+// legend drift guard, rendering-variant pinning).
+mod er_node_metrics;
+// T564: interactionState port (pins, hover neighbourhood/styling, label
+// fitting) over the shared ER graph model.
+mod er_interaction_state;
+// T566: layoutErGraph port (layered ranks/order/coordinates, grid fallback,
+// parallel-edge collapse, seeded fuzz, 500-table budget).
+mod er_layout_er_graph;
+// T562: buildErGraph port (nodes/edges from schemas, focus mode, inferred
+// relations, collapse, handle routing, seeded collapse set).
+mod er_build_er_graph;
+// T540: TableFilterToolbar port (E2E keys, filter states, toggle/quick actions, geometry).
+mod table_filter_toolbar;

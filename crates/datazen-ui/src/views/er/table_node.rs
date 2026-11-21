@@ -27,33 +27,28 @@ use crate::ui::kit::kit;
 
 pub(crate) const ROOT_KEY: &str = "er-table-node";
 
-/// `nodeMetrics.ts` constants (leftover L1: share with the ported graph layout
-/// engine rather than keeping a second copy).
-pub(crate) const ER_NODE_WIDTH: f32 = 260.0;
-pub(crate) const ER_HEADER_HEIGHT: f32 = 36.0;
-pub(crate) const ER_COLUMN_ROW_HEIGHT: f32 = 24.0;
-pub(crate) const ER_COLLAPSED_FOOTER_HEIGHT: f32 = 24.0;
-pub(crate) const ER_NODE_BORDER: f32 = 1.0;
-pub(crate) const ER_AUTO_COLLAPSE_COLUMNS: usize = 30;
+/// `nodeMetrics.ts` constants, owned by the T568 port (`node_metrics.rs`);
+/// re-exported here so the T361 audits keep their import paths.
+pub(crate) use super::node_metrics::{
+    ER_AUTO_COLLAPSE_COLUMNS, ER_COLLAPSED_FOOTER_HEIGHT, ER_COLUMN_ROW_HEIGHT,
+    ER_HEADER_HEIGHT, ER_NODE_BORDER, ER_NODE_WIDTH,
+};
 
 pub(crate) fn er_node_body_height(column_count: usize) -> f32 {
-    column_count as f32 * ER_COLUMN_ROW_HEIGHT
+    super::node_metrics::er_node_body_height(column_count as i32)
 }
 
 pub(crate) fn er_column_row_center_y(index: usize) -> f32 {
     // React adds ER_NODE_BORDER here because its CSS border participates in
     // layout. Rune's border is drawn inside the box and adds no layout offset,
     // so applying that 1pt here would put handle dots one point too low.
+    // (node_metrics::er_column_row_center_y is the contract-faithful variant
+    // for the graph-side consumers; this is the rendering-side one.)
     ER_HEADER_HEIGHT + index as f32 * ER_COLUMN_ROW_HEIGHT + ER_COLUMN_ROW_HEIGHT / 2.0
 }
 
 pub(crate) fn er_node_height(column_count: usize, collapsed: bool) -> f32 {
-    let inner = if collapsed {
-        ER_HEADER_HEIGHT + ER_COLLAPSED_FOOTER_HEIGHT
-    } else {
-        ER_HEADER_HEIGHT + er_node_body_height(column_count)
-    };
-    inner + ER_NODE_BORDER * 2.0
+    super::node_metrics::er_node_height(column_count as i32, collapsed)
 }
 
 /// React `TableNodeData['columns'][i]`.

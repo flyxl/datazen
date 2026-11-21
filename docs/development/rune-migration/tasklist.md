@@ -548,17 +548,17 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T529 · lib · 0.80d · lib/gridPastePlan.ts
 - [x] T530 · windows/connection · 0.80d · windows/connection/SetValueDateDialog.tsx windows/connection/structure/StructureColumnTable.tsx
 - [ ] T531 · lib · 0.90d · lib/historyGroups.ts lib/hostErrorMessage.ts lib/hostLucideMap.ts
-- [ ] T532 · windows/connection · 0.80d · windows/connection/structure/StructureIndexTable.tsx windows/connection/structure/StructurePlanPreview.tsx
+- [x] T532 · windows/connection · 0.80d · windows/connection/structure/StructureIndexTable.tsx windows/connection/structure/StructurePlanPreview.tsx
 - [ ] T533 · lib · 2.00d · lib/htmlSanitizer.ts · split
-- [ ] T534 · windows/connection · 0.90d · windows/connection/StructureView.tsx
+- [x] T534 · windows/connection · 0.90d · windows/connection/StructureView.tsx
 - [ ] T535 · lib · 0.90d · lib/iconIds.ts lib/iconResolver.ts lib/importConnectionFile.ts
-- [ ] T536 · windows/connection · 0.30d · windows/connection/TableClipboardStatus.tsx
+- [x] T536 · windows/connection · 0.30d · windows/connection/TableClipboardStatus.tsx
 - [ ] T537 · lib · 2.00d · lib/importData.ts · split
-- [ ] T538 · windows/connection · 0.80d · windows/connection/TableColumnFilter.tsx
+- [x] T538 · windows/connection · 0.80d · windows/connection/TableColumnFilter.tsx
 - [ ] T539 · lib · 1.30d · lib/importExecution.ts · split
-- [ ] T540 · windows/connection · 0.50d · windows/connection/TableFilterToolbar.tsx
+- [x] T540 · windows/connection · 0.50d · windows/connection/TableFilterToolbar.tsx
 - [ ] T541 · lib · 1.00d · lib/importMapping.ts lib/keymap.ts
-- [ ] T542 · windows/connection · 0.90d · windows/connection/TableFkBreadcrumb.tsx
+- [x] T542 · windows/connection · 0.90d · windows/connection/TableFkBreadcrumb.tsx
 - [ ] T543 · lib · 0.80d · lib/keysetPaging.ts
 - [ ] T544 · windows/connection · 0.90d · windows/connection/TableFkErrorBanner.tsx windows/connection/TableLoadErrorState.tsx windows/connection/TableNoPrimaryKeyTip.tsx
 - [ ] T545 · lib · 0.80d · lib/kvAiContext.ts lib/kvSlotState.ts
@@ -578,13 +578,13 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T559 · lib · 0.90d · lib/migrationJobHydration.ts
 - [ ] T560 · windows/connection · 0.90d · windows/connection/contentViewHelpers.ts
 - [ ] T561 · lib · 1.30d · lib/migrationJobVerdict.ts · split
-- [ ] T562 · windows/connection · 2.00d · windows/connection/er/buildErGraph.ts · split
+- [x] T562 · windows/connection · 2.00d · windows/connection/er/buildErGraph.ts · split
 - [ ] T563 · lib · 0.60d · lib/migrationVerification.ts lib/migrationWindowPrefill.ts
-- [ ] T564 · windows/connection · 2.00d · windows/connection/er/interactionState.ts · split
+- [x] T564 · windows/connection · 2.00d · windows/connection/er/interactionState.ts · split
 - [ ] T565 · lib · 1.30d · lib/namedViews.ts · split
-- [ ] T566 · windows/connection · 2.00d · windows/connection/er/layoutErGraph.ts · split
+- [x] T566 · windows/connection · 2.00d · windows/connection/er/layoutErGraph.ts · split
 - [ ] T567 · lib · 0.90d · lib/nativeContextMenu.ts lib/objectBrowserContextMenu.ts lib/objectFilter.ts
-- [ ] T568 · windows/connection · 0.60d · windows/connection/er/nodeMetrics.ts windows/connection/er/relationStyle.ts
+- [x] T568 · windows/connection · 0.60d · windows/connection/er/nodeMetrics.ts windows/connection/er/relationStyle.ts
 - [ ] T569 · lib · 0.30d · lib/panelContextPath.ts
 - [ ] T570 · windows/connection · 1.30d · windows/connection/navigator/buildFlatRows.ts · split
 - [ ] T571 · lib · 0.90d · lib/pathPicker.ts

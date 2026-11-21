@@ -107,12 +107,12 @@
 - [x] T526 · windows/connection · 0.50d · windows/connection/result-workspace/ResultWorkspace.tsx
 - [x] T528 · windows/connection · 3.50d · windows/connection/ServerStatusView.tsx · split
 - [x] T530 · windows/connection · 0.80d · windows/connection/SetValueDateDialog.tsx windows/connection/structure/StructureColumnTable.tsx
-- [ ] T532 · windows/connection · 0.80d · windows/connection/structure/StructureIndexTable.tsx windows/connection/structure/StructurePlanPreview.tsx
-- [ ] T534 · windows/connection · 0.90d · windows/connection/StructureView.tsx
-- [ ] T536 · windows/connection · 0.30d · windows/connection/TableClipboardStatus.tsx
-- [ ] T538 · windows/connection · 0.80d · windows/connection/TableColumnFilter.tsx
-- [ ] T540 · windows/connection · 0.50d · windows/connection/TableFilterToolbar.tsx
-- [ ] T542 · windows/connection · 0.90d · windows/connection/TableFkBreadcrumb.tsx
+- [x] T532 · windows/connection · 0.80d · windows/connection/structure/StructureIndexTable.tsx windows/connection/structure/StructurePlanPreview.tsx
+- [x] T534 · windows/connection · 0.90d · windows/connection/StructureView.tsx
+- [x] T536 · windows/connection · 0.30d · windows/connection/TableClipboardStatus.tsx
+- [x] T538 · windows/connection · 0.80d · windows/connection/TableColumnFilter.tsx
+- [x] T540 · windows/connection · 0.50d · windows/connection/TableFilterToolbar.tsx
+- [x] T542 · windows/connection · 0.90d · windows/connection/TableFkBreadcrumb.tsx
 - [ ] T544 · windows/connection · 0.90d · windows/connection/TableFkErrorBanner.tsx windows/connection/TableLoadErrorState.tsx windows/connection/TableNoPrimaryKeyTip.tsx
 - [ ] T546 · windows/connection · 0.90d · windows/connection/TablePendingChangesBar.tsx
 - [ ] T548 · windows/connection · 0.60d · windows/connection/TableReadOnlyTip.tsx windows/connection/TableStatusBanners.tsx
@@ -122,10 +122,10 @@
 - [ ] T556 · windows/connection · 0.90d · windows/connection/WorkspaceModeSidebar.tsx
 - [ ] T558 · windows/connection · 0.90d · windows/connection/connectionPageUtils.ts
 - [ ] T560 · windows/connection · 0.90d · windows/connection/contentViewHelpers.ts
-- [ ] T562 · windows/connection · 2.00d · windows/connection/er/buildErGraph.ts · split
-- [ ] T564 · windows/connection · 2.00d · windows/connection/er/interactionState.ts · split
-- [ ] T566 · windows/connection · 2.00d · windows/connection/er/layoutErGraph.ts · split
-- [ ] T568 · windows/connection · 0.60d · windows/connection/er/nodeMetrics.ts windows/connection/er/relationStyle.ts
+- [x] T562 · windows/connection · 2.00d · windows/connection/er/buildErGraph.ts · split
+- [x] T564 · windows/connection · 2.00d · windows/connection/er/interactionState.ts · split
+- [x] T566 · windows/connection · 2.00d · windows/connection/er/layoutErGraph.ts · split
+- [x] T568 · windows/connection · 0.60d · windows/connection/er/nodeMetrics.ts windows/connection/er/relationStyle.ts
 - [ ] T570 · windows/connection · 1.30d · windows/connection/navigator/buildFlatRows.ts · split
 - [ ] T572 · windows/connection · 0.80d · windows/connection/navigator/treeRowAria.ts windows/connection/navigator/types.ts
 - [ ] T574 · windows/connection · 0.90d · windows/connection/navigator/useConnectionDrag.ts
