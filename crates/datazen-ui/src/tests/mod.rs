@@ -1765,3 +1765,18 @@ mod draft_row;
 // sweep, the tab-ring opt-out, a foreign editing target, a plan pointed
 // at an unwritten column).
 mod draft_row_audit;
+
+// T260: the EXPLAIN panel (coder tests: the rawTable derivation's reads
+// and fallbacks, the severity wire degradation, the raw pre and
+// raw-table branches with the count bar, the analyze button's mount
+// gate and its three-field request, the analyzing row, the error card,
+// the analysis sections with their severity cards and suggestion cards,
+// the unconfigured notice, and the plan-tree mount condition).
+mod explain_panel;
+
+// T260 independent audit: fresh vectors (the object-but-not-result-set
+// plans and the mixed-rows filter, the empty-list analysis rendering
+// only the summary, the severity washes read back through the kit, the
+// SQL-less suggestion, the asymmetric raw counts, the unconfigured
+// panel never analyzing, the window-wide geometry sweep).
+mod explain_panel_audit;
