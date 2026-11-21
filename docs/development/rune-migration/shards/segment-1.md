@@ -92,9 +92,9 @@
 - [x] T492 · windows/connection · 0.30d · windows/connection/PendingPlanDialog.tsx
 - [x] T495 · windows/connection · 1.30d · windows/connection/PrivilegeView.tsx · split
 - [x] T498 · windows/connection · 0.90d · windows/connection/ProcessListView.tsx
-- [ ] T501 · windows/connection · 0.30d · windows/connection/query/ExecutionStrategyAskModal.tsx
-- [ ] T504 · windows/connection · 0.90d · windows/connection/query/QueryBuilderHostAdapter.tsx
-- [ ] T506 · windows/connection · 1.30d · windows/connection/query/QueryEditorSection.tsx · split
+- [x] T501 · windows/connection · 0.30d · windows/connection/query/ExecutionStrategyAskModal.tsx
+- [x] T504 · windows/connection · 0.90d · windows/connection/query/QueryBuilderHostAdapter.tsx
+- [x] T506 · windows/connection · 1.30d · windows/connection/query/QueryEditorSection.tsx · split
 - [ ] T508 · windows/connection · 1.30d · windows/connection/query/QuerySidebarSection.tsx · split
 - [ ] T510 · windows/connection · 1.30d · windows/connection/query/QueryTransactionModals.tsx · split
 - [ ] T512 · windows/connection · 0.90d · windows/connection/query/toolbar/ExecutionStrategySelect.tsx
