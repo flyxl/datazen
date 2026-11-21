@@ -116,6 +116,7 @@ mod locale_sync;
 mod kv_slot_state;
 mod kv_workspace;
 mod load_batch_export_table;
+mod main_window_context_menu;
 mod metadata;
 mod platform_shared;
 mod relation_prediction;
@@ -634,6 +635,11 @@ pub use load_batch_export_table::{
     load_batch_export_table_data, rows_to_records, BatchDdlFetcher, BatchDdlRowExtractor,
     LoadBatchExportDeps, LoadBatchExportTableParams, RelationSchemaProvider, SchemaFetcher,
     TableDataFetcher, TableDataRequest, DEFAULT_MAX_ROWS, DEFAULT_PAGE_SIZE,
+};
+pub use main_window_context_menu::{
+    build_main_blank_context_menu_items, build_main_connection_context_menu_items,
+    build_main_group_context_menu_items, invoke as invoke_main_window, MainWindowAction,
+    MainWindowConnectionHandlers, MainWindowContextMenuLabels, MainWindowMenuItem, MoveTarget,
 };
 pub use metadata::{
     BatchFlush, CurrentCallContext, CurrentProvenanceContext, ExecutionTarget,
