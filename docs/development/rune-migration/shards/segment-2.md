@@ -127,7 +127,7 @@
 - [x] T639 · lib · 0.90d · lib/updateReminderSchedule.ts
 - [ ] T640 · lib · 1.30d · lib/valueSearch.ts · split
 - [ ] T641 · lib · 0.50d · lib/wappAssetOrigin.ts
-- [ ] T642 · lib · 1.30d · lib/wappBridge.ts · split
+- [x] T642 · lib · 1.30d · lib/wappBridge.ts · split
 - [ ] T643 · lib · 0.90d · lib/wappI18n.ts
 - [ ] T644 · lib · 0.30d · lib/windowKind.ts
 - [ ] T645 · lib · 0.90d · lib/windowManager.ts
