@@ -52,6 +52,11 @@ mod tree_status_dot;
 mod panel_tab_bar;
 // T498: the process-list panel (table rows, kill/refresh host actions, states).
 mod process_list_view;
+// T506: the query editor section (toolbar, qb-context rebind, strategy, geometry).
+mod query_editor_section;
+// T506 independent audit: rebind gate, strategy keys, toast/hint surfaces,
+// visible-rect geometry and a JSON-escaping probe for the qb context key.
+mod query_editor_section_audit;
 // T498 independent audit: cell styling, rendered→base pid mapping, kill guard
 // and visible-rect geometry.
 mod process_list_view_audit;
