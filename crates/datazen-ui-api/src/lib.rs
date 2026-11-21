@@ -108,6 +108,7 @@ mod import_data;
 mod import_execution;
 mod keyset_paging;
 mod keyset_types;
+mod kv_workspace;
 mod metadata;
 mod platform_shared;
 mod relation_prediction;
@@ -591,6 +592,11 @@ pub use keyset_paging::{
 };
 pub use keyset_types::{
     CursorValue, KeysetUnavailableReason, OrderColumn, PagePagingInfo, PagingMode,
+};
+pub use kv_workspace::{
+    capability_key_for_slot, get_kv_slot_component, has_kv_slot_capability, KvDriverMeta,
+    KvSlotComponent, KvSlotComponentProvider, KvSlotMetaProvider, KvSlotName,
+    KvWorkspaceCapabilities, KV_SLOT_NAMES,
 };
 pub use metadata::{
     BatchFlush, CurrentCallContext, CurrentProvenanceContext, ExecutionTarget,
