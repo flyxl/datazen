@@ -61,7 +61,7 @@
 - [x] T513 · lib · 0.80d · lib/filterOperators.ts
 - [x] T515 · lib · 0.50d · lib/fkNavigation.ts
 - [ ] T517 · lib · 1.30d · lib/fkNavigationActions.ts · split
-- [ ] T519 · lib · 1.30d · lib/fkReferencedBy.ts · split
+- [x] T519 · lib · 1.30d · lib/fkReferencedBy.ts · split
 - [ ] T521 · lib · 0.80d · lib/fkSelector.ts lib/globalTextSelection.ts
 - [ ] T523 · lib · 0.80d · lib/gridClipboard.ts
 - [ ] T525 · lib · 0.80d · lib/gridErrors.ts lib/gridEventGuards.ts
