@@ -26,6 +26,7 @@ mod connection_types;
 mod connection_views;
 mod context_items;
 mod data_sync_comparison;
+mod data_sync_endpoints;
 mod diff_detail;
 mod data_sync_bars;
 mod data_table_clipboard_dom;
@@ -269,6 +270,19 @@ pub use data_sync_comparison::{
     DATA_SYNC_COMPARISON_GAP, DATA_SYNC_COMPARISON_SURFACE, DATA_SYNC_DB_REQUIRED_KEY,
     DATA_SYNC_SAME_DB_KEY, DATA_SYNC_SELECT_BOTH_KEY, DATA_SYNC_TRANSFER_HINT_KEY,
     SYNC_CANCELLING_EXECUTION_KEY, SYNC_COMPARE_CANCELLED_KEY,
+};
+pub use data_sync_endpoints::{
+    apply_endpoint_change, build_conn_options, build_target_options, can_refresh_sessions,
+    clear_endpoint_selection, connect_failed_message, connection_label, is_experimental,
+    is_same_endpoint_identity, is_target_read_only, is_verified_migration_pair,
+    load_databases_failed_message, pick_default_schema, pick_prefill_database, pick_prefill_schema,
+    resolve_default_database, schema_load_allowed, session_failed_message, swap_scope,
+    unique_schemas_from_tables, ChangeEffect, ConnectionLike, ConnectionOption, DedicatedSideSession,
+    EndpointField, EndpointIdentity, EndpointPrefill, EndpointScope, PrefillSide, TargetOption,
+    CONNECTIONS_CHANGED_EVENT, CONNECTIONS_CLOSED_EVENT, CONNECT_FAILED_KEY,
+    DATA_SYNC_ENDPOINTS_GAP, DATA_SYNC_ENDPOINTS_SURFACE,
+    EXPERIMENTAL_PAIR_KEY as ENDPOINTS_EXPERIMENTAL_PAIR_KEY, LOAD_DATABASES_FAILED_KEY,
+    SESSION_FAILED_KEY, UNSUPPORTED_PAIR_KEY, VERIFIED_MIGRATION_TYPES,
 };
 pub use data_table_clipboard_dom::{
     bind_clipboard_dom, handle_copy, handle_paste, is_editable_target, resolve_copy_target,
