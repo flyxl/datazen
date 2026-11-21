@@ -139,6 +139,7 @@ mod query_stream;
 mod relation_identity;
 mod relation_prediction;
 mod relative_time;
+mod result_editability;
 mod resolve_ui_language;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
@@ -665,6 +666,12 @@ pub use query_execution_view_model::{
     reduce_query_execution_state, to_query_execution_view_model, CancelActionState,
     CancelCapability, QueryCancelState, QueryExecutionTransition, QueryExecutionViewModel,
     QueryPhase, QueryTerminalState, QueryExecState,
+};
+pub use result_editability::{
+    grid_read_only_message_key, is_column_editable, origin_channel_writable,
+    resolve_grid_editability, resolve_result_editability, resolve_result_write_back,
+    resolve_row_addressability, GridColumn, GridEditability, GridReadOnlyReason, IdentityColumn,
+    ResultTableRef, ServerEditability, RESULT_ORIGIN_WRITE_BACK_ENABLED,
 };
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
