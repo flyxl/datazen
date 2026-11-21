@@ -61,6 +61,7 @@ mod dangerous_sql;
 // names reach the outside world through the module path while everything
 // else re-exports at the root (see `dashboard_types`' docs).
 pub mod dashboard_types;
+mod database_types;
 mod dismiss_prefs;
 mod filter_types;
 mod keyset_types;
@@ -325,6 +326,15 @@ pub use dangerous_sql::{
 // The T188 filter vocabulary: the aggregate (`types/index`) re-exports
 // everything `types/filters.ts` declares, so the crate root carries the
 // same names.
+pub use database_types::{
+    default_escape_sql_value, escape_ident, format_connection_addr, get_db_icon, get_db_label,
+    get_driver_icon_map, get_driver_icon_parents, get_escape_sql_value,
+    normalize_index_database_field_default,
+    sort_db_types_by_popularity, ConnectionAddrInput, DatabaseRegistry, DatabaseTypeMeta, DbIconInfo,
+    PopularityValue,
+    EscapeSqlValue, SqlValueEscaper, SshTunnelAddr, DB_TYPE_POPULARITY_ORDER,
+    DEFAULT_MAX_DATABASE_INDEX,
+};
 pub use dismiss_prefs::{create_dismiss_prefs, DismissPrefs};
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
