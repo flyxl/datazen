@@ -58,6 +58,9 @@ mod query_editor_section;
 mod execution_strategy_select;
 // T518: the pure query-execution gate state machine (decisions & transitions).
 mod query_execution_gate;
+// T518 independent audit: finding copy on plain mutations, Ask→entire mode,
+// and Postgres quote guard restricted to the targeted statement.
+mod query_execution_gate_audit;
 // T512 independent audit: shared-enum order/title, menu roles, visible-rect
 // geometry of the open dropdown.
 mod execution_strategy_select_audit;
