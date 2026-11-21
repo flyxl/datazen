@@ -109,7 +109,7 @@
 - [x] T321 · windows/settings · 0.90d · windows/settings/LanguagePacksCard.tsx
 - [x] T323 · windows/onboarding · 0.80d · windows/onboarding/wizardState.ts windows/schema-diff/schemaDiffLimitationKeys.ts
 - [x] T325 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffWindowJobSection.tsx
-- [ ] T328 · hooks · 1.30d · hooks/useGridSelection.ts · split
+- [x] T328 · hooks · 1.30d · hooks/useGridSelection.ts · split
 - [x] T331 · commands · 0.90d · commands/languagePacks.ts
 - [ ] T335 · components/sql-editor · 2.00d · components/sql-editor/proCompartments.ts · split
 - [ ] T336 · windows/settings · 1.30d · windows/settings/McpClientSection.tsx · split
