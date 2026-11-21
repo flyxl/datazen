@@ -524,11 +524,11 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T505 · lib · 0.50d · lib/extractSql.ts
 - [x] T506 · windows/connection · 1.30d · windows/connection/query/QueryEditorSection.tsx · split
 - [ ] T507 · lib · 0.90d · lib/fetchRelationDdl.ts
-- [ ] T508 · windows/connection · 1.30d · windows/connection/query/QuerySidebarSection.tsx · split
+- [x] T508 · windows/connection · 1.30d · windows/connection/query/QuerySidebarSection.tsx · split
 - [ ] T509 · lib · 0.30d · lib/filterDbTypes.ts
-- [ ] T510 · windows/connection · 1.30d · windows/connection/query/QueryTransactionModals.tsx · split
+- [x] T510 · windows/connection · 1.30d · windows/connection/query/QueryTransactionModals.tsx · split
 - [ ] T511 · lib · 0.80d · lib/filterExpression.ts
-- [ ] T512 · windows/connection · 0.90d · windows/connection/query/toolbar/ExecutionStrategySelect.tsx
+- [x] T512 · windows/connection · 0.90d · windows/connection/query/toolbar/ExecutionStrategySelect.tsx
 - [ ] T513 · lib · 0.80d · lib/filterOperators.ts
 - [ ] T514 · windows/connection · 0.90d · windows/connection/query/toolbar/RefreshCompletionButton.tsx
 - [ ] T515 · lib · 0.50d · lib/fkNavigation.ts
