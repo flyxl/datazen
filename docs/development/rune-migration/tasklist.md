@@ -443,7 +443,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T424 · commands · 0.90d · commands/transferJobs.ts
 - [ ] T425 · components/DataTable · 0.90d · components/DataTable/useDataTableClipboardDom.ts
 - [ ] T426 · windows/settings · 0.90d · windows/settings/SqlSnippetsCard.tsx
-- [ ] T427 · windows/connection · 0.50d · windows/connection/home/RecentQueriesList.tsx
+- [x] T427 · windows/connection · 0.50d · windows/connection/home/RecentQueriesList.tsx
 - [ ] T428 · windows/data-sync · 0.90d · windows/data-sync/selectionScope.ts
 - [ ] T429 · lib · 0.30d · lib/createDismissPrefs.ts
 - [ ] T430 · hooks · 0.90d · hooks/useThemeSync.ts
@@ -451,61 +451,61 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T432 · commands · 0.90d · commands/tunnel.ts
 - [ ] T433 · components/DataTable · 2.40d · components/DataTable/useDataTableContextMenu.ts · split
 - [ ] T434 · windows/settings · 0.90d · windows/settings/TableDataSettingsSection.tsx
-- [ ] T435 · windows/connection · 0.90d · windows/connection/home/ShortcutFooter.tsx
+- [x] T435 · windows/connection · 0.90d · windows/connection/home/ShortcutFooter.tsx
 - [ ] T436 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncComparison.ts · split
 - [ ] T437 · lib · 0.90d · lib/crossWindowBus.ts
 - [ ] T438 · hooks · 1.30d · hooks/useTransferJobRun.ts · split
 - [ ] T439 · stores · 0.30d · stores/schemaStoreHelpers.ts
 - [ ] T440 · commands · 0.90d · commands/wapps.ts
 - [ ] T441 · windows/settings · 0.90d · windows/settings/TunnelDeleteDialog.tsx
-- [ ] T442 · windows/connection · 3.70d · windows/connection/ImportDialog.tsx · split
+- [x] T442 · windows/connection · 3.70d · windows/connection/ImportDialog.tsx · split
 - [ ] T443 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncEndpoints.ts · split
 - [ ] T444 · lib · 0.80d · lib/dangerousSql.ts
 - [ ] T445 · hooks · 0.90d · hooks/useValuePresentation.ts
 - [ ] T446 · stores · 0.90d · stores/schemaStoreSelectors.ts
 - [ ] T447 · windows/settings · 0.90d · windows/settings/TunnelEditDialog.tsx
-- [ ] T448 · windows/connection · 1.30d · windows/connection/IndexesView.tsx · split
+- [x] T448 · windows/connection · 1.30d · windows/connection/IndexesView.tsx · split
 - [ ] T449 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncExecution.ts · split
 - [ ] T450 · lib · 0.50d · lib/databaseTypes.ts
 - [ ] T451 · hooks · 0.90d · hooks/useValuePresentationSnapshot.ts
 - [ ] T452 · stores · 0.30d · stores/schemaStoreState.ts
 - [ ] T453 · windows/settings · 0.90d · windows/settings/TunnelSettingsSection.tsx
-- [ ] T454 · windows/connection · 1.30d · windows/connection/navigator/DatabaseValueSearchDialog.tsx · split
+- [x] T454 · windows/connection · 1.30d · windows/connection/navigator/DatabaseValueSearchDialog.tsx · split
 - [ ] T455 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncExplain.ts
 - [ ] T456 · lib · 2.00d · lib/dataFetcher.ts · split
 - [ ] T457 · hooks · 2.00d · hooks/useVirtualTable.ts · split
 - [ ] T458 · stores · 1.30d · stores/settingsStore.ts · split
 - [ ] T459 · windows/settings · 0.90d · windows/settings/TunnelTestDialog.tsx
-- [ ] T460 · windows/connection · 1.00d · windows/connection/navigator/GlobalObjectSearch.tsx windows/connection/navigator/NavigatorDialogs.tsx
+- [x] T460 · windows/connection · 1.00d · windows/connection/navigator/GlobalObjectSearch.tsx windows/connection/navigator/NavigatorDialogs.tsx
 - [ ] T461 · windows/data-sync · 0.30d · windows/data-sync/useDataSyncFeedback.ts
 - [ ] T462 · lib · 3.30d · lib/dataTableContextMenu.ts · split
 - [ ] T463 · stores · 1.30d · stores/tableDataStore.ts · split
 - [ ] T464 · windows/settings · 0.90d · windows/settings/UpdateSection.tsx
-- [ ] T465 · windows/connection · 0.50d · windows/connection/navigator/NavigatorToolbar.tsx
+- [x] T465 · windows/connection · 0.50d · windows/connection/navigator/NavigatorToolbar.tsx
 - [ ] T466 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncJobLifecycle.ts
 - [ ] T467 · lib · 0.90d · lib/dedicatedDbSession.ts
 - [ ] T468 · stores · 0.90d · stores/tunnelStore.ts
 - [ ] T469 · windows/settings · 0.80d · windows/settings/ValuePresentationRuleEditor.tsx
-- [ ] T470 · windows/connection · 1.30d · windows/connection/navigator/NavigatorTreeRow.tsx · split
+- [x] T470 · windows/connection · 1.30d · windows/connection/navigator/NavigatorTreeRow.tsx · split
 - [ ] T471 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncOptions.ts
 - [ ] T472 · lib · 0.90d · lib/defaultSort.ts lib/docsUrls.ts lib/documentScrollLock.ts
 - [ ] T473 · stores · 0.90d · stores/uiStore.ts
 - [ ] T474 · windows/settings · 1.30d · windows/settings/ValuePresentationSettingsSection.tsx · split
-- [ ] T475 · windows/connection · 0.90d · windows/connection/navigator/treeStatusDot.tsx
+- [x] T475 · windows/connection · 0.90d · windows/connection/navigator/treeStatusDot.tsx
 - [ ] T476 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncProfiles.ts · split
 - [ ] T477 · lib · 0.90d · lib/driverCapabilities.ts
 - [ ] T478 · stores · 0.90d · stores/updateReminderStore.ts
 - [ ] T479 · windows/settings · 1.30d · windows/settings/ai/useModelProfileDraft.ts · split
-- [ ] T480 · windows/connection · 0.90d · windows/connection/ObjectBrowser.tsx
+- [x] T480 · windows/connection · 0.90d · windows/connection/ObjectBrowser.tsx
 - [ ] T481 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncRefs.ts
 - [ ] T482 · lib · 0.60d · lib/driverCommandIds.ts lib/endpointIdentity.ts
 - [ ] T483 · stores · 0.90d · stores/wappStore.ts
 - [ ] T484 · windows/settings · 0.90d · windows/settings/settingsSections.ts windows/wapps/permissionLabels.ts windows/workflow/draftBridge.ts
-- [ ] T485 · windows/connection · 1.30d · windows/connection/PanelContentRenderer.tsx · split
+- [x] T485 · windows/connection · 1.30d · windows/connection/PanelContentRenderer.tsx · split
 - [ ] T486 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncRunState.ts
 - [ ] T487 · lib · 0.80d · lib/ensureNamespace.ts lib/erNodeContextMenu.ts
 - [ ] T488 · stores · 0.60d · stores/workspacePanelStateStore.ts stores/workspaceTabsStore.ts
-- [ ] T489 · windows/connection · 0.90d · windows/connection/PanelTabBar.tsx
+- [x] T489 · windows/connection · 0.90d · windows/connection/PanelTabBar.tsx
 - [ ] T490 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncSelection.ts · split
 - [ ] T491 · lib · 0.60d · lib/errors.ts lib/exportCapability.ts
 - [ ] T492 · windows/connection · 0.30d · windows/connection/PendingPlanDialog.tsx

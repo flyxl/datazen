@@ -39,6 +39,29 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+### Wave23 阈值合流 push（2026-11-21）
+
+- 触发：Wave 22 关闭时合计 ahead 92（seg1 11+seg2 31+seg3 26+seg4 24，四段全有）> 30。
+- 4 个真 merge commit：`23613d1a4`(seg1, de4c48b4b) → `0f236f0e7`(seg2, 6637c94b0) → `ff36390d9`(seg3, 5be1f3500) → `456ab407a`(seg4, 7e664274c)；父分支 `7de5c34a1 → 456ab407a`（96 commits，fast-forward）。
+- 零冲突（全加性）；三 crate check 全 PASS；gate 仍本机 ld `arm64_b26` 分支范围超限（~900MB __TEXT），按已授权模式接受风险 push。无遗留孤儿，未删 target（磁盘充足）。
+- **push 后残余 ahead = 0**——四段全部合入，父分支与各段 tip 对齐。
+
+### Wave22 阈值合流 push（2026-11-21）
+
+- 触发：Wave 21 关闭时合计 ahead 49（seg1 11+seg3 18+seg4 20，seg2=0）> 30。
+- 3 个真 merge commit：`b1e45c409`(seg1, 57ddc9da6) → `235096ec0`(seg3, 2a0dbf04e) → `c260ed859`(seg4, f1834779e)；父分支 `b8c97c173 → c260ed859`（52 commits，fast-forward）。
+- 冲突：仅 tests/mod.rs 一处（HEAD 的 generated_driver_surface/index_surface/scatter_chart_renderer + seg4 的 use_grid_clipboard，去重，无断言改动）。三 crate check 全 PASS。
+- gate 本机工具链困局加剧：cc wrapper `-no_compact_unwind` 下测试二进制这次**链接成功**但运行期 `fatal runtime error: failed to initiate panic`（该 flag 破坏 Rust panic unwinding）；ld-classic 则仍 arm64 分支范围超限。两种配置都无法给出可信 gate 结果——纯 toolchain 限制，非代码。按已授权模式接受风险 push。
+- subagent 清理了旧 merge target 目录释放约 83GB（磁盘曾 97% 满），未碰任何源码/其它 worktree。当前磁盘 77Gi 空闲。
+- push 后残余合计 81（seg2 31+seg3 26+seg4 24）——各段在合流期间又推了一批；下个 wave 关闭时按阈值继续合。
+
+### Wave21 阈值合流 push（2026-11-21）
+
+- 触发：Wave 20 关闭时合计 ahead 43（seg1 26+seg2 7+seg4 10，seg3=0）> 30 阈值。
+- 3 个真 merge commit：`4777b13bd`(seg1, 41dea64af) → `566e533d2`(seg2, aff5295a8) → `2b9e5a907`(seg4, c00eb860e)；seg3 ahead=0 跳过。父分支 `af0da69ec → 2b9e5a907`（46 commits，fast-forward）。
+- 零冲突（新提交为加性）；三 crate check 全 PASS；gate 仍是本机 ld `arm64_b26` 分支范围超限（链接期失败，非代码），按已授权模式接受风险 push。无遗留孤儿进程。
+- push 后残余合计 10（seg4），低于阈值。
+
 ### 第二段合流 push（2026-11-20，用户设阈值规则后首轮）
 
 - 用户规则：**每个 seg1 wave 完成后检查合计 ahead，>30 commits 才合**。Wave 19 关闭时合计 96（seg1 14+seg2 13+seg3 3+seg4 32+后续增量）→ 触发合流。

@@ -89,67 +89,67 @@
 - [x] T268 · windows/onboarding · 2.00d · windows/onboarding/onboardingGate.ts · split
 - [x] T271 · windows/schema-diff · 0.30d · windows/schema-diff/SchemaDiffTableListPanel.tsx
 - [x] T274 · lib/valuePresentation · 0.80d · lib/valuePresentation/timestampFormat.ts
-- [ ] T275 · hooks · 0.30d · hooks/useFkNavigationShortcuts.ts
-- [ ] T279 · commands · 0.30d · commands/driver.ts
-- [ ] T283 · components/sql-editor · 2.00d · components/sql-editor/paste/multiCursorEscape.ts · split
-- [ ] T285 · windows/settings · 0.90d · windows/settings/InstallLanguagePackDialog.tsx
+- [x] T275 · hooks · 0.30d · hooks/useFkNavigationShortcuts.ts
+- [x] T279 · commands · 0.30d · commands/driver.ts
+- [x] T283 · components/sql-editor · 2.00d · components/sql-editor/paste/multiCursorEscape.ts · split
+- [x] T285 · windows/settings · 0.90d · windows/settings/InstallLanguagePackDialog.tsx
 - [x] T287 · windows/onboarding · 0.30d · windows/onboarding/onboardingLayout.ts
-- [ ] T290 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffUnifiedObjectsPicker.tsx
+- [x] T290 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffUnifiedObjectsPicker.tsx
 - [x] T293 · lib/valuePresentation · 0.80d · lib/valuePresentation/valuePresentationRules.ts
-- [ ] T294 · hooks · 1.30d · hooks/useGridClipboard.ts · split
-- [ ] T298 · commands · 2.00d · commands/file.ts · split
-- [ ] T302 · components/sql-editor · 2.00d · components/sql-editor/paste/multiCursorPointer.ts · split
-- [ ] T304 · windows/settings · 0.30d · windows/settings/JsonSchemaSettingsForm.tsx
+- [x] T294 · hooks · 1.30d · hooks/useGridClipboard.ts · split
+- [x] T298 · commands · 2.00d · commands/file.ts · split
+- [x] T302 · components/sql-editor · 2.00d · components/sql-editor/paste/multiCursorPointer.ts · split
+- [x] T304 · windows/settings · 0.30d · windows/settings/JsonSchemaSettingsForm.tsx
 - [x] T306 · windows/onboarding · 0.90d · windows/onboarding/useDetectedImportSource.ts
 - [ ] T309 · windows/schema-diff · 1.30d · windows/schema-diff/SchemaDiffWindow.tsx · split
 - [x] T312 · lib/valuePresentation · 0.30d · lib/valuePresentation/valuePresentationSave.ts
 - [ ] T313 · hooks · 0.90d · hooks/useGridKeyboardNav.ts
-- [ ] T316 · commands · 0.90d · commands/history.ts
+- [x] T316 · commands · 0.90d · commands/history.ts
 - [ ] T320 · components/sql-editor · 2.00d · components/sql-editor/paste/multipleSelections.ts · split
 - [ ] T321 · windows/settings · 0.90d · windows/settings/LanguagePacksCard.tsx
 - [x] T323 · windows/onboarding · 0.80d · windows/onboarding/wizardState.ts windows/schema-diff/schemaDiffLimitationKeys.ts
-- [ ] T325 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffWindowJobSection.tsx
+- [x] T325 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffWindowJobSection.tsx
 - [ ] T328 · hooks · 1.30d · hooks/useGridSelection.ts · split
-- [ ] T331 · commands · 0.90d · commands/languagePacks.ts
+- [x] T331 · commands · 0.90d · commands/languagePacks.ts
 - [ ] T335 · components/sql-editor · 2.00d · components/sql-editor/proCompartments.ts · split
 - [ ] T336 · windows/settings · 1.30d · windows/settings/McpClientSection.tsx · split
-- [ ] T339 · windows/schema-diff · 0.60d · windows/schema-diff/SchemaDiffWindowNavigation.tsx windows/schema-diff/SchemaDiffWizardProgress.tsx
-- [ ] T341 · hooks · 0.60d · hooks/useI18n.ts hooks/useKeyboardShortcuts.ts
-- [ ] T344 · commands · 0.30d · commands/namedViews.ts
-- [ ] T347 · components/sql-editor · 0.60d · components/sql-editor/snippets/builtinSnippets.ts components/sql-editor/snippets/index.ts
+- [x] T339 · windows/schema-diff · 0.60d · windows/schema-diff/SchemaDiffWindowNavigation.tsx windows/schema-diff/SchemaDiffWizardProgress.tsx
+- [x] T341 · hooks · 0.60d · hooks/useI18n.ts hooks/useKeyboardShortcuts.ts
+- [x] T344 · commands · 0.30d · commands/namedViews.ts
+- [x] T347 · components/sql-editor · 0.60d · components/sql-editor/snippets/builtinSnippets.ts components/sql-editor/snippets/index.ts
 - [ ] T348 · windows/settings · 1.30d · windows/settings/McpSettingsSection.tsx · split
 - [x] T351 · windows/schema-diff · 0.90d · windows/schema-diff/schemaDiffObjectDiscovery.ts
 - [ ] T353 · hooks · 0.90d · hooks/useKvSlotSelectedKey.ts
 - [ ] T356 · commands · 0.90d · commands/query.ts
-- [ ] T359 · components/sql-editor · 2.00d · components/sql-editor/snippets/snippetCompletionSource.ts · split
+- [x] T359 · components/sql-editor · 2.00d · components/sql-editor/snippets/snippetCompletionSource.ts · split
 - [ ] T360 · windows/settings · 1.30d · windows/settings/MemorySection.tsx · split
 - [x] T363 · windows/schema-diff · 0.90d · windows/schema-diff/schemaDiffObjectIdentity.ts
 - [ ] T365 · hooks · 0.90d · hooks/useLocaleDomains.ts
 - [ ] T368 · commands · 0.90d · commands/sample.ts
-- [ ] T370 · components/sql-editor · 0.30d · components/sql-editor/snippets/types.ts
+- [x] T370 · components/sql-editor · 0.30d · components/sql-editor/snippets/types.ts
 - [ ] T371 · windows/settings · 0.90d · windows/settings/PromptSettingsSection.tsx
 - [x] T374 · windows/schema-diff · 0.60d · windows/schema-diff/schemaDiffTableNames.ts windows/schema-diff/useSchemaDiffClipboardFeedback.ts
-- [ ] T376 · hooks · 0.30d · hooks/useMigrationJobHydration.ts
+- [x] T376 · hooks · 0.30d · hooks/useMigrationJobHydration.ts
 - [x] T379 · commands · 0.90d · commands/schemaDiff.ts
-- [ ] T381 · windows/settings · 0.30d · windows/settings/SettingHint.tsx
-- [ ] T384 · windows/schema-diff · 1.30d · windows/schema-diff/useSchemaDiffEndpoints.ts · split
+- [x] T381 · windows/settings · 0.30d · windows/settings/SettingHint.tsx
+- [x] T384 · windows/schema-diff · 1.30d · windows/schema-diff/useSchemaDiffEndpoints.ts · split
 - [ ] T386 · hooks · 0.90d · hooks/usePlatform.ts
 - [ ] T388 · commands · 0.90d · commands/settings.ts
 - [ ] T390 · windows/settings · 1.30d · windows/settings/SettingsContent.tsx · split
 - [x] T393 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffJobLifecycle.ts
 - [ ] T395 · hooks · 0.90d · hooks/useQueryExec.ts
-- [ ] T397 · commands · 0.30d · commands/structure.ts
-- [ ] T399 · windows/settings · 0.30d · windows/settings/settingsUi.tsx
-- [ ] T402 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffJobRestore.ts
+- [x] T397 · commands · 0.30d · commands/structure.ts
+- [x] T399 · windows/settings · 0.30d · windows/settings/settingsUi.tsx
+- [x] T402 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffJobRestore.ts
 - [ ] T404 · hooks · 0.80d · hooks/useResizable.ts hooks/useSettings.ts
 - [ ] T406 · commands · 1.30d · commands/sync.ts · split
 - [ ] T408 · windows/settings · 0.90d · windows/settings/SkillsSection.tsx
-- [ ] T411 · windows/schema-diff · 1.30d · windows/schema-diff/useSchemaDiffSavedSetups.ts · split
+- [x] T411 · windows/schema-diff · 1.30d · windows/schema-diff/useSchemaDiffSavedSetups.ts · split
 - [ ] T413 · hooks · 0.90d · hooks/useSettingsSync.ts
 - [ ] T415 · commands · 0.90d · commands/transfer.ts
 - [ ] T417 · windows/settings · 0.50d · windows/settings/SnippetEditDialog.tsx
-- [ ] T420 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffUnifiedObjects.ts
-- [ ] T422 · hooks · 0.30d · hooks/useTableForeignKeys.ts
+- [x] T420 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffUnifiedObjects.ts
+- [x] T422 · hooks · 0.30d · hooks/useTableForeignKeys.ts
 - [ ] T424 · commands · 0.90d · commands/transferJobs.ts
 - [ ] T426 · windows/settings · 0.90d · windows/settings/SqlSnippetsCard.tsx
 - [ ] T430 · hooks · 0.90d · hooks/useThemeSync.ts

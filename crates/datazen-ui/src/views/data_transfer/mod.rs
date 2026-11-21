@@ -27,6 +27,8 @@ pub(crate) mod recordset_editor;
 pub(crate) mod source_filter_editor;
 pub(crate) mod transfer_execute_confirm_dialog;
 pub(crate) mod transfer_job_run;
+pub(crate) mod transfer_limitation_keys;
+pub(crate) mod transfer_pairing_note;
 pub(crate) mod transfer_mapping_view;
 pub(crate) mod transfer_pairing_vm;
 

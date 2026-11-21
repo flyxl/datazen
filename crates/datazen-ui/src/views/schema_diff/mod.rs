@@ -25,6 +25,9 @@ pub(crate) mod schema_diff_saved_setup_dialogs;
 // T250: the wizard's two selection steps (endpoints bar + objects
 // step over the unified picker seam).
 pub(crate) mod schema_diff_selection_steps;
+// T290: the unified non-table object picker (two side lists grouped by
+// kind, the cross-dialect lock, the retry/clear escapes).
+pub(crate) mod schema_diff_unified_objects_picker;
 // T075: the wizard's per-step execution surfaces
 // (SchemaDiffExecutionPanels.tsx: compare row, plan step, deploy step).
 pub(crate) mod schema_diff_execution_panels;
@@ -37,3 +40,28 @@ pub(crate) mod schema_diff_job_status_panel;
 // the schemaDiffTableNames.ts full port rides in its own module).
 pub(crate) mod use_schema_diff_clipboard_feedback;
 pub(crate) mod schema_diff_table_names;
+// T339: the wizard's step rail (SchemaDiffWizardProgress.tsx: the
+// step type, the two step lists, the three-tone progress band) and
+// the bottom navigation bar (SchemaDiffWindowNavigation.tsx: Back +
+// the Deploy/Next branch).
+pub(crate) mod schema_diff_wizard_progress;
+pub(crate) mod schema_diff_window_navigation;
+// T420: the unified (non-table) object catalogs (the six-kind walks,
+// the opt-in selection over identity keys, the lifecycle evidence).
+pub(crate) mod use_schema_diff_unified_objects;
+// T402: the wizard's job-result restore (history stays separate;
+// only a locally-submitted job's deploy result is adopted).
+pub(crate) mod use_schema_diff_job_restore;
+// T325: the window's job section (the status panel + the window
+// error strip).
+pub(crate) mod schema_diff_window_job_section;
+// T384: the wizard's endpoint state (connections, the two sides, the
+// discovery owner gates, the catalog reads, swap/validate).
+pub(crate) mod use_schema_diff_endpoints;
+/// `lib/endpointIdentity.ts` + `lib/migrationWindowPrefill.ts` +
+/// data-sync `pickDefaultSchema` + the §13 error-code table, carried
+/// for the endpoints port (T384) until their own ledger tasks land.
+pub(crate) mod schema_diff_endpoint_helpers;
+// T411: the saved setups (profile save/load/delete, the v2 config
+// import/export, the endpoint-preservation rule).
+pub(crate) mod use_schema_diff_saved_setups;

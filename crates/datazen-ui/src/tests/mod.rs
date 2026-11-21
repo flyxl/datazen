@@ -36,6 +36,28 @@ mod er_diagram_view_audit;
 // T418: the standalone HomeHero + McpPromoBar ports (keys, counts, real copy
 // wake deadline and two-window/two-theme geometry).
 mod home_hero_promo;
+// T442: the ImportDialog wizard port (mapping plan, keys, host actions, slot
+// composition and two-window/two-theme geometry).
+mod import_dialog;
+// T460: GlobalObjectSearch + NavigatorDialogs ports (search journey, host
+// actions, confirm children and two-window/two-theme geometry).
+mod global_object_search;
+// T475: the navigator status pip (colour/aria mapping, idle no-op, geometry).
+mod tree_status_dot;
+// T489: the panel tab strip (React keys, roving focus, host actions, 48pt header).
+mod panel_tab_bar;
+// T489 independent audit: context menu, label edges, active underline, locale
+// tablist label and visible-rect geometry of the pinned strip.
+mod panel_tab_bar_audit;
+// T475 independent audit: help tooltip, full-round radius, exact parsing and
+// visible-rect containment of every drawn pip.
+mod tree_status_dot_audit;
+// T460 independent audit: result cap, sort, match reason, empty-old rename and
+// visible-rect geometry.
+mod global_object_search_audit;
+// T442 independent audit: running footer, Start action, sample, mapped pairs,
+// Select write-back and visible-rect geometry across all phases.
+mod import_dialog_audit;
 // T418 independent audit: host command copy, re-time, keyed marker, badge cap,
 // exact 2000ms wake, visible-rect geometry and exact copy locale keys.
 mod home_hero_promo_audit;
@@ -125,6 +147,21 @@ mod create_paste_extensions_audit;
 // T265: the driver settings section (merge, the saved window, the
 // entry arms), audited against the React body.
 mod driver_settings_section_audit;
+// T275: the FK navigation keyboard (the guarded chord decision),
+// audited against the handler body.
+mod use_fk_navigation_shortcuts_audit;
+// T279: the driver command gateway (list/execute/stream wire shapes),
+// audited against the driver-sdk source.
+mod commands_driver_audit;
+// T283: the multi-cursor Escape decision (S1's bare collapse, S0's
+// refusal), audited against the command body.
+mod multi_cursor_escape_audit;
+// T285: the install-language-pack dialog (pick → review → install),
+// audited against InstallLanguagePackDialog.test.tsx.
+mod install_language_pack_dialog_audit;
+// T290: the unified non-table object picker (kind blocks, the
+// cross-dialect lock, the escapes), audited against the React body.
+mod schema_diff_unified_objects_picker_audit;
 // T086: the useAiEditorGrant hook + targetClaim seam, audited
 // against the React sources with an injected clock.
 mod ai_editor_grant_hook_audit;
@@ -620,10 +657,29 @@ mod batch_export_audit;
 // T016 fix retest: independent D1/D2 verification.
 mod batch_export_retest;
 
+// T435: ShortcutFooter port (keymap presets/custom, display format, wrapping geometry).
+mod shortcut_footer;
+// T435 independent audit: value unions, F-key display, per-preset kbd, geometry.
+mod shortcut_audit;
 // T409: ConnectionCardList port (cards, sorting/filter, paging, host ports, geometry).
 mod connection_card_list;
 // T409 independent audit: engine chip, connecting button, keyboard, filter, geometry.
 mod card_list_audit;
+// T427: RecentQueriesList port (rows, sources, relative time, actions, geometry).
+mod recent_queries_list;
+// T427 independent audit: inert ports, relative-time boundaries and row role.
+mod recent_queries_list_audit;
+// T454: DatabaseValueSearchDialog port (keys, scope/type rules, answers, host
+// actions, two-window/two-palette geometry).
+mod database_value_search_dialog;
+// T454 independent audit: Enter-to-start, rounded seconds, resume, picker, busy.
+mod value_search_audit;
+// T470: NavigatorTreeRow port (13 variants, ARIA equivalence, host actions, geometry).
+mod navigator_tree_row;
+// T470 independent audit: Space activation, KV click, context menus, chevron isolation, ARIA label, rect geometry.
+mod navigator_tree_row_audit;
+// T485: PanelContentRenderer port (slot routing, KV relay, states, actions, geometry).
+mod panel_content_renderer;
 // T144: the React ConnectionWorkspaceHome port (hero counts, card keys,
 // filter, MCP copy feedback with a real wake, KV-slot takeover, geometry).
 mod connection_workspace_home;
@@ -642,6 +698,11 @@ mod connection_navigator_tree;
 // Independent T067 audit: isolated keyboard branches, active-descendant
 // mounted-row contract, filter trim/case, key preservation and object geometry.
 mod connection_navigator_tree_audit;
+// T465: NavigatorToolbar port (React testids/i18n, host actions, optional
+// buttons, controlled search input and two-size two-theme geometry).
+mod navigator_toolbar;
+// T465 independent audit: structural heights/keys and partial port wiring.
+mod navigator_toolbar_audit;
 
 // T068: MigrationJobFailureNotice (fail-closed refusal notice).
 mod migration_failure_notice;
@@ -976,6 +1037,8 @@ mod ai_egress_notice;
 mod ai_egress_notice_audit;
 // T185: the filter-draft helpers (filterUtils).
 mod table_data_filter_utils;
+// T412: the schema-store metadata identity keys (schemaMetadataKeys.ts).
+mod schema_metadata_keys;
 // T210: grid-selection geometry and state transitions (DB-01).
 mod table_data_grid_selection;
 // T210 independent audit: fresh vectors (render order disagreeing with
@@ -983,6 +1046,9 @@ mod table_data_grid_selection;
 mod table_data_grid_selection_audit;
 // T185 independent audit: fresh vectors for the filter-draft helpers.
 mod table_data_filter_utils_audit;
+// T412 independent audit: the key decoded back with serde_json and its
+// eight dimensions asserted one by one.
+mod schema_metadata_keys_audit;
 // T167: ConnectionShareDialogHost (state, callback wiring, keys, geometry).
 mod connection_share_host;
 // T167 independent audit: independent i18n formatter pin, exact 1500ms wake +
@@ -994,6 +1060,93 @@ mod content_bar_ports;
 // T173 independent audit: preserved inner ER testid, React detail/AI titles,
 // KV slot branches and adversarial two-size two-theme geometry.
 mod content_bar_audit;
+
+// T471: the shell layout store (seeds, persisted sidebar mode, dialog
+// slot, platform-probed fullscreen sync).
+mod ui_store;
+// T471 independent audit: toggle storms with ordered writes, stale stored
+// values, fullscreen interleavings, storage handoff round-trips.
+mod ui_store_audit;
+
+// T405: the dirty-cell words (null/empty words, JSON serialisation, the
+// expression marker, tooltip and aria labels).
+mod dirty_cell_text;
+// T405: the foreign-key jump wording (single-column, composite, resolving).
+mod fk_cell_text;
+// T405: the one-open-editor registry (registration, replacement, the
+// identity-guarded unregister, the commit verdict).
+mod active_editor;
+// T405 independent audits: fresh vectors (nested JSON serialisation, edge
+// labels, replacement chains, verdict distinctness).
+mod dirty_cell_text_audit;
+mod fk_cell_text_audit;
+mod active_editor_audit;
+// T486: the workspace tabs store (stable key, idempotent open, the close
+// neighbor rule, closeByWapp).
+mod workspace_tabs_store;
+// T486: the per-mode view-state snapshots (save/restore, dashboard-only
+// clear, full clear).
+mod workspace_panel_state_store;
+
+// T486 independent audits: boundary closes, closeByWapp fallbacks,
+// interleaved mode-switching sessions.
+mod workspace_tabs_store_audit;
+mod workspace_panel_state_store_audit;
+// T500: the Data Sync utilities and the transfer limitation keys.
+mod data_sync_utils;
+// T500 independent audit: fresh vectors (sort order, branch picks, i18n
+// resolvability of the limitation keys).
+mod data_sync_utils_audit;
+// T417: the mapping view's pure functions (counters/fallbacks, labels,
+// summaries, options-vs-selection, the filter, the two merges).
+mod mapping_view;
+// T417 independent audit: fresh vectors (mixed counters, NUL page keys,
+// target-keyed merges, idempotent disabling, label-key resolvability).
+mod mapping_view_audit;
+// T497: the Data Sync wizard state (nine cells, the reset composite,
+// the two step arrays).
+mod use_data_sync_wizard_state;
+// T497 independent audit: full wizard walks, reruns after reset, cell
+// independence.
+mod use_data_sync_wizard_state_audit;
+// T336: the mapping panel (empty-row bail, title/summary, row cells,
+// conditional buttons, reason line, expandable editors, callbacks).
+mod mapping_panel;
+// T336 independent audit: two-row geometry at both sizes, composite row
+// keys, the disabled dim, the summary template.
+mod mapping_panel_audit;
+// T177: the Data Sync objects step (three branches, pass-through
+// callbacks, compared=false).
+mod data_sync_objects_step;
+// T177 independent audit: geometry both sizes/branches, inspecting
+// precedence, the disabled-set pass-through, light theme.
+mod data_sync_objects_step_audit;
+// T286: TransferPairingNote + CompareSummary (reason/generic word, five
+// counters, button mounts, the copied word).
+mod compare_summary;
+// T286 independent audit: the disabled channel, geometry both sizes, the
+// light-theme note with its margin.
+mod compare_summary_audit;
+// T247: the Data Sync result step (outcome derivation, verdict branches,
+// the skipped aside, re-compare, the embedded summary).
+mod data_sync_result_step;
+// T247 independent audit: the status role channel, geometry both sizes,
+// the light-theme committed face.
+mod data_sync_result_step_audit;
+// T226: the Data Sync preview step (the executing overlay, the session
+// gate, the embedded preview).
+mod data_sync_preview_step;
+// T226 independent audit: geometry both sizes/faces, the light-theme
+// required word.
+mod data_sync_preview_step_audit;
+// T287: the wizard nav + stepper (back/next gating, the hidden next, the
+// busy spinner, the step chips).
+mod data_sync_wizard_nav;
+// T287 independent audit: geometry both sizes, the color triple through
+// the text channel, light-theme builds.
+mod data_sync_wizard_nav_audit;
+// T408: the wizard-state type alias (dataSyncTypes.ts).
+mod data_sync_types;
 // T293: the tab-closed notification (panelCloseNotifier).
 mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the
@@ -1079,6 +1232,14 @@ mod ddl_view_audit;
 mod foreign_keys_view;
 // T400 independent audit: callback-free composition, header titles, dense rows.
 mod foreign_keys_view_audit;
+// T448: IndexesView port (keys, rows/flags, create/drop actions, states, geometry).
+mod indexes_view;
+// T448 independent audit: dialect method sets, name helpers and load fallback.
+mod indexes_view_audit;
+// T480: ObjectBrowser port (tabs, rows/identity, context menus, DDL flow, states, geometry).
+mod object_browser;
+// T480 independent audit: DDL/execute answers, running gate and menu teardown.
+mod object_browser_audit;
 
 
 // T136: the log-scale tooltip port (the __orig__ formatter arms, the JS
@@ -1126,6 +1287,14 @@ mod data_sync_endpoint_step;
 // T114 independent audit: fresh vectors (empty profile list, pre-selected
 // id, pre-held name text, the dismissal close path, narrow-window notice).
 mod data_sync_endpoint_step_audit;
+
+// T459: the Data Sync feedback state (four cells, plain-value setters,
+// close-keeps-message).
+mod use_data_sync_feedback;
+
+// T459 independent audit: interleaved writer sequences, two instances,
+// error round-trip across a progress reset.
+mod use_data_sync_feedback_audit;
 
 // T148: the Data Sync job status panel (loose Number() semantics, verdict
 // label branches, committed fallback chain, banner/list truthiness,
@@ -1456,3 +1625,8 @@ mod index_surface;
 // view-box mapping, null/NaN gaps, both formatCompact axes, the single palette
 // slot, the plain tooltip + cursor, the hit raster and the two-size window fit).
 mod scatter_chart_renderer;
+
+// T294: the useGridClipboard orchestration audit — the parse/serialize
+// kernel, the registries' clipboard-text binding, the planner's gates,
+// the plan→confirm→stage machine, and the DBR-02 row features.
+mod use_grid_clipboard;
