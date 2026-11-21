@@ -508,21 +508,21 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [x] T489 · windows/connection · 0.90d · windows/connection/PanelTabBar.tsx
 - [ ] T490 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncSelection.ts · split
 - [ ] T491 · lib · 0.60d · lib/errors.ts lib/exportCapability.ts
-- [ ] T492 · windows/connection · 0.30d · windows/connection/PendingPlanDialog.tsx
+- [x] T492 · windows/connection · 0.30d · windows/connection/PendingPlanDialog.tsx
 - [ ] T493 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncSelectionState.ts
 - [ ] T494 · lib · 2.00d · lib/exportData.ts · split
-- [ ] T495 · windows/connection · 1.30d · windows/connection/PrivilegeView.tsx · split
+- [x] T495 · windows/connection · 1.30d · windows/connection/PrivilegeView.tsx · split
 - [ ] T496 · windows/data-sync · 0.30d · windows/data-sync/useDataSyncWizardNavigation.ts
 - [ ] T497 · lib · 2.00d · lib/exportDialogShared.ts · split
-- [ ] T498 · windows/connection · 0.90d · windows/connection/ProcessListView.tsx
+- [x] T498 · windows/connection · 0.90d · windows/connection/ProcessListView.tsx
 - [ ] T499 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncWizardState.ts
 - [ ] T500 · lib · 2.00d · lib/exportFormat.ts · split
-- [ ] T501 · windows/connection · 0.30d · windows/connection/query/ExecutionStrategyAskModal.tsx
+- [x] T501 · windows/connection · 0.30d · windows/connection/query/ExecutionStrategyAskModal.tsx
 - [ ] T502 · windows/data-sync · 0.60d · windows/data-sync/utils.ts windows/data-transfer/transferLimitationKeys.ts
 - [ ] T503 · lib · 0.60d · lib/exportTableStructure.ts lib/extractQuestions.ts
-- [ ] T504 · windows/connection · 0.90d · windows/connection/query/QueryBuilderHostAdapter.tsx
+- [x] T504 · windows/connection · 0.90d · windows/connection/query/QueryBuilderHostAdapter.tsx
 - [ ] T505 · lib · 0.50d · lib/extractSql.ts
-- [ ] T506 · windows/connection · 1.30d · windows/connection/query/QueryEditorSection.tsx · split
+- [x] T506 · windows/connection · 1.30d · windows/connection/query/QueryEditorSection.tsx · split
 - [ ] T507 · lib · 0.90d · lib/fetchRelationDdl.ts
 - [ ] T508 · windows/connection · 1.30d · windows/connection/query/QuerySidebarSection.tsx · split
 - [ ] T509 · lib · 0.30d · lib/filterDbTypes.ts

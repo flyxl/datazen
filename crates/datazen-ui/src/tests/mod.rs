@@ -46,6 +46,16 @@ mod global_object_search;
 mod tree_status_dot;
 // T489: the panel tab strip (React keys, roving focus, host actions, 48pt header).
 mod panel_tab_bar;
+// T498: the process-list panel (table rows, kill/refresh host actions, states).
+mod process_list_view;
+// T506: the query editor section (toolbar, qb-context rebind, strategy, geometry).
+mod query_editor_section;
+// T506 independent audit: rebind gate, strategy keys, toast/hint surfaces,
+// visible-rect geometry and a JSON-escaping probe for the qb context key.
+mod query_editor_section_audit;
+// T498 independent audit: cell styling, rendered→base pid mapping, kill guard
+// and visible-rect geometry.
+mod process_list_view_audit;
 // T489 independent audit: context menu, label edges, active underline, locale
 // tablist label and visible-rect geometry of the pinned strip.
 mod panel_tab_bar_audit;
@@ -680,6 +690,8 @@ mod navigator_tree_row;
 mod navigator_tree_row_audit;
 // T485: PanelContentRenderer port (slot routing, KV relay, states, actions, geometry).
 mod panel_content_renderer;
+// T495: PrivilegeView port (grant trees, modes, host actions, empty/loading, geometry).
+mod privilege_view;
 // T144: the React ConnectionWorkspaceHome port (hero counts, card keys,
 // filter, MCP copy feedback with a real wake, KV-slot takeover, geometry).
 mod connection_workspace_home;
@@ -1238,9 +1250,16 @@ mod indexes_view;
 mod indexes_view_audit;
 // T480: ObjectBrowser port (tabs, rows/identity, context menus, DDL flow, states, geometry).
 mod object_browser;
+// T492: PendingPlanDialog port (once-only counts, statement preview, close action, geometry).
+mod pending_plan_dialog;
+// T501: ExecutionStrategyAskModal port (strategy options, actions, geometry).
+mod execution_strategy_ask_modal;
+// T501 independent audit: preview boundaries and missing-current card.
+mod execution_strategy_ask_modal_audit;
+// T492 independent audit: no-insert description, statement order, empty fields.
+mod pending_plan_dialog_audit;
 // T480 independent audit: DDL/execute answers, running gate and menu teardown.
 mod object_browser_audit;
-
 
 // T136: the log-scale tooltip port (the __orig__ formatter arms, the JS
 // number coercions and the contentStyle chrome tokens).
@@ -1630,3 +1649,6 @@ mod scatter_chart_renderer;
 // kernel, the registries' clipboard-text binding, the planner's gates,
 // the plan→confirm→stage machine, and the DBR-02 row features.
 mod use_grid_clipboard;
+
+// T504: QueryBuilderHostAdapter port (catalog, context/rebind, slot mount, host actions, geometry).
+mod query_builder_host_adapter;
