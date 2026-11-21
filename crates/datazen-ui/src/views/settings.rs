@@ -41,6 +41,15 @@ pub(crate) mod json_schema_settings_form;
 pub(crate) mod install_language_pack_dialog;
 // T321: the language-packs card (the installed list, install/remove,
 // the active pack's English-fallback-first removal).
+/// `windows/settings/McpClientSection.tsx` (T336, split): the MCP
+/// client administration surface — the saved stdio server configs
+/// (add/edit/delete/enable), the per-server connect/reconnect actions
+/// with their error strips, and the runtime connected list with its
+/// expandable tool inventories.
+pub(crate) mod mcp_client_section;
+/// T336's state half: the view-models, the env converters, the form
+/// draft and the section state machine (split for the file-size rule).
+pub(crate) mod mcp_client_section_state;
 pub(crate) mod language_packs_card;
 // T381: the "?" help hint (hover/focus tooltip with the 120ms close
 // grace and the focus-retention rule).

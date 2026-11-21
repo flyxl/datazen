@@ -911,3 +911,7 @@ mod use_schema_diff_clipboard_feedback;
 // kernel, the registries' clipboard-text binding, the planner's gates,
 // the plan→confirm→stage machine, and the DBR-02 row features.
 mod use_grid_clipboard;
+// T336: the MCP client settings section (the saved-config cards and
+// their actions, the add/edit form's guards and build, the runtime
+// list's expandable tool inventory).
+mod mcp_client_section_audit;
