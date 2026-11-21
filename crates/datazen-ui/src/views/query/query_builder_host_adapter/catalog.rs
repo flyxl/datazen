@@ -6,7 +6,7 @@
 //! column metadata only for relations that survived as a unique name. All of it
 //! is deterministic and side-effect free; the host owns the real stores.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use super::model::{
     QueryBuilderCatalogVm, RelationVm, SessionSchemaVm,
@@ -104,20 +104,26 @@ pub(crate) fn build_catalog(
         }
     }
 
-    // Filter by the schema selector, then de-duplicate by [schema, name] (the
-    // later relation wins, like `Map.set`). BTreeMap keeps iteration stable.
-    let mut unique: BTreeMap<String, RelationVm> = BTreeMap::new();
+    // Filter by the schema selector, then de-duplicate by [schema, name] in a
+    // `Map`-like way: the first insertion fixes the position and later
+    // duplicates are ignored. `unique` keeps React's first-insertion order;
+    // since the key is exactly `[schema, name]`, a duplicate carries no new
+    // data to replace.
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut unique: Vec<RelationVm> = Vec::new();
     for relation in catalog_items {
         if schema.is_some() && relation.schema.as_deref() != schema {
             continue;
         }
         let key = relation_identity(relation.schema.as_deref(), &relation.name);
-        unique.insert(key, relation);
+        if seen.insert(key) {
+            unique.push(relation);
+        }
     }
 
     // Count name collisions across different schemas.
     let mut counts: BTreeMap<String, usize> = BTreeMap::new();
-    for relation in unique.values() {
+    for relation in &unique {
         *counts.entry(relation.name.clone()).or_insert(0) += 1;
     }
 
@@ -133,7 +139,7 @@ pub(crate) fn build_catalog(
         if counts.get(&entry.name).copied() != Some(1) {
             continue;
         }
-        if !unique.contains_key(&relation_identity(entry.schema.as_deref(), &entry.name)) {
+        if !seen.contains(&relation_identity(entry.schema.as_deref(), &entry.name)) {
             continue;
         }
         catalog.column_map.insert(
@@ -150,11 +156,8 @@ pub(crate) fn build_catalog(
 
     // Only uniquely named relations become selectable tables.
     catalog.tables = unique
-        .into_values()
+        .into_iter()
         .filter(|relation| counts.get(&relation.name).copied() == Some(1))
         .collect();
-    catalog.tables.sort_by(|a, b| {
-        (&a.name, a.schema.as_deref()).cmp(&(&b.name, b.schema.as_deref()))
-    });
     catalog
 }

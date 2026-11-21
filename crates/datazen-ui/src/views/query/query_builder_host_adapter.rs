@@ -52,7 +52,7 @@ use catalog::dialect_family as resolve_dialect;
 /// Small labelled, pressable control used for the catalog service requests.
 /// The labels are plain identifiers (the React panel is Pro-owned), never
 /// invented i18n keys.
-fn service_button<S: 'static, F: Fn(&mut S) -> QueryBuilderAction + 'static>(
+fn service_button<S: 'static, F: Fn(&mut S) -> Option<QueryBuilderAction> + 'static>(
     key: &str,
     label: &str,
     dark: bool,
@@ -73,8 +73,9 @@ fn service_button<S: 'static, F: Fn(&mut S) -> QueryBuilderAction + 'static>(
         .child(text(label.to_owned()).font(k.ty.text_xsmall).color(k.c.text_muted));
     if let Some(on_action) = host.on_action.clone() {
         el = el.on_press(move |s: &mut S| {
-            let requested = action(s);
-            on_action(s, requested);
+            if let Some(requested) = action(s) {
+                on_action(s, requested);
+            }
         });
     }
     el
@@ -311,26 +312,31 @@ pub(crate) fn query_builder_host_adapter<S: 'static>(
             .w_full()
             .gap(6.0)
             .child(service_button("qb-ensure-columns", "ensureColumns", dark, host, move |_| {
-                QueryBuilderAction::EnsureColumns {
+                // React's ensureColumns returns early without a session/db or
+                // when no column names were requested — emit nothing.
+                if db_session_id.is_empty() || database.trim().is_empty() || all_columns.is_empty() {
+                    return None;
+                }
+                Some(QueryBuilderAction::EnsureColumns {
                     db_session_id: db_session_id.clone(),
                     database: database.clone(),
                     schema: schema.clone(),
                     names: all_columns.clone(),
-                }
+                })
             }))
             .child(service_button(
                 "qb-predict",
                 "predictRelations",
                 dark,
                 host,
-                move |_| QueryBuilderAction::PredictRelations { schemas: predict_schemas.clone() },
+                move |_| Some(QueryBuilderAction::PredictRelations { schemas: predict_schemas.clone() }),
             ))
             .child(service_button("qb-format", "formatSql", dark, host, move |_| {
-                QueryBuilderAction::FormatSql {
+                Some(QueryBuilderAction::FormatSql {
                     sql: sql.clone(),
                     database_type: database_type.clone(),
                     options: options.clone(),
-                }
+                })
             })),
     );
 

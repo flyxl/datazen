@@ -188,7 +188,7 @@ fn catalog_dedupes_filters_and_builds_column_maps() {
 
     let public = build_catalog(Some(&schema), "app", Some("public"));
     let names: Vec<&str> = public.tables.iter().map(|r| r.name.as_str()).collect();
-    assert_eq!(names, ["active_users", "orders", "users"], "schema filter keeps views, drops the private collision");
+    assert_eq!(names, ["users", "orders", "active_users"], "schema filter drops the private collision and keeps insertion order");
     assert_eq!(public.tables.iter().filter(|r| r.name == "users").count(), 1);
     assert_eq!(public.column_map.get("users"), Some(&vec!["id".to_owned(), "name".to_owned()]));
     assert_eq!(
