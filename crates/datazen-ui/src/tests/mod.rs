@@ -1370,6 +1370,17 @@ mod connection_store_audit;
 // T127: the dirty-state index (identity subset, anchor priority, the
 // ambiguity guard, counts, off-page keys, structural sharing).
 mod table_data_dirty_index;
+// T275: the pending-changes helpers (coder vectors: the effective identity
+// overlay and its NULL refusal, the uniqueness rule, the collision
+// detection with the ambiguous-sibling block, the anchor-first lookup,
+// the overlay merge with its pass-throughs, the staged signature and
+// the wire row-index drop, the independent pending-work counting, the
+// draft wire order and markers, the pending-work signature).
+mod table_data_pending_changes;
+// T275 independent audit: fresh vectors (the whole-column fallback,
+// the duplicate-identity overlay refusal, the signature order stability
+// and value separation, the wire field sets, the draft-order edges).
+mod table_data_pending_changes_audit;
 
 // T127 independent audit: fresh vectors (composite keys, nested identity
 // values, anchor under ambiguity, expressions, the delete-mark flip).
