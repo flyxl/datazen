@@ -101,6 +101,9 @@ pub(crate) mod tunnel_draft;
 // T447: the tunnel create/edit dialog (the open-reset fetch, the
 // draft patches, the problem-gated save).
 pub(crate) mod tunnel_edit_dialog;
+// T459: the tunnel live-probe dialog (the target inputs, the
+// kind-scoped honesty note, the elapsed/error answers).
+pub(crate) mod tunnel_test_dialog;
 // T453: the tunnel settings section (the secret-free list, the
 // usage batch, the copy action, the three dialog mounts).
 pub(crate) mod tunnel_settings_section;
