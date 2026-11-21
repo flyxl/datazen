@@ -32,6 +32,8 @@ pub(crate) mod query_panel;
 pub(crate) mod query;
 pub(crate) mod result_workspace;
 pub(crate) mod server_status_view;
+pub(crate) mod set_value_date_dialog;
+pub(crate) mod structure_column_table;
 
 mod connections;
 mod connections_home;
