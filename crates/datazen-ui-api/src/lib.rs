@@ -55,6 +55,7 @@ mod run_to_chart;
 mod run_to_result;
 mod running_execution_close;
 mod scalar_cell_editors;
+mod schema_column_loading;
 mod selection_actions;
 mod stage_cell_value;
 mod stage_edit_actions;
@@ -361,6 +362,14 @@ pub use scalar_cell_editors::{
     build_number_view, build_temporal_view, build_text_view, common_flags, CommonEditorFlags,
     FocusStrategy, NumberEditorView, ScalarEditorInput, TemporalEditorView, TemporalKindValue,
     TextEditorView, DEFAULT_TEMPORAL_KIND, SCALAR_CELL_EDITORS_GAP, SCALAR_CELL_EDITORS_SURFACE,
+};
+pub use schema_column_loading::{
+    build_ensure_plan, column, invalidate_plan, load_relation_columns_step, project_relation_columns,
+    read_bucket, read_identity, relation_batch_chunks, relation_columns_cache_key,
+    resolve_column_relations, BucketPlan, ConnectionSchemaState, EnsurePlan, ReadColumnsRow,
+    RelationColumn, RelationColumns, RelationRef, SchemaItem, SessionMetadataIdentity,
+    DEFAULT_BATCH_DEBOUNCE_MS, RELATION_COLUMN_BATCH_SIZE, SCHEMA_COLUMN_LOADING_GAP,
+    SCHEMA_COLUMN_LOADING_SURFACE,
 };
 pub use selection_actions::{
     apply_begin_cell_selection, apply_clear_grid_selection, apply_grid_selection,
