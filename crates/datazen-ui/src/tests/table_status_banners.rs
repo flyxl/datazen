@@ -138,6 +138,40 @@ fn geometry_fits_both_sizes_in_both_themes() {
     }
 }
 
+/// Non-capturing view for the "no host port" branch (Runtime needs an fn pointer).
+fn no_port_view(s: &Scene, _cx: &mut Cx<Scene>) -> El {
+    col().w_full().h_full().child(build::<Scene>(&s.vm, None, s.dark))
+}
+
+#[test]
+fn empty_error_string_mounts_no_banner() {
+    let vm = TableStatusBannersVm {
+        error: Some(String::new()),
+        has_work: true,
+        ..Default::default()
+    };
+    let rt = runtime(scene(vm, true), (1440.0, 816.0));
+    assert!(!has_key(&rt, "table-status-error"), "an empty error is falsy like React");
+    assert!(!has_key(&rt, "table-status-pending-hint"), "no error: no pending hint");
+}
+
+#[test]
+fn retry_without_a_host_port_is_inert() {
+    let vm = TableStatusBannersVm {
+        error: Some("boom".to_owned()),
+        ..Default::default()
+    };
+    let mut rt = Runtime::new(
+        scene(vm, true),
+        no_port_view,
+        (960.0, 640.0),
+        Env { system_dark: true, scale: 1.0 },
+    );
+    rt.frame(0.0);
+    click(&mut rt, "table-status-retry");
+    assert!(rt.state.actions.borrow().is_empty(), "no injected port: no intents emitted");
+}
+
 // Reverse verification (mutation -> observed failure text -> restored):
 // 1. Showing the pending hint without an error made `pending_hint_needs_both_an_error_and_staged_work`
 //    fail on `no error: no hint`.

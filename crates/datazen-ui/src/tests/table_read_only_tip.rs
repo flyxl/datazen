@@ -139,6 +139,33 @@ fn geometry_fits_both_sizes_in_both_themes() {
     }
 }
 
+/// Non-capturing view for the "no host port" branch (Runtime needs an fn pointer).
+fn no_port_view(s: &Scene, _cx: &mut Cx<Scene>) -> El {
+    col().w_full().h_full().child(build::<Scene>(&s.vm, None, s.dark))
+}
+
+#[test]
+fn non_dismissible_tip_mounts_no_dismiss_control() {
+    let mut state = vm();
+    state.dismissible = false;
+    let rt = runtime(scene(state, true), (1440.0, 816.0));
+    assert!(has_key(&rt, "table-read-only-tip"), "the tip itself still mounts");
+    assert!(!has_key(&rt, "table-read-only-tip-dismiss"), "no host onDismiss: no control");
+}
+
+#[test]
+fn dismiss_without_a_host_port_is_inert() {
+    let mut rt = Runtime::new(
+        scene(vm(), true),
+        no_port_view,
+        (960.0, 640.0),
+        Env { system_dark: true, scale: 1.0 },
+    );
+    rt.frame(0.0);
+    click(&mut rt, "table-read-only-tip-dismiss");
+    assert!(rt.state.actions.borrow().is_empty(), "no injected port: no intents emitted");
+}
+
 // Reverse verification (mutation -> observed failure text -> restored):
 // 1. Mapping `View` to the connection key made `every_reason_maps_to_its_exact_i18n_key`
 //    fail on `cellEditor.readOnly.view`.
