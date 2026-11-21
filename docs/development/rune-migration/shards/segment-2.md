@@ -96,7 +96,7 @@
 - [x] T583 · lib · 0.90d · lib/resultEditability.ts
 - [x] T585 · lib · 0.80d · lib/resultFindReplace.ts lib/rowCountStrategy.ts
 - [x] T587 · lib · 0.60d · lib/rowToRecord.ts lib/runPredefinedEdit.ts
-- [ ] T589 · lib · 0.80d · lib/schemaCache.ts lib/schemaChangingSql.ts
+- [x] T589 · lib · 0.80d · lib/schemaCache.ts lib/schemaChangingSql.ts
 - [x] T591 · lib · 0.90d · lib/schemaDiffConfirm.ts
 - [x] T593 · lib · 0.30d · lib/schemaDiffLimitationsPrefs.ts
 - [ ] T595 · lib · 0.80d · lib/schemaObjectSearch.ts
