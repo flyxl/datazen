@@ -554,11 +554,11 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T535 · lib · 0.90d · lib/iconIds.ts lib/iconResolver.ts lib/importConnectionFile.ts
 - [x] T536 · windows/connection · 0.30d · windows/connection/TableClipboardStatus.tsx
 - [ ] T537 · lib · 2.00d · lib/importData.ts · split
-- [ ] T538 · windows/connection · 0.80d · windows/connection/TableColumnFilter.tsx
+- [x] T538 · windows/connection · 0.80d · windows/connection/TableColumnFilter.tsx
 - [ ] T539 · lib · 1.30d · lib/importExecution.ts · split
-- [ ] T540 · windows/connection · 0.50d · windows/connection/TableFilterToolbar.tsx
+- [x] T540 · windows/connection · 0.50d · windows/connection/TableFilterToolbar.tsx
 - [ ] T541 · lib · 1.00d · lib/importMapping.ts lib/keymap.ts
-- [ ] T542 · windows/connection · 0.90d · windows/connection/TableFkBreadcrumb.tsx
+- [x] T542 · windows/connection · 0.90d · windows/connection/TableFkBreadcrumb.tsx
 - [ ] T543 · lib · 0.80d · lib/keysetPaging.ts
 - [ ] T544 · windows/connection · 0.90d · windows/connection/TableFkErrorBanner.tsx windows/connection/TableLoadErrorState.tsx windows/connection/TableNoPrimaryKeyTip.tsx
 - [ ] T545 · lib · 0.80d · lib/kvAiContext.ts lib/kvSlotState.ts

@@ -110,9 +110,9 @@
 - [x] T532 · windows/connection · 0.80d · windows/connection/structure/StructureIndexTable.tsx windows/connection/structure/StructurePlanPreview.tsx
 - [x] T534 · windows/connection · 0.90d · windows/connection/StructureView.tsx
 - [x] T536 · windows/connection · 0.30d · windows/connection/TableClipboardStatus.tsx
-- [ ] T538 · windows/connection · 0.80d · windows/connection/TableColumnFilter.tsx
-- [ ] T540 · windows/connection · 0.50d · windows/connection/TableFilterToolbar.tsx
-- [ ] T542 · windows/connection · 0.90d · windows/connection/TableFkBreadcrumb.tsx
+- [x] T538 · windows/connection · 0.80d · windows/connection/TableColumnFilter.tsx
+- [x] T540 · windows/connection · 0.50d · windows/connection/TableFilterToolbar.tsx
+- [x] T542 · windows/connection · 0.90d · windows/connection/TableFkBreadcrumb.tsx
 - [ ] T544 · windows/connection · 0.90d · windows/connection/TableFkErrorBanner.tsx windows/connection/TableLoadErrorState.tsx windows/connection/TableNoPrimaryKeyTip.tsx
 - [ ] T546 · windows/connection · 0.90d · windows/connection/TablePendingChangesBar.tsx
 - [ ] T548 · windows/connection · 0.60d · windows/connection/TableReadOnlyTip.tsx windows/connection/TableStatusBanners.tsx
