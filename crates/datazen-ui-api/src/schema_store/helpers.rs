@@ -7,6 +7,15 @@ use super::types::{
     PathDatabaseEntry, SchemaSessionState, SchemaTableInfo, VisibleDatabases,
 };
 
+pub const SCHEMA_STORE_HELPERS_SURFACE: [&str; 6] = [
+    "computeIsMultiDatabase",
+    "resolvePreferredDatabase",
+    "resolveVisibleDatabases",
+    "parsePathHierarchyDatabaseEntry",
+    "knownTableNames",
+    "LoadForConnectionOptions",
+];
+
 const SYSTEM_DATABASES: [&str; 7] = [
     "information_schema",
     "mysql",

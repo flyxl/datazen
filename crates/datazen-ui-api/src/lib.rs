@@ -410,7 +410,8 @@ pub use schema_store::{
     set_current_database, set_current_schema, set_loaded_tables, set_selected, toggle_expand,
     DatabaseTypeMeta, LoadDatabasesDecision, LoadForConnectionOptions, NamespaceMergeKind,
     PathDatabaseEntry, SchemaPatch, SchemaSessionState, SchemaStoreSnapshot, SchemaTableInfo,
-    SetLoadedTablesOptions, SCHEMA_STORE_GAP, SCHEMA_STORE_SURFACE,
+    SetLoadedTablesOptions, VisibleDatabases, SCHEMA_STORE_GAP, SCHEMA_STORE_HELPERS_SURFACE,
+    SCHEMA_STORE_SURFACE,
 };
 pub use selection_actions::{
     apply_begin_cell_selection, apply_clear_grid_selection, apply_grid_selection,

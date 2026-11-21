@@ -101,12 +101,18 @@ pub struct SchemaStoreSnapshot {
     pub active_db_session_id: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct LoadForConnectionOptions {
     pub skip_load_tables: bool,
     pub preferred_database: Option<String>,
     pub database_type: Option<String>,
     pub activate: bool,
+}
+
+impl Default for LoadForConnectionOptions {
+    fn default() -> Self {
+        Self { skip_load_tables: false, preferred_database: None, database_type: None, activate: true }
+    }
 }
 
 impl LoadForConnectionOptions {

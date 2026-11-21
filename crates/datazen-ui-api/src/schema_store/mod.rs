@@ -7,6 +7,8 @@ mod types;
 #[cfg(test)]
 mod action_tests;
 #[cfg(test)]
+mod helpers_tests;
+#[cfg(test)]
 mod tests;
 
 pub use actions::{
@@ -18,7 +20,7 @@ pub use actions::{
 pub use helpers::{
     compute_is_multi_database, is_schema_grouping_schema, is_system_database_name,
     known_table_names, latest_identity, parse_path_hierarchy_database_entry,
-    resolve_preferred_database, resolve_visible_databases,
+    resolve_preferred_database, resolve_visible_databases, SCHEMA_STORE_HELPERS_SURFACE,
 };
 pub use namespace::{
     collect_table_leaf_names, merge_namespace_path, omit_table_leaf, path_key,
@@ -30,5 +32,5 @@ pub use state::{
 pub use types::{
     DatabaseTypeMeta, LoadDatabasesDecision, LoadForConnectionOptions, NamespaceMergeKind,
     PathDatabaseEntry, SchemaPatch, SchemaSessionState, SchemaStoreSnapshot, SchemaTableInfo,
-    SetLoadedTablesOptions, SCHEMA_STORE_GAP, SCHEMA_STORE_SURFACE,
+    SetLoadedTablesOptions, VisibleDatabases, SCHEMA_STORE_GAP, SCHEMA_STORE_SURFACE,
 };
