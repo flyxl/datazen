@@ -87,3 +87,9 @@ mod use_value_presentation_snapshot;
 // T438: the Data Transfer Job execution state machine (the prepare →
 // apply → verdict lifecycle over the T424 command rail).
 mod use_transfer_job_run;
+// T457's split half: the virtual table's layout vocabulary (the
+// VirtualRow projection, the default overscan, the max-offset clamp).
+pub(crate) mod virtual_table_helpers;
+// T457: the virtual table hook (the viewport window with overscan on
+// both edges, the absolute row offsets, the clamped scroll ask).
+pub(crate) mod use_virtual_table;
