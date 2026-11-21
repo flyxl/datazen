@@ -1620,3 +1620,8 @@ mod dashboard_store_audit;
 // the notice precedence, the empty states, the row labels and active
 // selection, the export gate, every callback, geometry).
 mod ai_session_history_audit;
+
+// T195: the MenuBar port's independent audit (the menu table, the gates,
+// the action router, the wrap-around, the bar component's open/hover
+// behaviour).
+mod menu_bar_audit;
