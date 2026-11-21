@@ -40,6 +40,11 @@ pub(crate) mod use_keyboard_shortcuts;
 /// T353: the leaf-side read of a KV panel's selected key (the
 /// host-owned relay's scalar, the AI button / assistant drawer's input).
 pub(crate) mod use_kv_slot_selected_key;
+/// T363: ensure the lazy i18n domain packs are loaded for the active
+/// language (the stable-key ready gate; the packs themselves are
+/// compiled in under the T018 ruling).
+pub(crate) mod use_locale_domains;
+
 
 // T525/T527 seam: the grid keyboard semantics + the composing guard,
 // carried for the grid hooks until their own ledger tasks land (the
