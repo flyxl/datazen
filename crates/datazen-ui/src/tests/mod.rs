@@ -1795,6 +1795,16 @@ mod transfer_mapping_step;
 // and source order at both themes inside the minimum window, and the
 // long target's single-line clip).
 mod transfer_mapping_step_audit;
+// T305: the transfer mapping view (coder vectors: the normalize fallback
+// and last-wins, the auto-match and native-type survival, the clear pass,
+// the unmapped targets with the create-new/empty guards, the gate pair's
+// three rules, the any-row allow, the block reason's four branches).
+mod transfer_mapping_view;
+// T305 independent audit: fresh vectors (the normalize interplay of list
+// and repeats, the auto-match-then-clear round trip, the unmapped
+// skipped/empty distinction, the gate pair's mixed-rows matrix).
+mod transfer_mapping_view_audit;
+
 
 // T253: the installed-language-pack store (coder tests: the fetch
 // seam's two endings, the remove seam's refetch hand-off and the

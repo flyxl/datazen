@@ -100,7 +100,7 @@
 - [x] T297 · components/DataTable · 0.80d · components/DataTable/editors/CellEditorHost.tsx
 - [x] T299 · components/ai · 0.90d · components/ai/NlFilterInput.tsx
 - [x] T301 · components · 0.30d · components/WindowChromeFallback.tsx
-- [ ] T305 · windows/data-transfer · 0.90d · windows/data-transfer/transferMappingView.ts
+- [x] T305 · windows/data-transfer · 0.90d · windows/data-transfer/transferMappingView.ts
 - [ ] T306 · windows/data-sync · 1.30d · windows/data-sync/DiffDetail.tsx · split
 - [ ] T312 · stores · 0.90d · stores/panelExecCleanup.ts
 - [ ] T313 · stores/tableData · 0.50d · stores/tableData/selectionActions.ts
