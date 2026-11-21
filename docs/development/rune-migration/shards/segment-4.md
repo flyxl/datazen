@@ -127,7 +127,7 @@
 - [x] T365 · hooks · 0.90d · hooks/useLocaleDomains.ts
 - [x] T368 · commands · 0.90d · commands/sample.ts
 - [x] T370 · components/sql-editor · 0.30d · components/sql-editor/snippets/types.ts
-- [ ] T371 · windows/settings · 0.90d · windows/settings/PromptSettingsSection.tsx
+- [x] T371 · windows/settings · 0.90d · windows/settings/PromptSettingsSection.tsx
 - [x] T374 · windows/schema-diff · 0.60d · windows/schema-diff/schemaDiffTableNames.ts windows/schema-diff/useSchemaDiffClipboardFeedback.ts
 - [x] T376 · hooks · 0.30d · hooks/useMigrationJobHydration.ts
 - [x] T379 · commands · 0.90d · commands/schemaDiff.ts
