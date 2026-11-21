@@ -153,6 +153,7 @@ mod schema_diff_limitations_prefs;
 mod schema_tree_context_menu;
 mod splash;
 mod sql_bind_params;
+mod sql_completion_context;
 mod sql_completions;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
@@ -866,6 +867,14 @@ pub use sql_bind_params::{
     default_dialect_policy, get_param_label, is_sensitive_param_name, param_fingerprint,
     params_to_payload, parse_sql_param_occurrences, parse_sql_params, sensitive_param_names,
     substitute_sql_params,
+};
+pub use sql_completion_context::{
+    contextual_keyword_completion, contextual_schema_completion, detect_alias_dot_context,
+    extract_qualifier_parts, filter_completions_by_kind, filter_keywords_by_kind,
+    infer_sql_completion_kind, is_table_context, last_bare_sql_keyword,
+    last_bare_sql_keyword_with_offset, CompletionContextInput, CompletionOption, CompletionOutcome,
+    CompletionResult, CompletionSourceFn, SqlCompletionKind, COLUMN_CONTEXT_ALLOWED_KEYWORDS,
+    TABLE_CONTEXT_ALLOWED_KEYWORDS,
 };
 pub use sql_completions::{
     keyword_completions, sql_function_completions, SqlFunctionCompletion,
