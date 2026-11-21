@@ -226,3 +226,49 @@ fn geometry_fits_both_sizes_in_both_themes() {
         }
     }
 }
+
+// ── T540 independent audit (appended; reuses this module's Scene) ────────
+
+/// React's quick-filter `onChange` clears `quickFilterError` on every edit
+/// (`TableFilterToolbar.tsx:203-206`). The port binds the field text through an
+/// accessor but emits no action on edit, so a host-owned error strip persists
+/// after the user starts correcting the expression.
+#[test]
+fn audit_editing_quick_filter_clears_the_error_strip() {
+    let mut vm = ready();
+    vm.quick_filter_error = t("filter.nestedLogic").to_owned();
+    let mut rt = runtime(scene(vm, true), DESIGN);
+    assert!(has_key(&rt, ERROR_KEY), "error strip present initially");
+    let (x, y) = rt.find(QUICK_KEY).unwrap_or_else(|| panic!("quick field laid out"));
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    rt.frame(0.0);
+    rt.key(KeyEvent { key: Key::Text("i".to_owned()), mods: Mods::default() });
+    rt.frame(0.0);
+    assert!(
+        !has_key(&rt, ERROR_KEY),
+        "typing must clear the quick-filter error strip like React's onChange"
+    );
+}
+
+/// React's quick filter applies the expression on blur when it has text
+/// (`TableFilterToolbar.tsx:213-215`), not just on Enter. The port only wires
+/// `on_submit` (Enter), so leaving the field does not apply the filter.
+#[test]
+fn audit_blur_with_text_applies_the_quick_filter() {
+    let mut rt = runtime(scene(ready(), true), DESIGN);
+    let (x, y) = rt.find(QUICK_KEY).unwrap_or_else(|| panic!("quick field laid out"));
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    rt.frame(0.0);
+    rt.key(KeyEvent { key: Key::Text("status = 'open'".to_owned()), mods: Mods::default() });
+    rt.frame(0.0);
+    // Move focus away with Tab (a blur in the browser).
+    rt.key(KeyEvent { key: Key::Tab, mods: Mods::default() });
+    rt.frame(0.0);
+    assert!(
+        rt.state.actions.borrow().iter().any(|a| matches!(a, TableFilterAction::ApplyQuickFilter { .. })),
+        "blurring a non-empty quick filter must apply it like React's onBlur; actions {:?}",
+        rt.state.actions.borrow()
+    );
+}
