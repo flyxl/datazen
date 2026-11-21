@@ -39,6 +39,14 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+### Wave27 阈值合流 push（2026-11-21，最大一轮 135 commits）
+
+- 触发：Wave 26 关闭时合计 ahead 128（seg1 11+seg2 80+seg3 15+seg4 22）> 30；合流期间 seg2 又涨到 83。
+- 4 个真 merge commit：`03b1b7732`(seg1, 7feccade5) → `3ae3d911c`(seg2, a03d71821) → `228f5613e`(seg3, ec6f8423d) → `27e1c89d5`(seg4, de1023a58)；父分支 `9e0a5188f → 27e1c89d5`（135 commits，fast-forward）。
+- 冲突：多处 tests/mod.rs（保持双方 mod 声明并去重，无断言改动）。三 crate check 全 PASS。
+- gate 本次因**磁盘满**（99-100%，rustc-LLVM IO error）在测试编译阶段失败，非链接也非代码；按授权接受风险 push。事后清理了 9 个已 push 的旧合流 worktree 的 target（各 11-16G）+ mt-fresh-target(9.7G)，磁盘 4.3Gi → 77Gi（主检出 target 76G 未动，coordinator 的 main-verify 仍复用）。
+- push 后残余合计 66（seg2 48+seg3 15+seg4 3）；下个 wave 关闭按阈值继续合。
+
 ### Wave26 阈值合流 push（2026-11-21）
 
 - 触发：Wave 25 关闭时合计 ahead 102（seg1 10+seg2 63+seg3 17+seg4 12）> 30，最大规模一轮。
