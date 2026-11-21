@@ -4,10 +4,10 @@
 //! The split: this module owns the host's single decision (**whether**
 //! to ask for folding at all); the compartment registry itself — the id
 //! set, the mount/reconfigure machinery, `SafeCompartmentWrapper`, the
-//! `extra` overflow — is `proCompartments.ts`, T335 (this segment,
-//! later), and lands there. [`pro_setting_flag`] is carried here until
-//! then (the `lib_helpers` pattern): it is the one primitive the gate
-//! reads.
+//! `extra` overflow — landed as [`super::pro_compartments`] (T335).
+//! [`ProSettingsBag`] and [`pro_setting_flag`] moved home with it; the
+//! re-export below keeps this module's pre-T335 path stable (the T155
+//! `lib_helpers` absorption precedent).
 //!
 //! ## What maps where
 //!
@@ -37,23 +37,19 @@
 //! Known deltas: none behavioural — the gate's rules are the React
 //! file's verbatim.
 
-/// `ProSettingsBag`'s engine stand-in: the privileged settings object as
-/// persisted under `driverSettings[extensionId]` (a JSON object; the
-/// flag reader tolerates anything else exactly as JS's `bag?.[key]`
-/// yields undefined).
-pub(crate) type ProSettingsBag = serde_json::Value;
+/// `ProSettingsBag` (proCompartments.ts, its definition home since T335):
+/// the privileged settings object as persisted under
+/// `driverSettings[extensionId]` (a JSON object; the flag reader
+/// tolerates anything else exactly as JS's `bag?.[key]` yields
+/// undefined). Re-exported at its pre-T335 path.
+pub(crate) use super::pro_compartments::ProSettingsBag;
 
-/// `proSettingFlag` (proCompartments.ts, carried until T335 absorbs it):
-/// read a boolean setting, falling back when the key is absent **or
-/// non-boolean** — only a real boolean switches, so settings corruption
-/// degrades to the documented default instead of silently disabling a
-/// feature.
-pub(crate) fn pro_setting_flag(bag: Option<&ProSettingsBag>, key: &str, fallback: bool) -> bool {
-    match bag.and_then(|bag| bag.get(key)) {
-        Some(serde_json::Value::Bool(value)) => *value,
-        _ => fallback,
-    }
-}
+/// `proSettingFlag` (proCompartments.ts, its definition home since T335;
+/// re-exported at its pre-T335 path): read a boolean setting, falling
+/// back when the key is absent **or non-boolean** — only a real boolean
+/// switches, so settings corruption degrades to the documented default
+/// instead of silently disabling a feature.
+pub(crate) use super::pro_compartments::pro_setting_flag;
 
 /// `foldSettingEnabled`: read the `codeFolding` flag off the shared bag.
 /// The fallback is `true` — folding is the common case, and a corrupted
