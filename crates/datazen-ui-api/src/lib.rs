@@ -73,6 +73,7 @@ mod sql_schema_drop_targets;
 mod table_list_panel;
 mod table_sort_preferences;
 mod tabs;
+mod table_data_state;
 mod virtual_body;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
@@ -484,6 +485,10 @@ pub use table_sort_preferences::{
     TableSortContext, TABLE_SORT_PREFS_GAP, TABLE_SORT_PREFS_SURFACE, TABLE_SORT_STORAGE_PREFIX,
 };
 pub use tabs::{Tab, TabKind, Tabs};
+pub use table_data_state::{
+    AppliedFilter, CellEditLocation, DefaultOrderOverride, FilterLogic, FilterMode, TableState,
+    TABLE_DATA_STATE_GAP, TABLE_DATA_STATE_SURFACE,
+};
 pub use virtual_body::{
     build_cell_input, build_column_editor_info_from_defs, build_row_cell_views, cell_id,
     column_names, container_height, dirty_cell_aria_label, dirty_cell_tooltip, dirty_cells,
