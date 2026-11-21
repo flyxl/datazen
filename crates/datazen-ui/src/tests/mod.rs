@@ -666,3 +666,5 @@ mod snippet_menu_button;
 // T522: ExecutionSummaryCard + ResultFindBar ports (summary values, find actions, geometry).
 mod execution_summary_card;
 mod result_find_bar;
+// T528: ServerStatusView port (cards/charts, tabs, header actions, states, geometry).
+mod server_status_view;
