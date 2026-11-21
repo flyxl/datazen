@@ -696,3 +696,5 @@ mod er_layout_er_graph;
 // T562: buildErGraph port (nodes/edges from schemas, focus mode, inferred
 // relations, collapse, handle routing, seeded collapse set).
 mod er_build_er_graph;
+// T540: TableFilterToolbar port (E2E keys, filter states, toggle/quick actions, geometry).
+mod table_filter_toolbar;
