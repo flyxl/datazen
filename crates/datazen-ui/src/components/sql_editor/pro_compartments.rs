@@ -817,7 +817,7 @@ mod tests {
     #[test]
     fn multiple_late_ids_merge_in_payload_order() {
         let mut registry = ProCompartmentRegistry::new();
-        let mut state = full_state(&mut registry);
+        let state = full_state(&mut registry);
         registry.ensure("late-a");
         registry.ensure("late-b");
 
@@ -868,7 +868,7 @@ mod tests {
     #[test]
     fn a_view_with_no_applicable_slots_dispatches_nothing() {
         let mut registry = ProCompartmentRegistry::new();
-        let mut state = full_state(&mut registry);
+        let state = full_state(&mut registry);
         registry.ensure("late-slot");
 
         // Only a late id, and this view mounted no extra slot to fold
@@ -921,7 +921,7 @@ mod tests {
         // another.
         let mut registry = ProCompartmentRegistry::new();
         let mut view_a = full_state(&mut registry);
-        let mut view_b = full_state(&mut registry);
+        let view_b = full_state(&mut registry);
 
         let plan = reconfigure_pro_compartments(
             &registry,

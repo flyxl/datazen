@@ -33,6 +33,18 @@ pub(crate) mod file;
 /// T314: the history family (the query-assets purge + the sync domain's
 /// migration-run reads).
 pub(crate) mod history;
+/// T356: the query faces — the driver-gateway executes, the
+/// query-assets writes (submission-token carrying), the favorites and
+/// the transaction natives.
+pub(crate) mod query;
+/// T366: the first-run sample dataset face (the demo_sales seed).
+pub(crate) mod sample;
+/// T388: the settings commands (the kernel/half-port split, the
+/// flattenShared transform and the merge order).
+pub(crate) mod settings;
+
+
+
 /// T344: the saved-views menu's command adapter (the three database
 /// rail calls plus the two JSON file dialogs).
 pub(crate) mod named_views;

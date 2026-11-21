@@ -10,10 +10,9 @@
 //! `lib/nativeContextMenu.ts` re-export shim and the show/hide bridge are
 //! segment 2's T567; this module owns only the item model the SQL editor
 //! builds).
-//! - `Platform` belongs to `hooks/usePlatform.ts` (T386) and
-//!   `formatModKey` to `lib/keymap.ts` (segment 2, T541); both are carried
-//!   here 1:1 so the menu's shortcut copy resolves today, and will be
-//!   absorbed when those files land. The React builder reads the platform
+//! - `Platform` moved home to `hooks/usePlatform.ts`'s port (T384;
+//!   re-exported below at the pre-T384 path) and `formatModKey` stays
+//!   carried (lib/keymap.ts, segment 2, T541). The React builder reads the platform
 //!   through `getPlatformSync()`; the engine takes it as an input (the
 //!   host knows its OS — there is no user agent to sniff).
 //! - The optional-`enabled` union field stays `Option<bool>` (absent =
@@ -25,14 +24,9 @@
 
 use std::rc::Rc;
 
-/// React `Platform` (`hooks/usePlatform.ts`, T386) — carried.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Platform {
-    Macos,
-    Windows,
-    Linux,
-    Unknown,
-}
+/// React `Platform` — its definition home since T384
+/// (`hooks/usePlatform.ts`); re-exported at the pre-T384 carry path.
+pub(crate) use crate::hooks::use_platform::Platform;
 
 /// `formatModKey` from `lib/keymap.ts` (segment 2, T541) — carried 1:1:
 /// ⌘ on macOS, Ctrl everywhere else.

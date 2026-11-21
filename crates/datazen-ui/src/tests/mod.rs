@@ -1756,3 +1756,20 @@ mod detail_panel;
 // NULL, the entry's conditional mount, the dialog gate, the pack's exact
 // strings, the commit wire shapes, the JSON/long-text press journeys).
 mod detail_panel_audit;
+
+// T336: the MCP client settings section (the saved-config cards and
+// their actions, the add/edit form's guards and build, the runtime
+// list's expandable tool inventory).
+mod mcp_client_section_audit;
+// T348: the MCP settings section (the stdio toggle, the HTTP listener
+// block, the permission modes, the allowlist, the scopes, the agent
+// snippet card, the tools list and the audit table).
+mod mcp_settings_section_audit;
+// T360: the AI memory settings section (the settings card with its
+// first-use privacy gate, the org list, the entries list with filters,
+// candidates bar, merge, and exports).
+mod memory_section_audit;
+// T369: the prompt settings section (the driver filter, the scenario
+// cards with their variables hints and source badges, the override
+// save, the reset confirm).
+mod prompt_settings_section_audit;
