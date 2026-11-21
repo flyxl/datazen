@@ -165,7 +165,7 @@
 - [x] T457 · hooks · 2.00d · hooks/useVirtualTable.ts · split
 - [x] T459 · windows/settings · 0.90d · windows/settings/TunnelTestDialog.tsx
 - [x] T464 · windows/settings · 0.90d · windows/settings/UpdateSection.tsx
-- [ ] T469 · windows/settings · 0.80d · windows/settings/ValuePresentationRuleEditor.tsx
+- [x] T469 · windows/settings · 0.80d · windows/settings/ValuePresentationRuleEditor.tsx
 - [ ] T474 · windows/settings · 1.30d · windows/settings/ValuePresentationSettingsSection.tsx · split
 - [x] T479 · windows/settings · 1.30d · windows/settings/ai/useModelProfileDraft.ts · split
 - [ ] T484 · windows/settings · 0.90d · windows/settings/settingsSections.ts windows/wapps/permissionLabels.ts windows/workflow/draftBridge.ts

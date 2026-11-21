@@ -111,6 +111,9 @@ pub(crate) mod updater;
 // T464: the update card (the three channel faces, the check /
 // download / restart flows, the restart confirm).
 pub(crate) mod update_section;
+// T469: the global value-presentation rule's edit form (the
+// validated save, the same-road sample preview).
+pub(crate) mod value_presentation_rule_editor;
 // T453: the tunnel settings section (the secret-free list, the
 // usage batch, the copy action, the three dialog mounts).
 pub(crate) mod tunnel_settings_section;
