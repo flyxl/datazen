@@ -233,3 +233,90 @@ fn geometry_stays_inside_both_windows_in_both_themes() {
         }
     }
 }
+
+// ── T510 independent audit (appended; reuses this module's Scene) ────────
+
+use rune::{Key, KeyEvent, Mods};
+
+/// React's FavoriteNameDialog binds `onKeyDown` Enter with the same
+/// non-whitespace guard as the Save button (`QueryTransactionModals.tsx:311-313`),
+/// and `query.modules.test.tsx` pins "saves on Enter". The coder suite only
+/// clicks the Save button; Enter-to-save is untested here.
+#[test]
+fn audit_enter_in_favorite_title_saves() {
+    let mut rt = runtime(
+        scene(QueryTransactionModalsVm::default(), Some(favorite()), true),
+        DESIGN,
+    );
+    let (x, y) = rt.find(TITLE_INPUT_KEY).unwrap_or_else(|| panic!("title input laid out"));
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+    settle(&mut rt);
+    assert_eq!(
+        *rt.state.actions.borrow(),
+        [Action::FavoriteSave],
+        "Enter in the title field must save, like React's onKeyDown"
+    );
+}
+
+/// The Enter guard uses `favoriteName.trim()` in React; a whitespace-only title
+/// must not fire the save action from the keyboard either.
+#[test]
+fn audit_enter_in_blank_favorite_title_does_not_save() {
+    let mut blank = favorite();
+    blank.favorite_name = rune::TextEdit::new("   ".to_owned());
+    let mut rt = runtime(
+        scene(QueryTransactionModalsVm::default(), Some(blank), true),
+        DESIGN,
+    );
+    let (x, y) = rt.find(TITLE_INPUT_KEY).unwrap_or_else(|| panic!("title input laid out"));
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+    settle(&mut rt);
+    assert!(
+        rt.state.actions.borrow().is_empty(),
+        "a whitespace-only title must not save on Enter; actions {:?}",
+        rt.state.actions.borrow()
+    );
+}
+
+/// React renders the aborted `<pre>` only for a truthy detail string, so an
+/// empty string is treated like null (`QueryTransactionModals.tsx:250-254`).
+#[test]
+fn audit_empty_aborted_detail_renders_no_pre() {
+    let mut plan = vm();
+    plan.tx_unclosed_open = false;
+    plan.tx_aborted_detail = Some(String::new());
+    let rt = runtime(scene(plan, None, true), MIN);
+    assert!(!has_key(&rt, DETAIL_KEY), "an empty detail must not mount the pre block");
+}
+
+/// React wires each Dialog's `onClose` to the cancel/skip callback
+/// (`QueryTransactionModals.tsx:221,238,283`). The port wires `.on_close(...)`;
+/// the header close controls are the observable route and were not exercised.
+#[test]
+fn audit_dialog_close_controls_route_to_cancel_actions() {
+    let mut plan = vm();
+    plan.tx_aborted_open = false;
+    let mut rt = runtime(scene(plan, None, true), DESIGN);
+    let key = format!("{UNCLOSED_KEY}-close");
+    click(&mut rt, &key);
+    assert_eq!(*rt.state.actions.borrow(), [Action::CancelUnclosed]);
+
+    let mut plan = vm();
+    plan.tx_unclosed_open = false;
+    let mut rt = runtime(scene(plan, None, true), DESIGN);
+    let key = format!("{ABORTED_KEY}-close");
+    click(&mut rt, &key);
+    assert_eq!(*rt.state.actions.borrow(), [Action::AbortedSkip]);
+
+    let mut rt = runtime(
+        scene(QueryTransactionModalsVm::default(), Some(favorite()), true),
+        DESIGN,
+    );
+    let key = format!("{FAVORITE_KEY}-close");
+    click(&mut rt, &key);
+    assert_eq!(*rt.state.actions.borrow(), [Action::FavoriteCancel]);
+}
