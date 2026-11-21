@@ -66,7 +66,7 @@
 - [x] T523 · lib · 0.80d · lib/gridClipboard.ts
 - [x] T525 · lib · 0.80d · lib/gridErrors.ts lib/gridEventGuards.ts
 - [x] T527 · lib · 1.30d · lib/gridKeyboard.ts · split
-- [ ] T529 · lib · 0.80d · lib/gridPastePlan.ts
+- [x] T529 · lib · 0.80d · lib/gridPastePlan.ts
 - [x] T531 · lib · 0.90d · lib/historyGroups.ts lib/hostErrorMessage.ts lib/hostLucideMap.ts
 - [ ] T533 · lib · 2.00d · lib/htmlSanitizer.ts · split
 - [ ] T535 · lib · 0.90d · lib/iconIds.ts lib/iconResolver.ts lib/importConnectionFile.ts
