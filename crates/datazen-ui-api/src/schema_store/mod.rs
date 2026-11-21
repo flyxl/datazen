@@ -9,6 +9,8 @@ mod action_tests;
 #[cfg(test)]
 mod helpers_tests;
 #[cfg(test)]
+mod state_tests;
+#[cfg(test)]
 mod tests;
 
 pub use actions::{
@@ -27,7 +29,7 @@ pub use namespace::{
 };
 pub use state::{
     apply_patch, commit_connection_patch, connection_field, create_empty_connection_schema,
-    patch_connection_schema,
+    patch_connection_schema, EMPTY_NAMESPACE, SCHEMA_STORE_STATE_SURFACE,
 };
 pub use types::{
     DatabaseTypeMeta, LoadDatabasesDecision, LoadForConnectionOptions, NamespaceMergeKind,

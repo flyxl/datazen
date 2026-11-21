@@ -1,9 +1,22 @@
 use std::collections::BTreeMap;
 
+use crate::SqlNamespace;
+
 use super::types::{SchemaPatch, SchemaSessionState, SchemaStoreSnapshot};
 
+pub const EMPTY_NAMESPACE: SqlNamespace = SqlNamespace::Leaf;
+
+pub const SCHEMA_STORE_STATE_SURFACE: [&str; 4] = [
+    "ConnectionSchemaState",
+    "EMPTY_NAMESPACE",
+    "createEmptyConnectionSchema",
+    "patchConnectionSchema",
+];
+
 pub fn create_empty_connection_schema() -> SchemaSessionState {
-    SchemaSessionState::default()
+    let mut state = SchemaSessionState::default();
+    state.namespace_tree = EMPTY_NAMESPACE;
+    state
 }
 
 pub fn apply_patch(state: &mut SchemaSessionState, patch: SchemaPatch) {
