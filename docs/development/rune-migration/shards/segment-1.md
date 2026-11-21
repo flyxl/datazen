@@ -98,9 +98,9 @@
 - [x] T508 · windows/connection · 1.30d · windows/connection/query/QuerySidebarSection.tsx · split
 - [x] T510 · windows/connection · 1.30d · windows/connection/query/QueryTransactionModals.tsx · split
 - [x] T512 · windows/connection · 0.90d · windows/connection/query/toolbar/ExecutionStrategySelect.tsx
-- [ ] T514 · windows/connection · 0.90d · windows/connection/query/toolbar/RefreshCompletionButton.tsx
-- [ ] T516 · windows/connection · 0.90d · windows/connection/query/toolbar/SnippetMenuButton.tsx
-- [ ] T518 · windows/connection · 1.30d · windows/connection/query/useQueryExecutionGate.tsx · split
+- [x] T514 · windows/connection · 0.90d · windows/connection/query/toolbar/RefreshCompletionButton.tsx
+- [x] T516 · windows/connection · 0.90d · windows/connection/query/toolbar/SnippetMenuButton.tsx
+- [x] T518 · windows/connection · 1.30d · windows/connection/query/useQueryExecutionGate.tsx · split
 - [ ] T520 · windows/connection · 1.30d · windows/connection/QueryPanel.tsx · split
 - [ ] T522 · windows/connection · 0.80d · windows/connection/result-workspace/ExecutionSummaryCard.tsx windows/connection/result-workspace/ResultFindBar.tsx
 - [ ] T524 · windows/connection · 1.30d · windows/connection/result-workspace/ResultTableView.tsx · split

@@ -52,6 +52,11 @@ mod process_list_view;
 mod query_editor_section;
 // T512: the execution-strategy toolbar select (options, check marks, host intent).
 mod execution_strategy_select;
+// T518: the pure query-execution gate state machine (decisions & transitions).
+mod query_execution_gate;
+// T518 independent audit: finding copy on plain mutations, Ask→entire mode,
+// and Postgres quote guard restricted to the targeted statement.
+mod query_execution_gate_audit;
 // T512 independent audit: shared-enum order/title, menu roles, visible-rect
 // geometry of the open dropdown.
 mod execution_strategy_select_audit;
@@ -1261,6 +1266,10 @@ mod pending_plan_dialog;
 mod execution_strategy_ask_modal;
 // T508: QuerySidebarSection port (panels, lists, scope/search, menus, geometry).
 mod query_sidebar_section;
+// T514: RefreshCompletionButton port (label/tooltip, disabled states, action, geometry).
+mod refresh_completion_button;
+// T514 independent audit: VM guards, error answer, full-label text, independent rect.
+mod refresh_completion_button_audit;
 // T508 independent audit: unknown-db grouping, find_group and context-level edges.
 mod query_sidebar_section_audit;
 // T501 independent audit: preview boundaries and missing-current card.
@@ -1688,3 +1697,6 @@ mod ai_session_history_audit;
 // the action router, the wrap-around, the bar component's open/hover
 // behaviour).
 mod menu_bar_audit;
+
+// T516: SnippetMenuButton port (builtins, menu items, insert actions, disabled, geometry).
+mod snippet_menu_button;
