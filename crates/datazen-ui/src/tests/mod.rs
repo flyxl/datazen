@@ -54,6 +54,11 @@ mod query_editor_section;
 mod execution_strategy_select;
 // T518: the pure query-execution gate state machine (decisions & transitions).
 mod query_execution_gate;
+// T524: the result table view (status bar, cells, staging, find, geometry).
+mod result_table_view;
+// T524 independent audit: any-column not-contains, replace-all splicing and
+// non-contains operator planning, checked against React resultFindReplace.
+mod result_table_view_audit;
 // T518 independent audit: finding copy on plain mutations, Ask→entire mode,
 // and Postgres quote guard restricted to the targeted statement.
 mod query_execution_gate_audit;
@@ -1266,6 +1271,10 @@ mod pending_plan_dialog;
 mod execution_strategy_ask_modal;
 // T508: QuerySidebarSection port (panels, lists, scope/search, menus, geometry).
 mod query_sidebar_section;
+// T520: QueryPanel port (pane routing, execute/cancel, dialogs, sessions, geometry).
+mod query_panel;
+// T520 independent audit: uncovered branches, all-dialog geometry, React parity.
+mod query_panel_audit;
 // T514: RefreshCompletionButton port (label/tooltip, disabled states, action, geometry).
 mod refresh_completion_button;
 // T514 independent audit: VM guards, error answer, full-label text, independent rect.
@@ -1773,3 +1782,7 @@ mod memory_section_audit;
 // cards with their variables hints and source badges, the override
 // save, the reset confirm).
 mod prompt_settings_section_audit;
+
+// T522: ExecutionSummaryCard + ResultFindBar ports (summary values, find actions, geometry).
+mod execution_summary_card;
+mod result_find_bar;

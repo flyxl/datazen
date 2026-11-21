@@ -536,11 +536,11 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T517 · lib · 1.30d · lib/fkNavigationActions.ts · split
 - [x] T518 · windows/connection · 1.30d · windows/connection/query/useQueryExecutionGate.tsx · split
 - [ ] T519 · lib · 1.30d · lib/fkReferencedBy.ts · split
-- [ ] T520 · windows/connection · 1.30d · windows/connection/QueryPanel.tsx · split
+- [x] T520 · windows/connection · 1.30d · windows/connection/QueryPanel.tsx · split
 - [ ] T521 · lib · 0.80d · lib/fkSelector.ts lib/globalTextSelection.ts
-- [ ] T522 · windows/connection · 0.80d · windows/connection/result-workspace/ExecutionSummaryCard.tsx windows/connection/result-workspace/ResultFindBar.tsx
+- [x] T522 · windows/connection · 0.80d · windows/connection/result-workspace/ExecutionSummaryCard.tsx windows/connection/result-workspace/ResultFindBar.tsx
 - [ ] T523 · lib · 0.80d · lib/gridClipboard.ts
-- [ ] T524 · windows/connection · 1.30d · windows/connection/result-workspace/ResultTableView.tsx · split
+- [x] T524 · windows/connection · 1.30d · windows/connection/result-workspace/ResultTableView.tsx · split
 - [ ] T525 · lib · 0.80d · lib/gridErrors.ts lib/gridEventGuards.ts
 - [ ] T526 · windows/connection · 0.50d · windows/connection/result-workspace/ResultWorkspace.tsx
 - [ ] T527 · lib · 1.30d · lib/gridKeyboard.ts · split
