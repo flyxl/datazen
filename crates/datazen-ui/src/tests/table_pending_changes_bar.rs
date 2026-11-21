@@ -308,3 +308,82 @@ fn geometry_fits_both_sizes_in_both_themes() {
         }
     }
 }
+
+// ── T546 independent audit (appended; reuses this module's helpers) ──────
+
+/// React pins `aria-busy={busy}` on the pending bar (`TablePendingChangesBar.tsx:243`).
+/// The port exposes the busy state as the bar's label; check that observable
+/// channel flips with the VM (the coder suite only checks that actions are inert).
+#[test]
+fn audit_busy_state_is_observable_on_the_bar() {
+    let mut s = scene(true);
+    s.pending.busy = true;
+    let rt = runtime(s.clone(), DESIGN);
+    let busy_label = rt
+        .elements()
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some(PENDING_ROOT) && !e.exiting)
+        .and_then(|e| e.label)
+        .unwrap_or_default();
+    assert_eq!(busy_label, "true", "busy bar must mark itself busy");
+
+    let mut idle = scene(true);
+    idle.pending.busy = false;
+    let rt = runtime(idle, DESIGN);
+    let label = rt
+        .elements()
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some(PENDING_ROOT) && !e.exiting)
+        .and_then(|e| e.label)
+        .unwrap_or_default();
+    assert_eq!(label, "false", "idle bar must not mark itself busy");
+}
+
+/// React renders the off-page segment when `counts.cellsOffPage > 0`
+/// (`:267-273`). The coder suite only checks its absence; pin its presence and
+/// exact count in the runtime tree.
+#[test]
+fn audit_offpage_segment_renders_with_the_exact_count() {
+    let mut s = scene(true);
+    s.pending.counts = Some(DirtyCountsVm { total_cells: 9, cells_on_page: 3 });
+    let rt = runtime(s, DESIGN);
+    assert!(has_key(&rt, PENDING_OFFPAGE_KEY));
+    let rendered = texts(&rt);
+    assert!(
+        rendered.iter().any(|line| line.as_str() == t("tableData.pendingOffPage").replace("{count}", "6")),
+        "off-page segment must show the derived count of 6"
+    );
+}
+
+/// React shows the manual-transaction hint only while in a transaction
+/// (`TablePendingChangesBar.tsx:196`). Pin that its Rune handle appears in tx.
+#[test]
+fn audit_manual_tx_hint_only_while_in_tx() {
+    let mut s = scene(true);
+    s.show_pending = false;
+    s.show_tx = true;
+    s.tx.in_tx = true;
+    let rt = runtime(s, DESIGN);
+    assert!(has_key(&rt, "table-tx-hint"));
+
+    let mut s = scene(true);
+    s.show_pending = false;
+    s.show_tx = true;
+    s.tx.in_tx = false;
+    let rt = runtime(s, DESIGN);
+    assert!(!has_key(&rt, "table-tx-hint"), "no hint when not in a transaction");
+}
+
+/// React's transaction error banner is outside the `isEditable` guard
+/// (`TablePendingChangesBar.tsx:145-199`), so a read-only panel still shows it.
+#[test]
+fn audit_error_banner_shows_on_read_only_panel() {
+    let mut s = scene(true);
+    s.show_pending = false;
+    s.show_tx = true;
+    s.tx.is_editable = false;
+    s.tx.tx_error = "disconnected".to_owned();
+    let rt = runtime(s, DESIGN);
+    assert!(has_key(&rt, TX_ERROR_KEY), "error banner shows even for read-only panels");
+    assert!(!has_key(&rt, TX_CONTROLS_KEY), "but no tx controls on read-only panels");
+}
