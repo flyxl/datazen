@@ -27,6 +27,7 @@ mod context_items;
 mod diff_detail;
 mod data_sync_bars;
 mod context_menu_position;
+mod grid_cell;
 mod workflow_chat_panel;
 // `pub mod` — the crate's only public module: the T159 dashboard facade
 // keeps its display `DashboardWidget` here, but that root name is held
@@ -240,6 +241,14 @@ pub use data_sync_bars::{
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
     FilterOperator, SHARED_FILTER_OPERATORS,
+};
+pub use grid_cell::{
+    build_grid_cell_view, cell_command, dispatch_cell_event, CellChild, CellCommand, CellEvent,
+    CellRendererView, CellWriteTarget, ColumnCellFacts, DispatchOutcome, EditorCellFacts,
+    FkButtonView, FkCellAffordance, FkTextKind, GridCellInput, GridCellView, StickyInfo,
+    StickyStyle, CLASS_BASE, CLASS_DIRTY_BG, CLASS_DIRTY_BORDER, CLASS_DIRTY_MARK, CLASS_FK_JUMP,
+    CLASS_FK_PICK, CLASS_STICKY, CLASS_STICKY_OVERLAY, CELL_TEST_ID, EDITOR_KIND_ENUM,
+    FkTextFn, ROLE_GRIDCELL,
 };
 // The T234 keyset paging vocabulary: the aggregate (`types/index`)
 // re-exports everything `types/keyset.ts` declares, so the crate root
