@@ -638,6 +638,8 @@ mod execution_strategy_ask_modal;
 mod query_sidebar_section;
 // T520: QueryPanel port (pane routing, execute/cancel, dialogs, sessions, geometry).
 mod query_panel;
+// T520 independent audit: uncovered branches, all-dialog geometry, React parity.
+mod query_panel_audit;
 // T514: RefreshCompletionButton port (label/tooltip, disabled states, action, geometry).
 mod refresh_completion_button;
 // T514 independent audit: VM guards, error answer, full-label text, independent rect.
