@@ -183,6 +183,8 @@ mod updater;
 mod wapp_asset_origin;
 mod wapp_bridge;
 mod wapp_i18n;
+mod workflow_draft_yaml;
+mod workflow_list_context_menu;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
 // path `datazen_ui_api::types::…` is the Rust twin of React's `'../types'`
@@ -1052,6 +1054,18 @@ pub use wapp_i18n::{
     is_wapp_i18n_key_valid, is_wapp_i18n_locale_valid, resolve_wapp_string,
     wapp_i18n_candidates, wapp_i18n_dictionary_path, WappDictionary, WappI18n, WappI18nDeps,
     WAPP_I18N_GAP, WAPP_I18N_SURFACE,
+};
+pub use workflow_draft_yaml::{
+    draft_to_yaml_object, draft_to_yaml_value, yaml_object_to_draft, yaml_value_to_draft,
+    WorkflowDraft, WorkflowDraftVariable, WorkflowStepDraft, WORKFLOW_DRAFT_YAML_GAP,
+    WORKFLOW_DRAFT_YAML_SURFACE,
+};
+pub use workflow_list_context_menu::{
+    build_workflow_history_context_menu_items, build_workflow_list_context_menu_items,
+    BuildWorkflowHistoryContextMenuArgs, BuildWorkflowListContextMenuArgs,
+    WorkflowHistoryContextMenuHandlers, WorkflowHistoryContextMenuLabels, WorkflowMenuItem,
+    WorkflowListContextMenuHandlers, WorkflowListContextMenuLabels, WORKFLOW_LIST_MENU_GAP,
+    WORKFLOW_LIST_MENU_SURFACE,
 };
 pub use theme_tokens::{
     build_theme_snapshot, ThemeSnapshot, ThemeSnapshotInput, THEME_SNAPSHOT_VERSION, THEME_TOKENS,
