@@ -106,6 +106,7 @@ mod icon_resolver_api;
 mod import_connection_file;
 mod import_data;
 mod import_execution;
+mod keyset_paging;
 mod keyset_types;
 mod metadata;
 mod platform_shared;
@@ -193,9 +194,8 @@ pub use filter_expression::{
 };
 pub use fk_navigation_actions::{
     FkActionDeps, FkActionEffects, FkJumpError, FkJumpOutcome, FkNavEntry, FkNavOrigin, FkNavState,
-    GRID_ERROR_CODES, OpenForeignKeyTargetInput, Panel, PanelKind, PanelState,
-    TableChangeContext, TableIdentity, classify_grid_error, host_error_message,
-    open_foreign_key_target,
+    OpenForeignKeyTargetInput, Panel, PanelKind, PanelState, TableChangeContext, TableIdentity,
+    host_error_message, open_foreign_key_target,
 };
 pub use grid_keyboard::{
     CellCoord, CellRange, EMPTY_ROW_MODE_SELECTION, GridEdge, GridKeyCommand, GridKeyEventLike,
@@ -519,7 +519,9 @@ pub use global_text_selection::{
     RightDragSuppressor, SelectAllTarget, SelectionSnapshot, DOM_GAP_SURFACES,
     INTERACTIVE_CONTROL_SELECTOR, NATIVE_SELECTABLE_SELECTOR, SELECTABLE_HINT_SELECTOR,
 };
-pub use grid_errors::{GridErrorCode, GRID_ERROR_NAMESPACE, REGISTERED_PREFIXES};
+pub use grid_errors::{
+    classify_grid_error, GridErrorCode, GRID_ERROR_CODES, GRID_ERROR_NAMESPACE, REGISTERED_PREFIXES,
+};
 pub use grid_event_guards::{
     is_composing_event, is_editable_target, ComposingEventLike, EDITABLE_TARGET_SELECTOR,
 };
@@ -581,6 +583,12 @@ pub use import_data::{
 // The T234 keyset paging vocabulary: the aggregate (`types/index`)
 // re-exports everything `types/keyset.ts` declares, so the crate root
 // carries the same names.
+pub use keyset_paging::{
+    apply_paging_info, cursor_for_page, empty_keyset_paging_state, filter_signature,
+    is_usable_boundary, next_request_cursor, order_signature, paging_signature, push_cursor,
+    reanchor, FilterLogic, KeysetCursor, KeysetPagingState, KeysetRequestPlan, PushedCursor,
+    KEYSET_STACK_LIMIT,
+};
 pub use keyset_types::{
     CursorValue, KeysetUnavailableReason, OrderColumn, PagePagingInfo, PagingMode,
 };
