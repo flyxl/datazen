@@ -152,6 +152,7 @@ mod schema_changing_sql;
 mod schema_diff_limitations_prefs;
 mod schema_tree_context_menu;
 mod splash;
+mod sql_completions;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
 mod tabs;
@@ -860,6 +861,10 @@ pub use sql_editor_defaults::{
     infer_default_schema, infer_default_table, table_clause_fingerprint,
     tables_referenced_in_sql, ReferencedRelation, RelationSourceKind, ScopeRelations,
     StatementRange,
+};
+pub use sql_completions::{
+    keyword_completions, sql_function_completions, SqlFunctionCompletion,
+    DEFAULT_SQL_COMPLETION_DIALECT, SQL_COMPLETION_KEYWORDS,
 };
 pub use sql_path_prefix::{
     QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
