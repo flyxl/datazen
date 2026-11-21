@@ -3,7 +3,8 @@ use std::collections::HashSet;
 use serde_json::Value;
 
 use crate::{
-    ClipboardMatrix, GridClipboardAnchor, GridClipboardRange, PasteProblem, TableChangeContext,
+    ClipboardMatrix, GridClipboardAnchor, GridClipboardRange, InboundTableChangeContext as TableChangeContext,
+    PasteProblem,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]

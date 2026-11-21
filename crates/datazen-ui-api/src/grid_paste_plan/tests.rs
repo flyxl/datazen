@@ -2,8 +2,8 @@ use std::collections::HashSet;
 
 use crate::types::ColumnSchema;
 use crate::{
-    ClipboardDelimiter, ClipboardMatrix, GridClipboardAnchor, GridClipboardRange, PasteProblemCode,
-    TableChangeContext,
+    ClipboardDelimiter, ClipboardMatrix, GridClipboardAnchor, GridClipboardRange,
+    InboundTableChangeContext as TableChangeContext, PasteProblemCode,
 };
 
 use super::*;
@@ -64,7 +64,7 @@ fn context() -> TableChangeContext {
     TableChangeContext {
         connection_id: "conn".to_owned(),
         db_session_id: "session".to_owned(),
-        driver_type: Some("postgres".to_owned()),
+        driver_type: "postgres".to_owned(),
         database: "shop".to_owned(),
         schema: Some("public".to_owned()),
         table: "customers".to_owned(),
