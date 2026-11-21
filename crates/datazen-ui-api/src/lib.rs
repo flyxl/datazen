@@ -831,7 +831,7 @@ pub use metadata::{
     MetadataClock, MetadataIdentityInput, MetadataSessionIdentity, MetadataTarget, NamespaceTarget,
     ObjectTarget, ResultProvenance, SessionHandle, TemporaryResult, check_temporary_result,
     is_provenance_current, metadata_batch_bucket, metadata_cache_key, metadata_config_bucket,
-    metadata_session_key, read_temporary_result,
+    metadata_session_key, read_temporary_result, METADATA_IDENTITY_SURFACE,
 };
 pub use platform_shared::{
     McpContentBlock, McpError, McpFetch, McpHttpResponse, McpJsonRpcError, McpRequestInit,
