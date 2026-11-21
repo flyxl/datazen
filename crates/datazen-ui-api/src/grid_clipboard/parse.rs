@@ -240,6 +240,7 @@ pub fn parse_clipboard_matrix(text: &str) -> ClipboardParseResult {
             code: PasteProblemCode::UnclosedQuote,
             row: None,
             column: None,
+            detail: None,
         });
     }
     ClipboardParseResult::Ok {
