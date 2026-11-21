@@ -60,3 +60,6 @@ pub(crate) mod use_grid_keyboard_nav;
 // T328: the grid's pointer wiring (DB-01: the drag session, the
 // gutter hand-off, Escape's cancel-drag-first clearing).
 pub(crate) mod use_grid_selection;
+// T395: the per-pane query-execution read (the whole-entry and
+// single-field faces over the pane-key rule).
+mod use_query_exec;
