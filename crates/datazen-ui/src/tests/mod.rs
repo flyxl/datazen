@@ -1625,3 +1625,14 @@ mod ai_session_history_audit;
 // the action router, the wrap-around, the bar component's open/hover
 // behaviour).
 mod menu_bar_audit;
+
+// T217: the AI context picker (coder tests: the query filter, the
+// ctx.yaml rule, the flatten walk, the recents LRU, the key router,
+// the mounted drill-in / picks / loading / empty rows).
+mod context_picker;
+
+// T217 independent audit: fresh vectors (unicode id/name queries, the
+// ten-push LRU cap, the stale active index clamp, the session-less
+// two-level Escape walk, the mounted boundary pick, the loading gate,
+// thirty-row geometry).
+mod context_picker_audit;
