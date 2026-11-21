@@ -134,7 +134,7 @@
 - [x] T381 · windows/settings · 0.30d · windows/settings/SettingHint.tsx
 - [x] T384 · windows/schema-diff · 1.30d · windows/schema-diff/useSchemaDiffEndpoints.ts · split
 - [x] T386 · hooks · 0.90d · hooks/usePlatform.ts
-- [ ] T388 · commands · 0.90d · commands/settings.ts
+- [x] T388 · commands · 0.90d · commands/settings.ts
 - [ ] T390 · windows/settings · 1.30d · windows/settings/SettingsContent.tsx · split
 - [x] T393 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffJobLifecycle.ts
 - [ ] T395 · hooks · 0.90d · hooks/useQueryExec.ts
