@@ -80,6 +80,9 @@ pub(crate) mod language_packs_card;
 // T381: the "?" help hint (hover/focus tooltip with the 120ms close
 // grace and the focus-retention rule).
 pub(crate) mod setting_hint;
+// T408: the AI skills settings panel (the opt-in switches, the
+// custom directory, the discovered listing).
+pub(crate) mod skills_section;
 // T390: the settings content shell (the nav rail + the six own
 // sections + the delegated section slots), split with its state.
 pub(crate) mod settings_content;

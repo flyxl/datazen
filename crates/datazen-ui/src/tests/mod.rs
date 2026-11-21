@@ -930,3 +930,6 @@ mod prompt_settings_section_audit;
 // T390: the settings content shell (the nav rail, the six own
 // sections, the delegated slots, the contributions, the keymap card).
 mod settings_content_audit;
+// T408: the AI skills settings panel (the opt-in switches, the
+// custom directory, the listing faces).
+mod skills_section_audit;
