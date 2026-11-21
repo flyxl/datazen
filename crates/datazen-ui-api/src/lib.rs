@@ -161,6 +161,7 @@ mod tabs;
 // docs for the full ownership map and the surface law).
 pub mod types;
 pub mod schema_object_search;
+pub mod server_status_trends;
 
 use std::collections::HashMap;
 
@@ -830,6 +831,14 @@ pub use schema_object_search::{
     table_matches_object_search, ObjectSearchFilters, ObjectSearchMatchField,
     ObjectSearchObjectType, ObjectSearchResult, ObjectSearchResultGroup, ObjectSearchSourceKind,
     SchemaObjectIndex, SchemaObjectIndexEntry, SchemaObjectSearchIndex,
+};
+pub use server_status_trends::{
+    align_timestamp, card_rate_from_history, compute_trend_time_axis, desired_tick_count,
+    format_byte_rate, format_bytes, format_rate, latest_series_value, number_from, pick_tick_step,
+    update_trend_history, CommandKey, StatusRecord, TrendAxisOptions, TrendKind, TrendPoint,
+    TrendPrevSample, TrendSeries, TrendSeriesDef, TrendTimeAxis, TrendUpdateInput,
+    TrendUpdateResult, COMMAND_KEYS, DEFAULT_MIN_WINDOW_MS, DEFAULT_REFRESH_PERIOD_MS,
+    HISTORY_MAX, HISTORY_WINDOW_MS, TICK_STEP_CANDIDATES_MS, TREND_SERIES,
 };
 pub use sql_path_prefix::{
     QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
