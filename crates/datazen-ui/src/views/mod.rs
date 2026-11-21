@@ -26,8 +26,12 @@ pub(crate) mod home;
 pub(crate) mod import_dialog;
 pub(crate) mod navigator;
 pub(crate) mod object_browser;
+pub(crate) mod pending_plan_dialog;
 pub(crate) mod panel_content_renderer;
 pub(crate) mod panel_tab_bar;
+pub(crate) mod privilege_view;
+pub(crate) mod process_list_view;
+pub(crate) mod query;
 
 mod connections;
 mod connections_home;
