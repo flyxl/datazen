@@ -1749,3 +1749,19 @@ mod table_data_panel_seed;
 // lists, the whole-TableState equality against the empty state with
 // only the five React overrides, seed independence, verbatim strings).
 mod table_data_panel_seed_audit;
+
+// T257: the DetailPanelToggle and the DraftRow (coder tests: the
+// toggle's two states with titles/roles/wash and its press seam; the
+// row's markers and labels, the absolute geometry, the three
+// write-intent states, the plan consulted only by written cells, the
+// discard-without-activate split, the cell press and double press, the
+// editing stand-in seed, the 160 width default, the selection-only
+// grid roles).
+mod draft_row;
+
+// T257 independent audit: fresh vectors (the unwired light-mode toggle,
+// two rows keeping their own markers and callbacks, the short widths
+// list, the js_string round-trip families, the window-wide geometry
+// sweep, the tab-ring opt-out, a foreign editing target, a plan pointed
+// at an unwritten column).
+mod draft_row_audit;
