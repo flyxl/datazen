@@ -32,7 +32,7 @@
 //!   (`install_wapp_inspected` / `install_wapp_succeeded`) for that wiring;
 //!   until it lands, a picked path and a confirmed install run React's
 //!   error branches honestly (see `wapps_state.rs`).
-//! - `PERMISSION_LABELS` — `windows/wapps/permissionLabels.ts` is T484, so
+//! - `PERMISSION_LABELS` — landed as T484's `permission_labels`
 //!   the permission badges render without their tooltip texts until that
 //!   port lands.
 //! - The open press (`extensions.page.install`, `WappManagementPage.tsx`)
@@ -338,8 +338,8 @@ fn install_wapp_review_body(state: &AppState, dark: bool) -> El {
         );
     } else {
         // React: one neutral `Badge` per permission string; the tooltip
-        // texts (`PERMISSION_LABELS`) are T484's port, so the badges render
-        // without them until that lands.
+        // texts are T484's `permission_labels` (the kit Badge has no
+        // tooltip surface — the visible badge matches React's).
         for perm in preview.manifest.permissions.clone() {
             badges = badges.child(
                 Badge::new(format!("extension-install-permission-{perm}"), perm)

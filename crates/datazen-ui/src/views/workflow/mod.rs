@@ -43,6 +43,11 @@ pub(crate) mod step_result_utils;
 // section swap in `views/workspace.rs` routes here).
 pub(crate) mod workflow_page;
 // T070: the page's edit pane (T145) is the form's production consumer.
+// T484: the richer editor draft's parking lot behind the legacy
+// WorkflowPage callback.
+#[allow(dead_code)]
+pub(crate) mod draft_bridge;
+#[allow(dead_code)]
 pub(crate) mod workflow_form;
 // T223: the definition ↔ draft conversion pair — the page's edit entry and
 // save path call it through the full-definition host seam.

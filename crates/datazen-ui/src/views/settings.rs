@@ -89,6 +89,41 @@ pub(crate) mod sql_snippets_card;
 // auto-only threshold, the default sort, the grid density + toggles)
 // with T474's delegated slot.
 pub(crate) mod table_data_settings_section;
+// T441's absorbed lib: the reference-integrity cleanup for
+// delete_tunnel (the unbind-then-delete ordering + the rollback).
+pub(crate) mod tunnel_deletion;
+// T441: the tunnel delete confirmation (the usage read, the
+// affected list, the unbind-then-delete outcome reporting).
+pub(crate) mod tunnel_delete_dialog;
+// T447's carried lib: the string-field tunnel draft model (T637's
+// until it lands) — the validation order + the save conversions.
+pub(crate) mod tunnel_draft;
+// T447: the tunnel create/edit dialog (the open-reset fetch, the
+// draft patches, the problem-gated save).
+pub(crate) mod tunnel_edit_dialog;
+// T459: the tunnel live-probe dialog (the target inputs, the
+// kind-scoped honesty note, the elapsed/error answers).
+pub(crate) mod tunnel_test_dialog;
+// T638's carried lib (segment 2 — until it lands): the updater's
+// pure core (channel/variant reasoning, the manifest defence, the
+// progress/result contracts).
+pub(crate) mod updater;
+// T464: the update card (the three channel faces, the check /
+// download / restart flows, the restart confirm).
+pub(crate) mod update_section;
+// T469: the global value-presentation rule's edit form (the
+// validated save, the same-road sample preview).
+pub(crate) mod value_presentation_rule_editor;
+// T474's split half: the draft / preview pure family (the stored
+// read, the PRD §4 anchors, the same-road preview).
+pub(crate) mod value_presentation_section_helpers;
+// T474: the time-display settings section (the draft + explicit
+// save, the T11 per-path sync, the editable rule list over T469's
+// editor).
+pub(crate) mod value_presentation_settings_section;
+// T453: the tunnel settings section (the secret-free list, the
+// usage batch, the copy action, the three dialog mounts).
+pub(crate) mod tunnel_settings_section;
 // T408: the AI skills settings panel (the opt-in switches, the
 // custom directory, the discovered listing).
 pub(crate) mod skills_section;

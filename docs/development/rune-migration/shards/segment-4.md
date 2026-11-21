@@ -157,15 +157,15 @@
 - [x] T434 · windows/settings · 0.90d · windows/settings/TableDataSettingsSection.tsx
 - [x] T438 · hooks · 1.30d · hooks/useTransferJobRun.ts · split
 - [x] T440 · commands · 0.90d · commands/wapps.ts
-- [ ] T441 · windows/settings · 0.90d · windows/settings/TunnelDeleteDialog.tsx
-- [ ] T445 · hooks · 0.90d · hooks/useValuePresentation.ts
-- [ ] T447 · windows/settings · 0.90d · windows/settings/TunnelEditDialog.tsx
-- [ ] T451 · hooks · 0.90d · hooks/useValuePresentationSnapshot.ts
-- [ ] T453 · windows/settings · 0.90d · windows/settings/TunnelSettingsSection.tsx
-- [ ] T457 · hooks · 2.00d · hooks/useVirtualTable.ts · split
-- [ ] T459 · windows/settings · 0.90d · windows/settings/TunnelTestDialog.tsx
-- [ ] T464 · windows/settings · 0.90d · windows/settings/UpdateSection.tsx
-- [ ] T469 · windows/settings · 0.80d · windows/settings/ValuePresentationRuleEditor.tsx
-- [ ] T474 · windows/settings · 1.30d · windows/settings/ValuePresentationSettingsSection.tsx · split
+- [x] T441 · windows/settings · 0.90d · windows/settings/TunnelDeleteDialog.tsx
+- [x] T445 · hooks · 0.90d · hooks/useValuePresentation.ts
+- [x] T447 · windows/settings · 0.90d · windows/settings/TunnelEditDialog.tsx
+- [x] T451 · hooks · 0.90d · hooks/useValuePresentationSnapshot.ts
+- [x] T453 · windows/settings · 0.90d · windows/settings/TunnelSettingsSection.tsx
+- [x] T457 · hooks · 2.00d · hooks/useVirtualTable.ts · split
+- [x] T459 · windows/settings · 0.90d · windows/settings/TunnelTestDialog.tsx
+- [x] T464 · windows/settings · 0.90d · windows/settings/UpdateSection.tsx
+- [x] T469 · windows/settings · 0.80d · windows/settings/ValuePresentationRuleEditor.tsx
+- [x] T474 · windows/settings · 1.30d · windows/settings/ValuePresentationSettingsSection.tsx · split
 - [x] T479 · windows/settings · 1.30d · windows/settings/ai/useModelProfileDraft.ts · split
-- [ ] T484 · windows/settings · 0.90d · windows/settings/settingsSections.ts windows/wapps/permissionLabels.ts windows/workflow/draftBridge.ts
+- [x] T484 · windows/settings · 0.90d · windows/settings/settingsSections.ts windows/wapps/permissionLabels.ts windows/workflow/draftBridge.ts
