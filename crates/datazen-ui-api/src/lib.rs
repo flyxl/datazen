@@ -184,6 +184,7 @@ mod wapp_asset_origin;
 mod wapp_bridge;
 mod wapp_i18n;
 mod window_manager;
+mod workflow_yaml;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
 // path `datazen_ui_api::types::…` is the Rust twin of React's `'../types'`
@@ -1043,6 +1044,11 @@ pub use window_manager::{
     ConnectionWindowPlan, DashboardWindowPlan, DocsWindowPlan, MenuActionPlan, PostOnboardingSample,
     SingletonWindowPlan, MAIN_SHELL_MENU_IDS, PENDING_CONNECTION_KEY, POST_ONBOARDING_SAMPLE_KEY,
     WINDOW_CAPABILITY_LABEL_SAMPLES, WINDOW_MANAGER_GAP,
+};
+pub use workflow_yaml::{
+    extract_workflow_yaml, looks_like_workflow, parse_validated_workflow_definition,
+    parse_workflow_blocks, parse_workflow_yaml, validate_workflow_fields,
+    WorkflowValidationConnection,
 };
 pub use wapp_bridge::{
     err_envelope, host_ready_envelope, is_request_envelope, is_wapp_command_allowed, ok_envelope,
