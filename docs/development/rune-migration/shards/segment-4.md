@@ -124,7 +124,7 @@
 - [x] T359 · components/sql-editor · 2.00d · components/sql-editor/snippets/snippetCompletionSource.ts · split
 - [x] T360 · windows/settings · 1.30d · windows/settings/MemorySection.tsx · split
 - [x] T363 · windows/schema-diff · 0.90d · windows/schema-diff/schemaDiffObjectIdentity.ts
-- [ ] T365 · hooks · 0.90d · hooks/useLocaleDomains.ts
+- [x] T365 · hooks · 0.90d · hooks/useLocaleDomains.ts
 - [ ] T368 · commands · 0.90d · commands/sample.ts
 - [x] T370 · components/sql-editor · 0.30d · components/sql-editor/snippets/types.ts
 - [ ] T371 · windows/settings · 0.90d · windows/settings/PromptSettingsSection.tsx
