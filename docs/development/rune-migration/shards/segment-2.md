@@ -92,7 +92,7 @@
 - [ ] T575 · lib · 0.80d · lib/queryContextPath.ts
 - [ ] T577 · lib · 0.90d · lib/queryExecutionViewModel.ts
 - [ ] T579 · lib · 0.90d · lib/querySidebarContextMenu.ts lib/queryStream.ts lib/relationMetadata/identity.ts
-- [ ] T581 · lib · 0.30d · lib/resolveUiLanguage.ts
+- [x] T581 · lib · 0.30d · lib/resolveUiLanguage.ts
 - [ ] T583 · lib · 0.90d · lib/resultEditability.ts
 - [ ] T585 · lib · 0.80d · lib/resultFindReplace.ts lib/rowCountStrategy.ts
 - [ ] T587 · lib · 0.60d · lib/rowToRecord.ts lib/runPredefinedEdit.ts
