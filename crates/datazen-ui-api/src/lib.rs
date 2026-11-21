@@ -16,6 +16,7 @@ mod ensure_namespace;
 mod er_node_context_menu;
 mod export_dialog_shared;
 mod extract_sql;
+mod filter_expression;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -163,6 +164,12 @@ pub use export_dialog_shared::{
 };
 pub use extract_sql::{
     extract_sql_from_response, extract_sql_streaming, looks_like_sql, starts_sql_statement,
+};
+pub use filter_expression::{
+    FilterExpression, FilterExpressionLogic, FilterExpressionOperator, FilterExpressionValue,
+    FlattenedFilterCondition, ParseFailure, ParsedFilterApplication,
+    filter_expression_to_conditions, flatten_parts, flatten_to_connectors,
+    has_or_group_under_and, parse_filter_expression, parse_filter_for_apply, token_positions,
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
