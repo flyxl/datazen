@@ -62,6 +62,8 @@ mod query_execution_gate;
 mod result_table_view;
 // T526: ResultWorkspace port (view resolution, branches, toolbar, geometry).
 mod result_workspace;
+// T526 independent audit: inference branches, config independence, branch geometry.
+mod result_workspace_audit;
 // T524 independent audit: any-column not-contains, replace-all splicing and
 // non-contains operator planning, checked against React resultFindReplace.
 mod result_table_view_audit;
