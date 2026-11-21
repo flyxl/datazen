@@ -45,7 +45,7 @@
 - [x] T456 · lib · 2.00d · lib/dataFetcher.ts · split
 - [x] T462 · lib · 3.30d · lib/dataTableContextMenu.ts · split
 - [x] T467 · lib · 0.90d · lib/dedicatedDbSession.ts
-- [ ] T472 · lib · 0.90d · lib/defaultSort.ts lib/docsUrls.ts lib/documentScrollLock.ts
+- [x] T472 · lib · 0.90d · lib/defaultSort.ts lib/docsUrls.ts lib/documentScrollLock.ts
 - [ ] T477 · lib · 0.90d · lib/driverCapabilities.ts
 - [ ] T482 · lib · 0.60d · lib/driverCommandIds.ts lib/endpointIdentity.ts
 - [ ] T487 · lib · 0.80d · lib/ensureNamespace.ts lib/erNodeContextMenu.ts
