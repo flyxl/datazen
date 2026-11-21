@@ -548,11 +548,11 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T529 · lib · 0.80d · lib/gridPastePlan.ts
 - [x] T530 · windows/connection · 0.80d · windows/connection/SetValueDateDialog.tsx windows/connection/structure/StructureColumnTable.tsx
 - [ ] T531 · lib · 0.90d · lib/historyGroups.ts lib/hostErrorMessage.ts lib/hostLucideMap.ts
-- [ ] T532 · windows/connection · 0.80d · windows/connection/structure/StructureIndexTable.tsx windows/connection/structure/StructurePlanPreview.tsx
+- [x] T532 · windows/connection · 0.80d · windows/connection/structure/StructureIndexTable.tsx windows/connection/structure/StructurePlanPreview.tsx
 - [ ] T533 · lib · 2.00d · lib/htmlSanitizer.ts · split
-- [ ] T534 · windows/connection · 0.90d · windows/connection/StructureView.tsx
+- [x] T534 · windows/connection · 0.90d · windows/connection/StructureView.tsx
 - [ ] T535 · lib · 0.90d · lib/iconIds.ts lib/iconResolver.ts lib/importConnectionFile.ts
-- [ ] T536 · windows/connection · 0.30d · windows/connection/TableClipboardStatus.tsx
+- [x] T536 · windows/connection · 0.30d · windows/connection/TableClipboardStatus.tsx
 - [ ] T537 · lib · 2.00d · lib/importData.ts · split
 - [ ] T538 · windows/connection · 0.80d · windows/connection/TableColumnFilter.tsx
 - [ ] T539 · lib · 1.30d · lib/importExecution.ts · split
