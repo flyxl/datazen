@@ -1615,3 +1615,8 @@ mod chart_transform_audit;
 // the fetch/load/save/refresh walks, the latest-run pick, both cross-window
 // gates).
 mod dashboard_store_audit;
+
+// T193: the AiSessionHistory panel's independent audit (the open gate,
+// the notice precedence, the empty states, the row labels and active
+// selection, the export gate, every callback, geometry).
+mod ai_session_history_audit;
