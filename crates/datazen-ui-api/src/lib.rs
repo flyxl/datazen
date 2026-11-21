@@ -43,7 +43,10 @@ mod connection_config;
 mod connection_form_model;
 mod connection_groups;
 mod connection_locator;
+mod connection_share_error;
+mod connection_tab_context_menu;
 mod connection_types;
+mod connection_view_registry;
 mod connection_views;
 mod context_items;
 mod context_menu_position;
@@ -256,6 +259,15 @@ pub use connection_locator::{
     ConnectionLocatorUsageState, ConnectionMatch, ConnectionMatchReason, ConnectionSection,
     ExpandKey, SchemaSlice, PINNED_GROUP_KEY, RECENT_CONNECTION_LIMIT, RECENT_GROUP_KEY,
 };
+pub use connection_share_error::{
+    format_connection_import_success, ipc_connection_share_error, translate_connection_share_error,
+    ConnectionImportResult, ShareErrorSource,
+};
+pub use connection_tab_context_menu::{
+    build_connection_tab_context_menu_items, BuildConnectionTabContextMenuArgs,
+    ConnectionTabAction, ConnectionTabContextMenuHandlers, ConnectionTabContextMenuLabels,
+    ConnectionTabMenuItem,
+};
 pub use connection_types::{
     ConnectionConfig, ContextEntry, DatabaseObject, DatabaseObjectKind, DatabaseType,
     DriverCapabilities, ExplainPlanDetail, ExplainPlanNode, ExplainResult,
@@ -264,6 +276,9 @@ pub use connection_types::{
     ResolveForeignKeyTargetsRequest, SavedTunnel, SavedTunnelKind, ServerInfo, SshAuthMethod,
     SshTunnelConfig, SslMode, TableInfo, TableSchema, TableType, TunnelKind, Value, WebSocketMode,
     WebSocketTunnelConfig,
+};
+pub use connection_view_registry::{
+    get_connection_view, is_builtin_document_mode, ConnectionViewSelection, BUILTIN_DOCUMENT_MODE,
 };
 pub use connection_views::{
     ConnectionOpenTarget, ConnectionViewActions, ConnectionViewProps, NewQueryContext,
