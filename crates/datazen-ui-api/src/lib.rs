@@ -77,6 +77,8 @@ mod endpoint_identity;
 mod error_message;
 mod export_capability;
 mod export_data;
+mod export_table_structure;
+mod extract_questions;
 mod filter_types;
 mod keyset_types;
 mod metadata;
@@ -405,6 +407,11 @@ pub use export_capability::{
     supports_full_table_export, DataExportCapability, ExportDriverMeta,
 };
 pub use export_data::{ExportDataFormat, ExportDataScope};
+pub use export_table_structure::{
+    export_table_structure_to_file, DdlDialect, DdlQuery, DdlRowExtractor, DdlFetcher,
+    ExportTableStructureResult, SqlDialectProvider, StructureExportInput, StructureExporter,
+};
+pub use extract_questions::{extract_questions, parse_tool_call_questions, ExtractQuestionsResult};
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
     FilterOperator, SHARED_FILTER_OPERATORS,
