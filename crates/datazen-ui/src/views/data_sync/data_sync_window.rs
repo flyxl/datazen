@@ -109,6 +109,9 @@ pub(crate) struct DataSyncWindow<'a, S: 'static> {
     /// The endpoint step's profile-select listbox open flag (the
     /// host's cell, T114's contract).
     profile_select_open: bool,
+    /// The setup step's conflict-policy select listbox open flag (the
+    /// host's cell, T203's contract).
+    policy_select_open: bool,
     /// The run-history dialog's open flag (the host's cell, the T140
     /// port's controlled contract).
     history_open: bool,
@@ -133,6 +136,8 @@ pub(crate) struct DataSyncWindow<'a, S: 'static> {
     // -- the setup step (React 211-217) --
     on_options_change: Option<Rc<dyn Fn(&mut S, super::data_sync_compare_step::SyncOptions)>>,
     on_enable_delete: Option<Rc<dyn Fn(&mut S)>>,
+    on_toggle_policy: Option<Rc<dyn Fn(&mut S)>>,
+    on_close_policy: Option<Rc<dyn Fn(&mut S)>>,
     // -- the objects step (React 219-229) --
     on_toggle_disabled: Option<Rc<dyn Fn(&mut S, String)>>,
     on_open_schema_diff: Option<Rc<dyn Fn(&mut S)>>,
@@ -169,6 +174,7 @@ impl<'a, S: 'static> DataSyncWindow<'a, S> {
             edits,
             dark: true,
             profile_select_open: false,
+            policy_select_open: false,
             history_open: false,
             history_open_epoch: 0,
             on_history_open: None,
@@ -187,6 +193,8 @@ impl<'a, S: 'static> DataSyncWindow<'a, S> {
             on_select_close: None,
             on_options_change: None,
             on_enable_delete: None,
+            on_toggle_policy: None,
+            on_close_policy: None,
             on_toggle_disabled: None,
             on_open_schema_diff: None,
             on_open_data_transfer: None,
@@ -219,6 +227,25 @@ impl<'a, S: 'static> DataSyncWindow<'a, S> {
     /// The endpoint step's profile-select listbox open flag.
     pub(crate) fn profile_select_open(mut self, open: bool) -> Self {
         self.profile_select_open = open;
+        self
+    }
+
+    /// The setup step's conflict-policy select listbox open flag.
+    pub(crate) fn policy_select_open(mut self, open: bool) -> Self {
+        self.policy_select_open = open;
+        self
+    }
+
+    /// The conflict-policy select's open press (T203's contract — the
+    /// select asserts without a toggle when enabled).
+    pub(crate) fn on_toggle_policy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+        self.on_toggle_policy = Some(Rc::new(f));
+        self
+    }
+
+    /// The conflict-policy select's close (presses outside, Escape).
+    pub(crate) fn on_close_policy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+        self.on_close_policy = Some(Rc::new(f));
         self
     }
 
@@ -701,7 +728,8 @@ impl<'a, S: 'static> DataSyncWindow<'a, S> {
     /// React 211-217: the setup step over the wizard's options.
     fn setup_step(&self, vm: &DataSyncWindowVm, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
-        let mut builder = DataSyncOptionsStep::<S>::new(vm.wizard.sync_options.clone());
+        let mut builder = DataSyncOptionsStep::<S>::new(vm.wizard.sync_options.clone())
+            .policy_select_open(self.policy_select_open);
         if let Some(on_change) = &self.on_options_change {
             let action = Rc::clone(on_change);
             builder = builder.on_change(move |s: &mut S, next| action(s, next));
@@ -709,6 +737,14 @@ impl<'a, S: 'static> DataSyncWindow<'a, S> {
         if let Some(on_enable_delete) = &self.on_enable_delete {
             let action = Rc::clone(on_enable_delete);
             builder = builder.on_enable_delete(move |s: &mut S| action(s));
+        }
+        if let Some(on_toggle) = &self.on_toggle_policy {
+            let action = Rc::clone(on_toggle);
+            builder = builder.on_toggle_policy(move |s: &mut S| action(s));
+        }
+        if let Some(on_close) = &self.on_close_policy {
+            let action = Rc::clone(on_close);
+            builder = builder.on_close_policy(move |s: &mut S| action(s));
         }
         // The options step's layer (the policy select's listbox) folds
         // into the window's layer.
@@ -842,7 +878,7 @@ impl<'a, S: 'static> DataSyncWindow<'a, S> {
 
     /// React 297-307: the T322 execute-bar seam — the bar mounts only
     /// under the preview step (the caller's gate), and its props ride
-    /// the seam until T322 lands.
+    /// the seam's label until T322 lands.
     fn execute_bar_seam(&self, k: &Kit) -> El {
         let vm = &self.vm;
         row()
@@ -851,8 +887,15 @@ impl<'a, S: 'static> DataSyncWindow<'a, S> {
             .h(48.0)
             .center_y()
             .px(12.0)
-            .gap(8.0)
             .border_sides([1.0, 0.0, 0.0, 0.0], k.c.border_base)
+            .label(format!(
+                "T322|rows={}|deletes={}|readonly={}|executing={}|can={}",
+                vm.row_selection.total_selected_rows,
+                vm.row_selection.has_selected_deletes,
+                vm.endpoints.target_read_only,
+                vm.executing(),
+                vm.execution.can_execute
+            ))
             .child(
                 text(t("sync.execute").to_owned())
                     .key("data-sync-execute-bar-seam-hint")
@@ -861,18 +904,6 @@ impl<'a, S: 'static> DataSyncWindow<'a, S> {
                     .grow(1.0)
                     .min_w(0.0)
                     .truncate(),
-            )
-            .child(
-                text(format!(
-                    "T322|rows={}|deletes={}|readonly={}|executing={}|can={}",
-                    vm.row_selection.total_selected_rows,
-                    vm.row_selection.has_selected_deletes,
-                    vm.endpoints.target_read_only,
-                    vm.executing(),
-                    vm.execution.can_execute
-                ))
-                .font(k.ty.text_xsmall)
-                .color(k.c.text_faint),
             )
     }
 

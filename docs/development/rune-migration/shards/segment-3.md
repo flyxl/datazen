@@ -87,7 +87,7 @@
 - [x] T260 · components/ai · 0.90d · components/ai/ExplainPanel.tsx
 - [x] T262 · components · 0.80d · components/StatusBar.tsx components/ThemedIcon.tsx
 - [x] T267 · windows/data-transfer · 0.90d · windows/data-transfer/TransferMappingStep.tsx
-- [ ] T268 · windows/data-sync · 1.30d · windows/data-sync/DataSyncWindow.tsx · split
+- [x] T268 · windows/data-sync · 1.30d · windows/data-sync/DataSyncWindow.tsx · split
 - [ ] T274 · stores · 0.90d · stores/metadataIdentityBinding.ts stores/paneFocus.ts stores/paneKeys.ts
 - [ ] T275 · stores/tableData · 2.00d · stores/tableData/pendingChanges.ts · split
 - [ ] T278 · components/DataTable · 0.90d · components/DataTable/EditableCell.tsx components/DataTable/editors/BinaryCellEditor.tsx components/DataTable/editors/BooleanCellEditor.tsx

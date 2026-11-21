@@ -1328,6 +1328,22 @@ mod data_sync_recordset_editor_audit;
 // geometry, five-row stacking, light theme.
 mod data_sync_job_status_panel_audit;
 
+// T268: the Data Sync window port (coder tests: the Vm's derivations —
+// step index, narrow layout, show-next, executing, the status fallback —
+// the window frame with the attrs mirror/chrome/stepper/nav/status bar,
+// each step's own body, the execute-bar seam's preview-only mount and
+// its five inputs, the dialogs from the seams, and the forwarded
+// callbacks through real presses).
+mod data_sync_window;
+
+// T268 independent audit: fresh vectors (the attrs mirror's exact
+// spellings across the state/step/outcome axes, the chrome's pack words
+// verbatim, both themes mounting the same key set inside the minimum
+// window, the busy spinner's nav mount and the hidden next, the
+// run-history dialog's layer following the open flag, the job-status
+// strip's hydration hint pair).
+mod data_sync_window_audit;
+
 // T125: the persisted-connections store (display helpers over the T403
 // placeholder subset, load/refetch chains, group edits, per-connection moves).
 mod connection_store;
