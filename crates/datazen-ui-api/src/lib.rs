@@ -46,6 +46,7 @@ mod panel_exec_cleanup;
 mod panel_query_context;
 mod panel_result_edit;
 mod panel_store;
+mod panel_types;
 mod platform_shared;
 mod relation_prediction;
 mod relative_time;
@@ -308,6 +309,13 @@ pub use panel_store::{
     PanelPatch, PanelState, PanelStore, PanelStoreHost, PendingHistoryQuery, ResultColumn,
     ResultEdit, ResultView, RunQueryRequest, StorePanel, StorePanelType, DEFAULT_PANE_ID,
     PANE_SEPARATOR, PANEL_STORE_GAP, PANEL_STORE_SURFACE,
+};
+pub use panel_types::{
+    next_panel_id, panel_schema, reset_panel_id_counter, typed_resolve_next_active, ConnectionContext,
+    CreateTablePanel, DatabaseObjectPanel, DbObjectKind, ErDiagramPanel, FkOrigin,
+    MonitorSubPage, ObjectsPanel, PanelBase, ProcessListCacheData, ProcessesPanel, PrivilegesPanel,
+    QueryPanel, RedisDbPanel, RedisPendingAction, RedisTab, ServerStatusCache, ServerStatusPanel,
+    SubTabId, TablePanel, TypedPanel, ViewPanel, PANEL_TYPES_GAP, PANEL_TYPES_SURFACE,
 };
 pub use platform_shared::{
     McpContentBlock, McpError, McpFetch, McpHttpResponse, McpJsonRpcError, McpRequestInit,
