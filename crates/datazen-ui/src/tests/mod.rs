@@ -654,3 +654,6 @@ mod query_builder_host_adapter;
 mod query_transaction_modals;
 // T516: SnippetMenuButton port (builtins, menu items, insert actions, disabled, geometry).
 mod snippet_menu_button;
+// T522: ExecutionSummaryCard + ResultFindBar ports (summary values, find actions, geometry).
+mod execution_summary_card;
+mod result_find_bar;
