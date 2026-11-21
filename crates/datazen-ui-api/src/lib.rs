@@ -52,6 +52,7 @@ mod selection_actions;
 mod stage_cell_value;
 mod stage_edit_actions;
 mod sql_path_prefix;
+mod workflow_panel;
 mod sql_schema_drop_targets;
 mod tabs;
 // `pub mod` — the second public module: the T211 types aggregate (the
@@ -317,6 +318,13 @@ pub use stage_cell_value::{
 };
 pub use stage_edit_actions::{
     compute_unstage_delete_result, STAGE_EDIT_ACTIONS_GAP, STAGE_EDIT_ACTIONS_SURFACE,
+};
+pub use workflow_panel::{
+    connection_options, error_text, feedback_tone, is_connection_variable, is_loading,
+    variable_defaults, variable_input, ConfirmKind, ConnectionSummary, ExecuteParams, FeedbackTone,
+    PanelTab, VariableInput, WorkflowPanel, WorkflowPanelEffect, WorkflowPanelHost,
+    WorkflowPanelLabels, WorkflowPanelOptions, WorkflowPanelState, WorkflowSelectOption,
+    WorkflowStoreView, WORKFLOW_PANEL_GAP, WORKFLOW_PANEL_SURFACE,
 };
 pub use sql_path_prefix::{
     QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
