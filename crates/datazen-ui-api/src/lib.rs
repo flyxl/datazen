@@ -34,6 +34,7 @@ mod data_sync_job_lifecycle;
 mod data_sync_run_state;
 mod data_sync_options;
 mod data_sync_profiles;
+mod data_sync_selection;
 mod data_sync_selection_state;
 mod diff_detail;
 mod data_sync_bars;
@@ -343,6 +344,15 @@ pub use data_sync_profiles::{
     RECONCILE_BUSY_KEY, RECONCILE_MISSING_CONNECTION_KEY, RECONCILE_NEEDS_SCOPE_KEY,
     RECONCILE_PROFILE_CHANGED_KEY, RECONCILE_PROFILE_READY_KEY,
     RECONCILE_SCOPE_UNAVAILABLE_KEY,
+};
+pub use data_sync_selection::{
+    clear_table_operation_scope, has_selected_deletes, is_table_operation_scoped,
+    loaded_page_token, next_page_cursors, next_page_index, page_selection_decision,
+    reconcile_selected_rows, resolve_cursor, row_counts, set_table_operation_scope,
+    table_page_key, total_selected_rows, update_exclusions, CursorOutcome, PageCursor,
+    PageDirection, RowChange, RowCounts, SelectionStateView, SelectionTable, TableSelectionScope,
+    DATA_SYNC_SELECTION_GAP, DATA_SYNC_SELECTION_SURFACE, PAGE_DIRECTION_INITIAL,
+    PAGE_DIRECTION_NEXT, PAGE_DIRECTION_PREVIOUS,
 };
 pub use data_sync_selection_state::{
     DataSyncPageCursor, DataSyncSelectionState, SelectionRefs, SelectionScopeKey, SelectionState,
