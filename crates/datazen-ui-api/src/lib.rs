@@ -46,6 +46,7 @@ mod relative_time;
 mod run_to_chart;
 mod run_to_result;
 mod selection_actions;
+mod stage_cell_value;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
 mod tabs;
@@ -276,6 +277,13 @@ pub use selection_actions::{
     reconcile_grid_selection, resolve_selection_patch, row_index_selection_reset,
     selection_from_anchor_focus, CellCoord, CellRange, GridSelection, GridSelectionMode,
     SelectionAction, SelectionOpts, SelectionPatch, TableStateForSelection,
+};
+pub use stage_cell_value::{
+    compute_stage_cell_value_result, compute_stage_expression_value_result, compute_stage_result,
+    has_pending_column_change, restored_cell_value, values_equal, PendingRowChange, RowIdentity,
+    StageCellValueInput, StageCellValueResult, StageEditInput, StageEditResult,
+    StageExpressionValueInput, ValueMap, WriteExpressionId, STAGE_CELL_VALUE_GAP,
+    STAGE_CELL_VALUE_SURFACE,
 };
 pub use sql_path_prefix::{
     QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
