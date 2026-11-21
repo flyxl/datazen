@@ -142,7 +142,7 @@
 - [x] T399 · windows/settings · 0.30d · windows/settings/settingsUi.tsx
 - [x] T402 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffJobRestore.ts
 - [x] T404 · hooks · 0.80d · hooks/useResizable.ts hooks/useSettings.ts
-- [ ] T406 · commands · 1.30d · commands/sync.ts · split
+- [x] T406 · commands · 1.30d · commands/sync.ts · split
 - [ ] T408 · windows/settings · 0.90d · windows/settings/SkillsSection.tsx
 - [x] T411 · windows/schema-diff · 1.30d · windows/schema-diff/useSchemaDiffSavedSetups.ts · split
 - [ ] T413 · hooks · 0.90d · hooks/useSettingsSync.ts
