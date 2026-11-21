@@ -301,3 +301,66 @@ fn geometry_fits_both_sizes_in_both_themes() {
         }
     }
 }
+
+// ── T528 independent audit (appended; reuses this module's helpers) ──────
+
+/// React `formatUptime` (`ServerStatusView.tsx:147-151`) fills `{seconds}` with
+/// the RAW input `String(seconds)`, not `seconds % 60`. So 100 seconds renders
+/// as `{hours}h {minutes}m 100s`, not `...40s`. The port computes a remainder
+/// (and the coder test even pinned the wrong 40).
+#[test]
+fn audit_uptime_uses_raw_seconds_like_react() {
+    let expected = t("serverStatus.uptimeFormat")
+        .replace("{hours}", "0")
+        .replace("{minutes}", "1")
+        .replace("{seconds}", "100");
+    assert_eq!(
+        format_uptime(100.0),
+        expected,
+        "React puts the raw seconds value into the format string"
+    );
+}
+
+/// React `formatValue` (`ServerStatusView.tsx:154-164`) only formats uptime when
+/// `typeof value === 'number'`; a numeric string such as `"100"` falls through
+/// to `String(value)` → `"100"`. The port's `format_value` parses strings via
+/// `number_from` and formats them, diverging in the Details table.
+#[test]
+fn audit_numeric_uptime_string_is_not_formatted_in_details() {
+    let value = status_value_str("100");
+    assert_eq!(
+        crate::views::server_status_view::format_value("uptimeSeconds", &value),
+        "100",
+        "React only formats a numeric-typed uptime, not a numeric string"
+    );
+}
+
+/// React's `COMMAND_KEYS = ['select', 'insert', 'update', 'delete']`
+/// (`serverStatusTrends.ts:159`) drives the commands chart's `seriesKeys` and
+/// `seriesLabels` order. The port hardcodes `insert` before `select`.
+#[test]
+fn audit_commands_chart_follows_react_command_key_order() {
+    let mut vm = ready();
+    for key in ["cmd_select", "cmd_insert", "cmd_update", "cmd_delete"] {
+        vm.history.insert(key.to_owned(), series(1000, &[1.0, 2.0]));
+    }
+    let commands = chart_cards(&vm)
+        .into_iter()
+        .find(|card| card.key == "commands")
+        .expect("commands chart present");
+    assert_eq!(
+        commands.series_keys,
+        ["cmd_select", "cmd_insert", "cmd_update", "cmd_delete"],
+        "React COMMAND_KEYS order drives the series keys"
+    );
+    assert_eq!(
+        commands.series_labels,
+        [
+            t("serverStatus.cmdSelect"),
+            t("serverStatus.cmdInsert"),
+            t("serverStatus.cmdUpdate"),
+            t("serverStatus.cmdDelete"),
+        ],
+        "React COMMAND_KEYS order drives the legend labels"
+    );
+}
