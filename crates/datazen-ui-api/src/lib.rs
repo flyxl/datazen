@@ -63,6 +63,7 @@ mod running_execution_close;
 mod scalar_cell_editors;
 mod schema_column_loading;
 mod schema_store;
+mod schema_store_selectors;
 mod selection_actions;
 mod selection_scope;
 mod stage_cell_value;
@@ -446,6 +447,14 @@ pub use schema_store::{
     PathDatabaseEntry, SchemaPatch, SchemaSessionState, SchemaStoreSnapshot, SchemaTableInfo,
     SetLoadedTablesOptions, VisibleDatabases, SCHEMA_STORE_GAP, SCHEMA_STORE_HELPERS_SURFACE,
     SCHEMA_STORE_SURFACE,
+};
+pub use schema_store_selectors::{
+    active_session_metadata_snapshot, binding_to_relation_requests, editor_relation_key,
+    ensure_metadata_relations, get_metadata_relation, read_metadata_snapshot, relation_cache_key,
+    relation_lookup_key, resolve_editor_dialect_id, snapshot_key, DialectRegistryLookup,
+    EditorMetadataCacheLike, EditorRelationKey, EditorRelationRequest, IdentifierFolder,
+    QualifiedRelationId, RelationBindingLike, SqlIdentifierSegment, SqlRelationSourceKind,
+    SCHEMA_STORE_SELECTORS_GAP, SCHEMA_STORE_SELECTORS_SURFACE,
 };
 pub use selection_actions::{
     apply_begin_cell_selection, apply_clear_grid_selection, apply_grid_selection,
