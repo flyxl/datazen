@@ -45,6 +45,9 @@ pub(crate) mod settings;
 /// T424: the data-transfer Job command layer (the prepare/apply
 /// split's four members + the reads).
 pub(crate) mod transfer_jobs;
+/// T432: the saved-tunnel command family (the CRUD pair, the G9
+/// secret-free summary read, the usage read, the round-trip probe).
+pub(crate) mod tunnel;
 /// T415: the data-transfer legacy command family (the typed wire
 /// contracts + the eleven invoke shapers).
 pub(crate) mod transfer;
