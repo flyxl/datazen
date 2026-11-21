@@ -134,6 +134,7 @@ mod process_list_result;
 mod product_features;
 mod relation_prediction;
 mod relative_time;
+mod resolve_ui_language;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
 mod tabs;
@@ -742,6 +743,10 @@ pub use relation_prediction::{
 pub use relative_time::{
     RELATIVE_WINDOW_MS, RelativeTimeParts, RelativeTimeUnit, format_relative_time,
     get_relative_time_parts,
+};
+pub use resolve_ui_language::{
+    normalize_settings_language, resolve_ui_language, SupportedUiLanguage,
+    SUPPORTED_UI_LANGUAGES,
 };
 pub use sql_path_prefix::{
     QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
