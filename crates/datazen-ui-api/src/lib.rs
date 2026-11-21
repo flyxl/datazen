@@ -182,6 +182,7 @@ mod update_reminder_schedule;
 mod updater;
 mod wapp_asset_origin;
 mod wapp_bridge;
+mod window_manager;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
 // path `datazen_ui_api::types::…` is the Rust twin of React's `'../types'`
@@ -1032,6 +1033,15 @@ pub use wapp_asset_origin::{
     is_safe_wapp_asset_path, is_valid_wapp_id, parse_wapp_asset_target,
     reset_wapp_asset_resolver, DESKTOP_WAPP_ASSET_RESOLVER, WappAssetQueryMap, WappAssetResolver,
     WappAssetTarget, WEB_WAPP_ASSET_RESOLVER, WAPP_ASSET_CSP, WAPP_ASSET_PATH_PREFIX,
+};
+pub use window_manager::{
+    backup_window_options, connection_payload, connection_window_plan, dashboard_window_plan,
+    data_sync_window_options, data_transfer_window_options, docs_window_plan,
+    emit_menu_action_plan, is_main_shell_menu_id, schema_diff_window_options,
+    settings_window_plan, workflow_window_plan, BackupMode, BackupPrefill, ConnectionWindowOpts,
+    ConnectionWindowPlan, DashboardWindowPlan, DocsWindowPlan, MenuActionPlan, PostOnboardingSample,
+    SingletonWindowPlan, MAIN_SHELL_MENU_IDS, PENDING_CONNECTION_KEY, POST_ONBOARDING_SAMPLE_KEY,
+    WINDOW_CAPABILITY_LABEL_SAMPLES, WINDOW_MANAGER_GAP,
 };
 pub use wapp_bridge::{
     err_envelope, host_ready_envelope, is_request_envelope, is_wapp_command_allowed, ok_envelope,
