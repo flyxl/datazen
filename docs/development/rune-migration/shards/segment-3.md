@@ -120,7 +120,7 @@
 - [x] T355 · stores/tableData · 1.00d · stores/tableData/stagePasteWrites.ts stores/tableData/tableColumnLayoutPreferences.ts
 - [x] T357 · components/DataTable · 0.30d · components/DataTable/GridKeyboardHints.tsx
 - [x] T362 · windows/data-sync · 0.90d · windows/data-sync/RecordsetEditor.tsx
-- [ ] T366 · stores · 0.50d · stores/panelTypes.ts
+- [x] T366 · stores · 0.50d · stores/panelTypes.ts
 - [x] T367 · stores/tableData · 0.30d · stores/tableData/tableSortPreferences.ts
 - [x] T369 · components/DataTable · 0.80d · components/DataTable/Pagination.tsx
 - [x] T373 · windows/data-sync · 0.90d · windows/data-sync/SqlPreview.tsx
