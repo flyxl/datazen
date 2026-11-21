@@ -113,7 +113,7 @@
 - [ ] T334 · components/ai · 1.30d · components/ai/WorkflowPanel.tsx · split
 - [x] T338 · windows/data-sync · 0.50d · windows/data-sync/MappingPanel.tsx
 - [ ] T342 · stores · 0.90d · stores/panelResultEdit.ts
-- [ ] T343 · stores/tableData · 2.00d · stores/tableData/stageEdit.ts · split
+- [x] T343 · stores/tableData · 2.00d · stores/tableData/stageEdit.ts · split
 - [ ] T345 · components/DataTable · 0.80d · components/DataTable/GridCell.tsx
 - [x] T350 · windows/data-sync · 0.90d · windows/data-sync/OptionsBar.tsx
 - [ ] T354 · stores · 1.30d · stores/panelStore.ts · split
