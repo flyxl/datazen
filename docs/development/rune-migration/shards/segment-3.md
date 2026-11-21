@@ -71,7 +71,7 @@
 - [x] T210 · stores/tableData · 0.80d · stores/tableData/gridSelection.ts
 - [x] T213 · components/DataTable · 0.30d · components/DataTable/DefaultOrderSelect.tsx
 - [x] T217 · components/ai · 1.30d · components/ai/ContextPicker.tsx · split
-- [ ] T219 · components · 2.00d · components/SqlCodeBlock.tsx · split
+- [x] T219 · components · 2.00d · components/SqlCodeBlock.tsx · split
 - [x] T225 · windows/data-transfer · 0.90d · windows/data-transfer/TransferExecuteConfirmDialog.tsx
 - [x] T226 · windows/data-sync · 0.90d · windows/data-sync/DataSyncPreviewStep.tsx
 - [ ] T232 · stores · 0.50d · stores/fkNavigationStore.ts
