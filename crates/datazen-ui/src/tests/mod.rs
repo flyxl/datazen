@@ -1605,3 +1605,8 @@ mod scatter_chart_renderer;
 // the overlays, the cell-contract surface, the Delete key, the export
 // dialog pair, geometry).
 mod data_table_shell_audit;
+
+// T180: the lib/chart/transform.ts port's independent audit (the record
+// walk, the aggregate table's honest edges, the pivot series order, the
+// sort comparators, the scatter null-x rule).
+mod chart_transform_audit;
