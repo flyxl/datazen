@@ -89,7 +89,7 @@
 - [x] T569 · lib · 0.30d · lib/panelContextPath.ts
 - [x] T571 · lib · 0.90d · lib/pathPicker.ts
 - [x] T573 · lib · 0.60d · lib/processListResult.ts lib/productFeatures.ts
-- [ ] T575 · lib · 0.80d · lib/queryContextPath.ts
+- [x] T575 · lib · 0.80d · lib/queryContextPath.ts
 - [x] T577 · lib · 0.90d · lib/queryExecutionViewModel.ts
 - [ ] T579 · lib · 0.90d · lib/querySidebarContextMenu.ts lib/queryStream.ts lib/relationMetadata/identity.ts
 - [x] T581 · lib · 0.30d · lib/resolveUiLanguage.ts
