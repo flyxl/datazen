@@ -5,3 +5,4 @@ pub(crate) mod query_builder_host_adapter;
 pub(crate) mod query_editor_section;
 pub(crate) mod query_sidebar_section;
 pub(crate) mod query_transaction_modals;
+pub(crate) mod toolbar;
