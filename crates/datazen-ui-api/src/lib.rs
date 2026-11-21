@@ -24,6 +24,8 @@ mod import_mapping;
 mod keymap;
 mod language_pack_runtime;
 mod mcp_agent_config;
+mod migration_verification;
+mod migration_window_prefill;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -240,6 +242,13 @@ pub use mcp_agent_config::{
     AppExecutablePathResolver, McpAgentSnippet, McpAgentTarget, McpServerEntry,
     build_mcp_agent_snippet, build_mcp_agent_snippet_default, build_mcp_server_entry,
     format_mcp_cli_command, initial_app_executable_path,
+};
+pub use migration_verification::{VERIFIED_MIGRATION_TYPES, is_verified_migration_pair};
+pub use migration_window_prefill::{
+    EndpointPrefillEffect, MigrationEndpointConnection, MigrationWindowKind, MigrationWindowPrefill,
+    PREFILL_KEYS, PrefillSide, apply_migration_endpoint_prefill, build_migration_window_url_params,
+    pick_prefill_database, pick_prefill_schema, read_migration_prefill_from_url,
+    resolve_default_database,
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
