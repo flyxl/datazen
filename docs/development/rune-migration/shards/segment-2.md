@@ -69,7 +69,7 @@
 - [x] T529 · lib · 0.80d · lib/gridPastePlan.ts
 - [x] T531 · lib · 0.90d · lib/historyGroups.ts lib/hostErrorMessage.ts lib/hostLucideMap.ts
 - [ ] T533 · lib · 2.00d · lib/htmlSanitizer.ts · split
-- [ ] T535 · lib · 0.90d · lib/iconIds.ts lib/iconResolver.ts lib/importConnectionFile.ts
+- [x] T535 · lib · 0.90d · lib/iconIds.ts lib/iconResolver.ts lib/importConnectionFile.ts
 - [ ] T537 · lib · 2.00d · lib/importData.ts · split
 - [ ] T539 · lib · 1.30d · lib/importExecution.ts · split
 - [ ] T541 · lib · 1.00d · lib/importMapping.ts lib/keymap.ts
