@@ -166,7 +166,7 @@
 - [x] T486 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncRunState.ts
 - [x] T488 · stores · 0.60d · stores/workspacePanelStateStore.ts stores/workspaceTabsStore.ts
 - [ ] T490 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncSelection.ts · split
-- [ ] T493 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncSelectionState.ts
+- [x] T493 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncSelectionState.ts
 - [ ] T496 · windows/data-sync · 0.30d · windows/data-sync/useDataSyncWizardNavigation.ts
 - [x] T499 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncWizardState.ts
 - [x] T502 · windows/data-sync · 0.60d · windows/data-sync/utils.ts windows/data-transfer/transferLimitationKeys.ts
