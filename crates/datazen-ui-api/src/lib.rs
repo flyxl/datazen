@@ -165,6 +165,7 @@ mod tabs;
 pub mod types;
 pub mod schema_object_search;
 pub mod server_status_trends;
+pub mod sql_editor_defaults;
 
 use std::collections::HashMap;
 
@@ -854,6 +855,11 @@ pub use server_status_trends::{
 pub use splash::{
     hide_splash_plan, run_startup_wait_task, HideSplashPlan, StartupSettlement, StartupWaitResult,
     HIDE_SPLASH_DELAY_MS, SPLASH_DOM_GAP, STARTUP_TASK_GAP,
+};
+pub use sql_editor_defaults::{
+    infer_default_schema, infer_default_table, table_clause_fingerprint,
+    tables_referenced_in_sql, ReferencedRelation, RelationSourceKind, ScopeRelations,
+    StatementRange,
 };
 pub use sql_path_prefix::{
     QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
