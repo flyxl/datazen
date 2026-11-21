@@ -161,6 +161,7 @@ mod sql_schema_drop_targets;
 mod sql_statement_range;
 mod sql_transaction_guard;
 mod startup_timer;
+mod surface_bg_cache;
 mod tabs;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
@@ -905,6 +906,10 @@ pub use sql_transaction_guard::{
 };
 pub use startup_timer::{
     format_wall_clock, StartupMark, StartupTimer, STARTUP_TIMER_GAP, WallClockParts,
+};
+pub use surface_bg_cache::{
+    css_color_to_hex, is_safe_css_hex, persist_surface_background, DEFAULT_SURFACE_DARK,
+    DEFAULT_SURFACE_LIGHT, SURFACE_BG_CACHE_GAP,
 };
 pub use tabs::{Tab, TabKind, Tabs};
 // The T211 types aggregate: the members React's `types/index.ts` declares or
