@@ -172,6 +172,66 @@ fn geometry_fits_both_sizes_in_both_themes() {
     }
 }
 
+#[test]
+fn long_composite_label_stays_inside_both_windows() {
+    let long = "averyveryverylongsourcetablename_".repeat(6);
+    let mut state = vm();
+    state.truncated = true;
+    state.origin = Some(FkOrigin {
+        source_table: long.clone(),
+        local_columns: vec!["a".to_owned(), "b".to_owned(), "c".to_owned()],
+        target_table: format!("{long}_target"),
+        target_columns: vec!["x".to_owned(), "y".to_owned(), "z".to_owned()],
+        ..origin()
+    });
+    for size in [(960.0, 640.0), (1440.0, 816.0)] {
+        for dark in [true, false] {
+            let rt = runtime(scene(state.clone(), dark), size);
+            let outside: Vec<String> = rt.elements().iter()
+                .filter(|e| {
+                    let r = e.rect;
+                    r[0] < -0.5 || r[1] < -0.5 || r[0] + r[2] > size.0 + 0.5 || r[1] + r[3] > size.1 + 0.5
+                })
+                .map(|e| format!("{} {:?}", e.key.as_deref().unwrap_or(&e.path), e.rect))
+                .collect();
+            assert!(outside.is_empty(), "{size:?} dark={dark}: outside {outside:?}");
+        }
+    }
+}
+
+#[test]
+fn mixed_column_shapes_label_each_side_independently() {
+    let mut source_only_empty = origin();
+    source_only_empty.local_columns.clear();
+    source_only_empty.target_columns = vec!["x".to_owned(), "y".to_owned()];
+    assert_eq!(fk_origin_label(&source_only_empty), "orders → customers.(x, y)");
+
+    let mut target_only_empty = origin();
+    target_only_empty.local_columns = vec!["a".to_owned(), "b".to_owned()];
+    target_only_empty.target_columns.clear();
+    assert_eq!(fk_origin_label(&target_only_empty), "orders.(a, b) → customers");
+}
+
+/// Non-capturing view for the "no host port" branch (Runtime needs an fn pointer).
+fn no_port_view(s: &Scene, _cx: &mut Cx<Scene>) -> El {
+    col().w_full().h_full().child(build::<Scene>(&s.vm, None, s.dark))
+}
+
+#[test]
+fn no_host_port_clicks_are_inert() {
+    let mut rt = Runtime::new(
+        scene(vm(), true),
+        no_port_view,
+        (960.0, 640.0),
+        Env { system_dark: true, scale: 1.0 },
+    );
+    rt.frame(0.0);
+    click(&mut rt, "table-fk-back");
+    click(&mut rt, "table-fk-forward");
+    click(&mut rt, "table-fk-dismiss");
+    assert!(rt.state.actions.borrow().is_empty(), "no injected port: no intents emitted");
+}
+
 // Reverse verification (mutation -> observed failure text -> restored):
 // 1. Dropping the composite-key parentheses made `origin_label_covers_single_composite_and_zero_columns`
 //    fail on `orders.(a, b) → customers.(x, y)`.
