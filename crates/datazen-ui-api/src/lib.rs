@@ -178,6 +178,7 @@ mod transfer_limitations_prefs;
 mod transfer_pairing;
 mod tunnel_deletion;
 mod tunnel_draft;
+mod value_search;
 mod update_reminder_schedule;
 mod wapp_bridge;
 // `pub mod` — the second public module: the T211 types aggregate (the
@@ -890,6 +891,14 @@ pub use tunnel_draft::{
     tunnel_draft_problem, HttpProxyDraft, SshDraft, SshJumpDraft, TunnelDraft,
     TunnelDraftProblem, WebSocketDraft, DEFAULT_HTTP_PROXY_PORT, DEFAULT_SSH_PORT,
     DEFAULT_TUNNEL_TIMEOUT, SAVED_TUNNEL_KINDS,
+};
+pub use value_search::{
+    base_cell_types, cell_types_for, filter_operator_for_mode, locate_conditions,
+    locate_filter_logic, rank_tables, searchable_columns, target_key, type_scopes_for_driver,
+    value_search_targets, value_search_type_groups_for, Clock, DriverExtraTypes, ExtraTypesProvider,
+    SchemaReader, SearchTableValuesRequest, SearchTableValuesResponse, TableValueSearcher,
+    ValueSearchDriver, ValueSearchDriverParams, ValueSearchLocateIntent, ValueSearchMode,
+    ValueSearchProgress, ValueSearchStatus, ValueSearchTableResult, ValueSearchTarget,
 };
 pub use theme_editor_colors::{
     apply_sql_syntax_preset, build_editor_highlight_rules, default_editor_colors,
