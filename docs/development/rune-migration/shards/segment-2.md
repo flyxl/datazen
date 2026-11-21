@@ -101,7 +101,7 @@
 - [x] T593 · lib · 0.30d · lib/schemaDiffLimitationsPrefs.ts
 - [x] T595 · lib · 0.80d · lib/schemaObjectSearch.ts
 - [ ] T597 · lib · 0.30d · lib/schemaResourceCache.ts
-- [ ] T599 · lib · 0.80d · lib/schemaTreeContextMenu.ts
+- [x] T599 · lib · 0.80d · lib/schemaTreeContextMenu.ts
 - [x] T601 · lib · 0.80d · lib/serverStatusTrends.ts
 - [ ] T603 · lib · 0.80d · lib/setValueActions.ts lib/splash.ts
 - [ ] T605 · lib · 0.80d · lib/sqlBindParams.ts
