@@ -57,6 +57,7 @@ mod running_execution_close;
 mod scalar_cell_editors;
 mod schema_column_loading;
 mod selection_actions;
+mod selection_scope;
 mod stage_cell_value;
 mod stage_edit_actions;
 mod stage_paste_writes;
@@ -378,6 +379,11 @@ pub use selection_actions::{
     reconcile_grid_selection, resolve_selection_patch, row_index_selection_reset,
     selection_from_anchor_focus, CellCoord, CellRange, GridSelection, GridSelectionMode,
     SelectionAction, SelectionOpts, SelectionPatch, TableStateForSelection,
+};
+pub use selection_scope::{
+    default_row_selected, scope_for_operation, scope_selects_operation, selected_row_token,
+    DataSyncSelectedRow, DataSyncSelectionScopeMode, DataSyncTableSelection, SELECTED_ROW_TOKEN_SEPARATOR,
+    SELECTION_SCOPE_GAP, SELECTION_SCOPE_SURFACE,
 };
 pub use stage_cell_value::{
     compute_stage_cell_value_result, compute_stage_expression_value_result, compute_stage_result,
