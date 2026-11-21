@@ -39,27 +39,27 @@
 - [x] T412 · lib · 0.90d · lib/connectionShare.ts
 - [x] T421 · lib · 0.90d · lib/connectionShareError.ts lib/connectionTabContextMenu.ts lib/connectionViews/index.ts
 - [x] T429 · lib · 0.30d · lib/createDismissPrefs.ts
-- [ ] T437 · lib · 0.90d · lib/crossWindowBus.ts
-- [ ] T444 · lib · 0.80d · lib/dangerousSql.ts
-- [ ] T450 · lib · 0.50d · lib/databaseTypes.ts
-- [ ] T456 · lib · 2.00d · lib/dataFetcher.ts · split
-- [ ] T462 · lib · 3.30d · lib/dataTableContextMenu.ts · split
-- [ ] T467 · lib · 0.90d · lib/dedicatedDbSession.ts
-- [ ] T472 · lib · 0.90d · lib/defaultSort.ts lib/docsUrls.ts lib/documentScrollLock.ts
-- [ ] T477 · lib · 0.90d · lib/driverCapabilities.ts
-- [ ] T482 · lib · 0.60d · lib/driverCommandIds.ts lib/endpointIdentity.ts
-- [ ] T487 · lib · 0.80d · lib/ensureNamespace.ts lib/erNodeContextMenu.ts
-- [ ] T491 · lib · 0.60d · lib/errors.ts lib/exportCapability.ts
-- [ ] T494 · lib · 2.00d · lib/exportData.ts · split
-- [ ] T497 · lib · 2.00d · lib/exportDialogShared.ts · split
-- [ ] T500 · lib · 2.00d · lib/exportFormat.ts · split
-- [ ] T503 · lib · 0.60d · lib/exportTableStructure.ts lib/extractQuestions.ts
-- [ ] T505 · lib · 0.50d · lib/extractSql.ts
-- [ ] T507 · lib · 0.90d · lib/fetchRelationDdl.ts
-- [ ] T509 · lib · 0.30d · lib/filterDbTypes.ts
-- [ ] T511 · lib · 0.80d · lib/filterExpression.ts
-- [ ] T513 · lib · 0.80d · lib/filterOperators.ts
-- [ ] T515 · lib · 0.50d · lib/fkNavigation.ts
+- [x] T437 · lib · 0.90d · lib/crossWindowBus.ts
+- [x] T444 · lib · 0.80d · lib/dangerousSql.ts
+- [x] T450 · lib · 0.50d · lib/databaseTypes.ts
+- [x] T456 · lib · 2.00d · lib/dataFetcher.ts · split
+- [x] T462 · lib · 3.30d · lib/dataTableContextMenu.ts · split
+- [x] T467 · lib · 0.90d · lib/dedicatedDbSession.ts
+- [x] T472 · lib · 0.90d · lib/defaultSort.ts lib/docsUrls.ts lib/documentScrollLock.ts
+- [x] T477 · lib · 0.90d · lib/driverCapabilities.ts
+- [x] T482 · lib · 0.60d · lib/driverCommandIds.ts lib/endpointIdentity.ts
+- [x] T487 · lib · 0.80d · lib/ensureNamespace.ts lib/erNodeContextMenu.ts
+- [x] T491 · lib · 0.60d · lib/errors.ts lib/exportCapability.ts
+- [x] T494 · lib · 2.00d · lib/exportData.ts · split
+- [x] T497 · lib · 2.00d · lib/exportDialogShared.ts · split
+- [x] T500 · lib · 2.00d · lib/exportFormat.ts · split
+- [x] T503 · lib · 0.60d · lib/exportTableStructure.ts lib/extractQuestions.ts
+- [x] T505 · lib · 0.50d · lib/extractSql.ts
+- [x] T507 · lib · 0.90d · lib/fetchRelationDdl.ts
+- [x] T509 · lib · 0.30d · lib/filterDbTypes.ts
+- [x] T511 · lib · 0.80d · lib/filterExpression.ts
+- [x] T513 · lib · 0.80d · lib/filterOperators.ts
+- [x] T515 · lib · 0.50d · lib/fkNavigation.ts
 - [ ] T517 · lib · 1.30d · lib/fkNavigationActions.ts · split
 - [ ] T519 · lib · 1.30d · lib/fkReferencedBy.ts · split
 - [ ] T521 · lib · 0.80d · lib/fkSelector.ts lib/globalTextSelection.ts

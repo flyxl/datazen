@@ -7,6 +7,16 @@ mod ai_memory_correction;
 mod cell_editor_candidates;
 mod connection_editor;
 mod connection_share;
+mod cross_window_bus;
+mod data_fetcher;
+mod default_sort;
+mod docs_urls;
+mod document_scroll_lock;
+mod ensure_namespace;
+mod er_node_context_menu;
+mod export_dialog_shared;
+mod extract_sql;
+mod filter_expression;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -51,6 +61,7 @@ mod connection_view_registry;
 mod connection_views;
 mod context_items;
 mod context_menu_position;
+mod dangerous_sql;
 // `pub mod` — the crate's only public module: the T159 dashboard facade
 // keeps its display `DashboardWidget` here, but that root name is held
 // by the N13 workspace stub below (whose `datazen-ui` consumers are out
@@ -59,8 +70,24 @@ mod context_menu_position;
 // names reach the outside world through the module path while everything
 // else re-exports at the root (see `dashboard_types`' docs).
 pub mod dashboard_types;
+mod database_types;
+mod data_table_context_menu;
+mod dedicated_db_session;
 mod dismiss_prefs;
+mod driver_capabilities;
+mod driver_command_ids;
+mod endpoint_identity;
+mod error_message;
+mod export_capability;
+mod export_data;
+mod export_format;
+mod export_table_structure;
+mod extract_questions;
+mod fetch_relation_ddl;
+mod filter_db_types;
+mod filter_operators;
 mod filter_types;
+mod fk_navigation;
 mod keyset_types;
 mod metadata;
 mod platform_shared;
@@ -101,6 +128,50 @@ pub use connection_editor::{
 pub use connection_share::{
     ConnectionImportSource, ConnectionShareMode, ConnectionShareState,
     close_connection_share_dialog, open_connection_share_dialog,
+};
+pub use cross_window_bus::{
+    CHANNEL_NAME, CrossWindowMessage, CrossWindowRail, cross_window_rail, make_message,
+    matches_event, payload_of,
+};
+pub use data_fetcher::{
+    DataFetcherKind, ExportContext, ExportProgress, ExportScope, FetchColumn, FetchOutcome,
+    FetchRequest, FetchResult, FetchTableInput, FetchTableSource, ProvidedFormatPlan,
+    resolve_fetcher,
+};
+pub use default_sort::{DefaultOrderOverride, resolve_default_table_sort};
+pub use docs_urls::{
+    DOCS_BASE_EN, DOCS_BASE_ZH, DocsSectionId, build_docs_url, is_chinese_ui_language,
+};
+pub use document_scroll_lock::{
+    ScrollAxis, ScrollLockRail, ScrollLockState, ScrollPosition, apply_snap, scroll_lock_rail,
+    snap_targets,
+};
+pub use ensure_namespace::{
+    CatalogResult, EnsureDeps, EnsurePlan, EnsureStrategy, MergeCall, MergeKind,
+    build_slash_fetch_path, inflight_key, is_path_nav, is_schema_grouping_schema,
+    namespace_ensure_pending, namespace_has_child, namespace_path_loaded, path_key,
+    path_nav_segment, plan_default_sql, plan_path_hierarchy, plan_postgresql,
+    resolve_ensure_strategy, resolve_for_ensure, resolve_path_root, run_ensure_plan, table_names,
+    uses_current_database_root,
+};
+pub use er_node_context_menu::{
+    ErMenuAction, ErMenuItem, ErNodeContextMenuHandlers, ErNodeContextMenuLabels,
+    build_er_node_context_menu_items,
+};
+pub use export_dialog_shared::{
+    ARRAY_EXPORT_FORMAT_OPTIONS, OBJECT_EXPORT_FORMAT_OPTIONS, SHARED_EXPORT_FORMAT_OPTIONS,
+    BuildExportFormatOptions, BuildExportScopeOptions, DisabledReasonKey, EntireTableAvailability,
+    ExportFormatOption, ExportScopeOption, FormatOptionSpec, ScopeLabels,
+    build_export_format_options, build_export_scope_options,
+};
+pub use extract_sql::{
+    extract_sql_from_response, extract_sql_streaming, looks_like_sql, starts_sql_statement,
+};
+pub use filter_expression::{
+    FilterExpression, FilterExpressionLogic, FilterExpressionOperator, FilterExpressionValue,
+    FlattenedFilterCondition, ParseFailure, ParsedFilterApplication,
+    filter_expression_to_conditions, flatten_parts, flatten_to_connectors,
+    has_or_group_under_and, parse_filter_expression, parse_filter_for_apply, token_positions,
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
@@ -310,10 +381,88 @@ pub use dashboard_types::{
     REFRESH_WARN_BELOW_SEC, clamp_refresh_sec, normalize_refresh_policy,
     should_warn_refresh_sec,
 };
+pub use dangerous_sql::{
+    classify_risk, is_dangerous_write_statement, normalize_fullwidth, scan_sql,
+    sql_contains_dangerous_write, SigKind, SigTok, SqlRiskAssessment, SqlRiskClassification,
+    SqlRiskFinding, SqlRiskFindingType, SqlStatementRange, SqlStatementRisk, SqlToken, SqlTokenKind,
+    DESTRUCTIVE_VERBS, FALSE_SQL_VALUES, MAIN_VERBS, READ_VERBS, WHERE_NEEDS_VERBS, WRITE_VERBS,
+};
 // The T188 filter vocabulary: the aggregate (`types/index`) re-exports
 // everything `types/filters.ts` declares, so the crate root carries the
 // same names.
+pub use database_types::{
+    default_escape_sql_value, escape_ident, format_connection_addr, get_db_icon, get_db_label,
+    get_driver_icon_map, get_driver_icon_parents, get_escape_sql_value,
+    normalize_index_database_field_default,
+    sort_db_types_by_popularity, ConnectionAddrInput, DatabaseRegistry, DatabaseTypeMeta, DbIconInfo,
+    PopularityValue,
+    EscapeSqlValue, SqlValueEscaper, SshTunnelAddr, DB_TYPE_POPULARITY_ORDER,
+    DEFAULT_MAX_DATABASE_INDEX,
+};
+pub use data_table_context_menu::{
+    build_data_table_context_menu_items, format_row_as_sql_delete, format_row_as_sql_insert,
+    format_row_as_sql_update, format_rows_as_sql_insert, format_rows_as_sql_update, invoke,
+    resolve_data_table_cell_from_event, resolve_data_table_header_col_from_event,
+    resolve_set_value_actions, row_to_named_record, serialize_cells,
+    serialize_data_table_column_values, serialize_data_table_rows_as_csv,
+    serialize_data_table_rows_as_json, serialize_data_table_rows_as_tsv, set_value_action_label,
+    BuildDataTableContextMenuArgs, CellContext, CopyFormat, DataTableContextMenuHandlers,
+    DataTableContextMenuLabels, DomElement, HeaderFreeze, HeaderPresentation, HeaderSort,
+    HeaderStats, MenuAction, NativeMenuItemDef, RowKind, SerializeFormat, SetValueAction,
+    SetValueActionId, SetValueState, LOAD_CANDIDATES_LABEL_KEY,
+};
+pub use dedicated_db_session::{
+    DatabaseOverride, DedicatedConnectResult, DedicatedSessionPorts, DedicatedSessionService,
+    DedicatedSideSession, ListDatabasesResult,
+};
 pub use dismiss_prefs::{create_dismiss_prefs, DismissPrefs};
+pub use driver_capabilities::{
+    capabilities_for_db_session, has_schema_level, relation_schema_for, supports_offset,
+    CapabilityAnswer, SessionCapabilitiesEntry,
+};
+pub use driver_command_ids::{
+    ESTIMATE_TABLE_ROWS_COMMAND, LIST_PROCESSES_COMMAND, SERVER_STATUS_SNAPSHOT_COMMAND,
+};
+pub use endpoint_identity::{is_same_endpoint_identity, EndpointIdentity};
+pub use error_message::{to_error_message, ErrorLike};
+pub use export_capability::{
+    driver_export_scope, min_scope, resolve_export_scope, supports_any_export,
+    supports_full_table_export, DataExportCapability, ExportDriverMeta,
+};
+pub use export_data::{ExportDataFormat, ExportDataScope};
+pub use export_format::{
+    apply_csv_formula_guard, build_provided_export_filename, bytes_to_xlsx_cell,
+    default_escape_sql_literal, escape_sql_ident, escape_sql_literal, format_extension,
+    format_rows_as_text, format_rows_as_xlsx, format_sql_insert_script, format_sql_update_script,
+    mysql_escape_sql_literal, sql_quote_char, text_mime_type, to_xlsx_cell, update_key_column,
+    xlsx_sheet_rows, BinaryExportResult, ExportColumn, ExportFormatError, FormatRowsOptions,
+    TextExportResult, XlsxCellValue, SQL_INSERT_BATCH_SIZE, XLSX_MIME_TYPE,
+};
+pub use export_table_structure::{
+    export_table_structure_to_file, DdlDialect, DdlQuery, DdlRowExtractor, DdlFetcher,
+    ExportTableStructureResult, SqlDialectProvider, StructureExportInput, StructureExporter,
+};
+pub use extract_questions::{extract_questions, parse_tool_call_questions, ExtractQuestionsResult};
+pub use fetch_relation_ddl::{
+    copy_rich_text_to_clipboard, copy_to_clipboard, fetch_relation_ddl, CachedDdlFetcher,
+    ClipboardSteps, DdlRowValueExtractor, ObjectDdlFetcher, RelationDdlDialect,
+    RelationDialectProvider, RichClipboardSteps,
+};
+pub use filter_db_types::{filter_db_types_by_query, DbTypeOption};
+pub use filter_operators::{
+    cell_types_for_operator, convert_filter_value, default_operator_for_column,
+    dialect_operators_by_cell_type, filter_operator_metas, like_case_insensitive_for_meta,
+    normalize_operator_for_column, operator_meta, operators_by_cell_type, operators_for_column,
+    operators_for_driver, supported_operators_for_meta, value_input_for, value_input_for_literal,
+    ALL_CELL_TYPES, ALL_OPERATORS, FilterDriverMeta, FilterOperatorGroup, FilterOperatorMeta,
+    FilterValue, FilterValueInputKind,
+};
+pub use fk_navigation::{
+    build_fk_filters, find_foreign_key, fk_nav_key, index_foreign_keys, is_fk_cell_navigable,
+    pick_anchor_row, scroll_top_for_anchor_row, AnchorInput, AnchorResult, FkBreadcrumbModel,
+    FkFilterTarget, FkGroupAffordance, FkIndex, FkNavInput, FkNavTargetIdentity, GridViewport,
+    NavValue, FK_NAV_MAX_DEPTH,
+};
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
     FilterOperator, SHARED_FILTER_OPERATORS,
