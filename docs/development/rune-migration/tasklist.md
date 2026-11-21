@@ -542,11 +542,11 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T523 · lib · 0.80d · lib/gridClipboard.ts
 - [x] T524 · windows/connection · 1.30d · windows/connection/result-workspace/ResultTableView.tsx · split
 - [ ] T525 · lib · 0.80d · lib/gridErrors.ts lib/gridEventGuards.ts
-- [ ] T526 · windows/connection · 0.50d · windows/connection/result-workspace/ResultWorkspace.tsx
+- [x] T526 · windows/connection · 0.50d · windows/connection/result-workspace/ResultWorkspace.tsx
 - [ ] T527 · lib · 1.30d · lib/gridKeyboard.ts · split
-- [ ] T528 · windows/connection · 3.50d · windows/connection/ServerStatusView.tsx · split
+- [x] T528 · windows/connection · 3.50d · windows/connection/ServerStatusView.tsx · split
 - [ ] T529 · lib · 0.80d · lib/gridPastePlan.ts
-- [ ] T530 · windows/connection · 0.80d · windows/connection/SetValueDateDialog.tsx windows/connection/structure/StructureColumnTable.tsx
+- [x] T530 · windows/connection · 0.80d · windows/connection/SetValueDateDialog.tsx windows/connection/structure/StructureColumnTable.tsx
 - [ ] T531 · lib · 0.90d · lib/historyGroups.ts lib/hostErrorMessage.ts lib/hostLucideMap.ts
 - [ ] T532 · windows/connection · 0.80d · windows/connection/structure/StructureIndexTable.tsx windows/connection/structure/StructurePlanPreview.tsx
 - [ ] T533 · lib · 2.00d · lib/htmlSanitizer.ts · split
