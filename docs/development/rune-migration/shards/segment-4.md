@@ -161,7 +161,7 @@
 - [x] T445 · hooks · 0.90d · hooks/useValuePresentation.ts
 - [x] T447 · windows/settings · 0.90d · windows/settings/TunnelEditDialog.tsx
 - [x] T451 · hooks · 0.90d · hooks/useValuePresentationSnapshot.ts
-- [ ] T453 · windows/settings · 0.90d · windows/settings/TunnelSettingsSection.tsx
+- [x] T453 · windows/settings · 0.90d · windows/settings/TunnelSettingsSection.tsx
 - [ ] T457 · hooks · 2.00d · hooks/useVirtualTable.ts · split
 - [ ] T459 · windows/settings · 0.90d · windows/settings/TunnelTestDialog.tsx
 - [ ] T464 · windows/settings · 0.90d · windows/settings/UpdateSection.tsx

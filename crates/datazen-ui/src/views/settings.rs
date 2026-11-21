@@ -101,6 +101,9 @@ pub(crate) mod tunnel_draft;
 // T447: the tunnel create/edit dialog (the open-reset fetch, the
 // draft patches, the problem-gated save).
 pub(crate) mod tunnel_edit_dialog;
+// T453: the tunnel settings section (the secret-free list, the
+// usage batch, the copy action, the three dialog mounts).
+pub(crate) mod tunnel_settings_section;
 // T408: the AI skills settings panel (the opt-in switches, the
 // custom directory, the discovered listing).
 pub(crate) mod skills_section;
