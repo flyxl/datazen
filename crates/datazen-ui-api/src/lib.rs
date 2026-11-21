@@ -100,6 +100,9 @@ mod grid_paste_plan;
 mod history_groups;
 mod host_error_message;
 mod host_lucide_map;
+mod icon_ids;
+mod icon_resolver_api;
+mod import_connection_file;
 mod keyset_types;
 mod metadata;
 mod platform_shared;
@@ -521,6 +524,15 @@ pub use host_error_message::{extract_host_error_message, HostError};
 pub use host_lucide_map::{
     build_host_lucide_by_id, host_lucide_seed, settings_section_icon_id, HOST_LUCIDE_MAP,
     SETTINGS_SECTION_LUCIDE_MAP,
+};
+pub use icon_ids::{UI_ICON_IDS, UiIconId};
+pub use icon_resolver_api::{
+    default_placeholder_for_db, get_active_icon_resolver, resolve_with_active,
+    set_active_icon_resolver, ui_placeholder, ICON_KIND_LUCIDE, ICON_KIND_PLACEHOLDER,
+    ICON_KIND_URL,
+};
+pub use import_connection_file::{
+    import_file_display_name, import_file_password_policy, ImportPasswordPolicy,
 };
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
