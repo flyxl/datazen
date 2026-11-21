@@ -179,6 +179,7 @@ mod transfer_pairing;
 mod tunnel_deletion;
 mod tunnel_draft;
 mod update_reminder_schedule;
+mod wapp_asset_origin;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
 // path `datazen_ui_api::types::…` is the Rust twin of React's `'../types'`
@@ -1016,6 +1017,12 @@ pub use update_reminder_schedule::{
     dispatch_event, on_interval_tick, start_update_reminder_schedule,
     stop_update_reminder_schedule, ScheduleDeps, ScheduleHandle, CHECK_INTERVAL_MS, CHANNEL_AUTO,
     EVENT_FOCUS, EVENT_ONLINE, EVENT_VISIBILITY_CHANGE, VISIBILITY_VISIBLE,
+};
+pub use wapp_asset_origin::{
+    build_wapp_asset_src, build_wapp_icon_src, configure_wapp_asset_resolver,
+    is_safe_wapp_asset_path, is_valid_wapp_id, parse_wapp_asset_target,
+    reset_wapp_asset_resolver, DESKTOP_WAPP_ASSET_RESOLVER, WappAssetQueryMap, WappAssetResolver,
+    WappAssetTarget, WEB_WAPP_ASSET_RESOLVER, WAPP_ASSET_CSP, WAPP_ASSET_PATH_PREFIX,
 };
 pub use theme_tokens::{
     build_theme_snapshot, ThemeSnapshot, ThemeSnapshotInput, THEME_SNAPSHOT_VERSION, THEME_TOKENS,
