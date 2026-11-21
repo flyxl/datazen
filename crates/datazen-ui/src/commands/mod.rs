@@ -42,6 +42,9 @@ pub(crate) mod sample;
 /// T388: the settings commands (the kernel/half-port split, the
 /// flattenShared transform and the merge order).
 pub(crate) mod settings;
+/// T424: the data-transfer Job command layer (the prepare/apply
+/// split's four members + the reads).
+pub(crate) mod transfer_jobs;
 /// T415: the data-transfer legacy command family (the typed wire
 /// contracts + the eleven invoke shapers).
 pub(crate) mod transfer;
