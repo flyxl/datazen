@@ -181,6 +181,7 @@ mod tunnel_draft;
 mod update_reminder_schedule;
 mod updater;
 mod wapp_asset_origin;
+mod window_kind;
 mod wapp_bridge;
 mod wapp_i18n;
 mod window_manager;
@@ -1034,6 +1035,10 @@ pub use wapp_asset_origin::{
     is_safe_wapp_asset_path, is_valid_wapp_id, parse_wapp_asset_target,
     reset_wapp_asset_resolver, DESKTOP_WAPP_ASSET_RESOLVER, WappAssetQueryMap, WappAssetResolver,
     WappAssetTarget, WEB_WAPP_ASSET_RESOLVER, WAPP_ASSET_CSP, WAPP_ASSET_PATH_PREFIX,
+};
+pub use window_kind::{
+    get_url_param, get_window_kind, reset_window_kind_cache, resolve_window_kind, WindowKind,
+    LEGACY_MAIN_ALIASES,
 };
 pub use window_manager::{
     backup_window_options, connection_payload, connection_window_plan, dashboard_window_plan,
