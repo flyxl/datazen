@@ -1663,3 +1663,28 @@ mod use_grid_clipboard;
 mod query_builder_host_adapter;
 // T510: QueryTransactionModals port (dialog copy, modal actions, busy/blank gating, geometry).
 mod query_transaction_modals;
+
+// T163: the DataTable shell's independent audit (the composition gates,
+// the overlays, the cell-contract surface, the Delete key, the export
+// dialog pair, geometry).
+mod data_table_shell_audit;
+
+// T180: the lib/chart/transform.ts port's independent audit (the record
+// walk, the aggregate table's honest edges, the pivot series order, the
+// sort comparators, the scatter null-x rule).
+mod chart_transform_audit;
+
+// T184: the dashboards store's independent audit (the refcount lifecycle,
+// the fetch/load/save/refresh walks, the latest-run pick, both cross-window
+// gates).
+mod dashboard_store_audit;
+
+// T193: the AiSessionHistory panel's independent audit (the open gate,
+// the notice precedence, the empty states, the row labels and active
+// selection, the export gate, every callback, geometry).
+mod ai_session_history_audit;
+
+// T195: the MenuBar port's independent audit (the menu table, the gates,
+// the action router, the wrap-around, the bar component's open/hover
+// behaviour).
+mod menu_bar_audit;

@@ -1,13 +1,16 @@
-//! T043-S1 independent audit: `platform/export_plan.rs` (the minimal
-//! `exportPlan.ts` mirror).
+//! Independent audit of `platform/export_plan.rs` (the `exportPlan.ts`
+//! mirror) — T043-S1 pinned the original minimal surface, T187 completed
+//! it, and this audit covers both.
 //!
 //! Written by the tester, not the coder. Expectations re-derive from
-//! `packages/frontend/src/platform/exportPlan.ts`. Focus: the two
-//! deliberately omitted functions (`isBinaryFormat`, `planFilename`) are
-//! genuinely unused by S1, `unique_filename` on names without a `.sql`
-//! suffix, `default_export_extension` precedence (zip beats
-//! structure-only), empty-string (not just blank) DDL, and the
-//! validate-before-plan ordering in `build_file_plans`.
+//! `packages/frontend/src/platform/exportPlan.ts`. T043-S1 focus:
+//! `unique_filename` on names without a `.sql` suffix,
+//! `default_export_extension` precedence (zip beats structure-only),
+//! empty-string (not just blank) DDL, and the validate-before-plan
+//! ordering in `build_file_plans`. T187 adds the two functions the
+//! minimal mirror had skipped — `isBinaryFormat` (exactly XLSX and
+//! Parquet, the `BinaryFormatter` branch) and `planFilename` over both
+//! plan kinds.
 
 use std::collections::HashSet;
 
@@ -16,9 +19,10 @@ use serde_json::json;
 
 use crate::platform::export_plan::{
     build_file_plans, ddl_for_structure, default_export_extension, default_export_name,
-    format_extension, is_sql_data_format, prepare_export, resolve_ddl, unique_filename,
-    ExportDataFormat, ExportFilePlan, ExportMode, ExportOutputMode,
-    ExportPlanError, ExportTableInput, ExportTableSource, ProvidedColumn, TablesExportRequest,
+    format_extension, is_binary_format, is_sql_data_format, plan_filename, prepare_export,
+    resolve_ddl, unique_filename, ExportDataFormat, ExportFilePlan, ExportMode,
+    ExportOutputMode, ExportPlanError, ExportTableInput, ExportTableSource, ProvidedColumn,
+    TablesExportRequest,
 };
 
 fn table(name: &str) -> ExportTableInput {
@@ -342,4 +346,84 @@ fn audit_validate_table_source_error_display_matches_ts_verbatim() {
         "structure export for non-table source 'q' needs an explicit ddl: \
          SQL and provided-data sources have no table DDL to include"
     );
+}
+
+
+// ── T187: is_binary_format — exactly the two binary formats ────────────────
+
+#[test]
+fn audit_is_binary_format_is_exactly_xlsx_and_parquet() {
+    // `DataFormat::is_binary`: the parallel `BinaryFormatter` branch, the
+    // two formats that can never be concatenated as text.
+    assert!(is_binary_format(ExportDataFormat::Xlsx));
+    assert!(is_binary_format(ExportDataFormat::Parquet));
+    for format in [
+        ExportDataFormat::Csv,
+        ExportDataFormat::Tsv,
+        ExportDataFormat::Json,
+        ExportDataFormat::Markdown,
+        ExportDataFormat::SqlInsert,
+        ExportDataFormat::SqlUpdate,
+    ] {
+        assert!(
+            !is_binary_format(format),
+            "{} must stay on the text branch",
+            format.as_str()
+        );
+    }
+}
+
+#[test]
+fn audit_is_binary_format_and_is_sql_data_format_are_disjoint() {
+    // No format rides both branches: the SQL formats carry DDL prefixes in
+    // one text file; the binary formats cannot carry any prefix.
+    for format in [
+        ExportDataFormat::Csv,
+        ExportDataFormat::Tsv,
+        ExportDataFormat::Json,
+        ExportDataFormat::Markdown,
+        ExportDataFormat::SqlInsert,
+        ExportDataFormat::SqlUpdate,
+        ExportDataFormat::Xlsx,
+        ExportDataFormat::Parquet,
+    ] {
+        assert!(
+            !(is_binary_format(format) && is_sql_data_format(format)),
+            "{} cannot be both binary and SQL",
+            format.as_str()
+        );
+    }
+}
+
+// ── T187: plan_filename — both plan kinds ──────────────────────────────────
+
+#[test]
+fn audit_plan_filename_reads_both_plan_kinds() {
+    // A DDL plan.
+    let ddl_plan = ExportFilePlan::Ddl {
+        filename: "t.sql".to_owned(),
+        text: "-- DDL unavailable for t".to_owned(),
+    };
+    assert_eq!(plan_filename(&ddl_plan), "t.sql");
+
+    // A data plan (with the optional DDL prefix slot).
+    let data_plan = ExportFilePlan::Data {
+        filename: "t.csv".to_owned(),
+        table: table("t"),
+        format: ExportDataFormat::Csv,
+        ddl_prefix: None,
+    };
+    assert_eq!(plan_filename(&data_plan), "t.csv");
+
+    // Through a real build: two tables in structure-only mode produce DDL
+    // plans whose names are the de-duplicated ones.
+    let req = request(
+        vec![table("users"), table("users")],
+        ExportMode::StructureOnly,
+        ExportDataFormat::Csv,
+        ExportOutputMode::Single,
+    );
+    let plans = build_file_plans(&req).expect("plans");
+    let names: Vec<&str> = plans.iter().map(plan_filename).collect();
+    assert_eq!(names, vec!["users.sql", "users.1.sql"]);
 }

@@ -42,3 +42,4 @@ pub(crate) mod chart_empty_state;
 pub(crate) mod chart_toolbar;
 pub(crate) mod log_scale_tooltip;
 pub(crate) mod renderers;
+pub(crate) mod transform;

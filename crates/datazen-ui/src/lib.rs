@@ -44,6 +44,8 @@ pub(crate) mod active_connection_store;
 pub(crate) mod ai_store;
 // T125: the persisted-connections store (connectionStore.ts).
 pub(crate) mod connection_store;
+// T184: the dashboards store (dashboardStore.ts).
+pub(crate) mod dashboard_store;
 // T209: the per-panel editor-selection store (editorSelectionStore.ts).
 pub(crate) mod editor_selection_store;
 pub(crate) mod ai_store_chat;
