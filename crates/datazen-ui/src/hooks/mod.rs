@@ -81,6 +81,9 @@ pub(crate) mod transfer_job_run_helpers;
 // T445: the host presentation pipeline wiring hook (the registry
 // revision + the cache-key-only plan memo over T157's builder).
 mod use_value_presentation;
+// T451: the snapshot provider hook (the store's stored value + O-5
+// revision counter + language over T184's parse/build).
+mod use_value_presentation_snapshot;
 // T438: the Data Transfer Job execution state machine (the prepare →
 // apply → verdict lifecycle over the T424 command rail).
 mod use_transfer_job_run;
