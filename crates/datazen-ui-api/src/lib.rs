@@ -103,6 +103,7 @@ mod host_lucide_map;
 mod icon_ids;
 mod icon_resolver_api;
 mod import_connection_file;
+mod import_execution;
 mod keyset_types;
 mod metadata;
 mod platform_shared;
@@ -191,7 +192,8 @@ pub use filter_expression::{
 pub use fk_navigation_actions::{
     FkActionDeps, FkActionEffects, FkJumpError, FkJumpOutcome, FkNavEntry, FkNavOrigin, FkNavState,
     GRID_ERROR_CODES, OpenForeignKeyTargetInput, Panel, PanelKind, PanelState,
-    TableIdentity, classify_grid_error, host_error_message, open_foreign_key_target,
+    TableChangeContext, TableIdentity, classify_grid_error, host_error_message,
+    open_foreign_key_target,
 };
 pub use grid_keyboard::{
     CellCoord, CellRange, EMPTY_ROW_MODE_SELECTION, GridEdge, GridKeyCommand, GridKeyEventLike,
@@ -493,8 +495,7 @@ pub use fk_navigation::{
 };
 pub use fk_referenced_by::{
     build_inbound_filters, catalog_key, inbound_catalog, open_referencing_rows,
-    referenced_values_of_row, CatalogScope, CreatedPanel, FkOrigin as InboundFkOrigin,
-    GridErrorClassifier,
+    referenced_values_of_row, CatalogScope, CreatedPanel, FkOrigin, GridErrorClassifier,
     InboundCatalogCache, InboundCatalogFetcher, InboundForeignKeyCatalog, InboundForeignKeyRef,
     NavEntry, NavOrigin, OpenReferencingRowsInput, OutcomeError, OutcomeErrorCode,
     ReferencedByOutcome, ReferencingRowsHost, SourcePanelInfo,
@@ -533,6 +534,14 @@ pub use icon_resolver_api::{
 };
 pub use import_connection_file::{
     import_file_display_name, import_file_password_policy, ImportPasswordPolicy,
+};
+pub use import_execution::{
+    build_multi_row_insert_sql, execute_import, plan_import_chunks, AbortSignal, ImportBatch,
+    ImportChunk, ImportColumnPair, ImportCommitMode, ImportErrorStrategy, ImportFinalStatus,
+    ImportProgress, ImportProgressStatus, ImportRowFailure, ImportRunResult, ImportSqlDialect,
+    ImportSqlOptions, ImportStreamEvent, ImportStreamProgress, ImportTransport,
+    PlanImportChunksOptions, IMPORT_DEFAULT_MAX_BATCHES_PER_CHUNK,
+    IMPORT_DEFAULT_MAX_ROWS_PER_BATCH, IMPORT_DEFAULT_MAX_SQL_BYTES, IMPORT_STREAM_GAP,
 };
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
