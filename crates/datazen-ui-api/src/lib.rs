@@ -28,6 +28,7 @@ mod context_items;
 mod data_sync_comparison;
 mod data_sync_endpoints;
 mod data_sync_execution;
+mod data_sync_refs;
 mod data_sync_explain;
 mod data_sync_job_lifecycle;
 mod data_sync_options;
@@ -302,6 +303,10 @@ pub use data_sync_execution::{
     ExecuteGuard, ExecuteResult, ExecutionEffect, ExecutionInput, ExecutionPlan,
     ExecutionResponses, FinalizeInput, FinalizePlan, GuardOutcome, SessionRefresh,
     TableSelection, DATA_SYNC_EXECUTION_GAP, DATA_SYNC_EXECUTION_SURFACE,
+};
+pub use data_sync_refs::{
+    create_data_sync_refs, DataSyncSharedRefs, DataSyncTableMapping, DATA_SYNC_REFS_GAP,
+    DATA_SYNC_REFS_SURFACE,
 };
 pub use data_sync_job_lifecycle::{
     DataSyncJobLifecycle, DataSyncJobDetails, EndpointSession, Endpoints, FeedbackSink,
