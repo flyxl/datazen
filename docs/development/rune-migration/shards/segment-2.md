@@ -74,7 +74,7 @@
 - [x] T539 · lib · 1.30d · lib/importExecution.ts · split
 - [x] T541 · lib · 1.00d · lib/importMapping.ts lib/keymap.ts
 - [x] T543 · lib · 0.80d · lib/keysetPaging.ts
-- [ ] T545 · lib · 0.80d · lib/kvAiContext.ts lib/kvSlotState.ts
+- [x] T545 · lib · 0.80d · lib/kvAiContext.ts lib/kvSlotState.ts
 - [x] T547 · lib · 0.60d · lib/kvWorkspaceCapabilities.ts lib/kvWorkspaceSlots.ts
 - [ ] T549 · lib · 0.90d · lib/languagePackRuntime.ts
 - [ ] T551 · lib · 0.90d · lib/loadBatchExportTable.ts
