@@ -130,7 +130,7 @@
 - [x] T642 · lib · 1.30d · lib/wappBridge.ts · split
 - [x] T643 · lib · 0.90d · lib/wappI18n.ts
 - [ ] T644 · lib · 0.30d · lib/windowKind.ts
-- [ ] T645 · lib · 0.90d · lib/windowManager.ts
+- [x] T645 · lib · 0.90d · lib/windowManager.ts
 - [ ] T646 · lib · 0.60d · lib/workflowDraftYaml.ts lib/workflowListContextMenu.ts
 - [ ] T647 · lib · 0.80d · lib/workflowYaml.ts
 - [x] T079 · lib/metadata · 0.90d · lib/metadata/identity.ts
