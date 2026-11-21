@@ -53,7 +53,7 @@
 - [x] T494 · lib · 2.00d · lib/exportData.ts · split
 - [x] T497 · lib · 2.00d · lib/exportDialogShared.ts · split
 - [ ] T500 · lib · 2.00d · lib/exportFormat.ts · split
-- [ ] T503 · lib · 0.60d · lib/exportTableStructure.ts lib/extractQuestions.ts
+- [x] T503 · lib · 0.60d · lib/exportTableStructure.ts lib/extractQuestions.ts
 - [ ] T505 · lib · 0.50d · lib/extractSql.ts
 - [ ] T507 · lib · 0.90d · lib/fetchRelationDdl.ts
 - [ ] T509 · lib · 0.30d · lib/filterDbTypes.ts
