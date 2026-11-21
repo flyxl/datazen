@@ -1647,3 +1647,14 @@ mod sql_code_block;
 // the IME commit path, the remote-sync caret reset, the gutter's
 // React-verbatim washes, forty-line geometry).
 mod sql_code_block_audit;
+
+// T232: the foreign-key navigation stack store (coder tests: the push
+// id minting, the depth cap, the dead-tab skip/drop walks, the cycle
+// rewind, the viewport trio, prune/reset, find-by-nav-key).
+mod fk_navigation_store;
+
+// T232 independent audit: fresh vectors (the interleaved walk with a
+// buried dead tab, the composite origin, the viewport round-trip, the
+// two-survivor prune, the rewind no-op, the truncated-flag persistence,
+// the empty edges).
+mod fk_navigation_store_audit;
