@@ -921,7 +921,7 @@ mod tests {
         // another.
         let mut registry = ProCompartmentRegistry::new();
         let mut view_a = full_state(&mut registry);
-        let mut view_b = full_state(&mut registry);
+        let view_b = full_state(&mut registry);
 
         let plan = reconfigure_pro_compartments(
             &registry,
