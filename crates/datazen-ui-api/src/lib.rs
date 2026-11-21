@@ -28,6 +28,7 @@ mod diff_detail;
 mod data_sync_bars;
 mod context_menu_position;
 mod grid_cell;
+mod quick_look_dialog;
 mod workflow_chat_panel;
 // `pub mod` — the crate's only public module: the T159 dashboard facade
 // keeps its display `DashboardWidget` here, but that root name is held
@@ -255,6 +256,14 @@ pub use grid_cell::{
     StickyStyle, CLASS_BASE, CLASS_DIRTY_BG, CLASS_DIRTY_BORDER, CLASS_DIRTY_MARK, CLASS_FK_JUMP,
     CLASS_FK_PICK, CLASS_STICKY, CLASS_STICKY_OVERLAY, CELL_TEST_ID, EDITOR_KIND_ENUM,
     FkTextFn, ROLE_GRIDCELL,
+};
+pub use quick_look_dialog::{
+    build_quick_look, binary_value_bytes, bytes_to_base64, is_blob_type, is_json_value,
+    is_quick_lookable_value, pretty_json, raw_json_text, resolve_event, resolve_save,
+    save_blob_request, to_edit_string, BlobSaveRequest, CommitValue, QuickLookBody, QuickLookEffect,
+    QuickLookEvent, QuickLookInput, QuickLookModel, QuickLookView, SaveOutcome, BINARY_TEST_ID,
+    BLOB_TYPE_KEYWORDS, DIALOG_CLASS, JSON_TEST_ID, PRE_CLASS, TEXTAREA_CLASS, TEXTAREA_ROWS,
+    TEXTAREA_WRAP,
 };
 // The T234 keyset paging vocabulary: the aggregate (`types/index`)
 // re-exports everything `types/keyset.ts` declares, so the crate root
