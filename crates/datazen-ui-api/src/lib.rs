@@ -66,6 +66,7 @@ mod database_types;
 mod data_table_context_menu;
 mod dedicated_db_session;
 mod dismiss_prefs;
+mod driver_capabilities;
 mod filter_types;
 mod keyset_types;
 mod metadata;
@@ -360,6 +361,10 @@ pub use dedicated_db_session::{
     DedicatedSideSession, ListDatabasesResult,
 };
 pub use dismiss_prefs::{create_dismiss_prefs, DismissPrefs};
+pub use driver_capabilities::{
+    capabilities_for_db_session, has_schema_level, relation_schema_for, supports_offset,
+    CapabilityAnswer, SessionCapabilitiesEntry,
+};
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
     FilterOperator, SHARED_FILTER_OPERATORS,
