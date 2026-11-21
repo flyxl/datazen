@@ -1700,3 +1700,59 @@ mod menu_bar_audit;
 
 // T516: SnippetMenuButton port (builtins, menu items, insert actions, disabled, geometry).
 mod snippet_menu_button;
+
+// T217: the AI context picker (coder tests: the query filter, the
+// ctx.yaml rule, the flatten walk, the recents LRU, the key router,
+// the mounted drill-in / picks / loading / empty rows).
+mod context_picker;
+
+// T217 independent audit: fresh vectors (unicode id/name queries, the
+// ten-push LRU cap, the stale active index clamp, the session-less
+// two-level Escape walk, the mounted boundary pick, the loading gate,
+// thirty-row geometry).
+mod context_picker_audit;
+
+// T219: the SQL code block (coder tests: the dialect map, the code-prop
+// sync, the syntax-preset seam, the editable key path, the mounted
+// gutter / line rows, the read-only inertness).
+mod sql_code_block;
+
+// T219 independent audit: fresh vectors (the sqlserver dialect
+// contrast against the editor contract, the command-gated typing arms,
+// the IME commit path, the remote-sync caret reset, the gutter's
+// React-verbatim washes, forty-line geometry).
+mod sql_code_block_audit;
+
+// T232: the foreign-key navigation stack store (coder tests: the push
+// id minting, the depth cap, the dead-tab skip/drop walks, the cycle
+// rewind, the viewport trio, prune/reset, find-by-nav-key).
+mod fk_navigation_store;
+
+// T232 independent audit: fresh vectors (the interleaved walk with a
+// buried dead tab, the composite origin, the viewport round-trip, the
+// two-survivor prune, the rewind no-op, the truncated-flag persistence,
+// the empty edges).
+mod fk_navigation_store_audit;
+
+// T233: the insert-location rule and the keyset invalidation (coder
+// tests: the not-applicable gate, the exact identity rule, the
+// candidate maximum rule, the unorderable refusals, the boundary
+// invalidation).
+mod table_data_insert_location;
+
+// T233 independent audit: fresh vectors (the second insert's identity,
+// the composite match, negative/float orderings, the unorderable turn,
+// the populated-order-set invalidation).
+mod table_data_insert_location_audit;
+
+// T236: the detail drawer (coder tests: the search filter, the multi-row
+// gate, the Quick Look helpers, the field classification, the display-text
+// chain, the blob line, the commit semantics, the editor keys, BUG-005's
+// enter/exit cycle, and the mounted drawer's probes).
+mod detail_panel;
+
+// T236 independent audit: fresh vectors (the typed search journey, the
+// aside's geometry in both palettes, the twelve-column list, the missing-field
+// NULL, the entry's conditional mount, the dialog gate, the pack's exact
+// strings, the commit wire shapes, the JSON/long-text press journeys).
+mod detail_panel_audit;
