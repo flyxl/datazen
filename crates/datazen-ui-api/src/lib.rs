@@ -81,6 +81,7 @@ mod export_data;
 mod export_format;
 mod export_table_structure;
 mod extract_questions;
+mod filter_db_types;
 mod filter_types;
 mod keyset_types;
 mod metadata;
@@ -428,6 +429,7 @@ pub use export_table_structure::{
     ExportTableStructureResult, SqlDialectProvider, StructureExportInput, StructureExporter,
 };
 pub use extract_questions::{extract_questions, parse_tool_call_questions, ExtractQuestionsResult};
+pub use filter_db_types::{filter_db_types_by_query, DbTypeOption};
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
     FilterOperator, SHARED_FILTER_OPERATORS,
