@@ -22,6 +22,7 @@ mod grid_keyboard;
 mod html_sanitizer;
 mod import_mapping;
 mod keymap;
+mod language_pack_runtime;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -220,6 +221,11 @@ pub use keymap::{
     KEYMAP_ACTIONS, KEYMAP_PRESETS, KeymapAction, KeymapPreset, format_mod_key,
     format_shortcut_for_display, get_action_shortcut, normalize_shortcut_input,
     to_code_mirror_key_format, to_shortcut_hook_format,
+};
+pub use language_pack_runtime::{
+    BUILTIN_LOCALES, EnsureOutcome, LanguagePackDeps, LanguagePackMessages, LanguagePackRuntime,
+    ensure_language_pack_messages, is_builtin_locale, reset_language_pack_runtime_for_tests,
+    unload_language_pack,
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
