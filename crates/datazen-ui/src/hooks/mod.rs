@@ -66,9 +66,12 @@ mod use_query_exec;
 // T404: the resizable-panel drag machine (the persisted clamp, the
 // measured-start adoption, the reverse axis).
 mod use_resizable;
-// T404: the per-window settings composition (the settings + theme
-// sync mounts; the theme seam waits on T430).
+// T404: the per-window settings composition (the settings sync
+// mount + T430's theme sync machine).
 mod use_settings;
 // T413: the cross-window settings sync (the T11 notification rule:
 // a re-read, never a trusted snapshot).
 mod use_settings_sync;
+// T430: the reusable theme sync (the menu's change + the other
+// windows' theme/theme-pack toggles over the T413 triple).
+mod use_theme_sync;

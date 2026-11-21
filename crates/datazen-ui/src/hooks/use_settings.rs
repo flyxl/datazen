@@ -3,13 +3,13 @@
 //! the menu; mount in every window.
 //!
 //! The React file is the composition: `useSettingsSync()` (the
-//! multi-window settings cache sync — T413, now landed) +
-//! `useThemeSync()` (the reusable theme sync — T430). The port
-//! composes the two mounts the same way: [`UseSettingsState::mount`]
-//! runs both, in the file's order — the settings sync's machine
-//! ([`UseSettingsSyncState`]) rides along so the host can drive the
-//! subscription lifecycle and the notification deliveries, and the
-//! theme seam's mount flag stands in until T430 lands.
+//! multi-window settings cache sync — T413) + `useThemeSync()` (the
+//! reusable theme sync — T430, now landed). The port composes the
+//! two mounts the same way: [`UseSettingsState::mount`] runs both,
+//! in the file's order, with the settings sync's machine
+//! ([`UseSettingsSyncState`]) and the theme sync's machine
+//! ([`UseThemeSyncState`]) riding along — the host drives their
+//! subscription lifecycles and the deliveries through them.
 //!
 //! ## What maps where
 //!
@@ -18,34 +18,22 @@
 //!   starts in flight; the host resolves it through
 //!   `note_subscribed`/`note_unavailable` and delivers through
 //!   `note_settings_changed` — the T11 re-read rule).
-//! - `useThemeSync()` is the theme seam's mount (T430 ports the
-//!   theme-apply loop; the same rule).
+//! - `useThemeSync()` is the theme sync machine's mount (T430): the
+//!   three channel subscribes start in flight; the host resolves
+//!   and delivers through the same slots.
 //! - Both hooks are mount-only effects with no outputs of their
-//!   own: the composition answers the two mounted flags.
+//!   own: the composition answers the two mounted flags and the two
+//!   machines.
 //!
-//! Known deltas: the theme sync's full machine is T430's; this
-//! composition wires its mount and will compose its state as it
-//! lands.
+//! Known deltas: none — the theme seam's T404 stand-in is retired
+//! by T430's machine.
 
 // No production consumer yet (the windows' bootstrap track mounts
 // it); this crate's tests are the callers meanwhile.
 #![allow(dead_code)]
 
 use super::use_settings_sync::UseSettingsSyncState;
-
-/// `useThemeSync`'s mount seam (T430 ports the theme-apply loop).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct UseThemeSyncMount {
-    pub(crate) mounted: bool,
-}
-
-impl UseThemeSyncMount {
-    /// The effect's mount (`useThemeSync()`): subscribe the window
-    /// to the theme sync.
-    pub(crate) fn mount(&mut self) {
-        self.mounted = true;
-    }
-}
+use super::use_theme_sync::UseThemeSyncState;
 
 /// `useSettings()` — the composition mounted in every window.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -54,7 +42,9 @@ pub(crate) struct UseSettingsState {
     /// `useSettingsSync`'s machine (T413): the subscribe lifecycle
     /// and the notification deliveries ride it.
     pub(crate) settings_sync: UseSettingsSyncState,
-    theme_sync: UseThemeSyncMount,
+    /// `useThemeSync`'s machine (T430): the three theme channels'
+    /// subscribe lifecycles and the delivery decisions ride it.
+    pub(crate) theme_sync: UseThemeSyncState,
 }
 
 impl UseSettingsState {
@@ -64,10 +54,10 @@ impl UseSettingsState {
 
     /// The hook's mount: both syncs, in the React file's order. The
     /// settings sync's subscribe is in flight from here (the host
-    /// resolves it through the bus seam).
+    /// resolves it through the bus seam); the theme sync's three
+    /// subscribes are in flight the same way (T430).
     pub(crate) fn mount(&mut self) {
         self.mounted = true;
-        self.theme_sync.mount();
     }
 
     /// Whether the settings sync's effect has run (the composition's
@@ -78,9 +68,9 @@ impl UseSettingsState {
     }
 
     /// Whether the theme sync is live (`useThemeSync`'s effect has
-    /// run).
+    /// run — the machine's slots ride [`Self::theme_sync`]).
     pub(crate) fn theme_sync_mounted(&self) -> bool {
-        self.theme_sync.mounted
+        self.mounted
     }
 }
 
@@ -108,6 +98,25 @@ mod tests {
         state.settings_sync.note_subscribed();
         assert!(state.settings_sync.subscribed());
         assert!(state.settings_sync.note_settings_changed());
+    }
+
+    #[test]
+    fn the_theme_sync_machine_rides_the_composition() {
+        use crate::views::appearance_section::ThemeMode;
+
+        let mut state = UseSettingsState::new();
+        state.mount();
+        // The host resolves the three theme subscribes and delivers
+        // through the same slots T430's own port carries.
+        let cancelled = !state.theme_sync.live();
+        state.theme_sync.menu.note_subscribed(cancelled);
+        state.theme_sync.theme_changed.note_subscribed(cancelled);
+        state.theme_sync.pack_changed.note_subscribed(cancelled);
+        assert!(state.theme_sync.menu.subscribed());
+        // The menu's toggle decides the apply+save plan.
+        assert!(state
+            .theme_sync
+            .note_menu_theme_change(ThemeMode::Light, ThemeMode::Dark));
     }
 
     #[test]
