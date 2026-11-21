@@ -3,46 +3,35 @@
 //! the menu; mount in every window.
 //!
 //! The React file is the composition: `useSettingsSync()` (the
-//! multi-window settings cache sync — T413) + `useThemeSync()` (the
-//! reusable theme sync — T430). The port composes the two mounts the
-//! same way: [`UseSettingsState::mount`] runs both, in the file's
-//! order, and answers the pair so a window can observe which syncs
-//! are live.
+//! multi-window settings cache sync — T413, now landed) +
+//! `useThemeSync()` (the reusable theme sync — T430). The port
+//! composes the two mounts the same way: [`UseSettingsState::mount`]
+//! runs both, in the file's order — the settings sync's machine
+//! ([`UseSettingsSyncState`]) rides along so the host can drive the
+//! subscription lifecycle and the notification deliveries, and the
+//! theme seam's mount flag stands in until T430 lands.
 //!
 //! ## What maps where
 //!
-//! - `useSettingsSync()` is the settings seam's mount (T413 ports
-//!   the sync itself — the broadcast-channel listen, the
-//!   menu-rebuild trigger and the settings-cache refresh; until that
-//!   port lands the seam's mount flags the window as subscribed).
+//! - `useSettingsSync()` is the settings sync machine's mount: the
+//!   effect fires the `listenCrossWindow` subscribe (the state
+//!   starts in flight; the host resolves it through
+//!   `note_subscribed`/`note_unavailable` and delivers through
+//!   `note_settings_changed` — the T11 re-read rule).
 //! - `useThemeSync()` is the theme seam's mount (T430 ports the
 //!   theme-apply loop; the same rule).
-//! - Both hooks are mount-only effects with no outputs: the port's
-//!   [`UseSettingsState`] answers the two mounted flags and nothing
-//!   writes back.
+//! - Both hooks are mount-only effects with no outputs of their
+//!   own: the composition answers the two mounted flags.
 //!
-//! Known deltas: the two sub-hooks' sync logic is their own tasks'
-//! (T413/T430); this composition wires their mounts and will compose
-//! their full states as those land.
+//! Known deltas: the theme sync's full machine is T430's; this
+//! composition wires its mount and will compose its state as it
+//! lands.
 
 // No production consumer yet (the windows' bootstrap track mounts
 // it); this crate's tests are the callers meanwhile.
 #![allow(dead_code)]
 
-/// `useSettingsSync`'s mount seam (T413 ports the sync itself: the
-/// settings-cache refresh the broadcast triggers).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct UseSettingsSyncMount {
-    pub(crate) mounted: bool,
-}
-
-impl UseSettingsSyncMount {
-    /// The effect's mount (`useSettingsSync()`): subscribe the
-    /// window to the settings sync.
-    pub(crate) fn mount(&mut self) {
-        self.mounted = true;
-    }
-}
+use super::use_settings_sync::UseSettingsSyncState;
 
 /// `useThemeSync`'s mount seam (T430 ports the theme-apply loop).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -61,7 +50,10 @@ impl UseThemeSyncMount {
 /// `useSettings()` — the composition mounted in every window.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct UseSettingsState {
-    settings_sync: UseSettingsSyncMount,
+    mounted: bool,
+    /// `useSettingsSync`'s machine (T413): the subscribe lifecycle
+    /// and the notification deliveries ride it.
+    pub(crate) settings_sync: UseSettingsSyncState,
     theme_sync: UseThemeSyncMount,
 }
 
@@ -70,16 +62,19 @@ impl UseSettingsState {
         Self::default()
     }
 
-    /// The hook's mount: both syncs, in the React file's order.
+    /// The hook's mount: both syncs, in the React file's order. The
+    /// settings sync's subscribe is in flight from here (the host
+    /// resolves it through the bus seam).
     pub(crate) fn mount(&mut self) {
-        self.settings_sync.mount();
+        self.mounted = true;
         self.theme_sync.mount();
     }
 
-    /// Whether the settings sync is live (`useSettingsSync`'s
-    /// effect has run).
+    /// Whether the settings sync's effect has run (the composition's
+    /// own flag; the subscription's resolution is
+    /// [`Self::settings_sync`]'s).
     pub(crate) fn settings_sync_mounted(&self) -> bool {
-        self.settings_sync.mounted
+        self.mounted
     }
 
     /// Whether the theme sync is live (`useThemeSync`'s effect has
@@ -101,6 +96,18 @@ mod tests {
         state.mount();
         assert!(state.settings_sync_mounted(), "useSettingsSync ran");
         assert!(state.theme_sync_mounted(), "useThemeSync ran");
+    }
+
+    #[test]
+    fn the_settings_sync_machine_rides_the_composition() {
+        let mut state = UseSettingsState::new();
+        state.mount();
+        // The host resolves the subscribe and delivers a
+        // notification through the same machine the sync's own port
+        // carries (the T11 re-read).
+        state.settings_sync.note_subscribed();
+        assert!(state.settings_sync.subscribed());
+        assert!(state.settings_sync.note_settings_changed());
     }
 
     #[test]

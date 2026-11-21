@@ -145,7 +145,7 @@
 - [x] T406 · commands · 1.30d · commands/sync.ts · split
 - [x] T408 · windows/settings · 0.90d · windows/settings/SkillsSection.tsx
 - [x] T411 · windows/schema-diff · 1.30d · windows/schema-diff/useSchemaDiffSavedSetups.ts · split
-- [ ] T413 · hooks · 0.90d · hooks/useSettingsSync.ts
+- [x] T413 · hooks · 0.90d · hooks/useSettingsSync.ts
 - [ ] T415 · commands · 0.90d · commands/transfer.ts
 - [ ] T417 · windows/settings · 0.50d · windows/settings/SnippetEditDialog.tsx
 - [x] T420 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffUnifiedObjects.ts

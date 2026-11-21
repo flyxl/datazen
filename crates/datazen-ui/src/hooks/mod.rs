@@ -67,5 +67,8 @@ mod use_query_exec;
 // measured-start adoption, the reverse axis).
 mod use_resizable;
 // T404: the per-window settings composition (the settings + theme
-// sync mounts; T413/T430 port the syncs themselves).
+// sync mounts; the theme seam waits on T430).
 mod use_settings;
+// T413: the cross-window settings sync (the T11 notification rule:
+// a re-read, never a trusted snapshot).
+mod use_settings_sync;
