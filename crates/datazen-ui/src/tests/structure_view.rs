@@ -233,3 +233,51 @@ fn geometry_fits_both_sizes_in_both_themes() {
         }
     }
 }
+
+// ── T534 independent audit (appended; reuses this module's helpers) ──────
+
+/// React's default-value cell uses truthiness: `col.defaultValue ? value : '—'`
+/// (`StructureView.tsx:212-218`), so an empty string renders the em dash. The
+/// port uses `unwrap_or_else`, so `Some("")` renders a blank cell.
+#[test]
+fn audit_empty_default_value_shows_em_dash() {
+    let mut vm = ready();
+    vm.schema.as_mut().unwrap().columns[0].default_value = Some(String::new());
+    let rt = runtime(scene(vm, true), DESIGN);
+    let default_text = rt
+        .elements()
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some("struct-col-default-id") && !e.exiting)
+        .and_then(|e| e.text)
+        .unwrap_or_default();
+    assert_eq!(
+        default_text, "—",
+        "an empty default value must render the em dash like React's falsy check"
+    );
+}
+
+/// React clears `highlightedCol` after the 1400ms fade (`StructureView.tsx:68-70`)
+/// while `targetColumn` stays set, so the row is no longer highlighted. The
+/// port's `effective_highlight()` falls back to `matched_column()` whenever the
+/// host highlight is None, so it keeps highlighting permanently.
+#[test]
+fn audit_cleared_highlight_does_not_fall_back_to_target() {
+    let mut vm = ready();
+    vm.target_column = Some("order_no".to_owned());
+    vm.highlighted_col = None; // host cleared the fade timer, React state = null
+    assert_eq!(
+        vm.effective_highlight().as_deref(),
+        None,
+        "a cleared highlight must not be derived again from targetColumn"
+    );
+}
+
+/// React renders an AI badge for `col.isAutoIncrement` (`:223`). The coder
+/// geometry test sets the flag but never asserts the badge is mounted.
+#[test]
+fn audit_auto_increment_badge_is_mounted() {
+    let mut vm = ready();
+    vm.schema.as_mut().unwrap().columns[0].is_auto_increment = true;
+    let rt = runtime(scene(vm, true), DESIGN);
+    assert!(has_key(&rt, "struct-col-ai"), "AI badge on an auto-increment column");
+}
