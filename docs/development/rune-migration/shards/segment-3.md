@@ -157,7 +157,7 @@
 - [ ] T463 · stores · 1.30d · stores/tableDataStore.ts · split
 - [x] T466 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncJobLifecycle.ts
 - [ ] T468 · stores · 0.90d · stores/tunnelStore.ts
-- [ ] T471 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncOptions.ts
+- [x] T471 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncOptions.ts
 - [x] T473 · stores · 0.90d · stores/uiStore.ts
 - [ ] T476 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncProfiles.ts · split
 - [ ] T478 · stores · 0.90d · stores/updateReminderStore.ts
