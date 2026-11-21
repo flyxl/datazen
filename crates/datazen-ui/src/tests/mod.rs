@@ -60,6 +60,9 @@ mod execution_strategy_select;
 mod query_execution_gate;
 // T524: the result table view (status bar, cells, staging, find, geometry).
 mod result_table_view;
+// T530: date-value dialog + structure column table.
+mod set_value_date_dialog;
+mod structure_column_table;
 // T524 independent audit: any-column not-contains, replace-all splicing and
 // non-contains operator planning, checked against React resultFindReplace.
 mod result_table_view_audit;
