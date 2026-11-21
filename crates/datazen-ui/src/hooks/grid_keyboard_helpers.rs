@@ -597,6 +597,151 @@ pub(crate) fn move_cell_focus(
     Some(CellCoord { row_index: next_row, column_name: name.clone() })
 }
 
+/// `normalizeCellRange`: normalize a range so rows grow downwards and
+/// columns grow in render order — never in lexicographic order, because
+/// `id` sorts before `name` while the grid may show the opposite. An
+/// unknown column has no position to compare, so the range is "not
+/// found".
+pub(crate) fn normalize_cell_range(
+    range: &CellRange,
+    column_order: &[String],
+) -> Option<CellRange> {
+    let start_column = column_index_from_coord(&range.start, column_order);
+    let end_column = column_index_from_coord(&range.end, column_order);
+    if start_column < 0 || end_column < 0 {
+        return None;
+    }
+    let top_row = range.start.row_index.min(range.end.row_index);
+    let bottom_row = range.start.row_index.max(range.end.row_index);
+    let (left, right) = if start_column <= end_column {
+        (&range.start, &range.end)
+    } else {
+        (&range.end, &range.start)
+    };
+    Some(CellRange {
+        start: CellCoord { row_index: top_row, column_name: left.column_name.clone() },
+        end: CellCoord { row_index: bottom_row, column_name: right.column_name.clone() },
+    })
+}
+
+/// `normalizeSelectionRange`: normalized anchor-to-focus rectangle;
+/// `None` unless both corners exist and are displayable.
+pub(crate) fn normalize_selection_range(
+    selection: &GridSelection,
+    column_order: &[String],
+) -> Option<CellRange> {
+    let anchor = selection.anchor.as_ref()?;
+    let focus = selection.focus.as_ref()?;
+    normalize_cell_range(
+        &CellRange { start: anchor.clone(), end: focus.clone() },
+        column_order,
+    )
+}
+
+/// `selectionRanges`: every region the selection covers, main region
+/// first, then the extra ranges (all normalized).
+pub(crate) fn selection_ranges(
+    selection: &GridSelection,
+    column_order: &[String],
+) -> Vec<CellRange> {
+    if selection.mode != GridSelectionMode::Cell {
+        return Vec::new();
+    }
+    let mut ranges = Vec::new();
+    if let Some(main) = normalize_selection_range(selection, column_order) {
+        ranges.push(main);
+    }
+    for extra in &selection.extra_ranges {
+        if let Some(normalized) = normalize_cell_range(extra, column_order) {
+            ranges.push(normalized);
+        }
+    }
+    ranges
+}
+
+/// `cellRangeContains`.
+pub(crate) fn cell_range_contains(
+    range: &CellRange,
+    coord: &CellCoord,
+    column_order: &[String],
+) -> bool {
+    let Some(normalized) = normalize_cell_range(range, column_order) else {
+        return false;
+    };
+    let column = column_index_from_coord(coord, column_order);
+    if column < 0 {
+        return false;
+    }
+    let start_column = column_index_from_coord(&normalized.start, column_order);
+    let end_column = column_index_from_coord(&normalized.end, column_order);
+    coord.row_index >= normalized.start.row_index
+        && coord.row_index <= normalized.end.row_index
+        && column >= start_column
+        && column <= end_column
+}
+
+/// `gridSelectionContains`: render-time membership test (goes through
+/// the pure helpers, never through the DOM).
+pub(crate) fn grid_selection_contains(
+    selection: &GridSelection,
+    coord: &CellCoord,
+    column_order: &[String],
+) -> bool {
+    selection_ranges(selection, column_order)
+        .iter()
+        .any(|range| cell_range_contains(range, coord, column_order))
+}
+
+/// `toggleExtraRange`: Cmd/Ctrl+click on one cell — append it as an
+/// extra single-cell region, or drop it when it already is one.
+/// Clicking inside the main region is a no-op (it is already
+/// selected), and an unknown column leaves the selection untouched.
+pub(crate) fn toggle_extra_range(
+    selection: &GridSelection,
+    coord: &CellCoord,
+    column_order: &[String],
+) -> GridSelection {
+    let extra = normalize_cell_range(
+        &CellRange { start: coord.clone(), end: coord.clone() },
+        column_order,
+    );
+    let Some(extra) = extra else {
+        return selection.clone();
+    };
+    if selection.mode != GridSelectionMode::Cell
+        || selection.anchor.is_none()
+        || selection.focus.is_none()
+    {
+        return GridSelection {
+            anchor: Some(coord.clone()),
+            focus: Some(coord.clone()),
+            extra_ranges: Vec::new(),
+            mode: GridSelectionMode::Cell,
+        };
+    }
+    let same_range = |a: &CellRange, b: &CellRange| {
+        a.start.row_index == b.start.row_index
+            && a.start.column_name == b.start.column_name
+            && a.end.row_index == b.end.row_index
+            && a.end.column_name == b.end.column_name
+    };
+    if let Some(existing) = selection.extra_ranges.iter().position(|range| {
+        normalize_cell_range(range, column_order)
+            .is_some_and(|normalized| same_range(&normalized, &extra))
+    }) {
+        let mut next = selection.clone();
+        next.extra_ranges.remove(existing);
+        return next;
+    }
+    let main = normalize_selection_range(selection, column_order);
+    if main.is_some_and(|main| cell_range_contains(&main, coord, column_order)) {
+        return selection.clone();
+    }
+    let mut next = selection.clone();
+    next.extra_ranges.push(extra);
+    next
+}
+
 /// `selectionFromAnchorFocus`: build a selection from its two corners.
 ///
 /// `row` mode carries no geometry at all (00-contracts §4 invariant
