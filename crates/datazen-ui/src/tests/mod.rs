@@ -1459,6 +1459,20 @@ mod table_data_pending_changes;
 // the duplicate-identity overlay refusal, the signature order stability
 // and value separation, the wire field sets, the draft-order edges).
 mod table_data_pending_changes_audit;
+// T294: the staged-edit actions (coder vectors: the T341/T328/T353
+// placeholder cores' rules — the stage-edit unstage-on-revert, the
+// delete-mark undo, the three write states, the expression
+// replacement, the restored value — the guards, the write landing with
+// its anchor, the revert path, the delete marks and their undo, the
+// paste batch and its problems, the column loop's working state, the
+// rollback, and the host's patch application).
+mod table_data_pending_edit_actions;
+// T294 independent audit: fresh vectors (the expression over an
+// existing change, the delete-mark merge keeping the column changes,
+// the PK paste's identityChanged problem, the expression-only row's
+// unstage, the revert's anchor round trip).
+mod table_data_pending_edit_actions_audit;
+
 
 // T127 independent audit: fresh vectors (composite keys, nested identity
 // values, anchor under ambiguity, expressions, the delete-mark flip).
@@ -1893,6 +1907,16 @@ mod transfer_mapping_step;
 // and source order at both themes inside the minimum window, and the
 // long target's single-line clip).
 mod transfer_mapping_step_audit;
+// T305: the transfer mapping view (coder vectors: the normalize fallback
+// and last-wins, the auto-match and native-type survival, the clear pass,
+// the unmapped targets with the create-new/empty guards, the gate pair's
+// three rules, the any-row allow, the block reason's four branches).
+mod transfer_mapping_view;
+// T305 independent audit: fresh vectors (the normalize interplay of list
+// and repeats, the auto-match-then-clear round trip, the unmapped
+// skipped/empty distinction, the gate pair's mixed-rows matrix).
+mod transfer_mapping_view_audit;
+
 
 // T253: the installed-language-pack store (coder tests: the fetch
 // seam's two endings, the remove seam's refetch hand-off and the
@@ -1939,6 +1963,21 @@ mod editable_cell;
 // theme stability inside the minimum window, the three-state choose
 // journey at both themes, the checkbox journey's opposite).
 mod editable_cell_audit;
+// T297: the cell editor host (coder vectors: the coercion's families
+// — the empty rules, the number regex, the boolean, the temporal, the
+// json/uuid/zoned — the state machine's gates (commit/pick/cancel
+// with the done guard, the nothing-changed close, the refused
+// open-editor), the keyboard and blur rules with their guards, the
+// owned-surface predicates, the candidates machine, the re-seed, and
+// the mount's controls and inline error).
+mod cell_editor_host;
+// T297 independent audit: fresh vectors (the number regex's boundary
+// edges, the leap-century rule, the typed-family nothing-changed close,
+// the context-menu guard's one-shot across two menus, the re-seed
+// clearing the error, the refusal message words verbatim, the kind
+// derivation feeding the same coercion).
+mod cell_editor_host_audit;
+
 
 
 // T257 independent audit: fresh vectors (the unwired light-mode toggle,
@@ -1955,6 +1994,29 @@ mod draft_row_audit;
 // the analysis sections with their severity cards and suggestion cards,
 // the unconfigured notice, and the plan-tree mount condition).
 mod explain_panel;
+// T280: the NL2SQL panel (coder vectors: the generate guard, the SQL
+// write action, the context split, the preview derivation, the
+// unconfigured bar, the generating/generated button swap, the preview
+// card's label and spinner, the memory card, the error bar, the press
+// journeys, the disabled gate).
+mod nl2_sql_panel;
+// T280 independent audit: fresh vectors (the write bookkeeping across
+// generations, the whitespace guard, the theme-stable key set, the
+// unconfigured words verbatim, the citation journey at both themes).
+mod nl2_sql_panel_audit;
+// T299: the NL filter input (coder vectors: the table-change reset, the
+// parsed outcome's four branches with the stale-context drop and the
+// unknown-column validation, the sentence, the three mounts, the parsing
+// swap, the four status lines, the press journeys, the unwired model
+// text).
+mod nl_filter_input;
+// T299 independent audit: fresh vectors (the Unicode membership
+// honesty, the empty-parse-with-matching-context apply, the
+// theme-stable key set inside the minimum window, the parsing word and
+// the clear help verbatim).
+mod nl_filter_input_audit;
+
+
 
 // T260 independent audit: fresh vectors (the object-but-not-result-set
 // plans and the mixed-rows filter, the empty-list analysis rendering
@@ -1993,3 +2055,13 @@ mod table_data_settings_section_audit;
 
 // T528: ServerStatusView port (cards/charts, tabs, header actions, states, geometry).
 mod server_status_view;
+
+// T282: the theme toggle (coder vectors: the current-option
+// derivation, the trigger's icon and tooltip, the open popover's scrim
+// and three options, the accented current, the press journeys, the
+// escape channel).
+mod theme_toggle;
+// T282 independent audit: fresh vectors (the un-resolved honest
+// placeholder, the option words verbatim, the theme-stable key set
+// inside the minimum window, the resolver seam, the anchored geometry).
+mod theme_toggle_audit;

@@ -277,6 +277,28 @@ pub(crate) fn values_equal(left: &Value, right: &Value) -> bool {
     stable_serialize(left) == stable_serialize(right)
 }
 
+/// `normalizeEditValue` (`tableChanges.ts:317-327`): the value a host
+/// callback may write back — `NaN` is the dangerous one (`valuesEqual`
+/// compares with `JSON.stringify`, which serialises `NaN` as `null`, so
+/// a `NaN` that reached the store would be indistinguishable from a
+/// `NULL` and would silently write a `NULL`). A `NaN` or infinite
+/// number becomes `None` (do not write); strings, booleans, arrays and
+/// objects pass through. T629 replaces this placeholder.
+#[allow(dead_code)] // T629 replaces this placeholder; the editor host (T297) is its caller
+pub(crate) fn normalize_edit_value(value: Option<&Value>) -> Option<Value> {
+    match value {
+        None => None,
+        Some(Value::Null) => Some(Value::Null),
+        Some(Value::Bool(_)) | Some(Value::String(_)) | Some(Value::Array(_)) | Some(Value::Object(_)) => {
+            value.cloned()
+        }
+        Some(Value::Number(number)) => match number.as_f64() {
+            Some(float) if float.is_finite() => Some(Value::Number(number.clone())),
+            _ => None,
+        },
+    }
+}
+
 // ---------------------------------------------------------------------------
 // The dirty index itself.
 // ---------------------------------------------------------------------------

@@ -60,6 +60,10 @@ pub(crate) mod table_data_count_strategy;
 pub(crate) mod table_data_dirty_index;
 // T275: the pending-changes helpers (stores/tableData/pendingChanges.ts).
 pub(crate) mod table_data_pending_changes;
+// T294: the staged-edit actions (stores/tableData/pendingEditActions.ts), with
+// the T328/T341/T353 placeholder cores (stageCellValue / stageEdit /
+// stagePasteWrites) the owning tasks replace.
+pub(crate) mod table_data_pending_edit_actions;
 // T158: the new-row draft transitions (draftInserts.ts).
 pub(crate) mod table_data_draft_inserts;
 // T158: the enum-candidate cache transitions (enumCandidates.ts).

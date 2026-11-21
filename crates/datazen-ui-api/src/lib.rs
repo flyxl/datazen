@@ -38,6 +38,8 @@ mod chart_toolbar;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
 mod build_editor_schema;
+mod app_root_surface;
+mod cell_editors;
 // T228: the memory-settings normalizers and the message-block parser —
 // pure functions over the persistence JSON and chat markdown.
 mod ai_memory_settings;
@@ -77,8 +79,12 @@ mod connection_types;
 mod connection_view_registry;
 mod connection_views;
 mod context_items;
+mod diff_detail;
+mod data_sync_bars;
 mod context_menu_position;
 mod dangerous_sql;
+mod grid_cell;
+mod workflow_chat_panel;
 // `pub mod` — the crate's only public module: the T159 dashboard facade
 // keeps its display `DashboardWidget` here, but that root name is held
 // by the N13 workspace stub below (whose `datazen-ui` consumers are out
@@ -103,6 +109,7 @@ mod extract_questions;
 mod fetch_relation_ddl;
 mod filter_db_types;
 mod filter_operators;
+mod database_object_identity;
 mod filter_types;
 mod fk_navigation;
 mod fk_referenced_by;
@@ -136,6 +143,9 @@ mod native_context_menu;
 mod object_browser_context_menu;
 mod object_filter;
 mod panel_context_path;
+mod panel_exec_cleanup;
+mod panel_query_context;
+mod panel_result_edit;
 mod platform_shared;
 mod process_list_result;
 mod product_features;
@@ -162,7 +172,14 @@ mod sql_format;
 mod sql_function_registry;
 mod sql_generator;
 mod sql_namespace_ops;
+mod run_to_chart;
+mod run_to_result;
+mod scalar_cell_editors;
+mod selection_actions;
+mod stage_cell_value;
+mod stage_edit_actions;
 mod sql_path_prefix;
+mod workflow_panel;
 mod sql_schema_drop_targets;
 mod sql_statement_range;
 mod sql_transaction_guard;
@@ -172,6 +189,7 @@ mod sync_pairing;
 mod sync_taxonomy;
 mod table_schema_for_sql;
 mod table_sql_actions;
+mod table_list_panel;
 mod tabs;
 mod theme_editor_colors;
 mod theme_tokens;
@@ -365,6 +383,18 @@ pub use build_editor_schema::{
     hoist_namespace_child, hoist_namespace_path, hoist_nested_table_leaves,
     is_leaf, is_namespace_empty, merge_unqualified_tables, overlay_column_map,
 };
+pub use app_root_surface::{
+    app_module_mark, resolve_window_component, should_hide_splash, AppWindowRoute,
+    APP_CHUNK_LOAD_MARKS, APP_DEFAULT_COMPONENT, APP_DEFAULT_WINDOW_KIND, APP_DOM_GAP,
+    APP_GLOBAL_HOSTS, APP_MOUNT_MARK, APP_SELECTION_INSTALLERS, APP_SHELL_WRAPPERS,
+    APP_WINDOW_ROUTES,
+};
+pub use cell_editors::{
+    build_enum_view, build_json_view, build_long_text_view, enum_key_decision, json_indent_of,
+    reformat_json, text_area, EnumEditorInput, EnumEditorMode, JsonAction, JsonEditorInput,
+    JsonEditorView, KeyDecision, LoadButtonView, LongTextEditorInput, SelectOption, TextAreaView,
+    CELL_EDITORS_GAP, CELL_EDITORS_SURFACE,
+};
 pub use ai_memory_patterns::{
     HistorySort, MemoryPatternCommands, MemoryPatternExtractionInput, MemoryPatternScheduler,
     QueryHistoryPage, QueryHistoryPageParams, SubmitDecision, extract_memory_patterns_if_needed,
@@ -540,6 +570,23 @@ pub use connection_views::{
     NodeContextMenuPayload, ObjectKind, TableContextInput, TableSqlActionKind,
 };
 pub use context_items::{ContextItem, ContextKind, SplitContextItems, split_context_items};
+pub use workflow_chat_panel::{
+    answer_questions_params, build_send_request, connection_options, copied_block_index,
+    extract_workflow_yaml, handle_new_chat_reset, handle_stop, is_configured_gate, is_last_assistant,
+    is_user, questions_visible, save_yaml, selected_database, selected_db_session_id,
+    streaming_bubble_visible, thinking_visible, validation_connections, yaml_actions_visible,
+    ActiveSessionSnapshot, MultiDbProvider, NewChatReset, SaveSuccess, SendRequest,
+    WorkflowChatPanelPorts, WorkflowChatState, ParsedWorkflowDefinition, WorkflowPanelConnection,
+    WorkflowSaveError, WorkflowValidationConnection, COPIED_FEEDBACK_MS, SAVE_OK_RESET_MS,
+    WORKFLOW_CHAT_PANEL_GAP,
+};
+pub use diff_detail::{
+    cell_view, clear_all_op, diff_rows, footer_visible, format_cell, is_changed, is_empty_state,
+    key_label, max_cols, next_disabled, operation_allowed, operation_badge_class, page_count,
+    page_rows, prev_disabled, row_key_string, row_selectable, safe_page, select_all_op,
+    server_paged, toggle_row, CellView, DataSyncOperation, DataSyncRowChange,
+    DataSyncTableResult, SyncOptions, DIFF_DETAIL_DOM_GAP, PAGE_SIZE,
+};
 pub use context_menu_position::{
     CONTEXT_MENU_PAD, Point, Rect, RootMenuPosition, Size, SubmenuPosition, SubmenuSide, Viewport,
     position_root_menu, position_root_menu_with_pad, position_submenu, position_submenu_with_pad,
@@ -564,6 +611,18 @@ pub use dangerous_sql::{
     sql_contains_dangerous_write, SigKind, SigTok, SqlRiskAssessment, SqlRiskClassification,
     SqlRiskFinding, SqlRiskFindingType, SqlStatementRange, SqlStatementRisk, SqlToken, SqlTokenKind,
     DESTRUCTIVE_VERBS, FALSE_SQL_VALUES, MAIN_VERBS, READ_VERBS, WHERE_NEEDS_VERBS, WRITE_VERBS,
+};
+pub use database_object_identity::database_object_identity_key;
+pub use data_sync_bars::{
+    build_endpoints_bar_config, build_execute_bar_view, can_fire, resolve_action_note, ActionNote,
+    ActivePairing, CancelVariant, EndpointsBarConfig, EndpointsLayout, ExecuteBarEvent,
+    ExecuteBarInput, ExecuteBarView, RunVariant, SyncPairingPath, TranslateFn, ACTION_NOTE_CLASS,
+    CANCEL_TEST_ID, COMPARE_LABEL_KEY, CONTAINER_CLASS, DELETE_CLASS, ENDPOINTS_I18N_PREFIX,
+    ENDPOINTS_TEST_ID_PREFIX, EXECUTE_TEST_ID, EXPERIMENTAL_HINT_KEY, EXPERIMENTAL_PAIR_KEY,
+    KEY_CANCEL, KEY_DELETE_WILL_APPLY, KEY_EXECUTE, KEY_EXECUTING,
+    KEY_EXECUTE_UNAVAILABLE, KEY_SELECTED_ROWS, KEY_TARGET_READ_ONLY, PATH_DIRECT_KEY, PATH_IR_KEY,
+    PATH_TEST_ID, READ_ONLY_CLASS, START_DISABLED_TEST_ID, START_TEST_ID, SUPPORTED_CLASS,
+    UNSUPPORTED_CLASS, USE_TRANSFER_HINT_KEY,
 };
 // The T188 filter vocabulary: the aggregate (`types/index`) re-exports
 // everything `types/filters.ts` declares, so the crate root carries the
@@ -792,6 +851,14 @@ pub use import_data::{
     ImportParseResult, ImportTextDecoder, JsonParseOptions, ParsedData, Utf8TextDecoder,
     XlsxBookReader, XlsxParseOptions, XlsxParseResult, XlsxWorkbook, IMPORT_ENCODINGS,
 };
+pub use grid_cell::{
+    build_grid_cell_view, cell_command, dispatch_cell_event, CellChild, CellCommand, CellEvent,
+    CellRendererView, CellWriteTarget, ColumnCellFacts, DispatchOutcome, EditorCellFacts,
+    FkButtonView, FkCellAffordance, FkTextKind, GridCellInput, GridCellView, StickyInfo,
+    StickyStyle, CLASS_BASE, CLASS_DIRTY_BG, CLASS_DIRTY_BORDER, CLASS_DIRTY_MARK, CLASS_FK_JUMP,
+    CLASS_FK_PICK, CLASS_STICKY, CLASS_STICKY_OVERLAY, CELL_TEST_ID, EDITOR_KIND_ENUM,
+    FkTextFn, ROLE_GRIDCELL,
+};
 // The T234 keyset paging vocabulary: the aggregate (`types/index`)
 // re-exports everything `types/keyset.ts` declares, so the crate root
 // carries the same names.
@@ -848,6 +915,24 @@ pub use metadata::{
     ObjectTarget, ResultProvenance, SessionHandle, TemporaryResult, check_temporary_result,
     is_provenance_current, metadata_batch_bucket, metadata_cache_key, metadata_config_bucket,
     metadata_session_key, read_temporary_result, METADATA_IDENTITY_SURFACE,
+};
+// seg3's panel modules re-export several names already present at the root
+// (from the parent's established facades); only their unique names are listed
+// here so the root keeps one binding per name.
+pub use panel_exec_cleanup::{
+    can_cancel_pane, cancel_and_cleanup_exec, cancel_and_cleanup_pane_exec, request_pane_cancel,
+    session_keys_of_panel, ExecMap, PaneCancelStore, PanelExecDeps, PanelType,
+    SessionController, PANEL_EXEC_CLEANUP_ASYNC_GAP,
+    PANEL_EXEC_CLEANUP_GAP, PANEL_EXEC_CLEANUP_SURFACE,
+};
+pub use panel_query_context::{
+    panel_target_database, panel_target_schema, QueryPanelContext, SchemaStateForPanel,
+};
+pub use panel_result_edit::{
+    assert_result_writable, columns_from_key, columns_key, effect_dependency_key, effect_request,
+    result_edit_key, start_effect, verdict_view, PanelResultEditStore, ResolveTicket,
+    ResultEditabilityOptions, ResultOriginRequest, ResultWritableError, VerdictView,
+    PANEL_RESULT_EDIT_GAP,
 };
 pub use platform_shared::{
     McpContentBlock, McpError, McpFetch, McpHttpResponse, McpJsonRpcError, McpRequestInit,
@@ -981,6 +1066,40 @@ pub use sql_file_execution::{
     InvokeOutcome, SqlFileExecutionOutcome, SqlFileExecutionPlan, OVERWRITE_OPTION,
     RESTORE_PROGRESS_EVENT, RESTORE_SQL_FILE_COMMAND, SQL_FILE_EXECUTION_GAP,
 };
+pub use run_to_chart::{ChartTransformResult, has_renderable_chart, widget_run_to_chart_data};
+pub use run_to_result::widget_run_to_statement_result;
+pub use scalar_cell_editors::{
+    build_number_view, build_temporal_view, build_text_view, common_flags, CommonEditorFlags,
+    FocusStrategy, NumberEditorView, ScalarEditorInput, TemporalEditorView, TemporalKindValue,
+    TextEditorView, DEFAULT_TEMPORAL_KIND, SCALAR_CELL_EDITORS_GAP, SCALAR_CELL_EDITORS_SURFACE,
+};
+// Duplicate grid/selection type names already re-exported by the parent's
+// grid_keyboard / table_changes facades are intentionally omitted here.
+pub use selection_actions::{
+    apply_begin_cell_selection, apply_clear_grid_selection, apply_grid_selection,
+    apply_reconcile_selection, apply_row_mode_transition, apply_row_select,
+    apply_toggle_select_all, displayed_column_names, normalize_cell_range, panel_column_order,
+    reconcile_grid_selection, resolve_selection_patch, row_index_selection_reset,
+    SelectionAction, SelectionOpts, SelectionPatch, TableStateForSelection,
+};
+pub use stage_cell_value::{
+    compute_stage_cell_value_result, compute_stage_expression_value_result, compute_stage_result,
+    has_pending_column_change, restored_cell_value,
+    StageCellValueInput, StageCellValueResult, StageEditInput, StageEditResult,
+    StageExpressionValueInput, ValueMap, STAGE_CELL_VALUE_GAP,
+    STAGE_CELL_VALUE_SURFACE,
+};
+pub use stage_edit_actions::{
+    compute_unstage_delete_result, STAGE_EDIT_ACTIONS_GAP, STAGE_EDIT_ACTIONS_SURFACE,
+};
+pub use workflow_panel::{
+    connection_options as panel_connection_options, error_text, feedback_tone,
+    is_connection_variable, is_loading, variable_defaults, variable_input, ConfirmKind,
+    ConnectionSummary, ExecuteParams, FeedbackTone, PanelTab, VariableInput, WorkflowPanel,
+    WorkflowPanelEffect, WorkflowPanelHost, WorkflowPanelLabels, WorkflowPanelOptions,
+    WorkflowPanelState, WorkflowSelectOption, WorkflowStoreView, WORKFLOW_PANEL_GAP,
+    WORKFLOW_PANEL_SURFACE,
+};
 pub use sql_path_prefix::{
     QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
     parse_qualified_path_parents, resolve_ensure_segments,
@@ -1030,6 +1149,14 @@ pub use theme_pack_apply::{
     ThemePackApplyResult, ThemePackSelection, THEME_PACK_APPLY_GAP, THEME_PACK_CHANGED_EVENT,
     THEME_PACK_STYLE_ID, WAPP_THEME_PACK_PREFIX,
 };
+pub use table_list_panel::{
+    build_table_list_view, display_table_name, filter_label_key, filter_table_rows,
+    filter_test_id, row_diff_counts, table_has_row_diffs, table_is_unchanged, table_key,
+    FilterButtonView, RowDiffCounts, TableDiffFilter, TableItemBadge, TableListItemView,
+    TableListRow, TableListView, TableSyncStatus, DATA_SYNC_FILTERS, IDENTICAL_KEY,
+    MAPPING_INCOMPATIBLE_KEY, NO_TABLES_MATCH_KEY, ROW_DIFFS_KEY, SEARCH_PLACEHOLDER_KEY,
+    TABLE_ITEM_TEST_ID, TABLE_LIST_PANEL_GAP, TABLE_LIST_PANEL_SURFACE,
+};
 pub use tabs::{Tab, TabKind, Tabs};
 pub use transfer_limitations_prefs::{
     clear_transfer_limitations_dismissed, create_transfer_limitations_dismiss_prefs,
@@ -1075,10 +1202,11 @@ pub use window_manager::{
     SingletonWindowPlan, MAIN_SHELL_MENU_IDS, PENDING_CONNECTION_KEY, POST_ONBOARDING_SAMPLE_KEY,
     WINDOW_CAPABILITY_LABEL_SAMPLES, WINDOW_MANAGER_GAP,
 };
+// extract_workflow_yaml / WorkflowValidationConnection are already re-exported
+// by the parent's ai-chat facade; only seg3's unique yaml helpers are listed.
 pub use workflow_yaml::{
-    extract_workflow_yaml, looks_like_workflow, parse_validated_workflow_definition,
+    looks_like_workflow, parse_validated_workflow_definition,
     parse_workflow_blocks, parse_workflow_yaml, validate_workflow_fields,
-    WorkflowValidationConnection,
 };
 pub use wapp_bridge::{
     err_envelope, host_ready_envelope, is_request_envelope, is_wapp_command_allowed, ok_envelope,

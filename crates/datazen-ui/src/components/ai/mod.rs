@@ -86,6 +86,10 @@ pub(crate) mod ai_input;
 pub(crate) mod context_picker;
 pub(crate) mod diagnosis_panel;
 pub(crate) mod explain_panel;
+// T280: the NL2SQL panel (the natural-language-to-SQL composer).
+pub(crate) mod nl2_sql_panel;
+// T299: the natural-language filter input (the smart-filter composer).
+pub(crate) mod nl_filter_input;
 
 pub(crate) use ai_egress_notice::{AiEgressNotice, ContextItem, ContextKind};
 pub(crate) use explain_panel::{

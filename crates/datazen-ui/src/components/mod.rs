@@ -33,6 +33,8 @@ pub(crate) mod menu_bar;
 pub(crate) mod sql_editor;
 pub(crate) mod status_bar;
 pub(crate) mod themed_icon;
+// T282: the theme toggle (the chrome's theme picker).
+pub(crate) mod theme_toggle;
 // T219: the SQL code block (SqlCodeBlock.tsx).
 pub(crate) mod sql_code_block;
 // T241: the Settings page's static SQL syntax preview
