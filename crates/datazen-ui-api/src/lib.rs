@@ -39,6 +39,7 @@ mod panel_exec_cleanup;
 mod platform_shared;
 mod relation_prediction;
 mod relative_time;
+mod selection_actions;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
 mod tabs;
@@ -239,6 +240,14 @@ pub use relation_prediction::{
 pub use relative_time::{
     RELATIVE_WINDOW_MS, RelativeTimeParts, RelativeTimeUnit, format_relative_time,
     get_relative_time_parts,
+};
+pub use selection_actions::{
+    apply_begin_cell_selection, apply_clear_grid_selection, apply_grid_selection,
+    apply_reconcile_selection, apply_row_mode_transition, apply_row_select,
+    apply_toggle_select_all, displayed_column_names, normalize_cell_range, panel_column_order,
+    reconcile_grid_selection, resolve_selection_patch, row_index_selection_reset,
+    selection_from_anchor_focus, CellCoord, CellRange, GridSelection, GridSelectionMode,
+    SelectionAction, SelectionOpts, SelectionPatch, TableStateForSelection,
 };
 pub use sql_path_prefix::{
     QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
