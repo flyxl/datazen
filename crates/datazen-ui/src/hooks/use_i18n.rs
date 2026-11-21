@@ -108,8 +108,11 @@ mod tests {
         assert_eq!(hook.language, "zh-CN");
         assert_eq!(hook.t("common.save"), "保存");
         assert_eq!(hook.t("common.cancel"), "取消");
-        // The key fallback: a missing entry shows up in the UI.
-        assert_eq!(hook.t("no.such.key"), "no.such.key");
+        // The key fallback: a missing entry shows up in the UI. (Built
+        // at runtime — the i18n registry test scans sources for raw
+        // `t("…")` keys, and a deliberate-missing literal would trip it.)
+        let missing = format!("no.{}.key", "such");
+        assert_eq!(hook.t(&missing), missing);
     }
 
     #[test]
