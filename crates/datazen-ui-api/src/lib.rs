@@ -32,6 +32,7 @@ mod data_sync_explain;
 mod data_sync_job_lifecycle;
 mod data_sync_options;
 mod data_sync_profiles;
+mod data_sync_selection_state;
 mod diff_detail;
 mod data_sync_bars;
 mod data_table_clipboard_dom;
@@ -333,6 +334,10 @@ pub use data_sync_profiles::{
     RECONCILE_BUSY_KEY, RECONCILE_MISSING_CONNECTION_KEY, RECONCILE_NEEDS_SCOPE_KEY,
     RECONCILE_PROFILE_CHANGED_KEY, RECONCILE_PROFILE_READY_KEY,
     RECONCILE_SCOPE_UNAVAILABLE_KEY,
+};
+pub use data_sync_selection_state::{
+    DataSyncPageCursor, DataSyncSelectionState, SelectionRefs, SelectionScopeKey, SelectionState,
+    DATA_SYNC_SELECTION_STATE_GAP, DATA_SYNC_SELECTION_STATE_SURFACE,
 };
 pub use data_table_clipboard_dom::{
     bind_clipboard_dom, handle_copy, handle_paste, is_editable_target, resolve_copy_target,
