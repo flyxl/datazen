@@ -50,7 +50,7 @@
 - [x] T482 · lib · 0.60d · lib/driverCommandIds.ts lib/endpointIdentity.ts
 - [x] T487 · lib · 0.80d · lib/ensureNamespace.ts lib/erNodeContextMenu.ts
 - [ ] T491 · lib · 0.60d · lib/errors.ts lib/exportCapability.ts
-- [ ] T494 · lib · 2.00d · lib/exportData.ts · split
+- [x] T494 · lib · 2.00d · lib/exportData.ts · split
 - [ ] T497 · lib · 2.00d · lib/exportDialogShared.ts · split
 - [ ] T500 · lib · 2.00d · lib/exportFormat.ts · split
 - [ ] T503 · lib · 0.60d · lib/exportTableStructure.ts lib/extractQuestions.ts
