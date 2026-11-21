@@ -636,6 +636,8 @@ mod pending_plan_dialog;
 mod execution_strategy_ask_modal;
 // T508: QuerySidebarSection port (panels, lists, scope/search, menus, geometry).
 mod query_sidebar_section;
+// T520: QueryPanel port (pane routing, execute/cancel, dialogs, sessions, geometry).
+mod query_panel;
 // T514: RefreshCompletionButton port (label/tooltip, disabled states, action, geometry).
 mod refresh_completion_button;
 // T514 independent audit: VM guards, error answer, full-label text, independent rect.
