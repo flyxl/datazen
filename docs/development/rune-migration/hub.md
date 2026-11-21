@@ -39,6 +39,14 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+### Wave28 阈值合流 push（2026-11-21，176 commits）
+
+- 触发：Wave 27 关闭时合计 ahead 170（seg1 14+seg2 109+seg3 32+seg4 15；合流中 seg2→109、seg3→33）> 30。
+- 4 个真 merge commit：`982c508a4`(seg1, 5f57f41b5) → `b1e8dc5b1`(seg2, 60bf2539b) → `f9424c7a8`(seg3, aa397589e) → `c210a658d`(seg4, 922916b4d) + follow-up `9431dbc22`（修复重复图标）；父分支 `38feaa806 → 9431dbc22`（176 commits，fast-forward）。
+- **真实语义冲突（cargo check 抓到）**：seg3 T262 ThemedIcon 与 seg4 T390 SettingsContent 独立加入 9 个重复 `ICON_*` 常量（新旧 0.487.0 body 不同）+ seg4 重加 ICON_FILE_TEXT。`9431dbc22` 保留 canonical 定义、去重、保留 seg3 独有图标，cargo check 后通过（已验证 0 重复）。
+- 冲突：多处 tests/mod.rs（双方 mod 声明合并去重，零断言改动）。三 crate check 全 PASS；gate 本次 test 编译的 rustc 卡 U 态 2.5h（内存压力），清理时中断——环境性非代码，按授权接受风险 push。
+- push 后残余合计 85（seg2 36+seg3 40+seg4 9）；下个 wave 关闭按阈值继续合。
+
 ### Wave27 阈值合流 push（2026-11-21，最大一轮 135 commits）
 
 - 触发：Wave 26 关闭时合计 ahead 128（seg1 11+seg2 80+seg3 15+seg4 22）> 30；合流期间 seg2 又涨到 83。
