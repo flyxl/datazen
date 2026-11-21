@@ -31,12 +31,15 @@ mod context_menu_position;
 // names reach the outside world through the module path while everything
 // else re-exports at the root (see `dashboard_types`' docs).
 pub mod dashboard_types;
+mod database_object_identity;
 mod filter_types;
 mod keyset_types;
 mod metadata;
 mod platform_shared;
 mod relation_prediction;
 mod relative_time;
+mod run_to_chart;
+mod run_to_result;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
 mod tabs;
@@ -180,6 +183,7 @@ pub use dashboard_types::{
     REFRESH_WARN_BELOW_SEC, clamp_refresh_sec, normalize_refresh_policy,
     should_warn_refresh_sec,
 };
+pub use database_object_identity::database_object_identity_key;
 // The T188 filter vocabulary: the aggregate (`types/index`) re-exports
 // everything `types/filters.ts` declares, so the crate root carries the
 // same names.
@@ -226,6 +230,8 @@ pub use relative_time::{
     RELATIVE_WINDOW_MS, RelativeTimeParts, RelativeTimeUnit, format_relative_time,
     get_relative_time_parts,
 };
+pub use run_to_chart::{ChartTransformResult, has_renderable_chart, widget_run_to_chart_data};
+pub use run_to_result::widget_run_to_statement_result;
 pub use sql_path_prefix::{
     QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
     parse_qualified_path_parents, resolve_ensure_segments,
