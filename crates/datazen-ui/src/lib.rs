@@ -50,6 +50,8 @@ pub(crate) mod dashboard_store;
 pub(crate) mod editor_selection_store;
 // T253: the installed-language-pack store (languagePackStore.ts).
 pub(crate) mod language_pack_store;
+// T254: the first-frame panel seed (stores/tableData/panelSeed.ts).
+pub(crate) mod table_data_panel_seed;
 pub(crate) mod ai_store_chat;
 pub(crate) mod ai_store_rest;
 pub(crate) mod table_data_connection_state;
