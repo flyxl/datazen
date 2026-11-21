@@ -336,3 +336,31 @@ fn tick_clears_a_problem_only_snapshot_at_the_deadline() {
     assert!(tick(&mut vm, 1.0), "the deadline clears the problem snapshot");
     assert!(vm.problems.is_empty() && vm.visible_until.is_none());
 }
+
+// Independent lane-C repro probes (original D1/D2), retained as regression guards.
+#[test]
+fn probe_out_of_bounds_without_detail_says_zero_like_react() {
+    let problem = PasteProblem {
+        code: "grid.paste.outOfBounds".to_owned(),
+        ..Default::default()
+    };
+    assert_eq!(
+        describe_problem(&problem),
+        t("dataTable.pasteClippedToPage").replace("{count}", "0"),
+        "React defaults a missing outOfBounds detail to '0'"
+    );
+}
+
+#[test]
+fn probe_unknown_code_with_empty_detail_keeps_the_empty_detail() {
+    let problem = PasteProblem {
+        code: "grid.paste.unknownCode".to_owned(),
+        detail: Some(String::new()),
+        ..Default::default()
+    };
+    assert_eq!(
+        describe_problem(&problem),
+        "",
+        "React returns detail ?? code, so an empty detail renders empty"
+    );
+}
