@@ -78,6 +78,9 @@ mod use_theme_sync;
 // T438's carried half: the failure classification, the read-model
 // projections and the lib predicates (T561's until it lands).
 pub(crate) mod transfer_job_run_helpers;
+// T445: the host presentation pipeline wiring hook (the registry
+// revision + the cache-key-only plan memo over T157's builder).
+mod use_value_presentation;
 // T438: the Data Transfer Job execution state machine (the prepare →
 // apply → verdict lifecycle over the T424 command rail).
 mod use_transfer_job_run;
