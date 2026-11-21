@@ -78,6 +78,7 @@ mod table_list_panel;
 mod table_sort_preferences;
 mod tabs;
 mod table_data_state;
+mod table_data_store;
 mod virtual_body;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
@@ -526,6 +527,21 @@ pub use tabs::{Tab, TabKind, Tabs};
 pub use table_data_state::{
     AppliedFilter, CellEditLocation, DefaultOrderOverride, FilterLogic, FilterMode, TableState,
     TABLE_DATA_STATE_GAP, TABLE_DATA_STATE_SURFACE,
+};
+pub use table_data_store::{
+    add_filter, add_sort, apply_any_column, apply_filters, apply_filters_decision, apply_raw_where,
+    begin_load, cancel_edit, clear_filters, clear_highlighted_new_row, clear_pending_state,
+    clear_sorts, commit_fetched_page, duplicate_identity_keys, filter_draft_equals_applied,
+    invalidate_cached_data, is_complete_filter, load_failed, order_request, overlay_pending_rows,
+    patch_panel, patch_panel_for_reload, remove_filter, remove_panel_state, remove_sort,
+    resolve_default_table_sort, rows_to_records, sanitize_visibility, set_any_column_draft,
+    set_column_order, set_default_order_override, set_detail_row, set_filter_logic, set_filter_mode,
+    set_filter_panel_open, set_filters, set_frozen_column_count, set_page, set_page_size,
+    set_panel_state, set_pending_status, set_raw_where_draft, set_sort, set_visible_columns,
+    start_edit, target_of, update_filter, upsert_sort, AnyColumnExpansion,
+    FetchedPage, LoadTableDataParams, OrderRequest, PageCommit, PendingStatus, ReloadRequest,
+    TableContextData, TableDataStoreSnapshot, TableTargetData, AMBIGUOUS_ROW_IDENTITY_ERROR,
+    TABLE_DATA_STORE_GAP, TABLE_DATA_STORE_SURFACE,
 };
 pub use virtual_body::{
     build_cell_input, build_column_editor_info_from_defs, build_row_cell_views, cell_id,
