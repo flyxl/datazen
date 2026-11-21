@@ -675,3 +675,6 @@ mod execution_summary_card;
 mod result_find_bar;
 // T528: ServerStatusView port (cards/charts, tabs, header actions, states, geometry).
 mod server_status_view;
+// T568: nodeMetrics + relationStyle ports (size contract, stroke contract,
+// legend drift guard, rendering-variant pinning).
+mod er_node_metrics;
