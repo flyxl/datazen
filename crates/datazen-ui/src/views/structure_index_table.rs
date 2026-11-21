@@ -237,11 +237,15 @@ fn index_row<S: 'static>(
         .min_width(120.0)
         .text_style(k.ty.text_small)
         .placeholder(if suggested.is_empty() { "idx_name" } else { &suggested });
-    // The host owns each draft's TextEdit and provides the real edit accessor;
-    // without one this is an honest bound display of the current name. Remaining
-    // disabled keeps the value visible without claiming an edit binding.
+    // React renders an editable <Input disabled={!canEdit}>. The host owns each
+    // draft's TextEdit and will supply the real on_edit accessor; until then
+    // this is a focusable bound display of the current name when createIndex is
+    // enabled, and a disabled one otherwise. Removal stage: bind the accessor.
     name_field = name_field.disabled(true);
     let mut name_el = name_field.build(dark);
+    if can_edit {
+        name_el = name_el.disabled(false).focusable(true);
+    }
     if let Some(title) = edit_title {
         name_el = name_el.help(title);
     }
@@ -335,13 +339,20 @@ fn index_row<S: 'static>(
         let selected = draft.index_type.clone().unwrap_or_else(|| vm.index_methods.first().cloned().unwrap_or_else(|| "btree".to_owned()));
         let mut method = row()
             .key(format!("structure-index-method-{}", draft.id))
+            .role("button")
             .h(24.0)
             .px(6.0)
             .center_y()
             .radius(4.0)
             .fill(k.c.surface_raised)
-            .child(text(selected.clone()).font(k.ty.text_small).color(k.c.text_base))
-            .on_press(emit(on_action, StructureIndexAction::ToggleMethod(draft.id.clone())));
+            .child(text(selected.clone()).font(k.ty.text_small).color(k.c.text_base));
+        // React renders <Select disabled={!canEdit}>: without the createIndex
+        // capability the control stays visible but emits no change.
+        if can_edit {
+            method = method.on_press(emit(on_action, StructureIndexAction::ToggleMethod(draft.id.clone())));
+        } else {
+            method = method.disabled(true);
+        }
         if let Some(title) = disabled_title(vm.caps.as_ref(), StructureCapabilityFlag::IndexType) {
             method = method.help(title);
         } else if !can_edit {
