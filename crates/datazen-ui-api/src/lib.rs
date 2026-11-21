@@ -92,6 +92,7 @@ mod fk_navigation;
 mod fk_referenced_by;
 mod fk_selector;
 mod global_text_selection;
+mod grid_clipboard;
 mod keyset_types;
 mod metadata;
 mod platform_shared;
@@ -495,6 +496,15 @@ pub use global_text_selection::{
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
     FilterOperator, SHARED_FILTER_OPERATORS,
+};
+pub use grid_clipboard::{
+    build_rows_matrix, build_selection_matrix, escape_csv_field, escape_html_cell_text,
+    escape_markdown_cell_text_value, escape_markdown_field, parse_clipboard_matrix,
+    serialize_clipboard_cells, sniff_clipboard_delimiter, to_clipboard_range, utf8_byte_length,
+    ClipboardCellCoord, ClipboardDelimiter, ClipboardFormat, ClipboardMatrix, ClipboardParseResult,
+    GridClipboardRange, PasteParseErrorCode, PasteParseRefusal, PasteProblem, PasteProblemCode,
+    SerializeCellsOptions, GRID_PASTE_CHUNK_CELLS, GRID_PASTE_CONFIRM_CELLS, GRID_PASTE_MAX_BYTES,
+    GRID_PASTE_MAX_CELLS,
 };
 // The T234 keyset paging vocabulary: the aggregate (`types/index`)
 // re-exports everything `types/keyset.ts` declares, so the crate root

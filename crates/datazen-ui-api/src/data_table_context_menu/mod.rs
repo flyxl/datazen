@@ -6,6 +6,10 @@ mod tests;
 mod types;
 mod values;
 
+pub(crate) use serialize::{
+    cell_to_text, escape_delimited, escape_html_cell, escape_markdown_cell_text, table_width,
+};
+
 pub use events::{
     resolve_data_table_cell_from_event, resolve_data_table_header_col_from_event, DomElement,
 };
