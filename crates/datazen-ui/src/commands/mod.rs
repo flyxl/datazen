@@ -39,6 +39,10 @@ pub(crate) mod history;
 pub(crate) mod query;
 /// T366: the first-run sample dataset face (the demo_sales seed).
 pub(crate) mod sample;
+/// T388: the settings commands (the kernel/half-port split, the
+/// flattenShared transform and the merge order).
+pub(crate) mod settings;
+
 
 
 /// T344: the saved-views menu's command adapter (the three database
