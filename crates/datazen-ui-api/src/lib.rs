@@ -41,6 +41,7 @@ mod keyset_types;
 mod metadata;
 mod panel_exec_cleanup;
 mod panel_query_context;
+mod panel_result_edit;
 mod platform_shared;
 mod relation_prediction;
 mod relative_time;
@@ -253,6 +254,13 @@ pub use panel_query_context::{
     namespace_has_child, namespace_roots_from, panel_target_database, panel_target_schema,
     path_hierarchy_connection_root, path_hierarchy_relative_namespace_path,
     split_path_hierarchy_database_pin, QueryPanelContext, SchemaStateForPanel, SqlNamespace,
+};
+pub use panel_result_edit::{
+    assert_result_writable, columns_from_key, columns_key, effect_dependency_key, effect_request,
+    grid_read_only_message_key, result_edit_key, start_effect, verdict_view, GridReadOnlyReason,
+    IdentityColumn, PanelResultEditStore, ResolveTicket, ResultEditabilityOptions,
+    ResultOriginRequest, ResultTableRef, ResultWritableError, ServerEditability, VerdictView,
+    PANEL_RESULT_EDIT_GAP,
 };
 pub use platform_shared::{
     McpContentBlock, McpError, McpFetch, McpHttpResponse, McpJsonRpcError, McpRequestInit,
