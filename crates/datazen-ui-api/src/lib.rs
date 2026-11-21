@@ -132,6 +132,9 @@ mod panel_context_path;
 mod platform_shared;
 mod process_list_result;
 mod product_features;
+mod query_sidebar_context_menu;
+mod query_stream;
+mod relation_identity;
 mod relation_prediction;
 mod relative_time;
 mod resolve_ui_language;
@@ -622,6 +625,20 @@ pub use migration_job_verdict::{
     UncertaintyReason, VerdictSeverity, PIPELINE_BUDGET_BYTES,
 };
 pub use native_context_menu::{DRIVER_SDK_MENU_GAP, NATIVE_CONTEXT_MENU_SURFACE};
+pub use query_sidebar_context_menu::{
+    build_favorite_sidebar_context_menu_items, build_history_sidebar_context_menu_items,
+    build_history_sidebar_header_context_menu_items, BuildFavoriteSidebarContextMenuArgs,
+    BuildHistorySidebarContextMenuArgs, BuildHistorySidebarHeaderContextMenuArgs,
+    QuerySidebarFavoriteHandlers, QuerySidebarFavoriteLabels, QuerySidebarHistoryHandlers,
+    QuerySidebarHistoryHeaderHandlers, QuerySidebarHistoryHeaderLabels, QuerySidebarHistoryLabels,
+    QuerySidebarMenuItem,
+};
+pub use query_stream::{apply_query_stream_event, StreamableQueryTab};
+pub use relation_identity::{
+    build_editor_relation_key, fold_segment, has_namespace, qualified_name_text,
+    relation_base_name, relation_identity_key, EditorRelationKey, QualifiedRelationId,
+    SqlIdentifierSegment, SqlRelationSourceKind,
+};
 pub use object_browser_context_menu::{
     build_object_browser_editor_menu_items, build_object_browser_list_menu_items,
     native_edit_menu_items, NativeEditItem, ObjectBrowserEditorMenuHandlers,
