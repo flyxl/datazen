@@ -123,7 +123,7 @@
 - [x] T635 · lib · 0.90d · lib/totalRowsDisplay.ts
 - [x] T636 · lib · 0.90d · lib/transferLimitationsPrefs.ts lib/transferPairing.ts lib/tunnelDeletion.ts
 - [x] T637 · lib · 0.80d · lib/tunnelDraft.ts
-- [ ] T638 · lib · 0.90d · lib/updater.ts
+- [x] T638 · lib · 0.90d · lib/updater.ts
 - [x] T639 · lib · 0.90d · lib/updateReminderSchedule.ts
 - [ ] T640 · lib · 1.30d · lib/valueSearch.ts · split
 - [x] T641 · lib · 0.50d · lib/wappAssetOrigin.ts
