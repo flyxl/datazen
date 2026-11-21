@@ -72,6 +72,8 @@ mod dismiss_prefs;
 mod driver_capabilities;
 mod driver_command_ids;
 mod endpoint_identity;
+mod error_message;
+mod export_capability;
 mod filter_types;
 mod keyset_types;
 mod metadata;
@@ -382,6 +384,11 @@ pub use driver_command_ids::{
     ESTIMATE_TABLE_ROWS_COMMAND, LIST_PROCESSES_COMMAND, SERVER_STATUS_SNAPSHOT_COMMAND,
 };
 pub use endpoint_identity::{is_same_endpoint_identity, EndpointIdentity};
+pub use error_message::{to_error_message, ErrorLike};
+pub use export_capability::{
+    driver_export_scope, min_scope, resolve_export_scope, supports_any_export,
+    supports_full_table_export, DataExportCapability, ExportDriverMeta,
+};
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
     FilterOperator, SHARED_FILTER_OPERATORS,
