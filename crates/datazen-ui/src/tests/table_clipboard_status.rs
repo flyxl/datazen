@@ -36,10 +36,11 @@ struct Scene {
     vm: TableClipboardStatusVm,
     actions: Rc<RefCell<Vec<TableClipboardAction>>>,
     dark: bool,
+    confirm: Option<El>,
 }
 
 fn scene(vm: TableClipboardStatusVm, dark: bool) -> Scene {
-    Scene { vm, actions: Rc::new(RefCell::new(Vec::new())), dark }
+    Scene { vm, actions: Rc::new(RefCell::new(Vec::new())), dark, confirm: None }
 }
 
 fn view(s: &Scene, _cx: &mut Cx<Scene>) -> El {
@@ -52,7 +53,12 @@ fn view(s: &Scene, _cx: &mut Cx<Scene>) -> El {
         }
         actions.borrow_mut().push(action);
     });
-    col().w_full().h_full().child(build(&s.vm, None, Some(callback), s.dark))
+    col().w_full().h_full().child(build(&s.vm, s.confirm.clone(), Some(callback), s.dark))
+}
+
+/// Non-capturing view for the "no host port" branch (Runtime needs an fn pointer).
+fn no_port_view(s: &Scene, _cx: &mut Cx<Scene>) -> El {
+    col().w_full().h_full().child(build::<Scene>(&s.vm, None, None, s.dark))
 }
 
 fn runtime(scene: Scene, size: (f32, f32)) -> Runtime<Scene> {
@@ -227,3 +233,87 @@ fn geometry_fits_both_sizes_in_both_themes() {
 //    fail on `no '0 cell(s) pasted' line`.
 // 2. Ignoring the recorded deadline made `feedback_deadline_hides_the_line_when_the_host_poll_reaches_it`
 //    fail on `at the deadline the host clears the snapshot`.
+
+#[test]
+fn every_problem_code_maps_to_the_react_key_and_params() {
+    // Expected strings are composed from the React `describePasteProblem` switch,
+    // so a wrong/substituted key in the port produces a different string (`t`
+    // falls back to the raw key) and fails here.
+    let cases: Vec<(PasteProblem, String)> = vec![
+        (problem("grid.paste.empty", ""), t("dataTable.pasteEmpty").to_owned()),
+        (problem("grid.paste.tooLarge", "8"), t("dataTable.pasteTooLarge")
+            .replace("{cells}", "8").replace("{maxCells}", "100000")),
+        (problem("grid.paste.raggedRow", "row 2 has 3"), "row 2 has 3".to_owned()),
+        (problem("grid.paste.unclosedQuote", ""), t("dataTable.pasteUnclosedQuote").to_owned()),
+        (problem("grid.paste.outOfBounds", "4"), t("dataTable.pasteClippedToPage")
+            .replace("{count}", "4")),
+        (problem("grid.paste.noWritableCell", ""), t("dataTable.pasteNoWritableColumn").to_owned()),
+        (PasteProblem {
+            code: "grid.paste.notNullEmpty".to_owned(), row: Some(2),
+            column: Some("age".to_owned()), ..Default::default()
+        }, t("dataTable.pasteNotAllowedEmpty").replace("{row}", "3").replace("{column}", "age")),
+        (PasteProblem {
+            code: "grid.paste.identityChanged".to_owned(), row: Some(0),
+            column: Some("id".to_owned()), ..Default::default()
+        }, t("dataTable.pasteIdentityChanged").replace("{row}", "1").replace("{column}", "id")),
+        (problem("grid.paste.columnMismatch", "a, b"), t("dataTable.pasteDroppedColumns")
+            .replace("{count}", "2").replace("{names}", "a, b")),
+        (problem("grid.paste.crossTable", "orders"), t("dataTable.pasteCrossTableNotice")
+            .replace("{table}", "orders")),
+        (PasteProblem {
+            code: "grid.cell.readOnly".to_owned(), column: Some("id".to_owned()),
+            ..Default::default()
+        }, t("dataTable.pasteReadOnlyColumn").replace("{count}", "1").replace("{columns}", "id")),
+        (problem("grid.cell.readOnly", "readOnly"), t("dataTable.readOnlyPasteDisabled").to_owned()),
+        (problem("grid.cell.noRowIdentity", ""), t("dataTable.pasteNoRowIdentity").to_owned()),
+        (problem("grid.clipboard.writeFailed", ""), t("dataTable.copyFailed").to_owned()),
+        (problem("grid.clipboard.readFailed", ""), t("dataTable.pasteReadFailed")
+            .replace("{shortcut}", "⌘V")),
+        (problem("grid.pasteRows.notRowData", ""), t("dataTable.pasteRowsNotRowData").to_owned()),
+        (problem("grid.pasteRows.noWritableColumn", ""),
+            t("dataTable.pasteRowsNoWritableColumn").to_owned()),
+    ];
+    for (p, expected) in cases {
+        assert_eq!(describe_problem(&p), expected, "code {} must use the React key", p.code);
+    }
+}
+
+#[test]
+fn host_confirm_element_mounts_even_when_the_line_is_hidden() {
+    let mut scene = scene(TableClipboardStatusVm::default(), true);
+    scene.confirm = Some(rune::text("host-confirm").key("host-confirm"));
+    let mut rt = runtime(scene, (960.0, 640.0));
+    rt.frame(0.0);
+    assert!(has_key(&rt, "host-confirm"), "the injected confirm element is mounted");
+    assert!(!has_key(&rt, "table-clipboard-status"), "a no-op paste still hides the line");
+}
+
+#[test]
+fn dismiss_without_a_host_port_is_inert() {
+    let scene = scene(
+        TableClipboardStatusVm { last_paste: Some(summary(1, 0, 0)), ..Default::default() },
+        true,
+    );
+    let mut rt = Runtime::new(
+        scene,
+        no_port_view,
+        (1440.0, 816.0),
+        Env { system_dark: true, scale: 1.0 },
+    );
+    rt.frame(0.0);
+    click(&mut rt, "table-clipboard-status-dismiss");
+    assert!(has_key(&rt, "table-clipboard-status"), "no host callback: nothing clears the snapshot");
+}
+
+#[test]
+fn tick_clears_a_problem_only_snapshot_at_the_deadline() {
+    let mut vm = TableClipboardStatusVm {
+        problems: vec![problem("grid.paste.empty", "")],
+        visible_until: Some(1.0),
+        ..Default::default()
+    };
+    assert!(!tick(&mut vm, 0.9), "inside the window nothing changes");
+    assert_eq!(vm.problems.len(), 1);
+    assert!(tick(&mut vm, 1.0), "the deadline clears the problem snapshot");
+    assert!(vm.problems.is_empty() && vm.visible_until.is_none());
+}
