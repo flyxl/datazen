@@ -69,6 +69,8 @@ mod set_value_date_dialog;
 mod structure_column_table;
 // T538: TableColumnFilter port (toggle/badge, rows, actions, search, geometry).
 mod table_column_filter;
+// T538 independent audit: helper branches, disabled state, React a11y/outside-close.
+mod table_column_filter_audit;
 // T532: StructureIndexTable + StructurePlanPreview ports (rows/flags/actions, states, geometry).
 mod structure_index_table;
 mod structure_plan_preview;
