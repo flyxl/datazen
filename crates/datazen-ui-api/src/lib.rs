@@ -19,6 +19,7 @@ mod extract_sql;
 mod filter_expression;
 mod fk_navigation_actions;
 mod grid_keyboard;
+mod html_sanitizer;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -190,8 +191,8 @@ pub use filter_expression::{
 };
 pub use fk_navigation_actions::{
     FkActionDeps, FkActionEffects, FkJumpError, FkJumpOutcome, FkNavEntry, FkNavOrigin, FkNavState,
-    GRID_ERROR_CODES, OpenForeignKeyTargetInput, Panel, PanelKind, PanelState,
-    TableIdentity, classify_grid_error, host_error_message, open_foreign_key_target,
+    OpenForeignKeyTargetInput, Panel, PanelKind, PanelState, TableIdentity,
+    host_error_message, open_foreign_key_target,
 };
 pub use grid_keyboard::{
     CellCoord, CellRange, EMPTY_ROW_MODE_SELECTION, GridEdge, GridKeyCommand, GridKeyEventLike,
@@ -200,6 +201,10 @@ pub use grid_keyboard::{
     grid_cursor_equals, is_ime_composing_key, move_cell_focus, read_grid_key_intent,
     resolve_grid_key_command, resolve_keyboard_cursor, resolve_page_delta,
     selection_from_anchor_focus, to_grid_key_event_like,
+};
+pub use html_sanitizer::{
+    HtmlNode, STRIP_TAGS, VOID_TAGS, decode_entities, get_attr, is_event_attr, is_javascript_href,
+    is_strip_tag, is_void_tag, parse_html, regex_sanitize, sanitize_html, serialize_html, set_attr,
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
