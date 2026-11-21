@@ -35,6 +35,7 @@ pub mod dashboard_types;
 mod filter_types;
 mod keyset_types;
 mod metadata;
+mod panel_exec_cleanup;
 mod platform_shared;
 mod relation_prediction;
 mod relative_time;
@@ -207,6 +208,12 @@ pub use metadata::{
     ObjectTarget, ResultProvenance, SessionHandle, TemporaryResult, check_temporary_result,
     is_provenance_current, metadata_batch_bucket, metadata_cache_key, metadata_config_bucket,
     metadata_session_key, read_temporary_result,
+};
+pub use panel_exec_cleanup::{
+    can_cancel_pane, cancel_and_cleanup_exec, cancel_and_cleanup_pane_exec, request_pane_cancel,
+    session_keys_of_panel, ExecMap, PaneCancelStore, Panel, PanelExecDeps, PanelType,
+    QueryCancelState, QueryExecState, SessionController, PANEL_EXEC_CLEANUP_ASYNC_GAP,
+    PANEL_EXEC_CLEANUP_GAP, PANEL_EXEC_CLEANUP_SURFACE,
 };
 pub use platform_shared::{
     McpContentBlock, McpError, McpFetch, McpHttpResponse, McpJsonRpcError, McpRequestInit,
