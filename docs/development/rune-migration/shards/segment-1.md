@@ -95,9 +95,9 @@
 - [x] T501 · windows/connection · 0.30d · windows/connection/query/ExecutionStrategyAskModal.tsx
 - [x] T504 · windows/connection · 0.90d · windows/connection/query/QueryBuilderHostAdapter.tsx
 - [x] T506 · windows/connection · 1.30d · windows/connection/query/QueryEditorSection.tsx · split
-- [ ] T508 · windows/connection · 1.30d · windows/connection/query/QuerySidebarSection.tsx · split
-- [ ] T510 · windows/connection · 1.30d · windows/connection/query/QueryTransactionModals.tsx · split
-- [ ] T512 · windows/connection · 0.90d · windows/connection/query/toolbar/ExecutionStrategySelect.tsx
+- [x] T508 · windows/connection · 1.30d · windows/connection/query/QuerySidebarSection.tsx · split
+- [x] T510 · windows/connection · 1.30d · windows/connection/query/QueryTransactionModals.tsx · split
+- [x] T512 · windows/connection · 0.90d · windows/connection/query/toolbar/ExecutionStrategySelect.tsx
 - [ ] T514 · windows/connection · 0.90d · windows/connection/query/toolbar/RefreshCompletionButton.tsx
 - [ ] T516 · windows/connection · 0.90d · windows/connection/query/toolbar/SnippetMenuButton.tsx
 - [ ] T518 · windows/connection · 1.30d · windows/connection/query/useQueryExecutionGate.tsx · split
