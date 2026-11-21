@@ -48,6 +48,10 @@ pub(crate) mod transfer_jobs;
 /// T432: the saved-tunnel command family (the CRUD pair, the G9
 /// secret-free summary read, the usage read, the round-trip probe).
 pub(crate) mod tunnel;
+/// T440: the workspace-app command family (the list/read pair, the
+/// driver command rail, the pick-then-install pair, the storage
+/// triple, the file read, the audit entry).
+pub(crate) mod wapps;
 /// T415: the data-transfer legacy command family (the typed wire
 /// contracts + the eleven invoke shapers).
 pub(crate) mod transfer;

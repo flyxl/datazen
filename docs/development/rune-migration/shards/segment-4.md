@@ -156,7 +156,7 @@
 - [x] T432 · commands · 0.90d · commands/tunnel.ts
 - [x] T434 · windows/settings · 0.90d · windows/settings/TableDataSettingsSection.tsx
 - [x] T438 · hooks · 1.30d · hooks/useTransferJobRun.ts · split
-- [ ] T440 · commands · 0.90d · commands/wapps.ts
+- [x] T440 · commands · 0.90d · commands/wapps.ts
 - [ ] T441 · windows/settings · 0.90d · windows/settings/TunnelDeleteDialog.tsx
 - [ ] T445 · hooks · 0.90d · hooks/useValuePresentation.ts
 - [ ] T447 · windows/settings · 0.90d · windows/settings/TunnelEditDialog.tsx
