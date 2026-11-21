@@ -82,7 +82,13 @@ pub(crate) mod chat_bubble;
 pub(crate) mod ai_egress_notice;
 pub(crate) mod ai_session_history;
 pub(crate) mod ai_input;
+pub(crate) mod context_picker;
 
 pub(crate) use ai_egress_notice::{AiEgressNotice, ContextItem, ContextKind};
+#[allow(unused_imports)] // the AiInput wiring task is the production consumer
+pub(crate) use context_picker::{
+    matches_query, table_label, ContextEntry, ContextPicker, ContextPickerState, PickerCategory,
+    PickerKeyOutcome, PickerPosition, PickerRow, PickerView, MAX_RECENT,
+};
 #[allow(unused_imports)] // the panel shell / state wiring are the consumers
 pub(crate) use ai_message_content::{AiMessageCodeWiring, AiMessageContent, MessageSegment};

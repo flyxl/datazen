@@ -31,3 +31,5 @@ pub(crate) mod mcp_approval_host;
 // T195: the web-shape menu bar (MenuBar.tsx).
 pub(crate) mod menu_bar;
 pub(crate) mod sql_editor;
+// T219: the SQL code block (SqlCodeBlock.tsx).
+pub(crate) mod sql_code_block;

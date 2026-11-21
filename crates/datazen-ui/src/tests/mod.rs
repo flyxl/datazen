@@ -52,6 +52,11 @@ mod process_list_view;
 mod query_editor_section;
 // T512: the execution-strategy toolbar select (options, check marks, host intent).
 mod execution_strategy_select;
+// T518: the pure query-execution gate state machine (decisions & transitions).
+mod query_execution_gate;
+// T518 independent audit: finding copy on plain mutations, Ask→entire mode,
+// and Postgres quote guard restricted to the targeted statement.
+mod query_execution_gate_audit;
 // T512 independent audit: shared-enum order/title, menu roles, visible-rect
 // geometry of the open dropdown.
 mod execution_strategy_select_audit;
@@ -1261,6 +1266,10 @@ mod pending_plan_dialog;
 mod execution_strategy_ask_modal;
 // T508: QuerySidebarSection port (panels, lists, scope/search, menus, geometry).
 mod query_sidebar_section;
+// T514: RefreshCompletionButton port (label/tooltip, disabled states, action, geometry).
+mod refresh_completion_button;
+// T514 independent audit: VM guards, error answer, full-label text, independent rect.
+mod refresh_completion_button_audit;
 // T508 independent audit: unknown-db grouping, find_group and context-level edges.
 mod query_sidebar_section_audit;
 // T501 independent audit: preview boundaries and missing-current card.
@@ -1688,3 +1697,79 @@ mod ai_session_history_audit;
 // the action router, the wrap-around, the bar component's open/hover
 // behaviour).
 mod menu_bar_audit;
+
+// T516: SnippetMenuButton port (builtins, menu items, insert actions, disabled, geometry).
+mod snippet_menu_button;
+
+// T217: the AI context picker (coder tests: the query filter, the
+// ctx.yaml rule, the flatten walk, the recents LRU, the key router,
+// the mounted drill-in / picks / loading / empty rows).
+mod context_picker;
+
+// T217 independent audit: fresh vectors (unicode id/name queries, the
+// ten-push LRU cap, the stale active index clamp, the session-less
+// two-level Escape walk, the mounted boundary pick, the loading gate,
+// thirty-row geometry).
+mod context_picker_audit;
+
+// T219: the SQL code block (coder tests: the dialect map, the code-prop
+// sync, the syntax-preset seam, the editable key path, the mounted
+// gutter / line rows, the read-only inertness).
+mod sql_code_block;
+
+// T219 independent audit: fresh vectors (the sqlserver dialect
+// contrast against the editor contract, the command-gated typing arms,
+// the IME commit path, the remote-sync caret reset, the gutter's
+// React-verbatim washes, forty-line geometry).
+mod sql_code_block_audit;
+
+// T232: the foreign-key navigation stack store (coder tests: the push
+// id minting, the depth cap, the dead-tab skip/drop walks, the cycle
+// rewind, the viewport trio, prune/reset, find-by-nav-key).
+mod fk_navigation_store;
+
+// T232 independent audit: fresh vectors (the interleaved walk with a
+// buried dead tab, the composite origin, the viewport round-trip, the
+// two-survivor prune, the rewind no-op, the truncated-flag persistence,
+// the empty edges).
+mod fk_navigation_store_audit;
+
+// T233: the insert-location rule and the keyset invalidation (coder
+// tests: the not-applicable gate, the exact identity rule, the
+// candidate maximum rule, the unorderable refusals, the boundary
+// invalidation).
+mod table_data_insert_location;
+
+// T233 independent audit: fresh vectors (the second insert's identity,
+// the composite match, negative/float orderings, the unorderable turn,
+// the populated-order-set invalidation).
+mod table_data_insert_location_audit;
+
+// T236: the detail drawer (coder tests: the search filter, the multi-row
+// gate, the Quick Look helpers, the field classification, the display-text
+// chain, the blob line, the commit semantics, the editor keys, BUG-005's
+// enter/exit cycle, and the mounted drawer's probes).
+mod detail_panel;
+
+// T236 independent audit: fresh vectors (the typed search journey, the
+// aside's geometry in both palettes, the twelve-column list, the missing-field
+// NULL, the entry's conditional mount, the dialog gate, the pack's exact
+// strings, the commit wire shapes, the JSON/long-text press journeys).
+mod detail_panel_audit;
+
+// T336: the MCP client settings section (the saved-config cards and
+// their actions, the add/edit form's guards and build, the runtime
+// list's expandable tool inventory).
+mod mcp_client_section_audit;
+// T348: the MCP settings section (the stdio toggle, the HTTP listener
+// block, the permission modes, the allowlist, the scopes, the agent
+// snippet card, the tools list and the audit table).
+mod mcp_settings_section_audit;
+// T360: the AI memory settings section (the settings card with its
+// first-use privacy gate, the org list, the entries list with filters,
+// candidates bar, merge, and exports).
+mod memory_section_audit;
+// T369: the prompt settings section (the driver filter, the scenario
+// cards with their variables hints and source badges, the override
+// save, the reset confirm).
+mod prompt_settings_section_audit;

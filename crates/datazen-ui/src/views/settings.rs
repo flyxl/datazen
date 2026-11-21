@@ -41,6 +41,41 @@ pub(crate) mod json_schema_settings_form;
 pub(crate) mod install_language_pack_dialog;
 // T321: the language-packs card (the installed list, install/remove,
 // the active pack's English-fallback-first removal).
+/// `windows/settings/McpClientSection.tsx` (T336, split): the MCP
+/// client administration surface — the saved stdio server configs
+/// (add/edit/delete/enable), the per-server connect/reconnect actions
+/// with their error strips, and the runtime connected list with its
+/// expandable tool inventories.
+pub(crate) mod mcp_client_section;
+/// `windows/settings/MemorySection.tsx` (T360, split): the AI memory
+/// administration surface — the settings card (the first-use privacy
+/// gate, auto-learn, the cloud policy), the read-only org list and
+/// the entries list (filters, candidates bar, merge, export).
+pub(crate) mod memory_section;
+/// T360's state half: the load walk, the deleted-ids tombstones, the
+/// merge plan and the settings-draft rules (split for the file-size
+/// rule).
+pub(crate) mod memory_section_state;
+
+/// `windows/settings/McpSettingsSection.tsx` (T348, split): the MCP
+/// host service's administration surface — the stdio toggle, the HTTP
+/// listener block, the permission modes, the connection allowlist, the
+/// scope textareas, the agent snippet card, the exposed tools and the
+/// audit log.
+pub(crate) mod mcp_settings_section;
+/// T348's state half: the view-models, the flow plans, the scope and
+/// tools rules and the carried mcpAgentConfig pure functions (split
+/// for the file-size rule; T557 absorbs the carry).
+pub(crate) mod mcp_settings_section_state;
+
+/// T336's state half: the view-models, the env converters, the form
+/// draft and the section state machine (split for the file-size rule).
+pub(crate) mod mcp_client_section_state;
+/// `windows/settings/PromptSettingsSection.tsx` (T369): the AI prompt
+/// template editor (the driver filter, the scenario cards with their
+/// variables hints and source badges, the override save, the reset
+/// confirm).
+pub(crate) mod prompt_settings_section;
 pub(crate) mod language_packs_card;
 // T381: the "?" help hint (hover/focus tooltip with the 120ms close
 // grace and the focus-retention rule).
