@@ -1381,6 +1381,20 @@ mod table_data_pending_changes;
 // the duplicate-identity overlay refusal, the signature order stability
 // and value separation, the wire field sets, the draft-order edges).
 mod table_data_pending_changes_audit;
+// T294: the staged-edit actions (coder vectors: the T341/T328/T353
+// placeholder cores' rules — the stage-edit unstage-on-revert, the
+// delete-mark undo, the three write states, the expression
+// replacement, the restored value — the guards, the write landing with
+// its anchor, the revert path, the delete marks and their undo, the
+// paste batch and its problems, the column loop's working state, the
+// rollback, and the host's patch application).
+mod table_data_pending_edit_actions;
+// T294 independent audit: fresh vectors (the expression over an
+// existing change, the delete-mark merge keeping the column changes,
+// the PK paste's identityChanged problem, the expression-only row's
+// unstage, the revert's anchor round trip).
+mod table_data_pending_edit_actions_audit;
+
 
 // T127 independent audit: fresh vectors (composite keys, nested identity
 // values, anchor under ambiguity, expressions, the delete-mark flip).
