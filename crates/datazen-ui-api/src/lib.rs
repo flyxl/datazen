@@ -54,6 +54,7 @@ mod stage_edit_actions;
 mod sql_path_prefix;
 mod workflow_panel;
 mod sql_schema_drop_targets;
+mod table_list_panel;
 mod tabs;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
@@ -320,8 +321,9 @@ pub use stage_edit_actions::{
     compute_unstage_delete_result, STAGE_EDIT_ACTIONS_GAP, STAGE_EDIT_ACTIONS_SURFACE,
 };
 pub use workflow_panel::{
-    connection_options, error_text, feedback_tone, is_connection_variable, is_loading,
-    variable_defaults, variable_input, ConfirmKind, ConnectionSummary, ExecuteParams, FeedbackTone,
+    connection_options as panel_connection_options, error_text, feedback_tone,
+    is_connection_variable, is_loading, variable_defaults, variable_input, ConfirmKind,
+    ConnectionSummary, ExecuteParams, FeedbackTone,
     PanelTab, VariableInput, WorkflowPanel, WorkflowPanelEffect, WorkflowPanelHost,
     WorkflowPanelLabels, WorkflowPanelOptions, WorkflowPanelState, WorkflowSelectOption,
     WorkflowStoreView, WORKFLOW_PANEL_GAP, WORKFLOW_PANEL_SURFACE,
@@ -331,6 +333,14 @@ pub use sql_path_prefix::{
     parse_qualified_path_parents, resolve_ensure_segments,
 };
 pub use sql_schema_drop_targets::{SqlSchemaDropTarget, parse_schema_drop_targets};
+pub use table_list_panel::{
+    build_table_list_view, display_table_name, filter_label_key, filter_table_rows,
+    filter_test_id, row_diff_counts, table_has_row_diffs, table_is_unchanged, table_key,
+    FilterButtonView, RowDiffCounts, TableDiffFilter, TableItemBadge, TableListItemView,
+    TableListRow, TableListView, TableSyncStatus, DATA_SYNC_FILTERS, IDENTICAL_KEY,
+    MAPPING_INCOMPATIBLE_KEY, NO_TABLES_MATCH_KEY, ROW_DIFFS_KEY, SEARCH_PLACEHOLDER_KEY,
+    TABLE_ITEM_TEST_ID, TABLE_LIST_PANEL_GAP, TABLE_LIST_PANEL_SURFACE,
+};
 pub use tabs::{Tab, TabKind, Tabs};
 // The T211 types aggregate: the members React's `types/index.ts` declares or
 // re-exports that no earlier family module had already landed at the root
