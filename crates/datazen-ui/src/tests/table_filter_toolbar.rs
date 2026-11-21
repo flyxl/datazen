@@ -46,6 +46,7 @@ fn view(s: &Scene, _cx: &mut Cx<Scene>) -> El {
                 state.vm.draft_filter_count = 0;
             }
             TableFilterAction::ApplyQuickFilter { .. } => {}
+            TableFilterAction::ClearQuickFilterError => state.vm.quick_filter_error.clear(),
         }
         actions.borrow_mut().push(action);
     });

@@ -25,7 +25,7 @@
 
 use std::rc::Rc;
 
-use rune::{col, icon, row, text, El, TextEdit};
+use rune::{col, icon, row, text, El, Key, KeyEvent, TextEdit, Tx};
 use rune_kit::{ButtonVariant, Kit};
 
 use crate::i18n::t;
@@ -89,6 +89,8 @@ pub(crate) enum TableFilterAction {
     AddDefaultFilter { column: String },
     ClearFilters,
     ApplyQuickFilter { text: String },
+    /// React's onChange clears the error while the user corrects the text.
+    ClearQuickFilterError,
 }
 
 type ActionFn<S> = Rc<dyn Fn(&mut S, TableFilterAction) + 'static>;
@@ -179,17 +181,47 @@ pub(crate) fn build<S: 'static>(
         .disabled(vm.quick_disabled())
         .placeholder(t("filter.quickPlaceholder"));
     if let Some(accessor) = quick_edit {
-        field = field.on_edit(rune::edit_access(move |s: &mut S| accessor(s)));
+        let edit_action = on_action.clone();
+        // React's onChange only clears when an error is present; a field with
+        // no error emits nothing (keeping the semantic action stream clean).
+        let has_error = !vm.quick_filter_error.is_empty();
+        field = field.on_edit(rune::edit_access(move |s: &mut S| {
+            if has_error {
+                if let Some(callback) = &edit_action {
+                    callback(s, TableFilterAction::ClearQuickFilterError);
+                }
+            }
+            accessor(s)
+        }));
     }
     let submit_action = if quick_filter.text.trim().is_empty() {
         TableFilterAction::ClearFilters
     } else {
         TableFilterAction::ApplyQuickFilter { text: quick_filter.text.clone() }
     };
-    field = field.on_submit(move |s: &mut S, _tx: &mut rune::Tx| {
-        if let Some(callback) = &on_action {
+    let submit_cb = on_action.clone();
+    field = field.on_submit(move |s: &mut S, _tx: &mut Tx| {
+        if let Some(callback) = &submit_cb {
             callback(s, submit_action.clone());
         }
+    });
+    // React's onBlur applies a non-empty quick filter. Rune delivers Tab to the
+    // focused text field's on_key before moving focus, so mirror that behaviour
+    // without consuming the key (return false lets focus travel on).
+    let blur_action = on_action.clone();
+    let blur_text = quick_filter.text.clone();
+    field = field.on_key(move |s: &mut S, event: &KeyEvent, _tx: &mut Tx| {
+        let plain_tab = event.key == Key::Tab
+            && !event.mods.cmd
+            && !event.mods.alt
+            && !event.mods.ctrl
+            && !event.mods.shift;
+        if plain_tab && !blur_text.trim().is_empty() {
+            if let Some(callback) = &blur_action {
+                callback(s, TableFilterAction::ApplyQuickFilter { text: blur_text.clone() });
+            }
+        }
+        false
     });
     bar = bar.child(row().key("table-filter-quick-wrap").w_full().min_w(0.0).grow(1.0).child(field.build(dark)));
 
