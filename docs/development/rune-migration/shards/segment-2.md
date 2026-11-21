@@ -58,7 +58,7 @@
 - [x] T507 · lib · 0.90d · lib/fetchRelationDdl.ts
 - [x] T509 · lib · 0.30d · lib/filterDbTypes.ts
 - [x] T511 · lib · 0.80d · lib/filterExpression.ts
-- [ ] T513 · lib · 0.80d · lib/filterOperators.ts
+- [x] T513 · lib · 0.80d · lib/filterOperators.ts
 - [x] T515 · lib · 0.50d · lib/fkNavigation.ts
 - [ ] T517 · lib · 1.30d · lib/fkNavigationActions.ts · split
 - [ ] T519 · lib · 1.30d · lib/fkReferencedBy.ts · split
