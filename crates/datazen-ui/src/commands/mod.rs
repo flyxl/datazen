@@ -37,6 +37,9 @@ pub(crate) mod history;
 /// query-assets writes (submission-token carrying), the favorites and
 /// the transaction natives.
 pub(crate) mod query;
+/// T366: the first-run sample dataset face (the demo_sales seed).
+pub(crate) mod sample;
+
 
 /// T344: the saved-views menu's command adapter (the three database
 /// rail calls plus the two JSON file dialogs).
