@@ -1,25 +1,20 @@
-//! T307 VM placeholder: `transferMappingView.ts`, re-implemented as local
-//! pure functions over [`TransferTableVm`].
+//! The mapping view's pure helpers, ported from React
+//! `packages/frontend/src/windows/data-transfer/transferMappingView.ts`
+//! (T305 — the ledger line this module was seeded under as T307, the
+//! old-generation number for the same file).
 //!
-//! `transferMappingView.ts` (T307) is not ported yet, and the shell
-//! (T023-S2) depends on its four helpers, so this module carries them as
-//! pure functions — each mirroring its TypeScript source line for line
-//! (see the doc on each function for the TS reference) — plus the table
-//! model they operate on ([`TransferTableVm`],
+//! Seven pure functions plus one private rule, each mirroring its
+//! TypeScript source line for line (see the doc on each function for
+//! the TS reference), over the table model ([`TransferTableVm`],
 //! [`ColumnMappingTablePatch`], [`TransferMappingStatus`],
-//! [`show_create_new_toggle`], [`show_target_type`]). The signatures are
-//! deliberately the TS ones, transliterated.
-//!
-//! T307 replaces this whole module with the real port; the shell never
-//! pretends to be wired to T307 — every mapping-logic call site in the
-//! shell goes through this module and no other mapping logic exists
-//! there. Do not extend this module with new semantics: anything T307
-//! has not ported yet belongs here only as a labelled placeholder, and
-//! anything it has ported replaces the placeholder here.
+//! [`show_create_new_toggle`], [`show_target_type`]) this module owns.
+//! The shell (T023-S2) and the Data Transfer window (T147) route every
+//! mapping-logic decision through this module and no other mapping
+//! logic exists in them — the one-definition rule the gate pair's own
+//! doc comment states.
 
-// The real T307 port is the production consumer of the model; until then
-// the shell and the component tests are the only callers, and the status
-// enum carries the full React union although this slice only matches on
+// The transfer view track is the production consumer; the status enum
+// carries the full React union although this slice only matches on
 // `CREATE_NEW`, so the dead-code lint is silenced here rather than in a
 // crate-wide allow.
 #![allow(dead_code)]
@@ -153,12 +148,11 @@ pub(crate) fn show_target_type(structure_mode: bool, table: &TransferTableVm) ->
 }
 
 // ---------------------------------------------------------------------------
-// T307 VM placeholder: transferMappingView.ts, re-implemented as local pure
-// functions. T307 replaces this whole section with the real port; the
-// signatures are deliberately the TS ones, transliterated.
+// The helper functions (`transferMappingView.ts:4-56`): the signatures
+// are the TS ones, transliterated.
 // ---------------------------------------------------------------------------
 
-/// VM placeholder for `normalizeColumnMappings`
+/// `normalizeColumnMappings` (ported)
 /// (`transferMappingView.ts:4-17`): every source column gets a mapping row.
 /// Absent `sourceColumns` falls back to the distinct sources of the
 /// stored mappings, in first-seen order; a source with no stored mapping
@@ -198,7 +192,7 @@ pub(crate) fn normalize_column_mappings(table: &TransferTableVm) -> Vec<Transfer
         .collect()
 }
 
-/// VM placeholder for `autoMatchColumnMappings`
+/// `autoMatchColumnMappings` (ported)
 /// (`transferMappingView.ts:20-37`): match source columns to target
 /// columns by identical name. A matched row takes the source name as its
 /// target and `skip: false`; an unmatched row is emptied and skipped.
@@ -234,7 +228,7 @@ pub(crate) fn auto_match_column_mappings(
         .collect()
 }
 
-/// VM placeholder for `clearUnmappedColumnMappings`
+/// `clearUnmappedColumnMappings` (ported)
 /// (`transferMappingView.ts:40-45`): rows without a target column are
 /// emptied and marked skipped; mapped rows pass through unchanged.
 pub(crate) fn clear_unmapped_column_mappings(
@@ -256,7 +250,7 @@ pub(crate) fn clear_unmapped_column_mappings(
         .collect()
 }
 
-/// VM placeholder for `unmappedTargetColumns`
+/// `unmappedTargetColumns` (ported)
 /// (`transferMappingView.ts:48-56`): target columns not referenced by any
 /// active (non-skipped, non-empty) mapping. A table being created, or one
 /// with no target columns, has no unmapped targets.
@@ -284,10 +278,8 @@ pub(crate) fn unmapped_target_columns(table: &TransferTableVm) -> Vec<String> {
 }
 
 // ---------------------------------------------------------------------------
-// T147 gate placeholders: `mappingGateAllowsAdvance` /
-// `mappingGateBlockReason` (`transferMappingView.ts:74-100`). T305 replaces
-// these with the real port; the Data Transfer window (T147) routes every
-// gate decision through this module.
+// The gate pair (`transferMappingView.ts:74-100`): the Data Transfer
+// window (T147) routes every gate decision through this module.
 // ---------------------------------------------------------------------------
 
 /// `tableHasActiveMappings` (`transferMappingView.ts:58-60`): the table
@@ -315,7 +307,7 @@ fn row_clears_gate(row: &TransferTableVm) -> bool {
     table_has_active_mappings(row)
 }
 
-/// VM placeholder for `mappingGateAllowsAdvance`
+/// `mappingGateAllowsAdvance` (ported)
 /// (`transferMappingView.ts:82-84`): the one definition of "the mapping
 /// step may be left". The Next gate and the post-prepare re-check both
 /// call this on the *rows they hold at the moment they run*, so a rule
@@ -325,7 +317,7 @@ pub(crate) fn mapping_gate_allows_advance(rows: &[TransferTableVm]) -> bool {
     rows.iter().any(row_clears_gate)
 }
 
-/// VM placeholder for `mappingGateBlockReason`
+/// `mappingGateBlockReason` (ported)
 /// (`transferMappingView.ts:92-100`): why the gate is shut, as an i18n
 /// key. Only the unnamed-create-new case is reported. "Nothing is mapped
 /// yet" is the state the user is still working in, not a dead end that
