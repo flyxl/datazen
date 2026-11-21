@@ -9,12 +9,15 @@
 //! this slice has: the web-shaped tables exporter
 //! ([`super::blob_tables_exporter`]).
 //!
-//! ## Minimal on purpose — T189 / T298 own the full ports
+//! ## Scope — the planner surface is complete (T187)
 //!
-//! `platform/exportPlan.ts` has its own later task (T189) and the request
-//! types come from `commands/file.ts` (T298); this module is only the
-//! smallest surface S1 needs, so a later full port can expand or replace
-//! it without touching the exporter:
+//! `platform/exportPlan.ts`'s own task (T187) completed the planner
+//! function surface (every export of the file, `isBinaryFormat` and
+//! `planFilename` included); the request types still come from
+//! `commands/file.ts` (T298), and only the name-only [`ProvidedColumn`]
+//! slice stands in for `ColumnInfo` until that port widens it — so a
+//! later request-type task can expand the types without touching the
+//! exporter:
 //!
 //! * Request types ([`TablesExportRequest`], [`ExportTableInput`],
 //!   [`ExportTableSource`], [`ExportMode`], [`ExportDataFormat`],
@@ -26,14 +29,12 @@
 //!   that planning and validation touch. The full `ColumnInfo` shape
 //!   arrives with T298 / T500.
 //! * The planner functions mirror `exportPlan.ts` 1:1 in rule and in
-//!   error wording: [`format_extension`], [`is_sql_data_format`],
-//!   [`resolve_ddl`], [`ddl_for_structure`], [`validate_table_source`],
+//!   error wording: [`format_extension`], [`is_binary_format`],
+//!   [`is_sql_data_format`], [`plan_filename`], [`resolve_ddl`],
+//!   [`ddl_for_structure`], [`validate_table_source`],
 //!   [`unique_filename`], [`build_file_plans`], [`prepare_export`],
 //!   [`default_export_extension`], [`default_export_name`].
-//!   Deliberately **not** mirrored: `isBinaryFormat` and `planFilename`
-//!   — S1 never asks them (binary handling is S2's merge step); T189
-//!   adds them with the full port.
-//! * Error wording mirrors the TS `Error` messages verbatim, so a web
+//!   Error wording mirrors the TS `Error` messages verbatim, so a web
 //!   failure and a desktop failure for the same request read the same
 //!   (see [`ExportPlanError`]). The Rust kernel
 //!   (`crates/datazen/src/export/mod.rs`) stays the single source of
@@ -294,6 +295,21 @@ pub(crate) fn is_sql_data_format(format: ExportDataFormat) -> bool {
         format,
         ExportDataFormat::SqlInsert | ExportDataFormat::SqlUpdate
     )
+}
+
+/// Binary formats ride the parallel `BinaryFormatter` branch and can
+/// never be concatenated as text — `DataFormat::is_binary`: XLSX and
+/// Parquet (T187's completion of the mirror; both are Rust-only on
+/// desktop, but the planning mirror stays platform-free).
+pub(crate) fn is_binary_format(format: ExportDataFormat) -> bool {
+    matches!(format, ExportDataFormat::Xlsx | ExportDataFormat::Parquet)
+}
+
+/// `planFilename(plan)` — the planned file's name, for either plan kind
+/// (the [`ExportFilePlan::filename`] accessor is the same mirror; the
+/// free function keeps the TS file's 1:1 surface).
+pub(crate) fn plan_filename(plan: &ExportFilePlan) -> &str {
+    plan.filename()
 }
 
 /// DDL text for one table — `resolve_ddl`: the caller's `ddl` when it

@@ -65,3 +65,7 @@ pub(crate) mod schema_diff_endpoint_helpers;
 // T411: the saved setups (profile save/load/delete, the v2 config
 // import/export, the endpoint-preservation rule).
 pub(crate) mod use_schema_diff_saved_setups;
+// T309: the wizard window itself (the orchestrator over every ported
+// child; the state, action and view halves are the schema_diff_window
+// submodule).
+pub(crate) mod schema_diff_window;

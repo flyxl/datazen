@@ -50,6 +50,11 @@ mod panel_tab_bar;
 mod process_list_view;
 // T506: the query editor section (toolbar, qb-context rebind, strategy, geometry).
 mod query_editor_section;
+// T512: the execution-strategy toolbar select (options, check marks, host intent).
+mod execution_strategy_select;
+// T512 independent audit: shared-enum order/title, menu roles, visible-rect
+// geometry of the open dropdown.
+mod execution_strategy_select_audit;
 // T506 independent audit: rebind gate, strategy keys, toast/hint surfaces,
 // visible-rect geometry and a JSON-escaping probe for the qb context key.
 mod query_editor_section_audit;
@@ -1254,6 +1259,10 @@ mod object_browser;
 mod pending_plan_dialog;
 // T501: ExecutionStrategyAskModal port (strategy options, actions, geometry).
 mod execution_strategy_ask_modal;
+// T508: QuerySidebarSection port (panels, lists, scope/search, menus, geometry).
+mod query_sidebar_section;
+// T508 independent audit: unknown-db grouping, find_group and context-level edges.
+mod query_sidebar_section_audit;
 // T501 independent audit: preview boundaries and missing-current card.
 mod execution_strategy_ask_modal_audit;
 // T492 independent audit: no-insert description, statement order, empty fields.
@@ -1652,3 +1661,30 @@ mod use_grid_clipboard;
 
 // T504: QueryBuilderHostAdapter port (catalog, context/rebind, slot mount, host actions, geometry).
 mod query_builder_host_adapter;
+// T510: QueryTransactionModals port (dialog copy, modal actions, busy/blank gating, geometry).
+mod query_transaction_modals;
+
+// T163: the DataTable shell's independent audit (the composition gates,
+// the overlays, the cell-contract surface, the Delete key, the export
+// dialog pair, geometry).
+mod data_table_shell_audit;
+
+// T180: the lib/chart/transform.ts port's independent audit (the record
+// walk, the aggregate table's honest edges, the pivot series order, the
+// sort comparators, the scatter null-x rule).
+mod chart_transform_audit;
+
+// T184: the dashboards store's independent audit (the refcount lifecycle,
+// the fetch/load/save/refresh walks, the latest-run pick, both cross-window
+// gates).
+mod dashboard_store_audit;
+
+// T193: the AiSessionHistory panel's independent audit (the open gate,
+// the notice precedence, the empty states, the row labels and active
+// selection, the export gate, every callback, geometry).
+mod ai_session_history_audit;
+
+// T195: the MenuBar port's independent audit (the menu table, the gates,
+// the action router, the wrap-around, the bar component's open/hover
+// behaviour).
+mod menu_bar_audit;

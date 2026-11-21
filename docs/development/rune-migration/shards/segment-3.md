@@ -53,18 +53,18 @@
 - [x] T157 · stores · 0.90d · stores/contextMenuStore.ts
 - [x] T158 · stores/tableData · 0.80d · stores/tableData/draftInserts.ts stores/tableData/enumCandidates.ts
 - [x] T160 · platform · 0.30d · platform/env.ts
-- [ ] T163 · components/DataTable · 4.50d · components/DataTable/DataTable.tsx · split
+- [x] T163 · components/DataTable · 4.50d · components/DataTable/DataTable.tsx · split
 - [x] T167 · components/ai · 2.00d · components/ai/AiMessageContent.tsx · split
 - [x] T169 · components · 0.90d · components/McpApprovalHost.tsx
 - [x] T176 · windows/data-transfer · 0.90d · windows/data-transfer/MappingGateNotice.tsx
 - [x] T177 · windows/data-sync · 0.90d · windows/data-sync/DataSyncObjectsStep.tsx
-- [ ] T180 · lib/chart · 1.00d · lib/chart/transform.ts lib/columnStats.ts
-- [ ] T184 · stores · 0.90d · stores/dashboardStore.ts
+- [x] T180 · lib/chart · 1.00d · lib/chart/transform.ts lib/columnStats.ts
+- [x] T184 · stores · 0.90d · stores/dashboardStore.ts
 - [x] T185 · stores/tableData · 0.30d · stores/tableData/filterUtils.ts
-- [ ] T187 · platform · 2.00d · platform/exportPlan.ts · split
+- [x] T187 · platform · 2.00d · platform/exportPlan.ts · split
 - [x] T189 · components/DataTable · 0.90d · components/DataTable/DataTableSelectionBar.tsx
-- [ ] T193 · components/ai · 0.90d · components/ai/AiSessionHistory.tsx
-- [ ] T195 · components · 1.30d · components/MenuBar.tsx · split
+- [x] T193 · components/ai · 0.90d · components/ai/AiSessionHistory.tsx
+- [x] T195 · components · 1.30d · components/MenuBar.tsx · split
 - [x] T202 · windows/data-transfer · 0.90d · windows/data-transfer/SourceFilterEditor.tsx
 - [x] T203 · windows/data-sync · 0.90d · windows/data-sync/DataSyncOptionsStep.tsx
 - [x] T209 · stores · 0.90d · stores/editorSelectionStore.ts

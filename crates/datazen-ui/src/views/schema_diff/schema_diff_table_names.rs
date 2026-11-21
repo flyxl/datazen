@@ -224,12 +224,12 @@ pub(crate) fn merge_schema_diff_table_picks(
     picks
 }
 
-#[cfg(test)]
 /// React `tableDiffHasChanges`: a target-only table always counts as a
 /// change; otherwise any missing/extra/changed column, any check
 /// constraint delta or a table-options delta does. `missingOnTarget ??
 /// added` / `extraOnTarget ?? removed` prefer the explicit fields over
-/// the legacy aliases.
+/// the legacy aliases. Production consumer: the wizard window's
+/// `tableHasDiff` map (T309, `schema_diff_window::state`).
 pub(crate) fn table_diff_has_changes(diff: &crate::components::schema::schema_diff_panel::TableSchemaDiffVm) -> bool {
     if diff.target_only {
         return true;

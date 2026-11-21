@@ -28,4 +28,6 @@ pub(crate) mod query;
 pub(crate) mod schema;
 pub(crate) mod migration;
 pub(crate) mod mcp_approval_host;
+// T195: the web-shape menu bar (MenuBar.tsx).
+pub(crate) mod menu_bar;
 pub(crate) mod sql_editor;

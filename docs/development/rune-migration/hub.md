@@ -39,6 +39,13 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+### Wave26 阈值合流 push（2026-11-21）
+
+- 触发：Wave 25 关闭时合计 ahead 102（seg1 10+seg2 63+seg3 17+seg4 12）> 30，最大规模一轮。
+- 4 个真 merge commit：`f02f3806f`(seg1, a4498884d) → `146183c59`(seg2, c3708bb2e) → `b50145d26`(seg3, 787ba7ad5) → `fb40c731e`(seg4, 11c1cdcaa)；父分支 `c7de055ef → fb40c731e`（106 commits，fast-forward）。
+- 冲突：仅 tests/mod.rs（HEAD mod 块 + seg3 五个新审计模，无重复无断言改动）。三 crate check 全 PASS；gate 本机 ld 链接超限（已知），按授权接受风险 push。无遗留孤儿，未删 target。
+- push 后残余合计 83（seg2 49+seg3 12+seg4 22）——各段合流期间又推一批；下个 wave 关闭按阈值继续合。
+
 ### Wave25 阈值合流 push（2026-11-21）
 
 - 触发：Wave 24 关闭时合计 ahead 33（seg1 23+seg2 10；seg3/4=0）> 30。

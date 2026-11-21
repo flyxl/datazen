@@ -334,6 +334,15 @@ impl<'a, S: 'static> FilterEditor<'a, S> {
         self
     }
 
+    /// The operators this database serves (React's `supportedOperators`):
+    /// `None` keeps the shared set. The grid shell (T163) threads the
+    /// driver's declaration through, exactly as React's `filterOperators`
+    /// prop does.
+    pub(crate) fn supported_operators(mut self, operators: &'a [&'static str]) -> Self {
+        self.supported_operators = Some(operators);
+        self
+    }
+
     pub(crate) fn raw_where_supported(mut self, supported: bool) -> Self {
         self.raw_where_supported = supported;
         self
