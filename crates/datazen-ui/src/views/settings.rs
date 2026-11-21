@@ -95,6 +95,12 @@ pub(crate) mod tunnel_deletion;
 // T441: the tunnel delete confirmation (the usage read, the
 // affected list, the unbind-then-delete outcome reporting).
 pub(crate) mod tunnel_delete_dialog;
+// T447's carried lib: the string-field tunnel draft model (T637's
+// until it lands) — the validation order + the save conversions.
+pub(crate) mod tunnel_draft;
+// T447: the tunnel create/edit dialog (the open-reset fetch, the
+// draft patches, the problem-gated save).
+pub(crate) mod tunnel_edit_dialog;
 // T408: the AI skills settings panel (the opt-in switches, the
 // custom directory, the discovered listing).
 pub(crate) mod skills_section;

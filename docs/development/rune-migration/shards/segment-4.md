@@ -159,7 +159,7 @@
 - [x] T440 · commands · 0.90d · commands/wapps.ts
 - [x] T441 · windows/settings · 0.90d · windows/settings/TunnelDeleteDialog.tsx
 - [x] T445 · hooks · 0.90d · hooks/useValuePresentation.ts
-- [ ] T447 · windows/settings · 0.90d · windows/settings/TunnelEditDialog.tsx
+- [x] T447 · windows/settings · 0.90d · windows/settings/TunnelEditDialog.tsx
 - [ ] T451 · hooks · 0.90d · hooks/useValuePresentationSnapshot.ts
 - [ ] T453 · windows/settings · 0.90d · windows/settings/TunnelSettingsSection.tsx
 - [ ] T457 · hooks · 2.00d · hooks/useVirtualTable.ts · split
