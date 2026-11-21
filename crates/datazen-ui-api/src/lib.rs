@@ -152,6 +152,7 @@ mod schema_changing_sql;
 mod schema_diff_limitations_prefs;
 mod schema_tree_context_menu;
 mod splash;
+mod sql_bind_params;
 mod sql_completions;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
@@ -857,14 +858,23 @@ pub use splash::{
     hide_splash_plan, run_startup_wait_task, HideSplashPlan, StartupSettlement, StartupWaitResult,
     HIDE_SPLASH_DELAY_MS, SPLASH_DOM_GAP, STARTUP_TASK_GAP,
 };
-pub use sql_editor_defaults::{
-    infer_default_schema, infer_default_table, table_clause_fingerprint,
-    tables_referenced_in_sql, ReferencedRelation, RelationSourceKind, ScopeRelations,
-    StatementRange,
+pub use sql_bind_params::{
+    DEFAULT_ENABLE_AT, DEFAULT_ENABLE_DOLLAR_NAMED, DEFAULT_ENABLE_DOLLAR_POSITIONAL,
+    DEFAULT_ENABLE_QUESTION, DEFAULT_ENABLE_TEMPLATE, ParamValue, SqlBindPayloadV2, SqlParam,
+    SqlParamDialectPolicy, SqlParamFilter, SqlParamKind, SqlParamOccurrence, SqlParamOccurrenceV2,
+    SqlParamStableId, SqlParamSyntax, build_bind_payload_v2, coerce_param_value,
+    default_dialect_policy, get_param_label, is_sensitive_param_name, param_fingerprint,
+    params_to_payload, parse_sql_param_occurrences, parse_sql_params, sensitive_param_names,
+    substitute_sql_params,
 };
 pub use sql_completions::{
     keyword_completions, sql_function_completions, SqlFunctionCompletion,
     DEFAULT_SQL_COMPLETION_DIALECT, SQL_COMPLETION_KEYWORDS,
+};
+pub use sql_editor_defaults::{
+    infer_default_schema, infer_default_table, table_clause_fingerprint,
+    tables_referenced_in_sql, ReferencedRelation, RelationSourceKind, ScopeRelations,
+    StatementRange,
 };
 pub use sql_path_prefix::{
     QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
