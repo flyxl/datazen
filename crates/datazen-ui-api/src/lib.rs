@@ -149,6 +149,7 @@ mod run_predefined_edit;
 mod schema_cache;
 mod schema_changing_sql;
 mod schema_diff_limitations_prefs;
+mod splash;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
 mod tabs;
@@ -839,6 +840,10 @@ pub use server_status_trends::{
     TrendPrevSample, TrendSeries, TrendSeriesDef, TrendTimeAxis, TrendUpdateInput,
     TrendUpdateResult, COMMAND_KEYS, DEFAULT_MIN_WINDOW_MS, DEFAULT_REFRESH_PERIOD_MS,
     HISTORY_MAX, HISTORY_WINDOW_MS, TICK_STEP_CANDIDATES_MS, TREND_SERIES,
+};
+pub use splash::{
+    hide_splash_plan, run_startup_wait_task, HideSplashPlan, StartupSettlement, StartupWaitResult,
+    HIDE_SPLASH_DELAY_MS, SPLASH_DOM_GAP, STARTUP_TASK_GAP,
 };
 pub use sql_path_prefix::{
     QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
