@@ -1735,3 +1735,17 @@ mod language_pack_store;
 // the remove-from-failed-load journey, the duplicate-code first match,
 // the latch across a late platform).
 mod language_pack_store_audit;
+
+// T254: the panel-seed (coder tests: the first-frame conditions of a
+// foreign-key jump landing in both the live list and the drafts, the
+// And default and the explicit Or, the panel-open default with an
+// explicit false, the drafts' own life, the empty-state spread, the
+// never-reload contract).
+mod table_data_panel_seed;
+
+// T254 independent audit: fresh vectors (the all-defaults seed that
+// still opens the panel, the per-condition connector surviving the
+// clone, the serde_json value shapes round-tripping through both
+// lists, the whole-TableState equality against the empty state with
+// only the five React overrides, seed independence, verbatim strings).
+mod table_data_panel_seed_audit;
