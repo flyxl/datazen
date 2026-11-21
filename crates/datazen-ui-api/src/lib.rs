@@ -27,6 +27,7 @@ mod connection_views;
 mod context_items;
 mod data_sync_comparison;
 mod data_sync_endpoints;
+mod data_sync_execution;
 mod diff_detail;
 mod data_sync_bars;
 mod data_table_clipboard_dom;
@@ -285,6 +286,12 @@ pub use data_sync_endpoints::{
     DATA_SYNC_ENDPOINTS_GAP, DATA_SYNC_ENDPOINTS_SURFACE,
     EXPERIMENTAL_PAIR_KEY as ENDPOINTS_EXPERIMENTAL_PAIR_KEY, LOAD_DATABASES_FAILED_KEY,
     SESSION_FAILED_KEY, UNSUPPORTED_PAIR_KEY, VERIFIED_MIGRATION_TYPES,
+};
+pub use data_sync_execution::{
+    can_execute, handle_execute, plan_execution, plan_finalize, run_execute_guard, CompareResult,
+    ExecuteGuard, ExecuteResult, ExecutionEffect, ExecutionInput, ExecutionPlan,
+    ExecutionResponses, FinalizeInput, FinalizePlan, GuardOutcome, SessionRefresh,
+    TableSelection, DATA_SYNC_EXECUTION_GAP, DATA_SYNC_EXECUTION_SURFACE,
 };
 pub use data_table_clipboard_dom::{
     bind_clipboard_dom, handle_copy, handle_paste, is_editable_target, resolve_copy_target,
