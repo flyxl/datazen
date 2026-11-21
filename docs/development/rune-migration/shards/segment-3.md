@@ -146,7 +146,7 @@
 - [x] T431 · stores · 1.30d · stores/schemaStore.ts · split
 - [ ] T433 · components/DataTable · 2.40d · components/DataTable/useDataTableContextMenu.ts · split
 - [x] T436 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncComparison.ts · split
-- [ ] T439 · stores · 0.30d · stores/schemaStoreHelpers.ts
+- [x] T439 · stores · 0.30d · stores/schemaStoreHelpers.ts
 - [ ] T443 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncEndpoints.ts · split
 - [ ] T446 · stores · 0.90d · stores/schemaStoreSelectors.ts
 - [ ] T449 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncExecution.ts · split
