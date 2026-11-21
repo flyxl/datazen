@@ -141,6 +141,8 @@ mod relation_prediction;
 mod relative_time;
 mod result_editability;
 mod resolve_ui_language;
+mod row_to_record;
+mod run_predefined_edit;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
 mod tabs;
@@ -787,6 +789,10 @@ pub use relative_time::{
 pub use resolve_ui_language::{
     normalize_settings_language, resolve_ui_language, SupportedUiLanguage,
     SUPPORTED_UI_LANGUAGES,
+};
+pub use row_to_record::row_to_record;
+pub use run_predefined_edit::{
+    predefined_edit_command, run_predefined_edit, NativeMenuPredefined,
 };
 pub use sql_path_prefix::{
     QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
