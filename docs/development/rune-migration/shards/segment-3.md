@@ -77,20 +77,20 @@
 - [x] T232 · stores · 0.50d · stores/fkNavigationStore.ts
 - [x] T233 · stores/tableData · 0.80d · stores/tableData/insertLocation.ts stores/tableData/keysetActions.ts
 - [x] T236 · components/DataTable · 0.80d · components/DataTable/DetailPanel.tsx
-- [ ] T239 · components/ai · 0.90d · components/ai/DiagnosisPanel.tsx
-- [ ] T241 · components · 0.80d · components/SqlEditor.tsx components/SqlSyntaxPreview.tsx
-- [ ] T246 · windows/data-transfer · 0.30d · windows/data-transfer/TransferJobResultPanel.tsx
+- [x] T239 · components/ai · 0.90d · components/ai/DiagnosisPanel.tsx
+- [x] T241 · components · 0.80d · components/SqlEditor.tsx components/SqlSyntaxPreview.tsx
+- [x] T246 · windows/data-transfer · 0.30d · windows/data-transfer/TransferJobResultPanel.tsx
 - [x] T247 · windows/data-sync · 0.90d · windows/data-sync/DataSyncResultStep.tsx
-- [ ] T253 · stores · 0.90d · stores/languagePackStore.ts
-- [ ] T254 · stores/tableData · 0.30d · stores/tableData/panelSeed.ts
-- [ ] T257 · components/DataTable · 0.80d · components/DataTable/DetailPanelToggle.tsx components/DataTable/DraftRow.tsx
-- [ ] T260 · components/ai · 0.90d · components/ai/ExplainPanel.tsx
-- [ ] T262 · components · 0.80d · components/StatusBar.tsx components/ThemedIcon.tsx
-- [ ] T267 · windows/data-transfer · 0.90d · windows/data-transfer/TransferMappingStep.tsx
-- [ ] T268 · windows/data-sync · 1.30d · windows/data-sync/DataSyncWindow.tsx · split
-- [ ] T274 · stores · 0.90d · stores/metadataIdentityBinding.ts stores/paneFocus.ts stores/paneKeys.ts
-- [ ] T275 · stores/tableData · 2.00d · stores/tableData/pendingChanges.ts · split
-- [ ] T278 · components/DataTable · 0.90d · components/DataTable/EditableCell.tsx components/DataTable/editors/BinaryCellEditor.tsx components/DataTable/editors/BooleanCellEditor.tsx
+- [x] T253 · stores · 0.90d · stores/languagePackStore.ts
+- [x] T254 · stores/tableData · 0.30d · stores/tableData/panelSeed.ts
+- [x] T257 · components/DataTable · 0.80d · components/DataTable/DetailPanelToggle.tsx components/DataTable/DraftRow.tsx
+- [x] T260 · components/ai · 0.90d · components/ai/ExplainPanel.tsx
+- [x] T262 · components · 0.80d · components/StatusBar.tsx components/ThemedIcon.tsx
+- [x] T267 · windows/data-transfer · 0.90d · windows/data-transfer/TransferMappingStep.tsx
+- [x] T268 · windows/data-sync · 1.30d · windows/data-sync/DataSyncWindow.tsx · split
+- [x] T274 · stores · 0.90d · stores/metadataIdentityBinding.ts stores/paneFocus.ts stores/paneKeys.ts
+- [x] T275 · stores/tableData · 2.00d · stores/tableData/pendingChanges.ts · split
+- [x] T278 · components/DataTable · 0.90d · components/DataTable/EditableCell.tsx components/DataTable/editors/BinaryCellEditor.tsx components/DataTable/editors/BooleanCellEditor.tsx
 - [ ] T280 · components/ai · 0.90d · components/ai/Nl2SqlPanel.tsx
 - [ ] T282 · components · 0.90d · components/ThemeToggle.tsx
 - [x] T286 · windows/data-transfer · 0.60d · windows/data-transfer/TransferPairingNote.tsx windows/data-sync/CompareSummary.tsx

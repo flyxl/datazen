@@ -48,12 +48,18 @@ pub(crate) mod connection_store;
 pub(crate) mod dashboard_store;
 // T209: the per-panel editor-selection store (editorSelectionStore.ts).
 pub(crate) mod editor_selection_store;
+// T253: the installed-language-pack store (languagePackStore.ts).
+pub(crate) mod language_pack_store;
+// T254: the first-frame panel seed (stores/tableData/panelSeed.ts).
+pub(crate) mod table_data_panel_seed;
 pub(crate) mod ai_store_chat;
 pub(crate) mod ai_store_rest;
 pub(crate) mod table_data_connection_state;
 pub(crate) mod table_data_count_strategy;
 // T127: the dirty-state index of one table panel (dirtyIndex.ts).
 pub(crate) mod table_data_dirty_index;
+// T275: the pending-changes helpers (stores/tableData/pendingChanges.ts).
+pub(crate) mod table_data_pending_changes;
 // T158: the new-row draft transitions (draftInserts.ts).
 pub(crate) mod table_data_draft_inserts;
 // T158: the enum-candidate cache transitions (enumCandidates.ts).
@@ -102,6 +108,11 @@ mod workflow_page_state;
 pub(crate) mod ui_store;
 // T232: the foreign-key navigation stack (fkNavigationStore.ts).
 pub(crate) mod fk_navigation_store;
+// T274: the metadata-identity binder seam, the pane-focus writer, and
+// the pane key space (metadataIdentityBinding.ts / paneFocus.ts / paneKeys.ts).
+pub(crate) mod metadata_identity_binding;
+pub(crate) mod pane_focus;
+pub(crate) mod pane_keys;
 // T486: the workspace tabs store and the per-mode view-state snapshots.
 pub(crate) mod workspace_tabs_store;
 pub(crate) mod workspace_panel_state_store;

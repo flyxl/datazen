@@ -107,7 +107,13 @@ fn is_filled(value: &str) -> bool {
 }
 
 /// `cloneFilters` (`filterUtils.ts:47`).
-pub(crate) fn clone_filters(filters: &[FilterCondition]) -> Vec<FilterCondition> {
+///
+/// Generic since T254 (`stores/tableData/panelSeed.ts`): React's single
+/// `FilterCondition` type serves both the chip family and the table state,
+/// and the seed path clones the state-side mirror
+/// (`connection_state::FilterCondition`). `to_vec` is the deep clone for
+/// either family; the chip-side call sites are unchanged.
+pub(crate) fn clone_filters<T: Clone>(filters: &[T]) -> Vec<T> {
     filters.to_vec()
 }
 

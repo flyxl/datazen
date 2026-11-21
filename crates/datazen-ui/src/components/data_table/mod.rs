@@ -37,7 +37,12 @@ pub(crate) mod data_table_selection_bar;
 pub(crate) mod data_table_vm;
 pub(crate) mod default_order_select;
 pub(crate) mod detail_panel;
+pub(crate) mod detail_panel_toggle;
 pub(crate) mod dirty_cell_text;
+pub(crate) mod draft_row;
+// T278: the old editor's compatibility shell (the kind derivation + the
+// T297 host seam).
+pub(crate) mod editable_cell;
 pub(crate) mod editors;
 pub(crate) mod fk_cell_text;
 pub(crate) mod grid_keyboard_hints;

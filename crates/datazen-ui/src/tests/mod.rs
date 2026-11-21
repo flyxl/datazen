@@ -1179,6 +1179,21 @@ mod panel_close_notifier;
 // T293 independent audit: fresh vectors (multi-close diffs, re-add in the
 // same change, stranger unsubscribes, per-panel independence).
 mod panel_close_notifier_audit;
+
+// T274: the metadata-identity binder seam, the pane-focus writer, and
+// the pane key space (coder vectors: the inert-before-register
+// announce, the record and dispose, the replaced-binder guard; the
+// dead-panel drop, the focus write and null-pane removal, the
+// cross-tab guarantee; the bare-id default, the composite's
+// decomposition, panel membership, the map-order key list, pane args
+// and the focused-pane resolution).
+mod pane_identity;
+
+// T274 independent audit: fresh vectors (the binder's replacement and
+// double-dispose, the focus writer's stranger-write edge and the
+// active-id truthiness, every built key's round trip, the strict
+// panel membership with a prefix trap).
+mod pane_identity_audit;
 // T385: the query-run request bridge (immediate accept, ordered queue,
 // flush-on-mount, unregister drops both).
 mod query_run_request_store;
@@ -1399,6 +1414,22 @@ mod data_sync_recordset_editor_audit;
 // geometry, five-row stacking, light theme.
 mod data_sync_job_status_panel_audit;
 
+// T268: the Data Sync window port (coder tests: the Vm's derivations —
+// step index, narrow layout, show-next, executing, the status fallback —
+// the window frame with the attrs mirror/chrome/stepper/nav/status bar,
+// each step's own body, the execute-bar seam's preview-only mount and
+// its five inputs, the dialogs from the seams, and the forwarded
+// callbacks through real presses).
+mod data_sync_window;
+
+// T268 independent audit: fresh vectors (the attrs mirror's exact
+// spellings across the state/step/outcome axes, the chrome's pack words
+// verbatim, both themes mounting the same key set inside the minimum
+// window, the busy spinner's nav mount and the hidden next, the
+// run-history dialog's layer following the open flag, the job-status
+// strip's hydration hint pair).
+mod data_sync_window_audit;
+
 // T125: the persisted-connections store (display helpers over the T403
 // placeholder subset, load/refetch chains, group edits, per-connection moves).
 mod connection_store;
@@ -1410,6 +1441,17 @@ mod connection_store_audit;
 // T127: the dirty-state index (identity subset, anchor priority, the
 // ambiguity guard, counts, off-page keys, structural sharing).
 mod table_data_dirty_index;
+// T275: the pending-changes helpers (coder vectors: the effective identity
+// overlay and its NULL refusal, the uniqueness rule, the collision
+// detection with the ambiguous-sibling block, the anchor-first lookup,
+// the overlay merge with its pass-throughs, the staged signature and
+// the wire row-index drop, the independent pending-work counting, the
+// draft wire order and markers, the pending-work signature).
+mod table_data_pending_changes;
+// T275 independent audit: fresh vectors (the whole-column fallback,
+// the duplicate-identity overlay refusal, the signature order stability
+// and value separation, the wire field sets, the draft-order edges).
+mod table_data_pending_changes_audit;
 
 // T127 independent audit: fresh vectors (composite keys, nested identity
 // values, anchor under ambiguity, expressions, the delete-mark flip).
@@ -1786,3 +1828,144 @@ mod prompt_settings_section_audit;
 // T522: ExecutionSummaryCard + ResultFindBar ports (summary values, find actions, geometry).
 mod execution_summary_card;
 mod result_find_bar;
+
+// T239: the AI diagnosis strip (coder tests: the mount-effect gate, the
+// handleDiagnose spread with the redaction guarantee, the unconfigured
+// notice's configure and close wires, the idle / diagnosing / error /
+// result states, the apply compound, the inert invalid-context button,
+// the body's 200pt cap in both palettes).
+mod diagnosis_panel;
+
+// T239 independent audit: fresh vectors (the zh-CN pack's exact strings on
+// every state, the one-runtime journey idle→in-flight→failure→retry→
+// result→apply, both palettes' strip geometry, the 200pt cap under a
+// long four-change result, the wrapping error card, the request's
+// clone identity and the never-the-original-sql guarantee).
+mod diagnosis_panel_audit;
+
+// T241: the SQL syntax preview (coder tests: the seven-preset lookup
+// with the unknown-id fallback, the background/foreground fallbacks,
+// the one-text span construction — the verbatim sample, the tiling 52
+// spans, the comment italics, the per-slot colours — and the mounted
+// preview's palette-backed fills, texts, paddings and the narrow-surface
+// clip).
+mod sql_syntax_preview;
+
+// T241 independent audit: fresh vectors (the seven labels verbatim, the
+// background/foreground presence matrix, the solarized twins'
+// identical halves, vscode-dark/dracula colour vectors, the byte-range
+// tiling with the italic pair, the unknown theme's mounted fallback, and
+// the narrow-surface wrap growth).
+mod sql_syntax_preview_audit;
+
+// T246: the transfer job result panel (coder tests: the five-bucket
+// progress line with the unreadable-is-zero rule, the plan identity,
+// the counter dialect bridge, the in-flight card's three lines, the
+// refusal notice with the re-review wire, the settled verdict mount,
+// and the attrs mirror's six pairs in both palettes).
+mod transfer_job_result_panel;
+
+// T246 independent audit: fresh vectors (the fractional / negative /
+// padded counter forms, the in-flight card's zh-CN strings and label
+// wire, the stalePlan refusal severity with the audit prefix, the
+// boundary-backed ok verdict, the cancel disposition propagation).
+mod transfer_job_result_panel_audit;
+
+// T267: the transfer mapping step (coder tests: the enabled-filter and
+// find-else-first derivations, the effect's correction query, the seed
+// carrying mode and disabled, the empty notice, the per-item keys and
+// two-line text, the empty-target dash, the editor mount over the
+// selected table, one kit root, and the select / update / commit
+// channels through real presses and the target-table submit).
+mod transfer_mapping_step;
+
+// T267 independent audit: fresh vectors (the empty notice's exact
+// locale value, the multi-byte names riding keys/text/arrow verbatim,
+// the seeded mode deciding the editor's type columns, the list staying
+// pressable while the editor is disabled, the sidebar's 224pt width
+// and source order at both themes inside the minimum window, and the
+// long target's single-line clip).
+mod transfer_mapping_step_audit;
+
+// T253: the installed-language-pack store (coder tests: the fetch
+// seam's two endings, the remove seam's refetch hand-off and the
+// failure's error, the changed listener's once-latch with the three
+// retry paths).
+mod language_pack_store;
+
+// T253 independent audit: fresh vectors (the camelCase wire round-trip
+// with the optional pair and the rejects, the repeated-fetch overwrite,
+// the remove-from-failed-load journey, the duplicate-code first match,
+// the latch across a late platform).
+mod language_pack_store_audit;
+
+// T254: the panel-seed (coder tests: the first-frame conditions of a
+// foreign-key jump landing in both the live list and the drafts, the
+// And default and the explicit Or, the panel-open default with an
+// explicit false, the drafts' own life, the empty-state spread, the
+// never-reload contract).
+mod table_data_panel_seed;
+
+// T254 independent audit: fresh vectors (the all-defaults seed that
+// still opens the panel, the per-condition connector surviving the
+// clone, the serde_json value shapes round-tripping through both
+// lists, the whole-TableState equality against the empty state with
+// only the five React overrides, seed independence, verbatim strings).
+mod table_data_panel_seed_audit;
+
+// T257: the DetailPanelToggle and the DraftRow (coder tests: the
+// toggle's two states with titles/roles/wash and its press seam; the
+// row's markers and labels, the absolute geometry, the three
+// write-intent states, the plan consulted only by written cells, the
+// discard-without-activate split, the cell press and double press, the
+// editing stand-in seed, the 160 width default, the selection-only
+// grid roles).
+mod draft_row;
+// T278: the EditableCell shell (the kind derivation + the T297 host
+// seam), the binary editor (the read-only status row and its sr-only
+// echo), and the boolean editor (the checkbox branch's opposite pick,
+// the three-state select's discrete values, the current following the
+// draft).
+mod editable_cell;
+// T278 independent audit: fresh vectors (the zoned rule and the
+// temporal kinds, the seam label's whole derivation, the binary row's
+// theme stability inside the minimum window, the three-state choose
+// journey at both themes, the checkbox journey's opposite).
+mod editable_cell_audit;
+
+
+// T257 independent audit: fresh vectors (the unwired light-mode toggle,
+// two rows keeping their own markers and callbacks, the short widths
+// list, the js_string round-trip families, the window-wide geometry
+// sweep, the tab-ring opt-out, a foreign editing target, a plan pointed
+// at an unwritten column).
+mod draft_row_audit;
+
+// T260: the EXPLAIN panel (coder tests: the rawTable derivation's reads
+// and fallbacks, the severity wire degradation, the raw pre and
+// raw-table branches with the count bar, the analyze button's mount
+// gate and its three-field request, the analyzing row, the error card,
+// the analysis sections with their severity cards and suggestion cards,
+// the unconfigured notice, and the plan-tree mount condition).
+mod explain_panel;
+
+// T260 independent audit: fresh vectors (the object-but-not-result-set
+// plans and the mixed-rows filter, the empty-list analysis rendering
+// only the summary, the severity washes read back through the kit, the
+// SQL-less suggestion, the asymmetric raw counts, the unconfigured
+// panel never analyzing, the window-wide geometry sweep).
+mod explain_panel_audit;
+
+// T262: the themed icon and the status bar (coder tests: the 36-name
+// catalog, the default resolver's degradations, the mounted lucide
+// branch at its sizes, the unknown-name ? badge, the fallback prop, the
+// placeholder badge with its tone's fill, the url branch's picture slot
+// ready or blank, and the status bar's two slots with their geometry and
+// their empty mounts).
+mod themed_icon;
+
+// T262 independent audit: fresh vectors (the catalog tail mounting one
+// glyph each, the ? badge's white ink, the placeholder's verbatim
+// labels, the default resolver's edge ids, the failing decode's blank
+// slot, the one-sided light-mode bar geometry).
+mod themed_icon_audit;

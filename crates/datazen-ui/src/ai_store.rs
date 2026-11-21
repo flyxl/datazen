@@ -170,10 +170,57 @@ pub(crate) struct DiagnosisResult {
     pub summary: String,
 }
 
-/// Opaque EXPLAIN analysis payload.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// The AI's EXPLAIN analysis (`types/ai.ts`: `ExplainAnalysis`): the
+/// summary paragraph, the bottlenecks with their severities, and the
+/// suggestions with their optional SQL and expected impact. The store
+/// stores them uninterpreted; T260's panel is the renderer.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct ExplainAnalysis {
     pub summary: String,
+    pub bottlenecks: Vec<ExplainBottleneck>,
+    pub suggestions: Vec<ExplainSuggestion>,
+}
+
+/// One bottleneck (`types/ai.ts`: `Bottleneck`): the plan node it
+/// names, what it costs, and how bad it is.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ExplainBottleneck {
+    pub node: String,
+    pub description: String,
+    pub severity: ExplainSeverity,
+}
+
+/// The React `'high' | 'medium' | 'low'` union.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum ExplainSeverity {
+    High,
+    Medium,
+    #[default]
+    Low,
+}
+
+impl ExplainSeverity {
+    /// The severity from the AI's wire string. An unknown word takes
+    /// React's render degradation — `severityColors[b.severity] ??
+    /// severityColors.low` — here at the parse boundary, so the store
+    /// never carries a severity the panel cannot paint.
+    pub(crate) fn from_wire(word: &str) -> Self {
+        match word {
+            "high" => ExplainSeverity::High,
+            "medium" => ExplainSeverity::Medium,
+            _ => ExplainSeverity::Low,
+        }
+    }
+}
+
+/// One suggestion (`types/ai.ts`: `ExplainSuggestion`): what to change,
+/// the SQL to apply (null when the advice is prose only), and the
+/// expected impact.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ExplainSuggestion {
+    pub description: String,
+    pub sql: Option<String>,
+    pub impact: String,
 }
 
 /// One smart-filter condition. The store stores the list; it does not
