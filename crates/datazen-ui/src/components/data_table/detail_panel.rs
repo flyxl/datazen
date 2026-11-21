@@ -686,11 +686,13 @@ impl<'a, S: 'static> DetailPanel<'a, S> {
 
         // React's input: `h-7 w-full rounded-sm border border-edge/50
         // bg-surface-raised/30 pl-8 pr-7 font-mono text-xs`. The leading
-        // glyph and trailing clear button are siblings in the row here, so
-        // the padding lives on the row, not the field.
+        // glyph and trailing clear button are siblings in the row here (React
+        // absolutely positions them inside the input's own padding), so the
+        // field grows instead of taking the full width — the clear button
+        // keeps its space at the row's end instead of being squeezed out.
         let mut input = text_input(&state.query, k.ty.mono)
             .key("detail-panel-search-input")
-            .w_full()
+            .grow(1.0)
             .min_w(0.0)
             .min_h(INPUT_H)
             .px(INPUT_PAD_X)

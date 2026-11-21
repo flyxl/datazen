@@ -1675,3 +1675,9 @@ mod table_data_insert_location_audit;
 // chain, the blob line, the commit semantics, the editor keys, BUG-005's
 // enter/exit cycle, and the mounted drawer's probes).
 mod detail_panel;
+
+// T236 independent audit: fresh vectors (the typed search journey, the
+// aside's geometry in both palettes, the twelve-column list, the missing-field
+// NULL, the entry's conditional mount, the dialog gate, the pack's exact
+// strings, the commit wire shapes, the JSON/long-text press journeys).
+mod detail_panel_audit;
