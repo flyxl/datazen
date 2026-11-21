@@ -149,6 +149,7 @@ mod run_predefined_edit;
 mod schema_cache;
 mod schema_changing_sql;
 mod schema_diff_limitations_prefs;
+mod schema_tree_context_menu;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
 mod tabs;
@@ -700,6 +701,11 @@ pub use schema_changing_sql::{
     is_data_modifying_statement, is_schema_changing_statement, is_schema_mutating_statement,
     mask_semicolons_in_literals, split_sql_statements, sql_contains_data_modifying,
     sql_contains_schema_changing_ddl, sql_may_mutate_schema,
+};
+pub use schema_tree_context_menu::{
+    build_schema_tree_context_menu_items, BuildSchemaTreeContextMenuArgs, SchemaTreeAction,
+    SchemaTreeContextMenuHandlers, SchemaTreeContextMenuLabels, SchemaTreeMenuItem,
+    SchemaTreeNodeContextMenuPayload, SchemaTreeNodeKind,
 };
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
