@@ -33,6 +33,8 @@ mod row_count_strategy;
 mod schema_diff_confirm;
 mod schema_resource_cache;
 mod chart_colors;
+mod chart_empty_state;
+mod chart_toolbar;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
 mod build_editor_schema;
@@ -178,6 +180,17 @@ mod transfer_limitations_prefs;
 mod transfer_pairing;
 mod tunnel_deletion;
 mod tunnel_draft;
+mod value_search;
+mod update_reminder_schedule;
+mod updater;
+mod wapp_asset_origin;
+mod window_kind;
+mod wapp_bridge;
+mod wapp_i18n;
+mod window_manager;
+mod workflow_draft_yaml;
+mod workflow_list_context_menu;
+mod workflow_yaml;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
 // path `datazen_ui_api::types::…` is the Rust twin of React's `'../types'`
@@ -328,6 +341,18 @@ pub use schema_resource_cache::{
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
+};
+pub use chart_empty_state::{
+    build_chart_empty_state, ChartEmptyReason, ChartEmptyStateView, EMPTY_CONTAINER_CLASS,
+    EMPTY_ICON_CLASS, EMPTY_KEY_NO_CONFIG, EMPTY_KEY_NO_DATA, EMPTY_KEY_NO_NUMERIC_FIELD,
+    EMPTY_TEXT_CLASS,
+};
+pub use chart_toolbar::{
+    chart_type_class, chart_type_label_key, chart_type_test_id, reduce_toolbar,
+    resolve_toolbar_labels, split_available, split_class, visible_controls, ChartExportFormat,
+    ChartToolbarState, CHART_TYPES, KEY_EXPAND, KEY_EXPORT, KEY_GRID, KEY_LEGEND, KEY_SPLIT_VIEW,
+    KEY_VALUES, TOOLBAR_SHELL_CLASS, ToolbarControl, ToolbarContext, ToolbarEffect, ToolbarLabels,
+    ToolbarOutcome, ACTIVE_CLASS, INACTIVE_CLASS,
 };
 pub use bootstrap_icon_resolver::{
     DbIcon, IconResolverSeed, ResolvedIcon, default_icon_resolver_seed, resolve_icon,
@@ -822,7 +847,7 @@ pub use metadata::{
     MetadataClock, MetadataIdentityInput, MetadataSessionIdentity, MetadataTarget, NamespaceTarget,
     ObjectTarget, ResultProvenance, SessionHandle, TemporaryResult, check_temporary_result,
     is_provenance_current, metadata_batch_bucket, metadata_cache_key, metadata_config_bucket,
-    metadata_session_key, read_temporary_result,
+    metadata_session_key, read_temporary_result, METADATA_IDENTITY_SURFACE,
 };
 pub use platform_shared::{
     McpContentBlock, McpError, McpFetch, McpHttpResponse, McpJsonRpcError, McpRequestInit,
@@ -888,6 +913,14 @@ pub use tunnel_draft::{
     tunnel_draft_problem, HttpProxyDraft, SshDraft, SshJumpDraft, TunnelDraft,
     TunnelDraftProblem, WebSocketDraft, DEFAULT_HTTP_PROXY_PORT, DEFAULT_SSH_PORT,
     DEFAULT_TUNNEL_TIMEOUT, SAVED_TUNNEL_KINDS,
+};
+pub use value_search::{
+    base_cell_types, cell_types_for, filter_operator_for_mode, locate_conditions,
+    locate_filter_logic, rank_tables, searchable_columns, target_key, type_scopes_for_driver,
+    value_search_targets, value_search_type_groups_for, Clock, DriverExtraTypes, ExtraTypesProvider,
+    SchemaReader, SearchTableValuesRequest, SearchTableValuesResponse, TableValueSearcher,
+    ValueSearchDriver, ValueSearchDriverParams, ValueSearchLocateIntent, ValueSearchMode,
+    ValueSearchProgress, ValueSearchStatus, ValueSearchTableResult, ValueSearchTarget,
 };
 pub use theme_editor_colors::{
     apply_sql_syntax_preset, build_editor_highlight_rules, default_editor_colors,
@@ -1010,6 +1043,73 @@ pub use transfer_pairing::{
 pub use tunnel_deletion::{
     delete_tunnel_and_unbind, unbind_connection_patch, DeleteTunnel, DeleteTunnelDeps,
     DeleteTunnelOutcome, GetConnections, SaveConnection, KEY_DELETE_FAILED, KEY_UNBIND_FAILED,
+};
+pub use update_reminder_schedule::{
+    dispatch_event, on_interval_tick, start_update_reminder_schedule,
+    stop_update_reminder_schedule, ScheduleDeps, ScheduleHandle, CHECK_INTERVAL_MS, CHANNEL_AUTO,
+    EVENT_FOCUS, EVENT_ONLINE, EVENT_VISIBILITY_CHANGE, VISIBILITY_VISIBLE,
+};
+pub use updater::{
+    check_for_updates, current_variant, download_and_install_update, get_update_channel,
+    has_updater_channel, is_updater_supported, manifest_belongs_to_build, maybe_check_on_startup,
+    normalize_sku, read_manifest_variant, relaunch_to_apply_update, UpdateChannel,
+    UpdateCheckResult, UpdaterBuildConfig, UpdaterLog, UpdaterLogLevel, UpdateProgress,
+    StartupCheckPlan,
+};
+pub use wapp_asset_origin::{
+    build_wapp_asset_src, build_wapp_icon_src, configure_wapp_asset_resolver,
+    is_safe_wapp_asset_path, is_valid_wapp_id, parse_wapp_asset_target,
+    reset_wapp_asset_resolver, DESKTOP_WAPP_ASSET_RESOLVER, WappAssetQueryMap, WappAssetResolver,
+    WappAssetTarget, WEB_WAPP_ASSET_RESOLVER, WAPP_ASSET_CSP, WAPP_ASSET_PATH_PREFIX,
+};
+pub use window_kind::{
+    get_url_param, get_window_kind, reset_window_kind_cache, resolve_window_kind, WindowKind,
+    LEGACY_MAIN_ALIASES,
+};
+pub use window_manager::{
+    backup_window_options, connection_payload, connection_window_plan, dashboard_window_plan,
+    data_sync_window_options, data_transfer_window_options, docs_window_plan,
+    emit_menu_action_plan, is_main_shell_menu_id, schema_diff_window_options,
+    settings_window_plan, workflow_window_plan, BackupMode, BackupPrefill, ConnectionWindowOpts,
+    ConnectionWindowPlan, DashboardWindowPlan, DocsWindowPlan, MenuActionPlan, PostOnboardingSample,
+    SingletonWindowPlan, MAIN_SHELL_MENU_IDS, PENDING_CONNECTION_KEY, POST_ONBOARDING_SAMPLE_KEY,
+    WINDOW_CAPABILITY_LABEL_SAMPLES, WINDOW_MANAGER_GAP,
+};
+pub use workflow_yaml::{
+    extract_workflow_yaml, looks_like_workflow, parse_validated_workflow_definition,
+    parse_workflow_blocks, parse_workflow_yaml, validate_workflow_fields,
+    WorkflowValidationConnection,
+};
+pub use wapp_bridge::{
+    err_envelope, host_ready_envelope, is_request_envelope, is_wapp_command_allowed, ok_envelope,
+    parse_command_invoke, parse_i18n_key, parse_notify, parse_request, parse_storage,
+    response_type_of, route_for, theme_apply_envelope, theme_snapshot_value, timeout_disposition,
+    to_public_connection, as_nonempty_string, looks_like_not_found, AttachBridgeOptions,
+    BridgeApiError, BridgeConnectionSummary, BridgeEffect, BridgeErrorPayload, BridgeErrorCode,
+    BridgeState, BridgeTarget, CommandInvokeInput, ConnectionConfigLike, NotifyInput,
+    StorageInput, TimeoutDisposition, WappBridge, WappBridgeHost, WappErrEnvelope,
+    WappOkEnvelope, WappRequestEnvelope, WappResponseEnvelope, API_ROUTES, BRIDGE_CHANNEL,
+    BRIDGE_ERROR_CODES, ERROR_MESSAGE_LIMIT_CHARS, MAX_INFLIGHT_REQUESTS, MAX_REQUEST_ID_CHARS,
+    NOTIFY_MIN_INTERVAL_MS, REQUEST_TIMEOUT_MS, SESSION_REQUEST_LIMIT, WAPP_BRIDGE_DOM_GAP,
+    WAPP_BRIDGE_EVENT_GAP, WAPP_BRIDGE_HANDLER_GAP, WAPP_BRIDGE_IPC_GAP, WAPP_BRIDGE_SURFACE,
+    WAPP_COMMAND_DENYLIST,
+};
+pub use wapp_i18n::{
+    is_wapp_i18n_key_valid, is_wapp_i18n_locale_valid, resolve_wapp_string,
+    wapp_i18n_candidates, wapp_i18n_dictionary_path, WappDictionary, WappI18n, WappI18nDeps,
+    WAPP_I18N_GAP, WAPP_I18N_SURFACE,
+};
+pub use workflow_draft_yaml::{
+    draft_to_yaml_object, draft_to_yaml_value, yaml_object_to_draft, yaml_value_to_draft,
+    WorkflowDraft, WorkflowDraftVariable, WorkflowStepDraft, WORKFLOW_DRAFT_YAML_GAP,
+    WORKFLOW_DRAFT_YAML_SURFACE,
+};
+pub use workflow_list_context_menu::{
+    build_workflow_history_context_menu_items, build_workflow_list_context_menu_items,
+    BuildWorkflowHistoryContextMenuArgs, BuildWorkflowListContextMenuArgs,
+    WorkflowHistoryContextMenuHandlers, WorkflowHistoryContextMenuLabels, WorkflowMenuItem,
+    WorkflowListContextMenuHandlers, WorkflowListContextMenuLabels, WORKFLOW_LIST_MENU_GAP,
+    WORKFLOW_LIST_MENU_SURFACE,
 };
 pub use theme_tokens::{
     build_theme_snapshot, ThemeSnapshot, ThemeSnapshotInput, THEME_SNAPSHOT_VERSION, THEME_TOKENS,

@@ -16,9 +16,9 @@
 - [x] T042 · types · 0.80d · types/ai.ts
 - [x] T046 · extensions · 0.30d · extensions/generated-pro.ts
 - [x] T052 · index.ts · 0.90d · index.ts
-- [ ] T060 · components/chart · 0.80d · components/chart/ChartEmptyState.tsx components/chart/ChartToolbar.tsx
+- [x] T060 · components/chart · 0.80d · components/chart/ChartEmptyState.tsx components/chart/ChartToolbar.tsx
 - [x] T078 · lib · 0.80d · lib/cellTypes.ts
-- [ ] T080 · lib/metadata · 0.90d · lib/metadata/identity.ts
+- [x] T080 · lib/metadata · 0.90d · lib/metadata/identity.ts
 - [x] T095 · extensions · 0.80d · extensions/generated.ts
 - [x] T118 · lib · 0.80d · lib/cellEditorKind.ts
 - [x] T152 · lib · 0.60d · lib/dataTypeColors.ts components/DataTable/editors/toEditString.ts
@@ -123,16 +123,16 @@
 - [x] T635 · lib · 0.90d · lib/totalRowsDisplay.ts
 - [x] T636 · lib · 0.90d · lib/transferLimitationsPrefs.ts lib/transferPairing.ts lib/tunnelDeletion.ts
 - [x] T637 · lib · 0.80d · lib/tunnelDraft.ts
-- [ ] T638 · lib · 0.90d · lib/updater.ts
-- [ ] T639 · lib · 0.90d · lib/updateReminderSchedule.ts
-- [ ] T640 · lib · 1.30d · lib/valueSearch.ts · split
-- [ ] T641 · lib · 0.50d · lib/wappAssetOrigin.ts
-- [ ] T642 · lib · 1.30d · lib/wappBridge.ts · split
-- [ ] T643 · lib · 0.90d · lib/wappI18n.ts
-- [ ] T644 · lib · 0.30d · lib/windowKind.ts
-- [ ] T645 · lib · 0.90d · lib/windowManager.ts
-- [ ] T646 · lib · 0.60d · lib/workflowDraftYaml.ts lib/workflowListContextMenu.ts
-- [ ] T647 · lib · 0.80d · lib/workflowYaml.ts
+- [x] T638 · lib · 0.90d · lib/updater.ts
+- [x] T639 · lib · 0.90d · lib/updateReminderSchedule.ts
+- [x] T640 · lib · 1.30d · lib/valueSearch.ts · split
+- [x] T641 · lib · 0.50d · lib/wappAssetOrigin.ts
+- [x] T642 · lib · 1.30d · lib/wappBridge.ts · split
+- [x] T643 · lib · 0.90d · lib/wappI18n.ts
+- [x] T644 · lib · 0.30d · lib/windowKind.ts
+- [x] T645 · lib · 0.90d · lib/windowManager.ts
+- [x] T646 · lib · 0.60d · lib/workflowDraftYaml.ts lib/workflowListContextMenu.ts
+- [x] T647 · lib · 0.80d · lib/workflowYaml.ts
 - [x] T079 · lib/metadata · 0.90d · lib/metadata/identity.ts
 - [x] T092 · platform/shared · 0.80d · platform/shared/mcpClient.ts
 - [x] T044 · platform/shared · 0.30d · platform/shared/index.ts

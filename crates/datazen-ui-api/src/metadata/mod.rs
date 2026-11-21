@@ -16,7 +16,7 @@ pub use batch::{BatchFlush, MetadataBatcher, MetadataBatcherOptions, MetadataClo
 pub use identity::{
     ExecutionTarget, MetadataIdentityInput, MetadataSessionIdentity, MetadataTarget,
     NamespaceTarget, ObjectTarget, metadata_batch_bucket, metadata_cache_key,
-    metadata_config_bucket, metadata_session_key,
+    metadata_config_bucket, metadata_session_key, METADATA_IDENTITY_SURFACE,
 };
 pub use temporary_results::{
     CurrentCallContext, CurrentProvenanceContext, InvalidationDecision, InvalidationReason,
