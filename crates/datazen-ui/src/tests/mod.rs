@@ -1816,6 +1816,18 @@ mod table_data_panel_seed_audit;
 // editing stand-in seed, the 160 width default, the selection-only
 // grid roles).
 mod draft_row;
+// T278: the EditableCell shell (the kind derivation + the T297 host
+// seam), the binary editor (the read-only status row and its sr-only
+// echo), and the boolean editor (the checkbox branch's opposite pick,
+// the three-state select's discrete values, the current following the
+// draft).
+mod editable_cell;
+// T278 independent audit: fresh vectors (the zoned rule and the
+// temporal kinds, the seam label's whole derivation, the binary row's
+// theme stability inside the minimum window, the three-state choose
+// journey at both themes, the checkbox journey's opposite).
+mod editable_cell_audit;
+
 
 // T257 independent audit: fresh vectors (the unwired light-mode toggle,
 // two rows keeping their own markers and callbacks, the short widths

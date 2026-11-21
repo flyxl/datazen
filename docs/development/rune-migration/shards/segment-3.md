@@ -90,7 +90,7 @@
 - [x] T268 · windows/data-sync · 1.30d · windows/data-sync/DataSyncWindow.tsx · split
 - [x] T274 · stores · 0.90d · stores/metadataIdentityBinding.ts stores/paneFocus.ts stores/paneKeys.ts
 - [x] T275 · stores/tableData · 2.00d · stores/tableData/pendingChanges.ts · split
-- [ ] T278 · components/DataTable · 0.90d · components/DataTable/EditableCell.tsx components/DataTable/editors/BinaryCellEditor.tsx components/DataTable/editors/BooleanCellEditor.tsx
+- [x] T278 · components/DataTable · 0.90d · components/DataTable/EditableCell.tsx components/DataTable/editors/BinaryCellEditor.tsx components/DataTable/editors/BooleanCellEditor.tsx
 - [ ] T280 · components/ai · 0.90d · components/ai/Nl2SqlPanel.tsx
 - [ ] T282 · components · 0.90d · components/ThemeToggle.tsx
 - [x] T286 · windows/data-transfer · 0.60d · windows/data-transfer/TransferPairingNote.tsx windows/data-sync/CompareSummary.tsx
