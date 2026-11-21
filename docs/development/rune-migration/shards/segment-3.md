@@ -151,7 +151,7 @@
 - [x] T446 · stores · 0.90d · stores/schemaStoreSelectors.ts
 - [ ] T449 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncExecution.ts · split
 - [ ] T452 · stores · 0.30d · stores/schemaStoreState.ts
-- [ ] T455 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncExplain.ts
+- [x] T455 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncExplain.ts
 - [ ] T458 · stores · 1.30d · stores/settingsStore.ts · split
 - [x] T461 · windows/data-sync · 0.30d · windows/data-sync/useDataSyncFeedback.ts
 - [ ] T463 · stores · 1.30d · stores/tableDataStore.ts · split
