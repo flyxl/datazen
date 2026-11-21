@@ -40,6 +40,7 @@ pub(crate) mod structure_plan_preview;
 pub(crate) mod structure_view;
 pub(crate) mod table_filter_toolbar;
 pub(crate) mod table_clipboard_status;
+pub(crate) mod table_fk_breadcrumb;
 
 mod connections;
 mod connections_home;
