@@ -82,6 +82,8 @@ mod table_clipboard_status;
 mod table_fk_error_banner;
 mod table_load_error_state;
 mod table_no_primary_key_tip;
+// T544 independent audit: message edges, copy controls, empty guard, tooltip.
+mod table_banners_audit;
 // T542: the FK jump breadcrumb (segment labels, host actions, empty/truncated).
 mod table_fk_breadcrumb;
 // T524 independent audit: any-column not-contains, replace-all splicing and
