@@ -168,6 +168,8 @@ mod startup_timer;
 mod surface_bg_cache;
 mod sync_pairing;
 mod sync_taxonomy;
+mod table_schema_for_sql;
+mod table_sql_actions;
 mod tabs;
 mod theme_tokens;
 // `pub mod` — the second public module: the T211 types aggregate (the
@@ -955,6 +957,17 @@ pub use table_changes::{
     CommitPendingChangesResult, CommitStatementResult, CommitStatus, InsertLocation, PendingInsert,
     PendingRowChange, PendingStatus, PlannedStatement, RefreshStatus, RowChangePlan, RowIdentity,
     TableChangeContext as TableChangesContext, WriteExpressionId,
+};
+pub use table_schema_for_sql::{
+    build_pseudo_table_schema, fetch_table_schema_for_sql_generation,
+    generate_table_sql_with_fallbacks, FetchTableSchemaInput, GenerateFallbackOptions,
+    ReadCachedSchema, ReadColumnsRow, ReadColumnsValue, ReadRelationColumns, RelationRef,
+};
+pub use table_sql_actions::{
+    build_no_primary_key_edit_template, build_query_open_context, build_safe_table_sql_template,
+    build_table_context, build_table_sql_action, build_table_sql_actions, no_primary_key_edit_spec,
+    quote_table_identifier, QueryOpenContext, QueryOpenFocus, QueryOpenSource, SqlActionExecution,
+    TableActionInput, TableContext, TableSqlAction, TableSqlActionSpec, TABLE_SQL_ACTION_KINDS,
 };
 pub use theme_pack_apply::{
     classify_theme_pack, encode_wapp_theme_pack_id, invalid_wapp_theme_id_error,
