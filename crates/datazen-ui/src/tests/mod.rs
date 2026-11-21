@@ -1843,6 +1843,17 @@ mod draft_row_audit;
 // the analysis sections with their severity cards and suggestion cards,
 // the unconfigured notice, and the plan-tree mount condition).
 mod explain_panel;
+// T280: the NL2SQL panel (coder vectors: the generate guard, the SQL
+// write action, the context split, the preview derivation, the
+// unconfigured bar, the generating/generated button swap, the preview
+// card's label and spinner, the memory card, the error bar, the press
+// journeys, the disabled gate).
+mod nl2_sql_panel;
+// T280 independent audit: fresh vectors (the write bookkeeping across
+// generations, the whitespace guard, the theme-stable key set, the
+// unconfigured words verbatim, the citation journey at both themes).
+mod nl2_sql_panel_audit;
+
 
 // T260 independent audit: fresh vectors (the object-but-not-result-set
 // plans and the mixed-rows filter, the empty-list analysis rendering
