@@ -56,6 +56,7 @@ mod context_menu_position;
 // names reach the outside world through the module path while everything
 // else re-exports at the root (see `dashboard_types`' docs).
 pub mod dashboard_types;
+mod dismiss_prefs;
 mod filter_types;
 mod keyset_types;
 mod metadata;
@@ -297,6 +298,7 @@ pub use dashboard_types::{
 // The T188 filter vocabulary: the aggregate (`types/index`) re-exports
 // everything `types/filters.ts` declares, so the crate root carries the
 // same names.
+pub use dismiss_prefs::{create_dismiss_prefs, DismissPrefs};
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
     FilterOperator, SHARED_FILTER_OPERATORS,
