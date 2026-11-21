@@ -388,3 +388,39 @@ fn panel_fits_both_windows_in_both_palettes() {
         }
     }
 }
+
+// ── T504 independent audit (appended; reuses this module's Probe) ────────
+
+/// React builds `unique` as a `Map` and returns `[...unique.values()]` with no
+/// sort: catalog-item insertion order (`tables` then `views`, later duplicates
+/// replacing the value in place) is the order the panel receives
+/// (`QueryBuilderHostAdapter.tsx:62-90`). The port sorts tables by
+/// `(name, schema)` at the end of `build_catalog`, changing that observable
+/// order (the coder test even pins the sorted order).
+#[test]
+fn audit_catalog_keeps_react_insertion_order() {
+    let catalog = build_catalog(Some(&session()), "app", None);
+    let names: Vec<&str> = catalog.tables.iter().map(|r| r.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["users", "orders", "active_users"],
+        "React's Map preserves first-insertion order; no sort in the adapter"
+    );
+}
+
+/// React's `ensureColumns` callback returns early when the session id or
+/// database is empty (`QueryBuilderHostAdapter.tsx:93-101`). The port emits an
+/// `EnsureColumns` request from the service button regardless of those guards.
+#[test]
+fn audit_ensure_columns_noops_without_a_database() {
+    let mut p = open_probe();
+    p.vm.database = String::new();
+    let mut rt = runtime(p, (1440.0, 816.0));
+    assert!(has(&rt, "qb-ensure-columns"));
+    click(&mut rt, "qb-ensure-columns");
+    assert!(
+        rt.state.events.is_empty(),
+        "React's ensureColumns no-ops without a database; events {:?}",
+        rt.state.events
+    );
+}
