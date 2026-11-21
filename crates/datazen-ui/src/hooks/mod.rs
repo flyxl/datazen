@@ -75,3 +75,9 @@ mod use_settings_sync;
 // T430: the reusable theme sync (the menu's change + the other
 // windows' theme/theme-pack toggles over the T413 triple).
 mod use_theme_sync;
+// T438's carried half: the failure classification, the read-model
+// projections and the lib predicates (T561's until it lands).
+pub(crate) mod transfer_job_run_helpers;
+// T438: the Data Transfer Job execution state machine (the prepare →
+// apply → verdict lifecycle over the T424 command rail).
+mod use_transfer_job_run;
