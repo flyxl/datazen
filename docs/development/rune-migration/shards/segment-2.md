@@ -112,7 +112,7 @@
 - [ ] T615 · lib · 0.80d · lib/sqlFormat.ts lib/sqlFunctionRegistry.ts
 - [ ] T617 · lib · 0.80d · lib/sqlGenerator.ts lib/sqlNamespace.ts
 - [x] T621 · lib · 0.90d · lib/sqlStatementRange.ts lib/sqlTransactionGuard.ts lib/startupTimer.ts
-- [ ] T623 · lib · 0.90d · lib/surfaceBgCache.ts
+- [x] T623 · lib · 0.90d · lib/surfaceBgCache.ts
 - [ ] T625 · lib · 0.90d · lib/syncPairing.ts
 - [ ] T627 · lib · 0.30d · lib/syncTaxonomy.ts
 - [ ] T629 · lib · 1.30d · lib/tableChanges.ts · split
