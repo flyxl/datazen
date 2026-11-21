@@ -83,7 +83,7 @@
 - [x] T247 · windows/data-sync · 0.90d · windows/data-sync/DataSyncResultStep.tsx
 - [x] T253 · stores · 0.90d · stores/languagePackStore.ts
 - [x] T254 · stores/tableData · 0.30d · stores/tableData/panelSeed.ts
-- [ ] T257 · components/DataTable · 0.80d · components/DataTable/DetailPanelToggle.tsx components/DataTable/DraftRow.tsx
+- [x] T257 · components/DataTable · 0.80d · components/DataTable/DetailPanelToggle.tsx components/DataTable/DraftRow.tsx
 - [ ] T260 · components/ai · 0.90d · components/ai/ExplainPanel.tsx
 - [ ] T262 · components · 0.80d · components/StatusBar.tsx components/ThemedIcon.tsx
 - [ ] T267 · windows/data-transfer · 0.90d · windows/data-transfer/TransferMappingStep.tsx
