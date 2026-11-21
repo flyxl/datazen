@@ -322,3 +322,26 @@ fn capability_denied_name_input_does_not_mutate_the_draft() {
         .unwrap_or_else(|| panic!("name field is laid out"));
     assert!(!input.focusable, "a capability-denied field is disabled");
 }
+
+// Independent lane-C repro probe (original D2), retained as a regression guard.
+#[test]
+fn probe_capability_denied_text_fields_are_disabled() {
+    let mut state = vm();
+    let mut caps = all_caps();
+    caps.rename_column = false;
+    caps.alter_type = false;
+    caps.alter_default = false;
+    caps.comment = false;
+    state.caps = Some(caps);
+    let mut rt = runtime(scene(state, true), (1440.0, 816.0));
+    let (x, y) = rt.find("structure-column-name-c1").unwrap_or_else(|| panic!("name field laid out"));
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    rt.frame(0.0);
+    rt.paste("SHOULD_NOT_APPLY");
+    rt.frame(0.0);
+    assert_eq!(
+        rt.state.vm.columns[0].name.text, "id",
+        "React disables the name input when renameColumn is denied"
+    );
+}

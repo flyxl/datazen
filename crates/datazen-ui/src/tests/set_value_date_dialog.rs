@@ -193,3 +193,15 @@ fn confirm_applies_then_closes_in_order() {
         "React confirm calls onClose after onApply"
     );
 }
+
+// Independent lane-C repro probe (original D1), retained as a regression guard.
+#[test]
+fn probe_apply_also_closes_like_react() {
+    let mut rt = runtime(scene(vm(), true), (1440.0, 816.0));
+    click(&mut rt, "set-value-date-apply");
+    let actions = rt.state.actions.borrow();
+    assert!(
+        actions.contains(&SetValueDateAction::Close),
+        "React confirm calls onClose after onApply; actions were {actions:?}"
+    );
+}
