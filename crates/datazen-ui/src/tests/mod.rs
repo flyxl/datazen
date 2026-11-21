@@ -647,3 +647,5 @@ mod object_browser_audit;
 mod query_builder_host_adapter;
 // T510: QueryTransactionModals port (dialog copy, modal actions, busy/blank gating, geometry).
 mod query_transaction_modals;
+// T516: SnippetMenuButton port (builtins, menu items, insert actions, disabled, geometry).
+mod snippet_menu_button;
