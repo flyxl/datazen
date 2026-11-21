@@ -1681,3 +1681,17 @@ mod detail_panel;
 // NULL, the entry's conditional mount, the dialog gate, the pack's exact
 // strings, the commit wire shapes, the JSON/long-text press journeys).
 mod detail_panel_audit;
+
+// T239: the AI diagnosis strip (coder tests: the mount-effect gate, the
+// handleDiagnose spread with the redaction guarantee, the unconfigured
+// notice's configure and close wires, the idle / diagnosing / error /
+// result states, the apply compound, the inert invalid-context button,
+// the body's 200pt cap in both palettes).
+mod diagnosis_panel;
+
+// T239 independent audit: fresh vectors (the zh-CN pack's exact strings on
+// every state, the one-runtime journey idle→in-flight→failure→retry→
+// result→apply, both palettes' strip geometry, the 200pt cap under a
+// long four-change result, the wrapping error card, the request's
+// clone identity and the never-the-original-sql guarantee).
+mod diagnosis_panel_audit;
