@@ -78,6 +78,7 @@ mod endpoint_identity;
 mod error_message;
 mod export_capability;
 mod export_data;
+mod export_format;
 mod export_table_structure;
 mod extract_questions;
 mod filter_types;
@@ -414,6 +415,14 @@ pub use export_capability::{
     supports_full_table_export, DataExportCapability, ExportDriverMeta,
 };
 pub use export_data::{ExportDataFormat, ExportDataScope};
+pub use export_format::{
+    apply_csv_formula_guard, build_provided_export_filename, bytes_to_xlsx_cell,
+    default_escape_sql_literal, escape_sql_ident, escape_sql_literal, format_extension,
+    format_rows_as_text, format_rows_as_xlsx, format_sql_insert_script, format_sql_update_script,
+    mysql_escape_sql_literal, sql_quote_char, text_mime_type, to_xlsx_cell, update_key_column,
+    xlsx_sheet_rows, BinaryExportResult, ExportColumn, ExportFormatError, FormatRowsOptions,
+    TextExportResult, XlsxCellValue, SQL_INSERT_BATCH_SIZE, XLSX_MIME_TYPE,
+};
 pub use export_table_structure::{
     export_table_structure_to_file, DdlDialect, DdlQuery, DdlRowExtractor, DdlFetcher,
     ExportTableStructureResult, SqlDialectProvider, StructureExportInput, StructureExporter,
