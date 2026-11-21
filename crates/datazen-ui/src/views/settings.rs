@@ -71,6 +71,11 @@ pub(crate) mod mcp_settings_section_state;
 /// T336's state half: the view-models, the env converters, the form
 /// draft and the section state machine (split for the file-size rule).
 pub(crate) mod mcp_client_section_state;
+/// `windows/settings/PromptSettingsSection.tsx` (T369): the AI prompt
+/// template editor (the driver filter, the scenario cards with their
+/// variables hints and source badges, the override save, the reset
+/// confirm).
+pub(crate) mod prompt_settings_section;
 pub(crate) mod language_packs_card;
 // T381: the "?" help hint (hover/focus tooltip with the 120ms close
 // grace and the focus-retention rule).

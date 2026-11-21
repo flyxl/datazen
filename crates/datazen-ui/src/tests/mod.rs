@@ -923,3 +923,7 @@ mod mcp_settings_section_audit;
 // first-use privacy gate, the org list, the entries list with filters,
 // candidates bar, merge, and exports).
 mod memory_section_audit;
+// T369: the prompt settings section (the driver filter, the scenario
+// cards with their variables hints and source badges, the override
+// save, the reset confirm).
+mod prompt_settings_section_audit;
