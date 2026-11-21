@@ -1636,3 +1636,14 @@ mod context_picker;
 // two-level Escape walk, the mounted boundary pick, the loading gate,
 // thirty-row geometry).
 mod context_picker_audit;
+
+// T219: the SQL code block (coder tests: the dialect map, the code-prop
+// sync, the syntax-preset seam, the editable key path, the mounted
+// gutter / line rows, the read-only inertness).
+mod sql_code_block;
+
+// T219 independent audit: fresh vectors (the sqlserver dialect
+// contrast against the editor contract, the command-gated typing arms,
+// the IME commit path, the remote-sync caret reset, the gutter's
+// React-verbatim washes, forty-line geometry).
+mod sql_code_block_audit;
