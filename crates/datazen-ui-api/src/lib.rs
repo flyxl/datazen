@@ -28,6 +28,8 @@ mod migration_verification;
 mod migration_window_prefill;
 mod path_picker;
 mod query_context_path;
+mod result_find_replace;
+mod row_count_strategy;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -271,6 +273,12 @@ pub use query_context_path::{
     path_hierarchy_relative_namespace_path, path_hierarchy_selector_segments_for_ui,
     paths_equal, resolve_query_context_path, split_path_hierarchy_database_pin, unquote_ident,
 };
+pub use result_find_replace::{
+    EMPTY_RESULT_FIND_QUERY, ResultFindOperator, ResultFindQuery, ResultReplacePlanItem,
+    cell_matches, cell_text, filter_result_rows, next_plan_item, plan_result_replacements,
+    replace_text, row_matches,
+};
+pub use row_count_strategy::{CountStrategyInput, resolve_count_strategy};
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
 };
