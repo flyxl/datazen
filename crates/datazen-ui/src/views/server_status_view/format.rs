@@ -67,7 +67,6 @@ pub(crate) fn format_uptime(seconds: f64) -> String {
     let days = total / 86400;
     let hours = (total % 86400) / 3600;
     let minutes = (total % 3600) / 60;
-    let secs = total % 60;
     if days > 0 {
         t("serverStatus.uptimeFormatDays")
             .replace("{days}", &days.to_string())
@@ -77,7 +76,7 @@ pub(crate) fn format_uptime(seconds: f64) -> String {
         t("serverStatus.uptimeFormat")
             .replace("{hours}", &hours.to_string())
             .replace("{minutes}", &minutes.to_string())
-            .replace("{seconds}", &secs.to_string())
+            .replace("{seconds}", &seconds.to_string())
     }
 }
 
@@ -88,8 +87,10 @@ pub(crate) fn format_value(key: &str, value: &StatusValue) -> String {
         return "—".to_owned();
     }
     if key == "uptimeSeconds" {
-        if let Some(seconds) = number_from(value) {
-            return format_uptime(seconds);
+        // React formats uptime only for `typeof value === 'number'`; a numeric
+        // string such as "100" is returned unchanged.
+        if let StatusValue::Num(seconds) = value {
+            return format_uptime(*seconds);
         }
     }
     value.display()

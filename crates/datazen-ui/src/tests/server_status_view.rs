@@ -126,7 +126,7 @@ fn assert_inside(rt: &Runtime<Scene>, size: (f32, f32), label: &str) {
 #[test]
 fn formatting_helpers_match_react() {
     assert_eq!(format_uptime(100.0), t("serverStatus.uptimeFormat")
-        .replace("{hours}", "0").replace("{minutes}", "1").replace("{seconds}", "40"));
+        .replace("{hours}", "0").replace("{minutes}", "1").replace("{seconds}", "100"));
     let expected_days = t("serverStatus.uptimeFormatDays")
         .replace("{days}", "1").replace("{hours}", "1").replace("{minutes}", "1");
     assert_eq!(format_uptime(90061.0), expected_days, "days form when days > 0");

@@ -160,12 +160,12 @@ pub(crate) fn chart_cards(vm: &ServerStatusVm) -> Vec<ChartCardVm> {
             full_width: false,
         });
     }
-    if has_series(vm, &["cmd_insert", "cmd_select", "cmd_update", "cmd_delete"]) {
+    if has_series(vm, &["cmd_select", "cmd_insert", "cmd_update", "cmd_delete"]) {
         cards.push(ChartCardVm {
             key: "commands",
             label: t("serverStatus.chartCommands").to_owned(),
-            series_keys: ["insert", "select", "update", "delete"].map(|s| format!("cmd_{s}")).to_vec(),
-            series_labels: ["insert", "select", "update", "delete"]
+            series_keys: ["select", "insert", "update", "delete"].map(|s| format!("cmd_{s}")).to_vec(),
+            series_labels: ["select", "insert", "update", "delete"]
                 .map(|s| {
                     let mut capitalized = s.to_owned();
                     if let Some(first) = capitalized.get_mut(0..1) {
