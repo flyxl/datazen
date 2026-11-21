@@ -104,9 +104,9 @@
 - [x] T520 · windows/connection · 1.30d · windows/connection/QueryPanel.tsx · split
 - [x] T522 · windows/connection · 0.80d · windows/connection/result-workspace/ExecutionSummaryCard.tsx windows/connection/result-workspace/ResultFindBar.tsx
 - [x] T524 · windows/connection · 1.30d · windows/connection/result-workspace/ResultTableView.tsx · split
-- [ ] T526 · windows/connection · 0.50d · windows/connection/result-workspace/ResultWorkspace.tsx
-- [ ] T528 · windows/connection · 3.50d · windows/connection/ServerStatusView.tsx · split
-- [ ] T530 · windows/connection · 0.80d · windows/connection/SetValueDateDialog.tsx windows/connection/structure/StructureColumnTable.tsx
+- [x] T526 · windows/connection · 0.50d · windows/connection/result-workspace/ResultWorkspace.tsx
+- [x] T528 · windows/connection · 3.50d · windows/connection/ServerStatusView.tsx · split
+- [x] T530 · windows/connection · 0.80d · windows/connection/SetValueDateDialog.tsx windows/connection/structure/StructureColumnTable.tsx
 - [ ] T532 · windows/connection · 0.80d · windows/connection/structure/StructureIndexTable.tsx windows/connection/structure/StructurePlanPreview.tsx
 - [ ] T534 · windows/connection · 0.90d · windows/connection/StructureView.tsx
 - [ ] T536 · windows/connection · 0.30d · windows/connection/TableClipboardStatus.tsx

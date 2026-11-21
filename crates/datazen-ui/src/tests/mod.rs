@@ -56,6 +56,13 @@ mod execution_strategy_select;
 mod query_execution_gate;
 // T524: the result table view (status bar, cells, staging, find, geometry).
 mod result_table_view;
+// T526: ResultWorkspace port (view resolution, branches, toolbar, geometry).
+mod result_workspace;
+// T526 independent audit: inference branches, config independence, branch geometry.
+mod result_workspace_audit;
+// T530: date-value dialog + structure column table.
+mod set_value_date_dialog;
+mod structure_column_table;
 // T524 independent audit: any-column not-contains, replace-all splicing and
 // non-contains operator planning, checked against React resultFindReplace.
 mod result_table_view_audit;
@@ -1983,3 +1990,6 @@ mod sql_snippets_card_audit;
 // T434: the table-data settings section (the row count mode + the
 // auto-only threshold, the default sort, the grid density + toggles).
 mod table_data_settings_section_audit;
+
+// T528: ServerStatusView port (cards/charts, tabs, header actions, states, geometry).
+mod server_status_view;
