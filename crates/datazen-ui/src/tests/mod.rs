@@ -631,6 +631,10 @@ mod pending_plan_dialog;
 mod execution_strategy_ask_modal;
 // T508: QuerySidebarSection port (panels, lists, scope/search, menus, geometry).
 mod query_sidebar_section;
+// T514: RefreshCompletionButton port (label/tooltip, disabled states, action, geometry).
+mod refresh_completion_button;
+// T514 independent audit: VM guards, error answer, full-label text, independent rect.
+mod refresh_completion_button_audit;
 // T508 independent audit: unknown-db grouping, find_group and context-level edges.
 mod query_sidebar_section_audit;
 // T501 independent audit: preview boundaries and missing-current card.
