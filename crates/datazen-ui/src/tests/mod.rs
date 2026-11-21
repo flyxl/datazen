@@ -60,6 +60,10 @@ mod execution_strategy_select;
 mod query_execution_gate;
 // T524: the result table view (status bar, cells, staging, find, geometry).
 mod result_table_view;
+// T526: ResultWorkspace port (view resolution, branches, toolbar, geometry).
+mod result_workspace;
+// T526 independent audit: inference branches, config independence, branch geometry.
+mod result_workspace_audit;
 // T524 independent audit: any-column not-contains, replace-all splicing and
 // non-contains operator planning, checked against React resultFindReplace.
 mod result_table_view_audit;
