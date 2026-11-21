@@ -39,6 +39,7 @@ mod context_menu_position;
 mod data_table_bits;
 mod grid_cell;
 mod quick_look_dialog;
+mod tunnel_store;
 mod workflow_chat_panel;
 // `pub mod` — the crate's only public module: the T159 dashboard facade
 // keeps its display `DashboardWidget` here, but that root name is held
@@ -591,6 +592,11 @@ pub use virtual_body::{
 // `ExecutionSettings`, `StoredValuePresentationSettings`) stay reachable
 // only inside `types::client_settings`/`types::value_presentation` — the
 // aggregate surface mirrors React's own import-only reachability.
+pub use tunnel_store::{
+    begin_load, error_message, new_tunnel_id, plan_create, plan_remove, plan_update, plan_usage,
+    settle_load, usage_from_lists, TunnelCreatePlan, TunnelInput, TunnelStoreEffect,
+    TunnelStoreState, TUNNEL_STORE_GAP, TUNNEL_STORE_SURFACE,
+};
 pub use types::{
     AppSettings, ChangedColumnDiff, CheckConstraintDiffEntry, ColumnDiffEntry, ColumnInfo,
     CommandAccessLevel, CommandCategory, Counter, DefaultTableSort, DriverCommandDefinition,
