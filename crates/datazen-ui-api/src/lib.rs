@@ -30,6 +30,7 @@ mod data_sync_endpoints;
 mod data_sync_execution;
 mod data_sync_explain;
 mod data_sync_job_lifecycle;
+mod data_sync_options;
 mod diff_detail;
 mod data_sync_bars;
 mod data_table_clipboard_dom;
@@ -309,6 +310,13 @@ pub use data_sync_explain::{
     failure_explain, success_explain, ExplainEffects, ExplainInput, ExplainRequest,
     DATA_SYNC_EXPLAIN_GAP, DATA_SYNC_EXPLAIN_SURFACE, EXPLAIN_DIFF_FAILED_KEY,
     EXPLAIN_DIFF_NO_AI_KEY, EXPLAIN_DIFF_PROMPT_KEY,
+};
+pub use data_sync_options::{
+    apply_options_change, clear_mapping_rows, confirm_delete, invalidates_comparison,
+    scopes_after_options, selected_rows_after_options, DATA_SYNC_OPTIONS_GAP,
+    DATA_SYNC_OPTIONS_SURFACE, DEFAULT_CONFLICT_POLICY, OptionsChangeEffects, OptionsChangeInput,
+    ScopeExclusion, SYNC_STEP_PREVIEW, SYNC_STEP_RESULT, SYNC_STEP_SETUP,
+    TableScopeWithExclusions,
 };
 pub use data_table_clipboard_dom::{
     bind_clipboard_dom, handle_copy, handle_paste, is_editable_target, resolve_copy_target,
