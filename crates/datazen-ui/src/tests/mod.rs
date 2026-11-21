@@ -1600,3 +1600,8 @@ mod index_surface;
 // view-box mapping, null/NaN gaps, both formatCompact axes, the single palette
 // slot, the plain tooltip + cursor, the hit raster and the two-size window fit).
 mod scatter_chart_renderer;
+
+// T163: the DataTable shell's independent audit (the composition gates,
+// the overlays, the cell-contract surface, the Delete key, the export
+// dialog pair, geometry).
+mod data_table_shell_audit;

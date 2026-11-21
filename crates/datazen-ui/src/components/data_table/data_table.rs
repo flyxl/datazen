@@ -182,6 +182,7 @@ pub(crate) struct DataTable<'a, S: 'static> {
     // The filter surface.
     filters: Option<&'a [FilterCondition]>,
     filter_logic: FilterConnector,
+    filter_panel_open: bool,
     on_remove_filter: Option<Rc<dyn Fn(&mut S, usize)>>,
     on_clear_filters: Option<Rc<dyn Fn(&mut S)>>,
     on_add_filter: Option<Rc<dyn Fn(&mut S, FilterCondition)>>,
@@ -260,6 +261,7 @@ impl<'a, S: 'static> DataTable<'a, S> {
             body: None,
             filters: None,
             filter_logic: FilterConnector::And,
+            filter_panel_open: false,
             on_remove_filter: None,
             on_clear_filters: None,
             on_add_filter: None,
@@ -438,6 +440,13 @@ impl<'a, S: 'static> DataTable<'a, S> {
 
     pub(crate) fn filter_logic(mut self, logic: FilterConnector) -> Self {
         self.filter_logic = logic;
+        self
+    }
+
+    /// React `filterPanelOpen` (default `false`): the editor's panel is
+    /// open; the collapsed summary renders otherwise.
+    pub(crate) fn filter_panel_open(mut self, open: bool) -> Self {
+        self.filter_panel_open = open;
         self
     }
 
@@ -736,7 +745,7 @@ impl<'a, S: 'static> DataTable<'a, S> {
                 self.filter_logic,
                 empty,
                 FilterConnector::And,
-                true, // the panel is open; its own collapse owns the mount
+                self.filter_panel_open,
             )
             .loading(self.loading);
             if let Some(state) = self.filter_editor_state {
@@ -934,30 +943,6 @@ impl<'a, S: 'static> DataTable<'a, S> {
                     ))
                     .a11y_hidden(),
             );
-        // The Delete key (React `handleDeleteKey`): only with the delete
-        // path armed and a row set to act on.
-        if let Some(on_delete) = &self.on_delete_rows {
-            let on_delete = Rc::clone(on_delete);
-            let selected: Vec<usize> = self.selected_rows.iter().copied().collect();
-            let primary_keys = !self.primary_key_columns.is_empty();
-            let editing = self.editing_cell;
-            surface = surface.on_key(move |s: &mut S, ev: &KeyEvent, _tx: &mut Tx| {
-                if editing {
-                    return false;
-                }
-                if ev.key != Key::Delete && ev.key != Key::Backspace {
-                    return false;
-                }
-                if !primary_keys || selected.is_empty() {
-                    return false;
-                }
-                let mut rows = selected.clone();
-                rows.sort_unstable();
-                on_delete(s, rows);
-                true
-            });
-        }
-
         if has_placeholder {
             if let Some(placeholder) = self.empty_placeholder.clone() {
                 surface = surface.child(grid_row(placeholder, has_cell_selection, &self.key, 0));
@@ -1031,12 +1016,67 @@ impl<'a, S: 'static> DataTable<'a, S> {
             root = root.child(pager.build(dark, layer));
         }
 
+        // ── The Delete key (React `handleDeleteKey`, on the root) ──
+        // React binds it on the root div and lets the browser bubble: any
+        // focused control inside falls an unconsumed Delete through to it.
+        if let Some(on_delete) = &self.on_delete_rows {
+            let on_delete = Rc::clone(on_delete);
+            let selected: Vec<usize> = self.selected_rows.iter().copied().collect();
+            let primary_keys = !self.primary_key_columns.is_empty();
+            let editing = self.editing_cell;
+            root = root.on_key(move |s: &mut S, ev: &KeyEvent, _tx: &mut Tx| {
+                if editing {
+                    return false;
+                }
+                if ev.key != Key::Delete && ev.key != Key::Backspace {
+                    return false;
+                }
+                if !primary_keys || selected.is_empty() {
+                    return false;
+                }
+                let mut rows = selected.clone();
+                rows.sort_unstable();
+                on_delete(s, rows);
+                true
+            });
+        }
+
         // ── The dialogs (the overlay layer, mounted by state) ──
         if let (Some(shell), Some(host)) = (self.shell_state, self.shell_host.clone()) {
             // React's exportOpen: the dialog's own `open` gates the paint,
             // the shell's mirror keeps the audit channel.
             let _ = shell.vm.export_open;
             let mut dialog = DataExportDialog::<S>::new(EXPORT_DIALOG_KEY, &shell.export);
+            // The two kit listboxes' open state (the runtime keeps it on
+            // `S`; the shell owns it with the dialog pair's other halves).
+            {
+                let host = Rc::clone(&host);
+                dialog = dialog.on_scope_open(move |s: &mut S| {
+                    let state = host(s);
+                    state.export.scope_open = true;
+                });
+            }
+            {
+                let host = Rc::clone(&host);
+                dialog = dialog.on_scope_close(move |s: &mut S| {
+                    let state = host(s);
+                    state.export.scope_open = false;
+                });
+            }
+            {
+                let host = Rc::clone(&host);
+                dialog = dialog.on_format_open(move |s: &mut S| {
+                    let state = host(s);
+                    state.export.format_open = true;
+                });
+            }
+            {
+                let host = Rc::clone(&host);
+                dialog = dialog.on_format_close(move |s: &mut S| {
+                    let state = host(s);
+                    state.export.format_open = false;
+                });
+            }
             if let Some(f) = &self.on_export_filtered {
                 let f = Rc::clone(f);
                 dialog = dialog.on_close(move |s: &mut S| {

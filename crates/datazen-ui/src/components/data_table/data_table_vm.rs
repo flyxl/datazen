@@ -451,8 +451,8 @@ mod vm_tests {
 
     #[test]
     fn grid_row_count_follows_the_aria_formula() {
-        assert_eq!(grid_row_count(false, 10, false), 12); // rows + header + status
-        assert_eq!(grid_row_count(false, 0, false), 2); // header + empty status
+        assert_eq!(grid_row_count(false, 10, false), 11); // rows + header, no status row
+        assert_eq!(grid_row_count(false, 0, false), 2); // header + the empty status row
         assert_eq!(grid_row_count(false, 0, true), 2);
         assert_eq!(grid_row_count(false, 5, true), 7);
         assert_eq!(grid_row_count(true, 10, false), 1); // placeholder replaces all
