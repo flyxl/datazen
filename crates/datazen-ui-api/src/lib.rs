@@ -180,6 +180,7 @@ pub mod types;
 pub mod schema_object_search;
 pub mod server_status_trends;
 pub mod sql_editor_defaults;
+pub mod table_changes;
 
 use std::collections::HashMap;
 
@@ -943,6 +944,15 @@ pub use sync_pairing::{
     view_to_result, PairingView, SyncCategory, SyncConnection, SyncPairingCache,
     SyncPairingResult, SyncPairingState, SyncPath, SyncRegistryMeta,
     SYNC_PAIRING_CACHE_DELIMITER,
+};
+pub use table_changes::{
+    build_row_identity, clone_pending_row_change, draft_write_columns,
+    duplicate_row_identity_keys, is_complete_table_change_context, normalize_edit_value,
+    row_identity_key, stable_serialize, table_change_context_key, values_equal, ChangeSeverity,
+    ChangeWarning, ColumnValues, CommitOperation, CommitPendingChangesResponse,
+    CommitPendingChangesResult, CommitStatementResult, CommitStatus, InsertLocation, PendingInsert,
+    PendingRowChange, PendingStatus, PlannedStatement, RefreshStatus, RowChangePlan, RowIdentity,
+    TableChangeContext as TableChangesContext, WriteExpressionId,
 };
 pub use tabs::{Tab, TabKind, Tabs};
 // The T211 types aggregate: the members React's `types/index.ts` declares or
