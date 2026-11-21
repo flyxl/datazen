@@ -159,7 +159,7 @@
 - [x] T468 · stores · 0.90d · stores/tunnelStore.ts
 - [x] T471 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncOptions.ts
 - [x] T473 · stores · 0.90d · stores/uiStore.ts
-- [ ] T476 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncProfiles.ts · split
+- [x] T476 · windows/data-sync · 1.30d · windows/data-sync/useDataSyncProfiles.ts · split
 - [x] T478 · stores · 0.90d · stores/updateReminderStore.ts
 - [ ] T481 · windows/data-sync · 0.90d · windows/data-sync/useDataSyncRefs.ts
 - [x] T483 · stores · 0.90d · stores/wappStore.ts
