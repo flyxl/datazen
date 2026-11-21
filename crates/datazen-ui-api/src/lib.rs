@@ -111,6 +111,7 @@ mod import_execution;
 mod keyset_paging;
 mod keyset_types;
 mod kv_workspace;
+mod load_batch_export_table;
 mod metadata;
 mod platform_shared;
 mod relation_prediction;
@@ -608,6 +609,11 @@ pub use kv_workspace::{
     capability_key_for_slot, get_kv_slot_component, has_kv_slot_capability, KvDriverMeta,
     KvSlotComponent, KvSlotComponentProvider, KvSlotMetaProvider, KvSlotName,
     KvWorkspaceCapabilities, KV_SLOT_NAMES,
+};
+pub use load_batch_export_table::{
+    load_batch_export_table_data, rows_to_records, BatchDdlFetcher, BatchDdlRowExtractor,
+    LoadBatchExportDeps, LoadBatchExportTableParams, RelationSchemaProvider, SchemaFetcher,
+    TableDataFetcher, TableDataRequest, DEFAULT_MAX_ROWS, DEFAULT_PAGE_SIZE,
 };
 pub use metadata::{
     BatchFlush, CurrentCallContext, CurrentProvenanceContext, ExecutionTarget,
