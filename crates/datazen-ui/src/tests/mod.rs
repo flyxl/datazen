@@ -67,6 +67,11 @@ mod result_workspace_audit;
 // T530: date-value dialog + structure column table.
 mod set_value_date_dialog;
 mod structure_column_table;
+// T532: StructureIndexTable + StructurePlanPreview ports (rows/flags/actions, states, geometry).
+mod structure_index_table;
+mod structure_plan_preview;
+// T532 independent audit: helper branches, capability gates, plan-preview states.
+mod structure_index_audit;
 // T524 independent audit: any-column not-contains, replace-all splicing and
 // non-contains operator planning, checked against React resultFindReplace.
 mod result_table_view_audit;
