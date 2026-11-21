@@ -94,7 +94,7 @@
 - [x] T579 · lib · 0.90d · lib/querySidebarContextMenu.ts lib/queryStream.ts lib/relationMetadata/identity.ts
 - [x] T581 · lib · 0.30d · lib/resolveUiLanguage.ts
 - [x] T583 · lib · 0.90d · lib/resultEditability.ts
-- [ ] T585 · lib · 0.80d · lib/resultFindReplace.ts lib/rowCountStrategy.ts
+- [x] T585 · lib · 0.80d · lib/resultFindReplace.ts lib/rowCountStrategy.ts
 - [x] T587 · lib · 0.60d · lib/rowToRecord.ts lib/runPredefinedEdit.ts
 - [ ] T589 · lib · 0.80d · lib/schemaCache.ts lib/schemaChangingSql.ts
 - [ ] T591 · lib · 0.90d · lib/schemaDiffConfirm.ts
