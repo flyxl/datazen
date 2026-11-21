@@ -15,6 +15,7 @@ mod document_scroll_lock;
 mod ensure_namespace;
 mod er_node_context_menu;
 mod export_dialog_shared;
+mod extract_sql;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -157,6 +158,9 @@ pub use export_dialog_shared::{
     BuildExportFormatOptions, BuildExportScopeOptions, DisabledReasonKey, EntireTableAvailability,
     ExportFormatOption, ExportScopeOption, FormatOptionSpec, ScopeLabels,
     build_export_format_options, build_export_scope_options,
+};
+pub use extract_sql::{
+    extract_sql_from_response, extract_sql_streaming, looks_like_sql, starts_sql_statement,
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
