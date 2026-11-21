@@ -108,7 +108,7 @@
 - [x] T607 · lib · 2.00d · lib/sqlCompletionContext.ts · split
 - [x] T609 · lib · 2.00d · lib/sqlCompletions.ts · split
 - [x] T611 · lib · 0.50d · lib/sqlEditorDefaults.ts
-- [ ] T613 · lib · 0.90d · lib/sqlFileExecution.ts
+- [x] T613 · lib · 0.90d · lib/sqlFileExecution.ts
 - [ ] T615 · lib · 0.80d · lib/sqlFormat.ts lib/sqlFunctionRegistry.ts
 - [ ] T617 · lib · 0.80d · lib/sqlGenerator.ts lib/sqlNamespace.ts
 - [ ] T621 · lib · 0.90d · lib/sqlStatementRange.ts lib/sqlTransactionGuard.ts lib/startupTimer.ts
