@@ -31,6 +31,7 @@ mod data_sync_execution;
 mod data_sync_explain;
 mod data_sync_job_lifecycle;
 mod data_sync_options;
+mod data_sync_profiles;
 mod diff_detail;
 mod data_sync_bars;
 mod data_table_clipboard_dom;
@@ -317,6 +318,17 @@ pub use data_sync_options::{
     DATA_SYNC_OPTIONS_SURFACE, DEFAULT_CONFLICT_POLICY, OptionsChangeEffects, OptionsChangeInput,
     ScopeExclusion, SYNC_STEP_PREVIEW, SYNC_STEP_RESULT, SYNC_STEP_SETUP,
     TableScopeWithExclusions,
+};
+pub use data_sync_profiles::{
+    current_profile_tables, delete_selected_profile, load_selected_profile, load_sync_profiles,
+    parse_timestamp, reconcile_unknown_run, save_current_profile, DataSyncTableMapping,
+    MappingRowLike, MigrationRunRecordLike, ProfileConnection, ProfileEffect, ProfileEndpointState,
+    ProfilesHost, ProfilesState, ReconcileInput, SyncProfile, DATA_SYNC_PROFILES_GAP,
+    DATA_SYNC_PROFILES_SURFACE, PROFILE_DELETED_KEY, PROFILE_LOADED_KEY,
+    PROFILE_MISSING_CONNECTION_KEY, PROFILE_MISSING_FIELDS_KEY, PROFILE_SAVED_KEY,
+    RECONCILE_BUSY_KEY, RECONCILE_MISSING_CONNECTION_KEY, RECONCILE_NEEDS_SCOPE_KEY,
+    RECONCILE_PROFILE_CHANGED_KEY, RECONCILE_PROFILE_READY_KEY,
+    RECONCILE_SCOPE_UNAVAILABLE_KEY,
 };
 pub use data_table_clipboard_dom::{
     bind_clipboard_dom, handle_copy, handle_paste, is_editable_target, resolve_copy_target,
