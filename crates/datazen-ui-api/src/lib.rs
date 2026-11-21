@@ -67,6 +67,7 @@ mod schema_store;
 mod schema_store_selectors;
 mod selection_actions;
 mod selection_scope;
+mod settings_store;
 mod stage_cell_value;
 mod stage_edit_actions;
 mod stage_paste_writes;
@@ -475,6 +476,14 @@ pub use selection_scope::{
     default_row_selected, scope_for_operation, scope_selects_operation, selected_row_token,
     DataSyncSelectedRow, DataSyncSelectionScopeMode, DataSyncTableSelection, SELECTED_ROW_TOKEN_SEPARATOR,
     SELECTION_SCOPE_GAP, SELECTION_SCOPE_SURFACE,
+};
+pub use settings_store::{
+    authoritative_read, is_unknown_version_value_presentation, load_fence, load_fence_current,
+    next_value_presentation_revision, normalize_loaded_settings, normalize_settings_language,
+    parse_stored_value_presentation, persist_merge, resolve_ui_language, settings_changed,
+    theme_recovery, update_settings_merge, value_presentation_fresh, LoadRecovery,
+    SETTINGS_CHANGED_EVENT, SETTINGS_STORE_GAP, SETTINGS_STORE_SURFACE, SETTINGS_THEME_STORAGE_KEY,
+    THEME_CHANGED_EVENT, VALUE_PRESENTATION_VERSION,
 };
 pub use stage_cell_value::{
     compute_stage_cell_value_result, compute_stage_expression_value_result, compute_stage_result,
