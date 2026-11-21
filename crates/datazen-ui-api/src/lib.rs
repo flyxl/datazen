@@ -4,6 +4,7 @@
 //! interface can run before the desktop and HTTP adapters exist.
 
 mod ai_memory_correction;
+mod app_root_surface;
 // T228: the memory-settings normalizers and the message-block parser —
 // pure functions over the persistence JSON and chat markdown.
 mod ai_memory_settings;
@@ -60,6 +61,12 @@ use datazen_driver_api::{ConnectionConfig as DriverConnectionConfig, SslMode as 
 pub use ai_memory_correction::{
     AiMemoryCommands, MemoryCorrectionSubmission, SchemaStaleSubmission,
     mark_stale_for_schema_drops, submit_memory_correction_if_needed,
+};
+pub use app_root_surface::{
+    app_module_mark, resolve_window_component, should_hide_splash, AppWindowRoute,
+    APP_CHUNK_LOAD_MARKS, APP_DEFAULT_COMPONENT, APP_DEFAULT_WINDOW_KIND, APP_DOM_GAP,
+    APP_GLOBAL_HOSTS, APP_MOUNT_MARK, APP_SELECTION_INSTALLERS, APP_SHELL_WRAPPERS,
+    APP_WINDOW_ROUTES,
 };
 pub use ai_memory_patterns::{
     HistorySort, MemoryPatternCommands, MemoryPatternExtractionInput, MemoryPatternScheduler,
