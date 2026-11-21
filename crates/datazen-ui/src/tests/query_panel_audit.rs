@@ -68,6 +68,16 @@ fn has_key(rt: &Runtime<Scene>, key: &str) -> bool {
     rt.elements().iter().any(|e| e.key.as_deref() == Some(key) && !e.exiting)
 }
 
+fn click(rt: &mut Runtime<Scene>, key: &str) {
+    for _ in 0..90 {
+        rt.frame(1.0 / 60.0);
+    }
+    let (x, y) = rt.find(key).unwrap_or_else(|| panic!("audit: {key} laid out"));
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    rt.frame(0.0);
+}
+
 // -------------------------------------------------------------------------
 // (a) Passing branch-coverage tests — used as mutation canaries.
 // -------------------------------------------------------------------------
@@ -199,6 +209,38 @@ fn react_success_message_has_no_copy_action() {
     s.show_message("done", MessageKind::Success);
     let rt = runtime(s, true, DESIGN);
     assert!(!has_key(&rt, "result-message-copy"), "audit: React hides the copy action for success messages");
+}
+
+#[test]
+fn error_copy_action_emits_the_exact_message_text() {
+    let mut s = vm();
+    s.show_message("copy me", MessageKind::Error);
+    let mut rt = runtime(s, true, DESIGN);
+    assert_eq!(element(&rt, "result-message-copy").label.as_deref(), Some(t("common.copy")));
+    click(&mut rt, "result-message-copy");
+    assert_eq!(
+        *rt.state.actions.borrow(),
+        vec![QueryPanelAction::CopyMessage { text: "copy me".to_owned() }],
+        "audit: the copy action carries the exact message text to the host"
+    );
+}
+
+#[test]
+fn copied_feedback_switches_label_but_keeps_the_copy_tooltip() {
+    let mut s = vm();
+    s.show_message("copy me", MessageKind::Error);
+    s.message_copied = true;
+    let rt = runtime(s, false, MIN);
+    assert_eq!(
+        element(&rt, "result-message-copy").label.as_deref(),
+        Some(t("common.copied")),
+        "audit: copied feedback shows common.copied"
+    );
+    assert_eq!(
+        element(&rt, "result-message-copy").help.as_deref(),
+        Some(t("common.copy")),
+        "audit: the copy tooltip stays common.copy"
+    );
 }
 
 #[test]
