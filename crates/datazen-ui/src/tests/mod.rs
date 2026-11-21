@@ -626,6 +626,8 @@ mod pending_plan_dialog;
 mod execution_strategy_ask_modal;
 // T508: QuerySidebarSection port (panels, lists, scope/search, menus, geometry).
 mod query_sidebar_section;
+// T508 independent audit: unknown-db grouping, find_group and context-level edges.
+mod query_sidebar_section_audit;
 // T501 independent audit: preview boundaries and missing-current card.
 mod execution_strategy_ask_modal_audit;
 // T492 independent audit: no-insert description, statement order, empty fields.
