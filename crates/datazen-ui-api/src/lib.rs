@@ -33,6 +33,8 @@ mod row_count_strategy;
 mod schema_diff_confirm;
 mod schema_resource_cache;
 mod chart_colors;
+mod chart_empty_state;
+mod chart_toolbar;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
 mod build_editor_schema;
@@ -339,6 +341,18 @@ pub use schema_resource_cache::{
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
+};
+pub use chart_empty_state::{
+    build_chart_empty_state, ChartEmptyReason, ChartEmptyStateView, EMPTY_CONTAINER_CLASS,
+    EMPTY_ICON_CLASS, EMPTY_KEY_NO_CONFIG, EMPTY_KEY_NO_DATA, EMPTY_KEY_NO_NUMERIC_FIELD,
+    EMPTY_TEXT_CLASS,
+};
+pub use chart_toolbar::{
+    chart_type_class, chart_type_label_key, chart_type_test_id, reduce_toolbar,
+    resolve_toolbar_labels, split_available, split_class, visible_controls, ChartExportFormat,
+    ChartToolbarState, CHART_TYPES, KEY_EXPAND, KEY_EXPORT, KEY_GRID, KEY_LEGEND, KEY_SPLIT_VIEW,
+    KEY_VALUES, TOOLBAR_SHELL_CLASS, ToolbarControl, ToolbarContext, ToolbarEffect, ToolbarLabels,
+    ToolbarOutcome, ACTIVE_CLASS, INACTIVE_CLASS,
 };
 pub use bootstrap_icon_resolver::{
     DbIcon, IconResolverSeed, ResolvedIcon, default_icon_resolver_seed, resolve_icon,
