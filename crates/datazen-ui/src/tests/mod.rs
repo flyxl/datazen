@@ -684,3 +684,15 @@ mod result_find_bar;
 mod server_status_view;
 // T534: StructureView port (column rows, badges, highlight, edit action, states, geometry).
 mod structure_view;
+// T568: nodeMetrics + relationStyle ports (size contract, stroke contract,
+// legend drift guard, rendering-variant pinning).
+mod er_node_metrics;
+// T564: interactionState port (pins, hover neighbourhood/styling, label
+// fitting) over the shared ER graph model.
+mod er_interaction_state;
+// T566: layoutErGraph port (layered ranks/order/coordinates, grid fallback,
+// parallel-edge collapse, seeded fuzz, 500-table budget).
+mod er_layout_er_graph;
+// T562: buildErGraph port (nodes/edges from schemas, focus mode, inferred
+// relations, collapse, handle routing, seeded collapse set).
+mod er_build_er_graph;
