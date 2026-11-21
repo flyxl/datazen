@@ -141,7 +141,7 @@
 - [ ] T416 · components/DataTable · 0.90d · components/DataTable/fkSelectorText.ts components/DataTable/gridClipboardBridge.ts components/DataTable/rowHeight.ts
 - [x] T419 · windows/data-sync · 0.90d · windows/data-sync/mappingView.ts
 - [x] T423 · stores · 0.30d · stores/schemaRequestTracker.ts
-- [ ] T425 · components/DataTable · 0.90d · components/DataTable/useDataTableClipboardDom.ts
+- [x] T425 · components/DataTable · 0.90d · components/DataTable/useDataTableClipboardDom.ts
 - [x] T428 · windows/data-sync · 0.90d · windows/data-sync/selectionScope.ts
 - [ ] T431 · stores · 1.30d · stores/schemaStore.ts · split
 - [ ] T433 · components/DataTable · 2.40d · components/DataTable/useDataTableContextMenu.ts · split
