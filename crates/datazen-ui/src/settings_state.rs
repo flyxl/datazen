@@ -310,3 +310,81 @@ impl AppState {
         let _ = self.write_ui_setting(Setting::Theme { dark: !dark });
     }
 }
+
+// ── settingsSections.ts (T484): the backend-facing section sets ────────────
+
+/// `DESKTOP_SETTINGS_SECTIONS` — the sections currently supplied
+/// by native host services (the F5 wiring's own table; the page's
+/// available set is `settings_sections_for_backend` over the
+/// capabilities).
+pub(crate) const DESKTOP_SETTINGS_SECTIONS: [&str; 7] = [
+    "logging",
+    "ai",
+    "prompts",
+    "mcpServer",
+    "mcpClient",
+    "tunnels",
+    "extensions",
+];
+
+/// `ALL_SETTINGS_SECTIONS` — every section the page knows (the
+/// desktop-shaped default until F5's table): the ids of
+/// [`SETTINGS_SECTIONS`], in order.
+pub(crate) fn all_settings_sections() -> Vec<&'static str> {
+    SETTINGS_SECTIONS.iter().map(|section| section.id).collect()
+}
+
+/// `settingsSectionsForBackend(sections)`: the sections the
+/// settings page may show, given the form's section set (F5's
+/// `PlatformCapabilities.settingsSections` plugs in directly;
+/// callers without capabilities pass the full set).
+pub(crate) fn settings_sections_for_backend(
+    sections: &[&str],
+) -> Vec<&'static SettingsSectionDef> {
+    SETTINGS_SECTIONS
+        .iter()
+        .filter(|section| sections.contains(&section.id))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_backend_sets_match_the_react_tables() {
+        // The 12-section page in order.
+        let all = all_settings_sections();
+        assert_eq!(all.len(), 12);
+        assert_eq!(all[0], "general");
+        assert_eq!(all[11], "extensions");
+        // The native-host seven.
+        assert_eq!(
+            DESKTOP_SETTINGS_SECTIONS,
+            ["logging", "ai", "prompts", "mcpServer", "mcpClient", "tunnels", "extensions"]
+        );
+        // The filter keeps the page's order, not the input's.
+        let web = ["behavior", "general", "editor", "dataBrowsing", "appearance"];
+        let filtered = settings_sections_for_backend(&web);
+        assert_eq!(
+            filtered.iter().map(|s| s.id).collect::<Vec<_>>(),
+            ["general", "appearance", "dataBrowsing", "editor", "behavior"],
+            "the page order rules"
+        );
+        // An empty set shows nothing.
+        assert!(settings_sections_for_backend(&[]).is_empty());
+        // The full set shows everything.
+        assert_eq!(settings_sections_for_backend(&all).len(), 12);
+        // Unknown ids drop (a web build's narrower set never
+        // invents sections).
+        assert_eq!(settings_sections_for_backend(&["nope", "general"]).len(), 1);
+    }
+
+    #[test]
+    fn parse_settings_section_rules() {
+        assert_eq!(parse_settings_section("tunnels"), "tunnels");
+        assert_eq!(parse_settings_section("general"), "general");
+        assert_eq!(parse_settings_section(""), "general", "the fallback");
+        assert_eq!(parse_settings_section("nonsense"), "general");
+    }
+}

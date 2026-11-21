@@ -20,7 +20,7 @@
 //!   is enabled — React's same `!iconPath || !wapp.enabled` gate) still shows
 //!   the letter avatar, which is exactly the fallback React renders when the
 //!   read fails. The icon path rides [`WappSummaryVm::icon`] for the wiring.
-//! - `PERMISSION_LABELS` (`windows/wapps/permissionLabels.ts` is T484): the
+//! - `PERMISSION_LABELS` (landed as T484's `permission_labels`): the
 //!   permission badges render without their tooltip texts until that port
 //!   lands; the mismatch badge's own hint tooltip is real (its key is in the
 //!   zh-CN table).
@@ -171,8 +171,9 @@ pub(crate) fn wapp_card(wapp: &WappSummaryVm, dark: bool) -> El {
         );
     }
     for perm in wapp.permissions.clone() {
-        // The tooltip text is T484's port (`PERMISSION_LABELS`); the badge
-        // itself renders the permission string, as React's does.
+        // The tooltip text is T484's `permission_labels` (the kit Badge
+        // has no tooltip surface); the badge itself renders the
+        // permission string, as React's does.
         badges = badges.child(
             Badge::new(format!("{card_key}-badge-permission-{perm}"), perm.clone()).build(dark),
         );

@@ -14,10 +14,12 @@
 //!   workspace/theme predicates and the filter/search/counts/groups
 //!   derivations.
 //!
-//! `permissionLabels.ts` (the permission badges' tooltip texts) is T484 and
-//! still ahead.
+//! `permissionLabels.ts` (the permission badges' tooltip texts) landed as
+//! T484's `permission_labels`.
 
 pub(crate) mod install_wapp_dialog;
+// T484: the permission badges' tooltip texts.
+pub(crate) mod permission_labels;
 pub(crate) mod wapp_card;
 pub(crate) mod wapp_management_page;
 pub(crate) mod wapp_summary;

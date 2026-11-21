@@ -29,6 +29,10 @@ pub(crate) mod history_section;
 pub(crate) mod step_result_utils;
 // T070: the form has no production mount yet — the WorkflowPage port (T147)
 // is the first caller; drop this allow when it lands.
+// T484: the richer editor draft's parking lot behind the legacy
+// WorkflowPage callback.
+#[allow(dead_code)]
+pub(crate) mod draft_bridge;
 #[allow(dead_code)]
 pub(crate) mod workflow_form;
 
