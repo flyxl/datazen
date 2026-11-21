@@ -105,7 +105,7 @@
 - [x] T314 · stores · 0.90d · stores/panelExecCleanup.ts
 - [x] T315 · stores/tableData · 0.50d · stores/tableData/selectionActions.ts
 - [x] T317 · components/DataTable · 0.90d · components/DataTable/editors/EnumCellEditor.tsx components/DataTable/editors/JsonCellEditor.tsx components/DataTable/editors/LongTextCellEditor.tsx
-- [ ] T319 · components/ai · 1.30d · components/ai/WorkflowChatPanel.tsx · split
+- [x] T319 · components/ai · 1.30d · components/ai/WorkflowChatPanel.tsx · split
 - [ ] T324 · windows/data-sync · 0.60d · windows/data-sync/EndpointsBar.tsx windows/data-sync/ExecuteBar.tsx
 - [x] T329 · stores · 0.90d · stores/panelQueryContext.ts
 - [x] T330 · stores/tableData · 2.00d · stores/tableData/stageCellValue.ts · split
