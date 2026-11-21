@@ -127,7 +127,9 @@ fn target_column_matches_case_insensitively() {
     let mut vm = ready();
     vm.target_column = Some("ORDER_NO".to_owned());
     assert_eq!(vm.matched_column(), Some("order_no"));
-    assert_eq!(vm.effective_highlight().as_deref(), Some("order_no"));
+    // targetColumn only seeds the host highlight; once the host leaves it
+    // unset, effective_highlight is None (it is not re-derived from the target).
+    assert_eq!(vm.effective_highlight().as_deref(), None);
     vm.target_column = Some("missing".to_owned());
     assert_eq!(vm.matched_column(), None);
     vm.highlighted_col = Some("city".to_owned());

@@ -123,13 +123,12 @@ impl StructureViewVm {
         schema.columns.iter().find(|col| col.name.to_lowercase() == target).map(|col| col.name.as_str())
     }
 
-    /// The effective highlight: an explicit host highlight, else the target
-    /// column match.
+    /// The effective highlight: the host-owned `highlighted_col` is the sole
+    /// source. React clears it after the fade and never re-derives it from
+    /// `targetColumn` (which only seeds it on initial load).
     #[allow(dead_code)] // pure helper; consumed by the row highlight and tests.
     pub(crate) fn effective_highlight(&self) -> Option<String> {
-        self.highlighted_col
-            .clone()
-            .or_else(|| self.matched_column().map(str::to_owned))
+        self.highlighted_col.clone()
     }
 
     /// React `t('structView.fields', { count })`.
@@ -294,7 +293,10 @@ pub(crate) fn build<S: 'static>(
                 .font(k.ty.text_small)
                 .color(if column.nullable { k.c.text_accent } else { k.c.text_muted }),
         );
-        let default = column.default_value.clone().unwrap_or_else(|| "—".to_owned());
+        let default = match column.default_value.as_deref() {
+            Some(value) if !value.is_empty() => value.to_owned(),
+            _ => "—".to_owned(),
+        };
         tr = tr.child(
             text(default)
                 .key(format!("struct-col-default-{}", column.name))
