@@ -288,7 +288,7 @@ fn decide_target(target: &ResolvedTarget, input: &GateInput) -> (Vec<GateAction>
         reasons.push("chat-write");
     }
     if decision.needs_confirm || !reasons.is_empty() {
-        let spec = confirm_spec(&reasons, &decision.findings, &target.sql);
+        let spec = confirm_spec(&reasons, &decision.findings, decision.classification, &target.sql);
         return (
             vec![GateAction::ConfirmDangerous { spec }],
             Some(PendingConfirm {
@@ -317,18 +317,20 @@ fn decide_target(target: &ResolvedTarget, input: &GateInput) -> (Vec<GateAction>
 /// `requestExecute` end to end, before any host confirm result.
 #[allow(dead_code)] // pure gate; consumed by the reducer and tests.
 pub(crate) fn decide(input: &GateInput, now: f64) -> (Vec<GateAction>, Option<PendingConfirm>) {
+    let target = match resolve_target(input) {
+        Ok(target) => target,
+        Err(ask) => return (vec![GateAction::OpenStrategyAsk { target: ask }], None),
+    };
+    // React checks sqlToRun (the resolved target) inside runExecute, after
+    // target resolution — a quoted literal in a non-target statement is fine.
     if input.database_type.eq_ignore_ascii_case("postgresql")
-        && suspicious_pg_double_quote(&input.snapshot.sql)
+        && suspicious_pg_double_quote(&target.sql)
     {
         return (
             vec![message("query.postgresDoubleQuoteHint")],
             None,
         );
     }
-    let target = match resolve_target(input) {
-        Ok(target) => target,
-        Err(ask) => return (vec![GateAction::OpenStrategyAsk { target: ask }], None),
-    };
     let (unclosed, _, _, _) = transaction_analysis(&target.sql);
     if unclosed {
         return (
@@ -420,8 +422,13 @@ pub(crate) fn reduce(state: &mut QueryExecutionGateState, event: GateEvent) -> V
             state.ask_modal = None;
             match (input.as_mut(), entire) {
                 (Some(input), Some(sql)) => {
+                    // React `requestExecute('full', entire)` runs executeQuery
+                    // (Query mode) on the modal's entire script, not a selection.
                     input.kind = ExecuteKind::Full;
-                    input.selection_sql = Some(sql);
+                    input.selection_sql = None;
+                    input.cursor_offset = None;
+                    input.strategy = ExecutionStrategy::EntireScript;
+                    input.snapshot.sql = sql;
                     decide(input, 0.0).0
                 }
                 _ => Vec::new(),

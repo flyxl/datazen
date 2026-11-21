@@ -240,7 +240,11 @@ fn ask_strategy_opens_the_modal_and_both_choices_reenter_the_gate() {
         now: 0.0,
     });
     let entire = reduce(&mut state, GateEvent::AskExecuteEntire);
-    assert!(matches!(first(&entire), GateAction::Execute { .. }), "entire choice executes");
+    assert!(
+        matches!(first(&entire), GateAction::Execute { mode: ExecutionMode::Query, .. }),
+        "entire choice executes via executeQuery: got {:?}",
+        first(&entire)
+    );
     assert!(state.ask_modal.is_none());
 }
 
@@ -255,6 +259,70 @@ fn snapshot_staleness_and_post_execution_are_explicit() {
     assert!(!is_production_group(Some("team-a")));
     assert_eq!(post_execution(None), GateAction::PostExecution { had_error: false });
     assert_eq!(post_execution(Some("25P02")), GateAction::PostExecution { had_error: true });
+}
+
+// --- regression pins for the confirmed React-parity fixes --------------------
+
+#[test]
+fn classified_mutation_without_findings_has_no_unknown_finding_key() {
+    // `DELETE ... WHERE` is a classified mutation with no high-risk finding;
+    // React pushes findingUnknown only for classification === 'unknown'.
+    let mut state = QueryExecutionGateState::default();
+    let value = production(input("DELETE FROM t WHERE id = 1"));
+    let actions = reduce(&mut state, GateEvent::RequestExecute { input: value, now: 0.0 });
+    match first(&actions) {
+        GateAction::ConfirmDangerous { spec } => {
+            assert!(
+                !spec.finding_keys.contains(&"query.editor.executionConfirm.findingUnknown"),
+                "no findingUnknown for a classified mutation: got {:?}",
+                spec.finding_keys
+            );
+            assert!(spec.finding_keys.is_empty(), "no findings at all: {:?}", spec.finding_keys);
+        }
+        other => panic!("expected ConfirmDangerous, got {other:?}"),
+    }
+}
+
+#[test]
+fn ask_execute_entire_runs_in_query_mode_on_the_entire_script() {
+    let doc = "SELECT 1;\nSELECT 2;\nSELECT 3;";
+    let mut value = input(doc);
+    value.cursor_offset = Some(0);
+    value.strategy = ExecutionStrategy::Ask;
+    let mut state = QueryExecutionGateState::default();
+    reduce(&mut state, GateEvent::RequestExecute { input: value, now: 0.0 });
+    let actions = reduce(&mut state, GateEvent::AskExecuteEntire);
+    match first(&actions) {
+        GateAction::Execute { mode, sql, .. } => {
+            assert_eq!(*mode, ExecutionMode::Query, "entire script uses executeQuery, got {mode:?}");
+            assert_eq!(sql, doc, "entire script text is executed");
+        }
+        other => panic!("expected Execute, got {other:?}"),
+    }
+}
+
+#[test]
+fn pg_double_quote_guard_checks_only_the_targeted_statement() {
+    let doc = "SELECT * FROM t WHERE name = \"John\";\nSELECT 2;";
+    let mut value = input(doc);
+    value.database_type = "postgresql".to_owned();
+    let second = doc.find("SELECT 2;").map_or(0, |at| at);
+    value.cursor_offset = Some(second);
+
+    let (targeted, _) = decide(&value, 0.0);
+    assert!(
+        !matches!(first(&targeted), GateAction::Message { key: "query.postgresDoubleQuoteHint", .. }),
+        "a quoted literal in a non-target statement must not block the target: got {:?}",
+        first(&targeted)
+    );
+
+    value.cursor_offset = Some(0);
+    let (in_target, _) = decide(&value, 0.0);
+    assert_eq!(
+        first(&in_target),
+        &GateAction::Message { key: "query.postgresDoubleQuoteHint", token: None },
+        "a quoted literal inside the target still blocks"
+    );
 }
 
 // Reverse verification (mutation -> observed failure text -> restored):
