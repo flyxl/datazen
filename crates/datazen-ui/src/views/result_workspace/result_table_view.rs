@@ -30,7 +30,7 @@ mod header;
 
 pub(crate) use cells::{filter_rows, FindQuery, GridValue};
 #[allow(unused_imports)] // find/replace seam; consumer: the result-workspace host + tests; drop when the find port lands.
-pub(crate) use cells::{plan_replacements, FindOperator};
+pub(crate) use cells::{plan_replacements, replace_text, FindOperator};
 use header::{data_marker, error_banner, find_bar, notice, pending_bar, read_only_banner, status_bar};
 
 /// React `StatementResult` column metadata.

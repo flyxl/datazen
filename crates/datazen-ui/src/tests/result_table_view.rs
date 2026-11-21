@@ -11,7 +11,7 @@ use rune::{col, Cx, El, Env, Runtime};
 use crate::i18n::t;
 use crate::views::result_workspace::result_table_view::{
     build, can_edit, filter_rows, grid_read_only_message_key, is_mutation_execution,
-    read_only_reason, view_rows, EditColumn, FindOperator, FindQuery, GridValue, PendingEdit,
+    plan_replacements, read_only_reason, replace_text, view_rows, EditColumn, FindOperator, FindQuery, GridValue, PendingEdit,
     ResultColumn, ResultTableAction, ResultTableVm, ServerEditability,
 };
 
@@ -260,6 +260,53 @@ fn geometry_fits_both_sizes_in_both_themes() {
             assert!(outside.is_empty(), "{size:?} dark={dark}: outside {outside:?}");
         }
     }
+}
+
+// --- regression pins for the React-parity find/replace fixes -----------------
+
+#[test]
+fn any_column_not_contains_keeps_only_rows_with_no_matching_cell() {
+    let rows = vec![
+        vec![GridValue::Text("acme corp".to_owned()), GridValue::Text("other".to_owned())],
+        vec![GridValue::Text("beta".to_owned()), GridValue::Text("gamma".to_owned())],
+        vec![GridValue::Text("delta".to_owned()), GridValue::Null],
+    ];
+    let columns = vec!["name".to_owned(), "note".to_owned()];
+    let query = FindQuery {
+        needle: "acme".to_owned(),
+        operator: FindOperator::NotContains,
+        ..Default::default()
+    };
+    assert_eq!(filter_rows(&rows, &columns, &query), vec![1, 2], "the row must hold no matching cell");
+}
+
+#[test]
+fn replace_text_splices_the_needle_in_place() {
+    let case = FindQuery { needle: "acme".to_owned(), match_case: true, ..Default::default() };
+    assert_eq!(replace_text("acme corp", &case, "acorp"), "acorp corp");
+    let insensitive = FindQuery { needle: "acme".to_owned(), match_case: false, ..Default::default() };
+    assert_eq!(replace_text("Acme acme", &insensitive, "X"), "X X", "every occurrence, folded for search");
+    let columns = vec!["name".to_owned(), "email".to_owned()];
+    let rows = vec![vec![GridValue::Text("acme corp".to_owned()), GridValue::Text("a@acme.io".to_owned())]];
+    let query = FindQuery { needle: "acme".to_owned(), ..Default::default() };
+    assert_eq!(
+        plan_replacements(&rows, &columns, &query, "acorp"),
+        vec![(0, "name".to_owned(), "acorp corp".to_owned()), (0, "email".to_owned(), "a@acorp.io".to_owned())]
+    );
+}
+
+#[test]
+fn prefix_only_plans_genuinely_matching_cells() {
+    let columns = vec!["a".to_owned(), "b".to_owned()];
+    let rows = vec![vec![GridValue::Text("zabc".to_owned()), GridValue::Text("abcdef".to_owned())]];
+    let query = FindQuery { needle: "abc".to_owned(), operator: FindOperator::Prefix, ..Default::default() };
+    assert_eq!(
+        plan_replacements(&rows, &columns, &query, "Z"),
+        vec![(0, "b".to_owned(), "Zdef".to_owned())],
+        "only a true prefix match is planned and spliced"
+    );
+    let suffix = FindQuery { needle: "abc".to_owned(), operator: FindOperator::Suffix, ..Default::default() };
+    assert_eq!(plan_replacements(&rows, &columns, &suffix, "Z"), vec![(0, "a".to_owned(), "zZ".to_owned())]);
 }
 
 // Reverse verification (mutation -> observed failure text -> restored):

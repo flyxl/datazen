@@ -101,20 +101,53 @@ pub(crate) fn filter_rows(
     if query.needle.is_empty() {
         return (0..rows.len()).collect();
     }
+    // Any-column notContains means the ROW holds no matching cell, so every
+    // column must fail — React `rowMatches` uses `every` here, not `some`.
+    let every_column = query.column.is_none() && query.operator == FindOperator::NotContains;
     rows.iter()
         .enumerate()
         .filter(|(_, row)| {
-            columns.iter().enumerate().any(|(index, name)| {
+            let matches = |(index, name): (usize, &String)| {
                 if query.column.as_deref().is_some_and(|wanted| wanted != name) {
                     return false;
                 }
                 row.get(index).is_some_and(|value| {
                     cell_matches(value, &query.needle, query.operator, query.match_case)
                 })
-            })
+            };
+            if every_column {
+                columns.iter().enumerate().all(matches)
+            } else {
+                columns.iter().enumerate().any(matches)
+            }
         })
         .map(|(index, _)| index)
         .collect()
+}
+
+/// React `replaceText`: replace every occurrence of the needle inside the
+/// cell text. Case-sensitive folds neither side; case-insensitive folds both
+/// for the search but splices at the original offsets.
+#[allow(dead_code)] // pure helper; consumed by the plan builder and tests.
+pub(crate) fn replace_text(text: &str, query: &FindQuery, replacement: &str) -> String {
+    if query.match_case {
+        return text.split(query.needle.as_str()).collect::<Vec<_>>().join(replacement);
+    }
+    let needle = query.needle.to_lowercase();
+    if needle.is_empty() {
+        return text.to_owned();
+    }
+    let mut result = String::new();
+    let mut rest = text.to_owned();
+    loop {
+        let Some(at) = rest.to_lowercase().find(&needle) else { break };
+        let end = at + needle.len();
+        result.push_str(&rest[..at]);
+        result.push_str(replacement);
+        rest = rest[end..].to_owned();
+    }
+    result.push_str(&rest);
+    result
 }
 
 /// React `planResultReplacements`: only matching cells change, row-first.
@@ -135,17 +168,15 @@ pub(crate) fn plan_replacements(
                 continue;
             }
             let Some(value) = row.get(column_index) else { continue };
-            let original = value.cell_text();
-            if cell_matches(value, &query.needle, FindOperator::Contains, query.match_case) {
-                plan.push((row_index, name.clone(), replacement.to_owned()));
-            } else if query.operator != FindOperator::Contains {
-                // Non-contains operators still replace the whole matching cell.
-                let matched = cell_matches(value, &query.needle, query.operator, query.match_case);
-                if matched {
-                    plan.push((row_index, name.clone(), replacement.to_owned()));
-                }
+            if !cell_matches(value, &query.needle, query.operator, query.match_case) {
+                continue;
             }
-            let _ = original;
+            let original = value.cell_text();
+            plan.push((
+                row_index,
+                name.clone(),
+                replace_text(&original, query, replacement),
+            ));
         }
     }
     plan
