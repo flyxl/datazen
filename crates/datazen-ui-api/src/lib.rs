@@ -39,6 +39,7 @@ mod filter_types;
 mod keyset_types;
 mod metadata;
 mod panel_exec_cleanup;
+mod panel_query_context;
 mod platform_shared;
 mod relation_prediction;
 mod relative_time;
@@ -234,6 +235,12 @@ pub use panel_exec_cleanup::{
     session_keys_of_panel, ExecMap, PaneCancelStore, Panel, PanelExecDeps, PanelType,
     QueryCancelState, QueryExecState, SessionController, PANEL_EXEC_CLEANUP_ASYNC_GAP,
     PANEL_EXEC_CLEANUP_GAP, PANEL_EXEC_CLEANUP_SURFACE,
+};
+pub use panel_query_context::{
+    build_path_hierarchy_database_pin, namespace_branch_child_names, namespace_child_names,
+    namespace_has_child, namespace_roots_from, panel_target_database, panel_target_schema,
+    path_hierarchy_connection_root, path_hierarchy_relative_namespace_path,
+    split_path_hierarchy_database_pin, QueryPanelContext, SchemaStateForPanel, SqlNamespace,
 };
 pub use platform_shared::{
     McpContentBlock, McpError, McpFetch, McpHttpResponse, McpJsonRpcError, McpRequestInit,
