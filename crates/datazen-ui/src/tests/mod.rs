@@ -1841,6 +1841,21 @@ mod editable_cell;
 // theme stability inside the minimum window, the three-state choose
 // journey at both themes, the checkbox journey's opposite).
 mod editable_cell_audit;
+// T297: the cell editor host (coder vectors: the coercion's families
+// — the empty rules, the number regex, the boolean, the temporal, the
+// json/uuid/zoned — the state machine's gates (commit/pick/cancel
+// with the done guard, the nothing-changed close, the refused
+// open-editor), the keyboard and blur rules with their guards, the
+// owned-surface predicates, the candidates machine, the re-seed, and
+// the mount's controls and inline error).
+mod cell_editor_host;
+// T297 independent audit: fresh vectors (the number regex's boundary
+// edges, the leap-century rule, the typed-family nothing-changed close,
+// the context-menu guard's one-shot across two menus, the re-seed
+// clearing the error, the refusal message words verbatim, the kind
+// derivation feeding the same coercion).
+mod cell_editor_host_audit;
+
 
 
 // T257 independent audit: fresh vectors (the unwired light-mode toggle,

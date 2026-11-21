@@ -177,6 +177,9 @@ pub(crate) struct CellEditorHostState {
     /// The resolved editor kind + the cell type (the coercion's input).
     pub kind: CellEditorKind,
     pub cell_type: CellType,
+    /// The boolean editor's three-state select listbox open flag (the
+    /// host's cell — the T278 contract; the toggle flips it).
+    pub select_open: bool,
 }
 
 impl CellEditorHostState {
@@ -211,6 +214,7 @@ impl CellEditorHostState {
             integer_only: false,
             kind,
             cell_type,
+            select_open: false,
         }
     }
 
@@ -271,7 +275,10 @@ impl CellEditorHostState {
     }
 
     /// `pick` (React 245-254): a discrete choice (boolean / enum) is
-    /// written right away.
+    /// written right away — `onPick(value | null)`: `null` IS the SQL
+    /// `NULL` (both arms write; `normalizeEditValue` passes the null
+    /// through). The port's `Option<Value>` mirrors the T278 boolean
+    /// editor's own channel, whose `None` is React's `null`.
     pub(crate) fn pick(&mut self, value: Option<Value>) -> EditAction {
         if self.done {
             return EditAction::None;
@@ -279,7 +286,7 @@ impl CellEditorHostState {
         self.done = true;
         self.error = None;
         EditAction::Commit {
-            value: normalize_edit_value(value.as_ref()),
+            value: normalize_edit_value(Some(&value.unwrap_or(Value::Null))),
             direction: None,
         }
     }
@@ -387,6 +394,8 @@ pub(crate) struct CellEditorHost<'a, S: 'static> {
     on_commit: Option<Rc<dyn Fn(&mut S, Option<Value>)>>,
     on_cancel: Option<Rc<dyn Fn(&mut S)>>,
     on_commit_and_move: Option<Rc<dyn Fn(&mut S, EditMove)>>,
+    on_toggle_select: Option<Rc<dyn Fn(&mut S)>>,
+    on_close_select: Option<Rc<dyn Fn(&mut S)>>,
 }
 
 impl<'a, S: 'static> CellEditorHost<'a, S> {
@@ -399,6 +408,8 @@ impl<'a, S: 'static> CellEditorHost<'a, S> {
             on_commit: None,
             on_cancel: None,
             on_commit_and_move: None,
+            on_toggle_select: None,
+            on_close_select: None,
         }
     }
 
@@ -426,6 +437,19 @@ impl<'a, S: 'static> CellEditorHost<'a, S> {
         self
     }
 
+    /// The boolean control's three-state select listbox toggle (the
+    /// host's `select_open` cell — the enabled-select rule).
+    pub(crate) fn on_toggle_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+        self.on_toggle_select = Some(Rc::new(f));
+        self
+    }
+
+    /// Presses outside and Escape close the boolean select's listbox.
+    pub(crate) fn on_close_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+        self.on_close_select = Some(Rc::new(f));
+        self
+    }
+
     /// The navigation guard's registration (React 318-334): the
     /// active-editor registry entry whose commit hook drives the
     /// state's commit — `run_commit` runs the state machine's
@@ -444,14 +468,15 @@ impl<'a, S: 'static> CellEditorHost<'a, S> {
     }
 
     /// The host root: the control mount and the inline error (React
-    /// 422-441). The caller roots once.
-    pub(crate) fn build(self, k: &Kit) -> El {
+    /// 422-441). The boolean control's listbox rides `layer`; the
+    /// caller roots once.
+    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let state = self.state;
         let mut root = col()
             .key("cell-editor")
             .w_full()
             .min_w(0.0)
-            .child(self.control(k));
+            .child(self.control(k, layer));
         if let Some(error) = state.error {
             root = root.child(
                 text(t(error.message_key()))
@@ -471,26 +496,40 @@ impl<'a, S: 'static> CellEditorHost<'a, S> {
     /// The control mount (React 401-420): the eight-family switch —
     /// binary and boolean real (T278), the other six as labelled
     /// seams naming their owning tasks (T315/T330).
-    fn control(&self, k: &Kit) -> El {
+    fn control(&self, k: &Kit, layer: &mut Vec<El>) -> El {
         let state = self.state;
         match state.kind {
-            CellEditorKind::Binary => BinaryCellEditor::new(self.aria_label.clone(), state.error.is_some())
-                .build(k)
-                .key("cell-editor-control"),
+            // The two ported controls keep their own root keys
+            // (`cell-editor-binary`, `cell-editor-boolean-row`): a
+            // `.key` on a built element overwrites the builder's own,
+            // and the controls' testids are the contract.
+            CellEditorKind::Binary => {
+                BinaryCellEditor::new(self.aria_label.clone(), state.error.is_some()).build(k)
+            }
             CellEditorKind::Boolean => {
-                let editor = BooleanCellEditor::<S>::new(
+                let mut editor = BooleanCellEditor::<S>::new(
                     state.draft.clone(),
                     state.nullable,
                     self.aria_label.clone(),
-                );
-                let mut layer = Vec::new();
-                let el = editor.build(k, &mut layer);
-                // The boolean control's overlay (the three-state
-                // select's listbox) rides the caller's layer through
-                // the control's own key; the host's caller roots once
-                // and collects the layers the controls mount.
-                let _ = layer;
-                el.key("cell-editor-control")
+                )
+                .select_open(state.select_open);
+                // The enabled-select rule: the toggle is always present
+                // (wired when the host provides the cell flip, a no-op
+                // when it does not — the unwired select never opens).
+                match &self.on_toggle_select {
+                    Some(on_toggle) => {
+                        let action = Rc::clone(on_toggle);
+                        editor = editor.on_select_toggle(move |s: &mut S| action(s));
+                    }
+                    None => {
+                        editor = editor.on_select_toggle(|_s: &mut S| {});
+                    }
+                }
+                if let Some(on_close) = &self.on_close_select {
+                    let action = Rc::clone(on_close);
+                    editor = editor.on_select_close(move |s: &mut S| action(s));
+                }
+                editor.build(k, layer)
             }
             kind @ (CellEditorKind::Text
             | CellEditorKind::LongText
