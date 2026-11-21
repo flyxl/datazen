@@ -20,6 +20,8 @@ mod filter_expression;
 mod fk_navigation_actions;
 mod grid_keyboard;
 mod html_sanitizer;
+mod import_mapping;
+mod keymap;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -208,6 +210,15 @@ pub use grid_keyboard::{
 pub use html_sanitizer::{
     HtmlNode, STRIP_TAGS, VOID_TAGS, decode_entities, get_attr, is_event_attr, is_javascript_href,
     is_strip_tag, is_void_tag, parse_html, regex_sanitize, sanitize_html, serialize_html, set_attr,
+};
+pub use import_mapping::{
+    ImportMappingConflict, ImportMappingEntry, ImportMappingMode, ImportMappingPlan,
+    ImportMatchKind, PlanImportMappingInput, mapping_is_executable, plan_import_mapping,
+};
+pub use keymap::{
+    KEYMAP_ACTIONS, KEYMAP_PRESETS, KeymapAction, KeymapPreset, format_mod_key,
+    format_shortcut_for_display, get_action_shortcut, normalize_shortcut_input,
+    to_code_mirror_key_format, to_shortcut_hook_format,
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
