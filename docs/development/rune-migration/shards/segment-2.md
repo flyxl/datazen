@@ -80,7 +80,7 @@
 - [x] T551 · lib · 0.90d · lib/loadBatchExportTable.ts
 - [x] T553 · lib · 0.90d · lib/localeSync.ts
 - [x] T555 · lib · 0.80d · lib/mainWindowContextMenu.ts
-- [ ] T557 · lib · 0.90d · lib/mcpAgentConfig.ts
+- [x] T557 · lib · 0.90d · lib/mcpAgentConfig.ts
 - [ ] T559 · lib · 0.90d · lib/migrationJobHydration.ts
 - [ ] T561 · lib · 1.30d · lib/migrationJobVerdict.ts · split
 - [ ] T563 · lib · 0.60d · lib/migrationVerification.ts lib/migrationWindowPrefill.ts
