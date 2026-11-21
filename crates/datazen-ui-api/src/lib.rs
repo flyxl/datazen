@@ -132,6 +132,7 @@ mod panel_context_path;
 mod platform_shared;
 mod process_list_result;
 mod product_features;
+mod query_execution_view_model;
 mod relation_prediction;
 mod relative_time;
 mod resolve_ui_language;
@@ -632,6 +633,12 @@ pub use object_filter::{
     filter_table_items, get_object_filter, is_system_database_name, is_system_schema_name,
     match_name_pattern, matches_table_name_filter, should_show_database, should_show_schema,
     with_object_filter_options, ObjectFilterPrefs,
+};
+pub use query_execution_view_model::{
+    get_cancel_action_state, get_cancel_capability, is_cancellation_error,
+    reduce_query_execution_state, to_query_execution_view_model, CancelActionState,
+    CancelCapability, QueryCancelState, QueryExecutionTransition, QueryExecutionViewModel,
+    QueryPhase, QueryTerminalState, QueryExecState,
 };
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
