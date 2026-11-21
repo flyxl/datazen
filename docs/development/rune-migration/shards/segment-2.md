@@ -106,7 +106,7 @@
 - [x] T603 · lib · 0.80d · lib/setValueActions.ts lib/splash.ts
 - [ ] T605 · lib · 0.80d · lib/sqlBindParams.ts
 - [ ] T607 · lib · 2.00d · lib/sqlCompletionContext.ts · split
-- [ ] T609 · lib · 2.00d · lib/sqlCompletions.ts · split
+- [x] T609 · lib · 2.00d · lib/sqlCompletions.ts · split
 - [x] T611 · lib · 0.50d · lib/sqlEditorDefaults.ts
 - [ ] T613 · lib · 0.90d · lib/sqlFileExecution.ts
 - [ ] T615 · lib · 0.80d · lib/sqlFormat.ts lib/sqlFunctionRegistry.ts
