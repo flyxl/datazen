@@ -171,6 +171,7 @@ mod sync_taxonomy;
 mod table_schema_for_sql;
 mod table_sql_actions;
 mod tabs;
+mod theme_editor_colors;
 mod theme_tokens;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
@@ -876,6 +877,14 @@ pub use splash::{
     HIDE_SPLASH_DELAY_MS, SPLASH_DOM_GAP, STARTUP_TASK_GAP,
 };
 pub use sync_taxonomy::normalize_driver_id;
+pub use theme_editor_colors::{
+    apply_sql_syntax_preset, build_editor_highlight_rules, default_editor_colors,
+    editor_colors_from_json, editor_colors_with_pack_overlay, find_sql_property_names,
+    is_sql_syntax_theme_id, parse_pack_editor_overlay, read_editor_colors,
+    set_pack_editor_color_overlay, EditorColorContract, EditorColors, ExtendedHighlightColors,
+    HighlightRule, Palette, SqlSyntaxPreset, StyleColors, SyntaxNodeSpan, CM_VARS,
+    CODEMIRROR_COLOR_GAP, CODEMIRROR_HIGHLIGHT_GAP, SQL_SYNTAX_PRESETS,
+};
 pub use sql_bind_params::{
     DEFAULT_ENABLE_AT, DEFAULT_ENABLE_DOLLAR_NAMED, DEFAULT_ENABLE_DOLLAR_POSITIONAL,
     DEFAULT_ENABLE_QUESTION, DEFAULT_ENABLE_TEMPLATE, ParamValue, SqlBindPayloadV2, SqlParam,
