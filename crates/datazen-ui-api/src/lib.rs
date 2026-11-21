@@ -141,6 +141,8 @@ mod relation_prediction;
 mod relative_time;
 mod result_editability;
 mod resolve_ui_language;
+mod schema_cache;
+mod schema_changing_sql;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
 mod tabs;
@@ -672,6 +674,15 @@ pub use result_editability::{
     resolve_grid_editability, resolve_result_editability, resolve_result_write_back,
     resolve_row_addressability, GridColumn, GridEditability, GridReadOnlyReason, IdentityColumn,
     ResultTableRef, ServerEditability, RESULT_ORIGIN_WRITE_BACK_ENABLED,
+};
+pub use schema_cache::{
+    cache_key, composite_cache_key, ddl_cache_key, DdlCacheIdentity, DdlCacheInvalidateScope,
+    SchemaCacheFacade, SchemaObjectKind,
+};
+pub use schema_changing_sql::{
+    is_data_modifying_statement, is_schema_changing_statement, is_schema_mutating_statement,
+    mask_semicolons_in_literals, split_sql_statements, sql_contains_data_modifying,
+    sql_contains_schema_changing_ddl, sql_may_mutate_schema,
 };
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
