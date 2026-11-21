@@ -23,6 +23,7 @@ mod chart_types;
 mod connection_types;
 mod connection_views;
 mod context_items;
+mod diff_detail;
 mod context_menu_position;
 // `pub mod` — the crate's only public module: the T159 dashboard facade
 // keeps its display `DashboardWidget` here, but that root name is held
@@ -169,6 +170,13 @@ pub use connection_views::{
     NodeContextMenuPayload, ObjectKind, TableContextInput, TableSqlActionKind,
 };
 pub use context_items::{ContextItem, ContextKind, SplitContextItems, split_context_items};
+pub use diff_detail::{
+    cell_view, clear_all_op, diff_rows, footer_visible, format_cell, is_changed, is_empty_state,
+    key_label, max_cols, next_disabled, operation_allowed, operation_badge_class, page_count,
+    page_rows, prev_disabled, row_key_string, row_selectable, safe_page, select_all_op,
+    server_paged, toggle_row, CellView, DataSyncOperation, DataSyncRowChange,
+    DataSyncTableResult, SyncOptions, DIFF_DETAIL_DOM_GAP, PAGE_SIZE,
+};
 pub use context_menu_position::{
     CONTEXT_MENU_PAD, Point, Rect, RootMenuPosition, Size, SubmenuPosition, SubmenuSide, Viewport,
     position_root_menu, position_root_menu_with_pad, position_submenu, position_submenu_with_pad,
