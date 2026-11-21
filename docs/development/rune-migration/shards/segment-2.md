@@ -40,7 +40,7 @@
 - [x] T421 · lib · 0.90d · lib/connectionShareError.ts lib/connectionTabContextMenu.ts lib/connectionViews/index.ts
 - [x] T429 · lib · 0.30d · lib/createDismissPrefs.ts
 - [x] T437 · lib · 0.90d · lib/crossWindowBus.ts
-- [ ] T444 · lib · 0.80d · lib/dangerousSql.ts
+- [x] T444 · lib · 0.80d · lib/dangerousSql.ts
 - [ ] T450 · lib · 0.50d · lib/databaseTypes.ts
 - [ ] T456 · lib · 2.00d · lib/dataFetcher.ts · split
 - [ ] T462 · lib · 3.30d · lib/dataTableContextMenu.ts · split
