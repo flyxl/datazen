@@ -44,6 +44,7 @@ mod metadata;
 mod panel_exec_cleanup;
 mod panel_query_context;
 mod panel_result_edit;
+mod panel_store;
 mod platform_shared;
 mod relation_prediction;
 mod relative_time;
@@ -286,6 +287,14 @@ pub use panel_result_edit::{
     IdentityColumn, PanelResultEditStore, ResolveTicket, ResultEditabilityOptions,
     ResultOriginRequest, ResultTableRef, ResultWritableError, ServerEditability, VerdictView,
     PANEL_RESULT_EDIT_GAP,
+};
+pub use panel_store::{
+    is_pane_key_of_panel, pane_args, pane_id_of_pane_key, pane_key, pane_keys_of_panel,
+    panel_id_of_pane_key, resolve_focused_pane_id, resolve_next_active, sync_pane_focus,
+    validate_batch, BindParams, CommitCellRequest, ExecTable, FocusPatch, PanelExecState,
+    PanelPatch, PanelState, PanelStore, PanelStoreHost, PendingHistoryQuery, ResultColumn,
+    ResultEdit, ResultView, RunQueryRequest, StorePanel, StorePanelType, DEFAULT_PANE_ID,
+    PANE_SEPARATOR, PANEL_STORE_GAP, PANEL_STORE_SURFACE,
 };
 pub use platform_shared::{
     McpContentBlock, McpError, McpFetch, McpHttpResponse, McpJsonRpcError, McpRequestInit,
