@@ -12,6 +12,8 @@ mod data_fetcher;
 mod default_sort;
 mod docs_urls;
 mod document_scroll_lock;
+mod ensure_namespace;
+mod er_node_context_menu;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -130,6 +132,18 @@ pub use docs_urls::{
 pub use document_scroll_lock::{
     ScrollAxis, ScrollLockRail, ScrollLockState, ScrollPosition, apply_snap, scroll_lock_rail,
     snap_targets,
+};
+pub use ensure_namespace::{
+    CatalogResult, EnsureDeps, EnsurePlan, EnsureStrategy, MergeCall, MergeKind,
+    build_slash_fetch_path, inflight_key, is_path_nav, is_schema_grouping_schema,
+    namespace_ensure_pending, namespace_has_child, namespace_path_loaded, path_key,
+    path_nav_segment, plan_default_sql, plan_path_hierarchy, plan_postgresql,
+    resolve_ensure_strategy, resolve_for_ensure, resolve_path_root, run_ensure_plan, table_names,
+    uses_current_database_root,
+};
+pub use er_node_context_menu::{
+    ErMenuAction, ErMenuItem, ErNodeContextMenuHandlers, ErNodeContextMenuLabels,
+    build_er_node_context_menu_items,
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
