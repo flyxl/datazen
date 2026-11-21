@@ -58,6 +58,11 @@ mod query_editor_section;
 mod execution_strategy_select;
 // T518: the pure query-execution gate state machine (decisions & transitions).
 mod query_execution_gate;
+// T524: the result table view (status bar, cells, staging, find, geometry).
+mod result_table_view;
+// T524 independent audit: any-column not-contains, replace-all splicing and
+// non-contains operator planning, checked against React resultFindReplace.
+mod result_table_view_audit;
 // T518 independent audit: finding copy on plain mutations, Ask→entire mode,
 // and Postgres quote guard restricted to the targeted statement.
 mod query_execution_gate_audit;
