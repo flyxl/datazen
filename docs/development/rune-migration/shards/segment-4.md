@@ -111,7 +111,7 @@
 - [x] T325 · windows/schema-diff · 0.90d · windows/schema-diff/SchemaDiffWindowJobSection.tsx
 - [x] T328 · hooks · 1.30d · hooks/useGridSelection.ts · split
 - [x] T331 · commands · 0.90d · commands/languagePacks.ts
-- [ ] T335 · components/sql-editor · 2.00d · components/sql-editor/proCompartments.ts · split
+- [x] T335 · components/sql-editor · 2.00d · components/sql-editor/proCompartments.ts · split
 - [ ] T336 · windows/settings · 1.30d · windows/settings/McpClientSection.tsx · split
 - [x] T339 · windows/schema-diff · 0.60d · windows/schema-diff/SchemaDiffWindowNavigation.tsx windows/schema-diff/SchemaDiffWizardProgress.tsx
 - [x] T341 · hooks · 0.60d · hooks/useI18n.ts hooks/useKeyboardShortcuts.ts
