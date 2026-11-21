@@ -173,6 +173,7 @@ mod table_sql_actions;
 mod tabs;
 mod theme_editor_colors;
 mod theme_tokens;
+mod tunnel_draft;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
 // path `datazen_ui_api::types::…` is the Rust twin of React's `'../types'`
@@ -877,6 +878,13 @@ pub use splash::{
     HIDE_SPLASH_DELAY_MS, SPLASH_DOM_GAP, STARTUP_TASK_GAP,
 };
 pub use sync_taxonomy::normalize_driver_id;
+pub use tunnel_draft::{
+    copy_tunnel_name, draft_to_saved_tunnel, empty_tunnel_draft, is_positive_port,
+    is_tunnel_draft_valid, positive_port, saved_tunnel_to_draft, timeout_seconds,
+    tunnel_draft_problem, HttpProxyDraft, SshDraft, SshJumpDraft, TunnelDraft,
+    TunnelDraftProblem, WebSocketDraft, DEFAULT_HTTP_PROXY_PORT, DEFAULT_SSH_PORT,
+    DEFAULT_TUNNEL_TIMEOUT, SAVED_TUNNEL_KINDS,
+};
 pub use theme_editor_colors::{
     apply_sql_syntax_preset, build_editor_highlight_rules, default_editor_colors,
     editor_colors_from_json, editor_colors_with_pack_overlay, find_sql_property_names,
