@@ -155,6 +155,8 @@ mod splash;
 mod sql_bind_params;
 mod sql_completion_context;
 mod sql_completions;
+mod sql_format;
+mod sql_function_registry;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
 mod tabs;
@@ -879,6 +881,18 @@ pub use sql_completion_context::{
 pub use sql_completions::{
     keyword_completions, sql_function_completions, SqlFunctionCompletion,
     DEFAULT_SQL_COMPLETION_DIALECT, SQL_COMPLETION_KEYWORDS,
+};
+pub use sql_format::{
+    LANGUAGE_MAP, SqlDialectLookup, SqlFormatConfig, SqlFormatRequest, SqlFormatter, SqlIndent,
+    default_sql_format_options, format_sql, sql_format_indentation, sql_format_language,
+    DEFAULT_BREAK_BEFORE_BOOLEAN_OPERATORS, DEFAULT_INDENT_STYLE,
+    DEFAULT_KEYWORD_CASE, DEFAULT_LINES_BETWEEN_QUERIES,
+};
+pub use sql_function_registry::{
+    DIALECT_ALIASES, DriverFunctionMeta, DriverFunctionRegistry, FunctionCompletion, FunctionEntry,
+    FunctionParam, build_function_completions, common_functions, get_driver_functions,
+    get_function_entries, resolve_dialect_family, to_sql_function_completions,
+    COMMON_FUNCTION_NAMES,
 };
 pub use sql_editor_defaults::{
     infer_default_schema, infer_default_table, table_clause_fingerprint,
