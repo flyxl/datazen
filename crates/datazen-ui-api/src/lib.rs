@@ -67,6 +67,7 @@ mod sql_schema_drop_targets;
 mod table_list_panel;
 mod table_sort_preferences;
 mod tabs;
+mod virtual_body;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
 // path `datazen_ui_api::types::…` is the Rust twin of React's `'../types'`
@@ -426,6 +427,20 @@ pub use table_sort_preferences::{
     TableSortContext, TABLE_SORT_PREFS_GAP, TABLE_SORT_PREFS_SURFACE, TABLE_SORT_STORAGE_PREFIX,
 };
 pub use tabs::{Tab, TabKind, Tabs};
+pub use virtual_body::{
+    build_cell_input, build_column_editor_info_from_defs, build_row_cell_views, cell_id,
+    column_names, container_height, dirty_cell_aria_label, dirty_cell_tooltip, dirty_cells,
+    display_rows, editor_info, error_columns_by_row, error_key, fk_affordances,
+    fk_navigable_by_row, format_dirty_expression, format_dirty_value, frozen_lefts,
+    gutter_click_action, is_fk_cell_navigable, is_integer_cell_type, modifiers_from_flags,
+    resolve_cell_type, row_click_action, row_deleted, row_dirty, row_double_click_action,
+    row_key_down_action, row_kind, row_state, row_tint_class, sticky_info, virtual_table,
+    CellEditingData, CellRowContext, CellTypeHintsData, ColumnDefData, ColumnEditorInfoData,
+    DisplayRow, DraftRowViewModel, DirtyCellData, DirtyRowEntryData, DirtyRowState,
+    FkGroupAffordanceData, FkNavigationData, GutterClickAction, PresentationPlan, RowClickAction,
+    RowKeyAction, RowModifiers, VirtualBodyConfig, VirtualRowData, VirtualTableResult,
+    VIRTUAL_BODY_GAP, DEFAULT_COLUMN_WIDTH, GUTTER_WIDTH, OVERSCAN,
+};
 // The T211 types aggregate: the members React's `types/index.ts` declares or
 // re-exports that no earlier family module had already landed at the root
 // (every already-rooted sibling name — the connection/context/filter/
