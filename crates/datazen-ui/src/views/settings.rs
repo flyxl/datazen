@@ -47,6 +47,16 @@ pub(crate) mod install_language_pack_dialog;
 /// with their error strips, and the runtime connected list with its
 /// expandable tool inventories.
 pub(crate) mod mcp_client_section;
+/// `windows/settings/MemorySection.tsx` (T360, split): the AI memory
+/// administration surface — the settings card (the first-use privacy
+/// gate, auto-learn, the cloud policy), the read-only org list and
+/// the entries list (filters, candidates bar, merge, export).
+pub(crate) mod memory_section;
+/// T360's state half: the load walk, the deleted-ids tombstones, the
+/// merge plan and the settings-draft rules (split for the file-size
+/// rule).
+pub(crate) mod memory_section_state;
+
 /// `windows/settings/McpSettingsSection.tsx` (T348, split): the MCP
 /// host service's administration surface — the stdio toggle, the HTTP
 /// listener block, the permission modes, the connection allowlist, the

@@ -919,3 +919,7 @@ mod mcp_client_section_audit;
 // block, the permission modes, the allowlist, the scopes, the agent
 // snippet card, the tools list and the audit table).
 mod mcp_settings_section_audit;
+// T360: the AI memory settings section (the settings card with its
+// first-use privacy gate, the org list, the entries list with filters,
+// candidates bar, merge, and exports).
+mod memory_section_audit;
