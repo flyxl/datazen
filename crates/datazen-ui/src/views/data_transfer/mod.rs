@@ -15,6 +15,7 @@
 //! | `MappingGateNotice.tsx` | `mapping_gate_notice` | T176 |
 //! | `SourceFilterEditor.tsx` | `source_filter_editor` | T202 |
 //! | `TransferExecuteConfirmDialog.tsx` | `transfer_execute_confirm_dialog` | T225 |
+//! | `TransferJobResultPanel.tsx` | `transfer_job_result_panel` | T246 |
 
 pub(crate) mod column_mapping_editor;
 pub(crate) mod column_mapping_row;
@@ -26,6 +27,7 @@ pub(crate) mod mapping_gate_notice;
 pub(crate) mod recordset_editor;
 pub(crate) mod source_filter_editor;
 pub(crate) mod transfer_execute_confirm_dialog;
+pub(crate) mod transfer_job_result_panel;
 pub(crate) mod transfer_job_run;
 pub(crate) mod transfer_limitation_keys;
 pub(crate) mod transfer_pairing_note;
@@ -85,6 +87,10 @@ pub(crate) use source_filter_editor::{
 
 #[allow(unused_imports)] // the Data Transfer window is the production consumer
 pub(crate) use transfer_execute_confirm_dialog::TransferExecuteConfirmDialog;
+#[allow(unused_imports)] // the Data Transfer window wiring is the production consumer
+pub(crate) use transfer_job_result_panel::{
+    active_progress, plan_info, TransferJobResultPanel,
+};
 #[allow(unused_imports)] // the Data Transfer window (T147) is the production consumer
 pub(crate) use transfer_job_run::{
     classify_transfer_run_failure, is_ambiguous_apply_submission_error, TransferApplyInput,
