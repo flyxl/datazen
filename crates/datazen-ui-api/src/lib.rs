@@ -62,6 +62,7 @@ mod dangerous_sql;
 // else re-exports at the root (see `dashboard_types`' docs).
 pub mod dashboard_types;
 mod database_types;
+mod dedicated_db_session;
 mod dismiss_prefs;
 mod filter_types;
 mod keyset_types;
@@ -334,6 +335,10 @@ pub use database_types::{
     PopularityValue,
     EscapeSqlValue, SqlValueEscaper, SshTunnelAddr, DB_TYPE_POPULARITY_ORDER,
     DEFAULT_MAX_DATABASE_INDEX,
+};
+pub use dedicated_db_session::{
+    DatabaseOverride, DedicatedConnectResult, DedicatedSessionPorts, DedicatedSessionService,
+    DedicatedSideSession, ListDatabasesResult,
 };
 pub use dismiss_prefs::{create_dismiss_prefs, DismissPrefs};
 pub use filter_types::{
