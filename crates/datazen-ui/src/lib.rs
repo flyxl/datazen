@@ -48,6 +48,8 @@ pub(crate) mod connection_store;
 pub(crate) mod dashboard_store;
 // T209: the per-panel editor-selection store (editorSelectionStore.ts).
 pub(crate) mod editor_selection_store;
+// T253: the installed-language-pack store (languagePackStore.ts).
+pub(crate) mod language_pack_store;
 pub(crate) mod ai_store_chat;
 pub(crate) mod ai_store_rest;
 pub(crate) mod table_data_connection_state;
