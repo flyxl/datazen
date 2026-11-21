@@ -27,6 +27,7 @@ mod connection_views;
 mod context_items;
 mod diff_detail;
 mod data_sync_bars;
+mod data_table_clipboard_dom;
 mod context_menu_position;
 mod grid_cell;
 mod quick_look_dialog;
@@ -253,6 +254,12 @@ pub use data_sync_bars::{
     KEY_EXECUTE_UNAVAILABLE, KEY_SELECTED_ROWS, KEY_TARGET_READ_ONLY, PATH_DIRECT_KEY, PATH_IR_KEY,
     PATH_TEST_ID, READ_ONLY_CLASS, START_DISABLED_TEST_ID, START_TEST_ID, SUPPORTED_CLASS,
     UNSUPPORTED_CLASS, USE_TRANSFER_HINT_KEY,
+};
+pub use data_table_clipboard_dom::{
+    bind_clipboard_dom, handle_copy, handle_paste, is_editable_target, resolve_copy_target,
+    resolve_paste_anchor, ClipboardBinding, ClipboardBridge, ClipboardDomInput, ClipboardEvent,
+    CopyOutcome, DomTarget, GridCopyTarget, PasteAnchor, PasteEvent, PasteOutcome,
+    CLIPBOARD_DOM_GAP,
 };
 // The T188 filter vocabulary: the aggregate (`types/index`) re-exports
 // everything `types/filters.ts` declares, so the crate root carries the
