@@ -120,6 +120,7 @@ mod load_batch_export_table;
 mod main_window_context_menu;
 mod metadata;
 mod migration_job_hydration;
+mod migration_job_verdict;
 mod platform_shared;
 mod relation_prediction;
 mod relative_time;
@@ -591,6 +592,13 @@ pub use kv_slot_state::{
 pub use locale_sync::{
     apply_language, current_language, start_locale_sync, Defer, Deferred, LocaleEnginePorts,
     SettingsLanguageStore, DEFAULT_LOCALE,
+};
+pub use migration_job_verdict::{
+    derive_cancel_disposition, derive_migration_job_verdict, derive_uncertainty,
+    is_backend_scope_rejection, is_migration_job_in_flight, is_pipeline_budget_interception,
+    is_plan_consumed_rejection, read_job_counter, sum_job_counters, CancelDisposition,
+    CommitBoundaryFacts, JobCounterValue, MigrationJobVerdict, MigrationJobVerdictInput,
+    UncertaintyReason, VerdictSeverity, PIPELINE_BUDGET_BYTES,
 };
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
