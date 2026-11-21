@@ -80,6 +80,12 @@ pub(crate) mod language_packs_card;
 // T381: the "?" help hint (hover/focus tooltip with the 120ms close
 // grace and the focus-retention rule).
 pub(crate) mod setting_hint;
+// T390: the settings content shell (the nav rail + the six own
+// sections + the delegated section slots), split with its state.
+pub(crate) mod settings_content;
+// T390: the shell's state (the section selection, the local settings
+// mirror, the host reads, the keymap seam).
+pub(crate) mod settings_content_state;
 // T399: the settings subtree's shared primitives (SectionTitle,
 // SettingRow, ToggleRow).
 pub(crate) mod settings_ui;

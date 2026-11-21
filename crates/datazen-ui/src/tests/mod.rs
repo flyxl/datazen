@@ -927,3 +927,6 @@ mod memory_section_audit;
 // cards with their variables hints and source badges, the override
 // save, the reset confirm).
 mod prompt_settings_section_audit;
+// T390: the settings content shell (the nav rail, the six own
+// sections, the delegated slots, the contributions, the keymap card).
+mod settings_content_audit;
