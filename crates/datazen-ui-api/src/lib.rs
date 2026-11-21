@@ -155,6 +155,7 @@ mod splash;
 mod sql_bind_params;
 mod sql_completion_context;
 mod sql_completions;
+mod sql_file_execution;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
 mod tabs;
@@ -884,6 +885,11 @@ pub use sql_editor_defaults::{
     infer_default_schema, infer_default_table, table_clause_fingerprint,
     tables_referenced_in_sql, ReferencedRelation, RelationSourceKind, ScopeRelations,
     StatementRange,
+};
+pub use sql_file_execution::{
+    execution_error_message, sql_file_execution_plan, ConfirmationMode, ExecutionFailure,
+    InvokeOutcome, SqlFileExecutionOutcome, SqlFileExecutionPlan, OVERWRITE_OPTION,
+    RESTORE_PROGRESS_EVENT, RESTORE_SQL_FILE_COMMAND, SQL_FILE_EXECUTION_GAP,
 };
 pub use sql_path_prefix::{
     QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
