@@ -88,6 +88,7 @@ mod filter_db_types;
 mod filter_operators;
 mod filter_types;
 mod fk_navigation;
+mod fk_referenced_by;
 mod keyset_types;
 mod metadata;
 mod platform_shared;
@@ -462,6 +463,14 @@ pub use fk_navigation::{
     pick_anchor_row, scroll_top_for_anchor_row, AnchorInput, AnchorResult, FkBreadcrumbModel,
     FkFilterTarget, FkGroupAffordance, FkIndex, FkNavInput, FkNavTargetIdentity, GridViewport,
     NavValue, FK_NAV_MAX_DEPTH,
+};
+pub use fk_referenced_by::{
+    build_inbound_filters, catalog_key, inbound_catalog, open_referencing_rows,
+    referenced_values_of_row, CatalogScope, CreatedPanel, FkOrigin, GridErrorClassifier,
+    InboundCatalogCache, InboundCatalogFetcher, InboundForeignKeyCatalog, InboundForeignKeyRef,
+    NavEntry, NavOrigin, OpenReferencingRowsInput, OutcomeError, OutcomeErrorCode,
+    ReferencedByOutcome, ReferencingRowsHost, SourcePanelInfo, TableChangeContext,
+    MAX_REFERENCING_TABS, NO_REFERENCES_EMPTY, PROBE_FAILED_MESSAGE,
 };
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
