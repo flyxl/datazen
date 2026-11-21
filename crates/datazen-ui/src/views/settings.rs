@@ -39,6 +39,9 @@ pub(crate) mod driver_settings_section;
 pub(crate) mod json_schema_settings_form;
 // T285: the install-language-pack dialog (pick → review → install).
 pub(crate) mod install_language_pack_dialog;
+// T321: the language-packs card (the installed list, install/remove,
+// the active pack's English-fallback-first removal).
+pub(crate) mod language_packs_card;
 // T381: the "?" help hint (hover/focus tooltip with the 120ms close
 // grace and the focus-retention rule).
 pub(crate) mod setting_hint;

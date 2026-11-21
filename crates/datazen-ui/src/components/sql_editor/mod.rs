@@ -56,7 +56,10 @@ pub(crate) mod extensions;
 
 /// `components/sql-editor/fold/foldCompartment.ts` (T196, split): the
 /// `fold` Pro compartment's host gate (the `codeFolding` key on the
-/// shared settings bag). The registry itself is T335.
+/// shared settings bag). The registry itself lives in
+/// [`pro_compartments`] (T335), which also absorbed this module's
+/// `ProSettingsBag`/`pro_setting_flag` carries (re-exported below at
+/// their pre-T335 path).
 pub(crate) mod fold;
 
 /// `components/sql-editor/paste/createPasteExtensions.ts` (T263, split):
@@ -69,6 +72,15 @@ pub(crate) mod create_paste_extensions;
 /// dedicated Escape leaving the multi-cursor state (S1's collapse to a
 /// bare main-head cursor, S0's refusal).
 pub(crate) mod multi_cursor_escape;
+/// T320: the multiple-selections compartment's binding inventory
+/// (the chords, the precedence tiers, the Mod-D guard, the
+/// rectangular-drag filter).
+pub(crate) mod multiple_selections;
+/// `components/sql-editor/proCompartments.ts` (T335, split): the Pro
+/// compartment registry, the atomic batch reconfigure, the generic
+/// settings bag (G3) and the three generic EP hooks. Absorbed
+/// `ProSettingsBag`/`pro_setting_flag` from `fold` (re-exported there).
+pub(crate) mod pro_compartments;
 /// T302: the multi-cursor POINTER predicate (the platform chord
 /// CodeMirror's `clickAddsSelectionRange` override had dropped).
 pub(crate) mod multi_cursor_pointer;
