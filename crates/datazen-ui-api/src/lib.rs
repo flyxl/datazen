@@ -69,6 +69,7 @@ mod database_types;
 mod data_table_context_menu;
 mod dedicated_db_session;
 mod dismiss_prefs;
+mod driver_capabilities;
 mod driver_command_ids;
 mod endpoint_identity;
 mod filter_types;
@@ -373,6 +374,10 @@ pub use dedicated_db_session::{
     DedicatedSideSession, ListDatabasesResult,
 };
 pub use dismiss_prefs::{create_dismiss_prefs, DismissPrefs};
+pub use driver_capabilities::{
+    capabilities_for_db_session, has_schema_level, relation_schema_for, supports_offset,
+    CapabilityAnswer, SessionCapabilitiesEntry,
+};
 pub use driver_command_ids::{
     ESTIMATE_TABLE_ROWS_COMMAND, LIST_PROCESSES_COMMAND, SERVER_STATUS_SNAPSHOT_COMMAND,
 };
