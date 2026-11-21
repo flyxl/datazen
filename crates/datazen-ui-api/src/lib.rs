@@ -181,6 +181,7 @@ pub mod schema_object_search;
 pub mod server_status_trends;
 pub mod sql_editor_defaults;
 pub mod table_changes;
+pub mod theme_pack_apply;
 
 use std::collections::HashMap;
 
@@ -953,6 +954,13 @@ pub use table_changes::{
     CommitPendingChangesResult, CommitStatementResult, CommitStatus, InsertLocation, PendingInsert,
     PendingRowChange, PendingStatus, PlannedStatement, RefreshStatus, RowChangePlan, RowIdentity,
     TableChangeContext as TableChangesContext, WriteExpressionId,
+};
+pub use theme_pack_apply::{
+    classify_theme_pack, encode_wapp_theme_pack_id, invalid_wapp_theme_id_error,
+    join_relative_path, mime_for_path, parse_charts_json, parse_wapp_theme_pack_id, probe_icon,
+    rewrite_css_urls, unknown_theme_pack_error, plan_theme_pack_apply, ThemePackApplyPlan,
+    ThemePackApplyResult, ThemePackSelection, THEME_PACK_APPLY_GAP, THEME_PACK_CHANGED_EVENT,
+    THEME_PACK_STYLE_ID, WAPP_THEME_PACK_PREFIX,
 };
 pub use tabs::{Tab, TabKind, Tabs};
 // The T211 types aggregate: the members React's `types/index.ts` declares or
