@@ -632,3 +632,5 @@ mod pending_plan_dialog_audit;
 mod object_browser_audit;
 // T504: QueryBuilderHostAdapter port (catalog, context/rebind, slot mount, host actions, geometry).
 mod query_builder_host_adapter;
+// T510: QueryTransactionModals port (dialog copy, modal actions, busy/blank gating, geometry).
+mod query_transaction_modals;
