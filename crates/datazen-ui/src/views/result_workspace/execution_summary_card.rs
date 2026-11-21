@@ -153,7 +153,7 @@ pub(crate) fn build<S: 'static>(
             );
         if let Some(on_action) = on_action.clone() {
             copy = copy.on_press(move |s: &mut S| {
-                if !sql.trim().is_empty() {
+                if !sql.is_empty() {
                     on_action(s, SummaryAction::CopySql { sql: sql.clone() });
                 }
             });

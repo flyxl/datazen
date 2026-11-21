@@ -422,8 +422,10 @@ pub(crate) fn build<S: 'static>(
             .border(1.0, k.c.border_base)
             .focusable(!next_disabled)
             .child(text(t("resultFind.replaceNext")).font(k.ty.text_xsmall).color(k.c.text_base));
-        if let Some(item) = vm.plan.first() {
-            next = next.on_press(emit(host, FindAction::ReplaceNext { item: item.clone() }));
+        if !next_disabled {
+            if let Some(item) = vm.plan.first() {
+                next = next.on_press(emit(host, FindAction::ReplaceNext { item: item.clone() }));
+            }
         }
         replace_row = replace_row.child(next);
         let mut all = row()
@@ -435,7 +437,9 @@ pub(crate) fn build<S: 'static>(
             .border(1.0, k.c.border_base)
             .focusable(!next_disabled)
             .child(text(t("resultFind.replaceAll")).font(k.ty.text_xsmall).color(k.c.text_base));
-        all = all.on_press(emit(host, FindAction::ReplaceAll));
+        if !next_disabled {
+            all = all.on_press(emit(host, FindAction::ReplaceAll));
+        }
         replace_row = replace_row.child(all);
         root = root.child(replace_row);
 
