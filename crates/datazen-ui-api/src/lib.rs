@@ -95,6 +95,9 @@ mod global_text_selection;
 mod grid_clipboard;
 mod grid_errors;
 mod grid_event_guards;
+mod history_groups;
+mod host_error_message;
+mod host_lucide_map;
 mod keyset_types;
 mod metadata;
 mod platform_shared;
@@ -478,10 +481,12 @@ pub use fk_navigation::{
 };
 pub use fk_referenced_by::{
     build_inbound_filters, catalog_key, inbound_catalog, open_referencing_rows,
-    referenced_values_of_row, CatalogScope, CreatedPanel, FkOrigin, GridErrorClassifier,
+    referenced_values_of_row, CatalogScope, CreatedPanel, FkOrigin as InboundFkOrigin,
+    GridErrorClassifier,
     InboundCatalogCache, InboundCatalogFetcher, InboundForeignKeyCatalog, InboundForeignKeyRef,
     NavEntry, NavOrigin, OpenReferencingRowsInput, OutcomeError, OutcomeErrorCode,
-    ReferencedByOutcome, ReferencingRowsHost, SourcePanelInfo, TableChangeContext,
+    ReferencedByOutcome, ReferencingRowsHost, SourcePanelInfo,
+    TableChangeContext as InboundTableChangeContext,
     MAX_REFERENCING_TABS, NO_REFERENCES_EMPTY, PROBE_FAILED_MESSAGE,
 };
 pub use fk_selector::{
@@ -495,12 +500,18 @@ pub use global_text_selection::{
     RightDragSuppressor, SelectAllTarget, SelectionSnapshot, DOM_GAP_SURFACES,
     INTERACTIVE_CONTROL_SELECTOR, NATIVE_SELECTABLE_SELECTOR, SELECTABLE_HINT_SELECTOR,
 };
-pub use grid_errors::{
-    classify_grid_error, GridErrorCode, PasteProblem, GRID_ERROR_CODES, GRID_ERROR_NAMESPACE,
-    REGISTERED_PREFIXES,
-};
+pub use grid_errors::{GridErrorCode, GRID_ERROR_NAMESPACE, REGISTERED_PREFIXES};
 pub use grid_event_guards::{
     is_composing_event, is_editable_target, ComposingEventLike, EDITABLE_TARGET_SELECTOR,
+};
+pub use history_groups::{
+    find_group_for_database, group_query_history, HistoryGroupEntry, HistoryScope,
+    QueryHistoryGroup, HISTORY_UNKNOWN_DB_KEY,
+};
+pub use host_error_message::{extract_host_error_message, HostError};
+pub use host_lucide_map::{
+    build_host_lucide_by_id, host_lucide_seed, settings_section_icon_id, HOST_LUCIDE_MAP,
+    SETTINGS_SECTION_LUCIDE_MAP,
 };
 pub use filter_types::{
     DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
