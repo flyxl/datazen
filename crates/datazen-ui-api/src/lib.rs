@@ -43,6 +43,7 @@ mod relation_prediction;
 mod relative_time;
 mod run_to_chart;
 mod run_to_result;
+mod selection_actions;
 mod sql_path_prefix;
 mod sql_schema_drop_targets;
 mod tabs;
@@ -254,6 +255,14 @@ pub use relative_time::{
 };
 pub use run_to_chart::{ChartTransformResult, has_renderable_chart, widget_run_to_chart_data};
 pub use run_to_result::widget_run_to_statement_result;
+pub use selection_actions::{
+    apply_begin_cell_selection, apply_clear_grid_selection, apply_grid_selection,
+    apply_reconcile_selection, apply_row_mode_transition, apply_row_select,
+    apply_toggle_select_all, displayed_column_names, normalize_cell_range, panel_column_order,
+    reconcile_grid_selection, resolve_selection_patch, row_index_selection_reset,
+    selection_from_anchor_focus, CellCoord, CellRange, GridSelection, GridSelectionMode,
+    SelectionAction, SelectionOpts, SelectionPatch, TableStateForSelection,
+};
 pub use sql_path_prefix::{
     QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
     parse_qualified_path_parents, resolve_ensure_segments,
