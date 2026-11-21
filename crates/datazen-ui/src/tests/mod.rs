@@ -74,6 +74,8 @@ mod structure_plan_preview;
 mod structure_index_audit;
 // T536: the one-line table clipboard status (paste summary, problems, deadline).
 mod table_clipboard_status;
+// T542: the FK jump breadcrumb (segment labels, host actions, empty/truncated).
+mod table_fk_breadcrumb;
 // T524 independent audit: any-column not-contains, replace-all splicing and
 // non-contains operator planning, checked against React resultFindReplace.
 mod result_table_view_audit;
