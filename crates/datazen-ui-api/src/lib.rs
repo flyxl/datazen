@@ -6,6 +6,7 @@
 mod ai_memory_correction;
 mod cell_editor_candidates;
 mod connection_editor;
+mod connection_share;
 mod chart_colors;
 mod bootstrap_icon_resolver;
 mod build_connection_url;
@@ -92,6 +93,10 @@ pub use cell_editor_candidates::{
 };
 pub use connection_editor::{
     ConnectionEditorState, close_new_connection_dialog, open_new_connection_dialog,
+};
+pub use connection_share::{
+    ConnectionImportSource, ConnectionShareMode, ConnectionShareState,
+    close_connection_share_dialog, open_connection_share_dialog,
 };
 pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
