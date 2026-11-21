@@ -135,28 +135,28 @@
 - [x] T384 · windows/schema-diff · 1.30d · windows/schema-diff/useSchemaDiffEndpoints.ts · split
 - [x] T386 · hooks · 0.90d · hooks/usePlatform.ts
 - [x] T388 · commands · 0.90d · commands/settings.ts
-- [ ] T390 · windows/settings · 1.30d · windows/settings/SettingsContent.tsx · split
+- [x] T390 · windows/settings · 1.30d · windows/settings/SettingsContent.tsx · split
 - [x] T393 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffJobLifecycle.ts
-- [ ] T395 · hooks · 0.90d · hooks/useQueryExec.ts
+- [x] T395 · hooks · 0.90d · hooks/useQueryExec.ts
 - [x] T397 · commands · 0.30d · commands/structure.ts
 - [x] T399 · windows/settings · 0.30d · windows/settings/settingsUi.tsx
 - [x] T402 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffJobRestore.ts
-- [ ] T404 · hooks · 0.80d · hooks/useResizable.ts hooks/useSettings.ts
-- [ ] T406 · commands · 1.30d · commands/sync.ts · split
-- [ ] T408 · windows/settings · 0.90d · windows/settings/SkillsSection.tsx
+- [x] T404 · hooks · 0.80d · hooks/useResizable.ts hooks/useSettings.ts
+- [x] T406 · commands · 1.30d · commands/sync.ts · split
+- [x] T408 · windows/settings · 0.90d · windows/settings/SkillsSection.tsx
 - [x] T411 · windows/schema-diff · 1.30d · windows/schema-diff/useSchemaDiffSavedSetups.ts · split
-- [ ] T413 · hooks · 0.90d · hooks/useSettingsSync.ts
-- [ ] T415 · commands · 0.90d · commands/transfer.ts
-- [ ] T417 · windows/settings · 0.50d · windows/settings/SnippetEditDialog.tsx
+- [x] T413 · hooks · 0.90d · hooks/useSettingsSync.ts
+- [x] T415 · commands · 0.90d · commands/transfer.ts
+- [x] T417 · windows/settings · 0.50d · windows/settings/SnippetEditDialog.tsx
 - [x] T420 · windows/schema-diff · 0.90d · windows/schema-diff/useSchemaDiffUnifiedObjects.ts
 - [x] T422 · hooks · 0.30d · hooks/useTableForeignKeys.ts
-- [ ] T424 · commands · 0.90d · commands/transferJobs.ts
-- [ ] T426 · windows/settings · 0.90d · windows/settings/SqlSnippetsCard.tsx
-- [ ] T430 · hooks · 0.90d · hooks/useThemeSync.ts
-- [ ] T432 · commands · 0.90d · commands/tunnel.ts
-- [ ] T434 · windows/settings · 0.90d · windows/settings/TableDataSettingsSection.tsx
-- [ ] T438 · hooks · 1.30d · hooks/useTransferJobRun.ts · split
-- [ ] T440 · commands · 0.90d · commands/wapps.ts
+- [x] T424 · commands · 0.90d · commands/transferJobs.ts
+- [x] T426 · windows/settings · 0.90d · windows/settings/SqlSnippetsCard.tsx
+- [x] T430 · hooks · 0.90d · hooks/useThemeSync.ts
+- [x] T432 · commands · 0.90d · commands/tunnel.ts
+- [x] T434 · windows/settings · 0.90d · windows/settings/TableDataSettingsSection.tsx
+- [x] T438 · hooks · 1.30d · hooks/useTransferJobRun.ts · split
+- [x] T440 · commands · 0.90d · commands/wapps.ts
 - [ ] T441 · windows/settings · 0.90d · windows/settings/TunnelDeleteDialog.tsx
 - [ ] T445 · hooks · 0.90d · hooks/useValuePresentation.ts
 - [ ] T447 · windows/settings · 0.90d · windows/settings/TunnelEditDialog.tsx

@@ -42,6 +42,23 @@ pub(crate) mod sample;
 /// T388: the settings commands (the kernel/half-port split, the
 /// flattenShared transform and the merge order).
 pub(crate) mod settings;
+/// T424: the data-transfer Job command layer (the prepare/apply
+/// split's four members + the reads).
+pub(crate) mod transfer_jobs;
+/// T432: the saved-tunnel command family (the CRUD pair, the G9
+/// secret-free summary read, the usage read, the round-trip probe).
+pub(crate) mod tunnel;
+/// T440: the workspace-app command family (the list/read pair, the
+/// driver command rail, the pick-then-install pair, the storage
+/// triple, the file read, the audit entry).
+pub(crate) mod wapps;
+/// T415: the data-transfer legacy command family (the typed wire
+/// contracts + the eleven invoke shapers).
+pub(crate) mod transfer;
+/// T406: the Data Sync commands (the dataSync domain rail, the two
+/// legacy faces, the selection folding, the poll/apply chains and
+/// the plan staging).
+pub(crate) mod sync;
 
 
 

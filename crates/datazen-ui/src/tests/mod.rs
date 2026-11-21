@@ -1969,3 +1969,17 @@ mod themed_icon;
 // labels, the default resolver's edge ids, the failing decode's blank
 // slot, the one-sided light-mode bar geometry).
 mod themed_icon_audit;
+
+// T390: the settings content shell (the nav rail, the six own
+// sections, the delegated slots, the contributions, the keymap card).
+mod settings_content_audit;
+// T408: the AI skills settings panel (the opt-in switches, the
+// custom directory, the listing faces).
+mod skills_section_audit;
+// T426: the SQL snippets card (the custom and builtin lists, the
+// add/edit/duplicate dialog flows, the delete confirm, the
+// export/import status line).
+mod sql_snippets_card_audit;
+// T434: the table-data settings section (the row count mode + the
+// auto-only threshold, the default sort, the grid density + toggles).
+mod table_data_settings_section_audit;

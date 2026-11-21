@@ -80,6 +80,24 @@ pub(crate) mod language_packs_card;
 // T381: the "?" help hint (hover/focus tooltip with the 120ms close
 // grace and the focus-retention rule).
 pub(crate) mod setting_hint;
+// T417: the SQL snippet add/edit/duplicate dialog.
+pub(crate) mod snippet_edit_dialog;
+// T426: the SQL snippets card (the custom list, the builtin list,
+// the export/import row) over the T417 dialog + the confirm hook.
+pub(crate) mod sql_snippets_card;
+// T434: the table-data settings section (the row count mode + the
+// auto-only threshold, the default sort, the grid density + toggles)
+// with T474's delegated slot.
+pub(crate) mod table_data_settings_section;
+// T408: the AI skills settings panel (the opt-in switches, the
+// custom directory, the discovered listing).
+pub(crate) mod skills_section;
+// T390: the settings content shell (the nav rail + the six own
+// sections + the delegated section slots), split with its state.
+pub(crate) mod settings_content;
+// T390: the shell's state (the section selection, the local settings
+// mirror, the host reads, the keymap seam).
+pub(crate) mod settings_content_state;
 // T399: the settings subtree's shared primitives (SectionTitle,
 // SettingRow, ToggleRow).
 pub(crate) mod settings_ui;

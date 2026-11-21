@@ -568,6 +568,138 @@ pub(crate) static ICON_FLASK_CONICAL: rune::Icon = rune::Icon {
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M6.453 15h11.094\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M8.5 2h7\"/>",
 };
 
+/// T390: lucide `arrow-left`, the settings page's back button glyph
+/// (`SettingsContent.tsx` uses `ArrowLeft`). Body verified against
+/// lucide-static 0.487.0's `arrow-left` (the west chevron plus the
+/// east-west stem).
+pub(crate) static ICON_ARROW_LEFT: rune::Icon = rune::Icon {
+    name: "arrow-left",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m12 19-7-7 7-7\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M19 12H5\"/>",
+};
+
+/// T390: lucide `globe`, the settings nav's General glyph (the
+/// `SETTINGS_SECTION_LUCIDE_MAP` entry `general: 'Globe'`). Body
+/// verified against lucide-static 0.487.0's `globe`.
+pub(crate) static ICON_GLOBE: rune::Icon = rune::Icon {
+    name: "globe",
+    view: 24.0,
+    body: "<circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"12\" cy=\"12\" r=\"10\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M2 12h20\"/>",
+};
+
+/// T390: lucide `palette`, the settings nav's Appearance glyph. Body
+/// verified against lucide-static 0.487.0's `palette` (the paint-blob
+/// outline plus its four fill dots).
+pub(crate) static ICON_PALETTE: rune::Icon = rune::Icon {
+    name: "palette",
+    view: 24.0,
+    body: "<circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"13.5\" cy=\"6.5\" r=\".5\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"17.5\" cy=\"10.5\" r=\".5\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"8.5\" cy=\"7.5\" r=\".5\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"6.5\" cy=\"12.5\" r=\".5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z\"/>",
+};
+
+/// T390: lucide `table-2`, the settings nav's Data Browsing glyph.
+/// Body verified against lucide-static 0.487.0's `table-2` (the
+/// split-cell grid outline).
+pub(crate) static ICON_TABLE_2: rune::Icon = rune::Icon {
+    name: "table-2",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18\"/>",
+};
+
+/// T390: lucide `code-xml` (lucide-react 0.487.0 still aliases it as
+/// `Code2`, the spelling `SETTINGS_SECTION_LUCIDE_MAP` uses), the
+/// settings nav's Editor glyph. Body verified against lucide-static
+/// 0.487.0's `code-xml`.
+pub(crate) static ICON_CODE_2: rune::Icon = rune::Icon {
+    name: "code-xml",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m18 16 4-4-4-4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m6 8-4 4 4 4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m14.5 4-5 16\"/>",
+};
+
+/// T390: lucide `mouse-pointer-click`, the settings nav's Behavior
+/// glyph. Body verified against lucide-static 0.487.0's
+/// `mouse-pointer-click` (the pointer arrow plus its four burst rays).
+pub(crate) static ICON_MOUSE_POINTER_CLICK: rune::Icon = rune::Icon {
+    name: "mouse-pointer-click",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M14 4.1 12 6\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m5.1 8-2.9-.8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m6 12-1.9 2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M7.2 2.2 8 5.1\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z\"/>",
+};
+
+/// T390: lucide `file-text`, the settings nav's Logging glyph. Body
+/// verified against lucide-static 0.487.0's `file-text` (the page
+/// outline, its folded corner and the three text lines).
+pub(crate) static ICON_FILE_TEXT: rune::Icon = rune::Icon {
+    name: "file-text",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M14 2v4a2 2 0 0 0 2 2h4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M10 9H8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M16 13H8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M16 17H8\"/>",
+};
+
+/// T390: lucide `message-square-text`, the settings nav's Prompts
+/// glyph (distinct from the panel's bare `message-square`: the two
+/// text lines). Body verified against lucide-static 0.487.0's
+/// `message-square-text`.
+pub(crate) static ICON_MESSAGE_SQUARE_TEXT: rune::Icon = rune::Icon {
+    name: "message-square-text",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M13 8H7\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M17 12H7\"/>",
+};
+
+/// T390: lucide `server`, the settings nav's MCP Server glyph. Body
+/// verified against lucide-static 0.487.0's `server` (the two rack
+/// units with their status dots).
+pub(crate) static ICON_SERVER: rune::Icon = rune::Icon {
+    name: "server",
+    view: 24.0,
+    body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"20\" height=\"8\" x=\"2\" y=\"2\" rx=\"2\" ry=\"2\"/><rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"20\" height=\"8\" x=\"2\" y=\"14\" rx=\"2\" ry=\"2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M6 6h.01\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M6 18h.01\"/>",
+};
+
+/// T390: lucide `plug`, the settings nav's MCP Client glyph. Body
+/// verified against lucide-static 0.487.0's `plug` (the two pins, the
+/// cord stem and the plug body).
+pub(crate) static ICON_PLUG: rune::Icon = rune::Icon {
+    name: "plug",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 22v-5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9 8V2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 8V2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z\"/>",
+};
+
+/// T390: lucide `cable`, the settings nav's Tunnels glyph. Body
+/// verified against lucide-static 0.487.0's `cable` (the S-curved wire
+/// between its two plug housings).
+pub(crate) static ICON_CABLE: rune::Icon = rune::Icon {
+    name: "cable",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M17 21v-2a1 1 0 0 1-1-1v-1a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1a1 1 0 0 1-1 1\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M19 15V6.5a1 1 0 0 0-7 0v11a1 1 0 0 1-7 0V9\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 21v-2h-4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 5h4V3\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M7 5a1 1 0 0 1 1 1v1a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a1 1 0 0 1 1-1V3\"/>",
+};
+
+/// T390: lucide `puzzle`, the settings nav's Extensions glyph. Body
+/// verified against lucide-static 0.487.0's `puzzle` (the jigsaw
+/// outline with its two knobs and two sockets).
+pub(crate) static ICON_PUZZLE: rune::Icon = rune::Icon {
+    name: "puzzle",
+    view: 24.0,
+    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15.39 4.39a1 1 0 0 0 1.68-.474 2.5 2.5 0 1 1 3.014 3.015 1 1 0 0 0-.474 1.68l1.683 1.682a2.414 2.414 0 0 1 0 3.414L19.61 15.39a1 1 0 0 1-1.68-.474 2.5 2.5 0 1 0-3.014 3.015 1 1 0 0 1 .474 1.68l-1.683 1.682a2.414 2.414 0 0 1-3.414 0L8.61 19.61a1 1 0 0 0-1.68.474 2.5 2.5 0 1 1-3.014-3.015 1 1 0 0 0 .474-1.68l-1.683-1.682a2.414 2.414 0 0 1 0-3.414L4.39 8.61a1 1 0 0 1 1.68.474 2.5 2.5 0 1 0 3.014-3.015 1 1 0 0 1-.474-1.68l1.683-1.682a2.414 2.414 0 0 1 3.414 0z\"/>",
+};
+
+/// T390: `settingsSectionIconId` (`lib/hostLucideMap.ts`) — the
+/// settings nav's icon per section id. `ai` maps through the
+/// `ai.chat` id (`Bot`), the rest through their `settings.<id>` entry.
+pub(crate) fn settings_section_icon(section: &str) -> Option<&'static rune::Icon> {
+    match section {
+        "general" => Some(&ICON_GLOBE),
+        "appearance" => Some(&ICON_PALETTE),
+        "dataBrowsing" => Some(&ICON_TABLE_2),
+        "editor" => Some(&ICON_CODE_2),
+        "behavior" => Some(&ICON_MOUSE_POINTER_CLICK),
+        "logging" => Some(&ICON_FILE_TEXT),
+        "ai" => Some(&ICON_BOT),
+        "prompts" => Some(&ICON_MESSAGE_SQUARE_TEXT),
+        "mcpServer" => Some(&ICON_SERVER),
+        "mcpClient" => Some(&ICON_PLUG),
+        "tunnels" => Some(&ICON_CABLE),
+        "extensions" => Some(&ICON_PUZZLE),
+        _ => None,
+    }
+}
+
 pub(crate) fn section_icon(section: Section) -> &'static rune::Icon {
     match section {
         Section::Connections => &ICON_CONNECTIONS,

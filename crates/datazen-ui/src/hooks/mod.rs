@@ -60,3 +60,24 @@ pub(crate) mod use_grid_keyboard_nav;
 // T328: the grid's pointer wiring (DB-01: the drag session, the
 // gutter hand-off, Escape's cancel-drag-first clearing).
 pub(crate) mod use_grid_selection;
+// T395: the per-pane query-execution read (the whole-entry and
+// single-field faces over the pane-key rule).
+mod use_query_exec;
+// T404: the resizable-panel drag machine (the persisted clamp, the
+// measured-start adoption, the reverse axis).
+mod use_resizable;
+// T404: the per-window settings composition (the settings sync
+// mount + T430's theme sync machine).
+mod use_settings;
+// T413: the cross-window settings sync (the T11 notification rule:
+// a re-read, never a trusted snapshot).
+mod use_settings_sync;
+// T430: the reusable theme sync (the menu's change + the other
+// windows' theme/theme-pack toggles over the T413 triple).
+mod use_theme_sync;
+// T438's carried half: the failure classification, the read-model
+// projections and the lib predicates (T561's until it lands).
+pub(crate) mod transfer_job_run_helpers;
+// T438: the Data Transfer Job execution state machine (the prepare →
+// apply → verdict lifecycle over the T424 command rail).
+mod use_transfer_job_run;
