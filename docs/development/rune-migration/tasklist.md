@@ -642,11 +642,11 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T623 · lib · 0.90d · lib/surfaceBgCache.ts
 - [ ] T624 · windows/connection · 0.90d · windows/connection/useTableActions.ts
 - [ ] T625 · lib · 0.90d · lib/syncPairing.ts
-- [ ] T626 · windows/connection · 0.90d · windows/connection/useTableDraftRows.ts
+- [x] T626 · windows/connection · 0.90d · windows/connection/useTableDraftRows.ts
 - [ ] T627 · lib · 0.30d · lib/syncTaxonomy.ts
-- [ ] T628 · windows/connection · 1.30d · windows/connection/useTableForeignKeyNavigation.ts · split
+- [x] T628 · windows/connection · 1.30d · windows/connection/useTableForeignKeyNavigation.ts · split
 - [ ] T629 · lib · 1.30d · lib/tableChanges.ts · split
-- [ ] T630 · windows/connection · 0.90d · windows/connection/useTableViewClipboard.ts
+- [x] T630 · windows/connection · 0.90d · windows/connection/useTableViewClipboard.ts
 - [ ] T631 · lib · 0.80d · lib/tableSchemaForSql.ts lib/tableSqlActions.ts
 - [ ] T632 · lib · 2.00d · lib/themeEditorColors.ts · split
 - [ ] T633 · lib · 1.30d · lib/themePackApply.ts · split
