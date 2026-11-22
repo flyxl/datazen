@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
-use super::types::{ActiveConnectionEntry, ContentViewConnectionContext, SavedConnection};
+use crate::SavedConnection;
+
+use super::types::{ActiveConnectionEntry, ContentViewConnectionContext};
 
 fn build_context(
     connection_id: &str,

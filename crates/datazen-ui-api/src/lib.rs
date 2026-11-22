@@ -5,6 +5,7 @@
 
 mod ai_draft_bridge;
 mod connection_page_utils;
+mod connection_shared;
 mod expanded_db_cache_refresh;
 mod open_history_query;
 mod query_contracts;
@@ -27,10 +28,11 @@ use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
 use datazen_driver_api::{ConnectionConfig, SslMode};
 
+pub use connection_shared::SavedConnection;
 pub use open_history_query::{
     open_history_query, ActiveConnection, HistoryQueryEntry, OpenHistoryOutcome,
     OpenHistoryQueryOptions, OpenHistoryQueryHost, PathHierarchySplit, PendingHistoryQuery,
-    QueryPanelState, SavedConnection, OPEN_HISTORY_QUERY_GAP, OPEN_HISTORY_QUERY_SURFACE,
+    QueryPanelState, OPEN_HISTORY_QUERY_GAP, OPEN_HISTORY_QUERY_SURFACE,
 };
 pub use query_contracts::{
     build_query_panel_diagnosis_context, has_suspicious_postgres_double_quoted_literal,
@@ -65,8 +67,8 @@ pub use content_view_helpers::{
     get_panel_icon, get_panel_label, get_panel_short_label, get_panel_tab_label, get_sub_tabs,
     get_view_sub_tabs, resolve_connection_context, resolve_connection_context_by_connection,
     resolve_panel_tab_database, ActiveConnectionEntry, ContentViewConnectionContext,
-    ContentViewPanel, PanelIcon, PanelKind, SavedConnection as ContentViewSavedConnection, SubTab,
-    SubTabId, CONTENT_VIEW_HELPERS_GAP, CONTENT_VIEW_HELPERS_SURFACE, ICON_CLASS,
+    ContentViewPanel, PanelIcon, PanelKind, SubTab, SubTabId, CONTENT_VIEW_HELPERS_GAP,
+    CONTENT_VIEW_HELPERS_SURFACE, ICON_CLASS,
 };
 pub use query_toolbar_width::{
     path_hierarchy_label_width, query_context_select_width, query_toolbar_expanded_min_width,
