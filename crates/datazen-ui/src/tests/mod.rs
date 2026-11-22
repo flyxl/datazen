@@ -719,3 +719,5 @@ mod er_build_er_graph;
 mod table_filter_toolbar;
 // T546: TablePendingChangesBar + TableTransactionControls (counts, actions, busy, states, geometry).
 mod table_pending_changes_bar;
+// T552: TableToolbar port (E2E anchors, refresh/insert actions, gating, filter threading, geometry).
+mod table_toolbar;
