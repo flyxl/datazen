@@ -128,11 +128,8 @@ impl DraftRowsVm {
     /// React `removeDraftRow`: drop the row and clear the interaction fields
     /// that pointed at it, leaving unrelated active/editing drafts untouched.
     pub(crate) fn remove_draft_row(&mut self, draft_id: &str) -> bool {
-        let before = self.rows.len();
-        self.rows.retain(|draft| draft.id != draft_id);
-        if self.rows.len() == before {
-            return false;
-        }
+        // React applies the clearing setters regardless of whether the store
+        // row existed: a stale active/editing id must not survive a removal.
         if self.active_draft_id.as_deref() == Some(draft_id) {
             self.active_draft_id = None;
         }
@@ -142,6 +139,11 @@ impl DraftRowsVm {
             .is_some_and(|(id, _)| id == draft_id)
         {
             self.editing_draft = None;
+        }
+        let before = self.rows.len();
+        self.rows.retain(|draft| draft.id != draft_id);
+        if self.rows.len() == before {
+            return false;
         }
         self.preview_stale = true;
         true
@@ -181,9 +183,19 @@ impl DraftRowsVm {
             .collect();
         let mut removed = 0;
         for id in empty_ids {
-            if self.remove_draft_row(&id) {
-                removed += 1;
+            // React's Escape handler removes the row and clears only a matching
+            // activeDraftId; it never touches setEditingDraft. Do not delegate
+            // to remove_draft_row (which would clear editing too).
+            let before = self.rows.len();
+            self.rows.retain(|draft| draft.id != id);
+            if self.rows.len() == before {
+                continue;
             }
+            if self.active_draft_id.as_deref() == Some(&id) {
+                self.active_draft_id = None;
+            }
+            self.preview_stale = true;
+            removed += 1;
         }
         removed
     }
@@ -191,7 +203,9 @@ impl DraftRowsVm {
     /// React `withDraftRowsFromCopy` (DBR-02): append prefilled drafts in copy
     /// order. `Null` is explicit NULL, an absent key writes nothing.
     pub(crate) fn add_draft_rows_from_copy(&mut self, rows: &[(String, BTreeMap<String, Value>)]) -> Vec<String> {
-        if rows.is_empty() || !self.enabled {
+        // React `withDraftRowsFromCopy` guards only on rows.length === 0: a
+        // read-only panel may still paste prefilled rows as drafts.
+        if rows.is_empty() {
             return Vec::new();
         }
         let mut ids = Vec::new();
