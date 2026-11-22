@@ -116,6 +116,8 @@ mod table_read_only_tip;
 mod table_status_banners;
 // T554: the TableView decision port (grid/editor/insert/dirty/filter/quick look).
 mod table_view;
+// T626: pure useTableDraftRows / draftInserts logic (drafts, dirty, wire shape).
+mod table_draft_rows;
 // T524 independent audit: any-column not-contains, replace-all splicing and
 // non-contains operator planning, checked against React resultFindReplace.
 mod result_table_view_audit;
