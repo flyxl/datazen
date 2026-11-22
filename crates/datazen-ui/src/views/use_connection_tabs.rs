@@ -60,7 +60,7 @@ pub(crate) fn bootstrap(consumed: Option<&ConsumedConnection>) -> ConnectionTabs
         Some(consumed) => ConnectionTabsVm {
             tabs: vec![consumed.tab.clone()],
             active_idx: 0,
-            pending_action: consumed.action.clone(),
+            pending_action: consumed.action.clone().filter(|action| !action.is_empty()),
             connecting: BTreeSet::new(),
         },
         None => ConnectionTabsVm::default(),
