@@ -39,6 +39,7 @@ pub(crate) mod structure_index_table;
 pub(crate) mod structure_plan_preview;
 pub(crate) mod structure_view;
 pub(crate) mod table_filter_toolbar;
+pub(crate) mod table_pending_changes_bar;
 pub(crate) mod table_clipboard_status;
 pub(crate) mod table_fk_breadcrumb;
 pub(crate) mod table_fk_error_banner;
