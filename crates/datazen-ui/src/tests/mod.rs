@@ -127,6 +127,8 @@ mod table_status_banners;
 mod table_view;
 // T606: pure tableEditing decisions (editability, navigation, candidates, set value).
 mod table_editing;
+// T606 independent audit: candidate branches, dialog routing, byte-size boundary.
+mod table_editing_audit;
 // T614: pure useDirtyIndex / dirtyIndex derivation logic (dirty rows, counts, anchors).
 mod use_dirty_index;
 // T620: pure useNamedViewMenu decisions (scope, apply path, raw/refusal, dirty).
