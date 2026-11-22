@@ -103,16 +103,24 @@ pub(crate) fn build<S: 'static>(
         }
     }
 
-    if let Some(notice) = vm.insert_notice.as_deref() {
+    // React uses `insertNotice && (...)`: only the empty string is falsy.
+    if let Some(notice) = vm.insert_notice.as_deref().filter(|notice| !notice.is_empty()) {
         column = column.child(
             row()
                 .key("table-insert-degraded")
                 .role("status")
                 .w_full()
+                .min_w(0.0)
                 .px(12.0)
                 .py(6.0)
                 .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
-                .child(text(notice.to_owned()).color(k.c.text_muted)),
+                .child(
+                    text(notice.to_owned())
+                        .w_full()
+                        .min_w(0.0)
+                        .color(k.c.text_muted)
+                        .wrap_anywhere(),
+                ),
         );
     }
     column

@@ -177,3 +177,42 @@ fn retry_without_a_host_port_is_inert() {
 //    fail on `no error: no hint`.
 // 2. Wiring Retry to nothing made `error_banner_shows_copyable_message_and_retry`
 //    fail on `[Retry]`.
+
+#[test]
+fn empty_insert_notice_mounts_no_banner() {
+    let vm = TableStatusBannersVm {
+        insert_notice: Some(String::new()),
+        ..Default::default()
+    };
+    let rt = runtime(scene(vm, true), (1440.0, 816.0));
+    assert!(
+        !has_key(&rt, "table-insert-degraded"),
+        "React's insertNotice && (...) treats an empty string as falsy"
+    );
+    // Whitespace-only is truthy in React and must still mount.
+    let vm = TableStatusBannersVm {
+        insert_notice: Some("   ".to_owned()),
+        ..Default::default()
+    };
+    let rt = runtime(scene(vm, true), (1440.0, 816.0));
+    assert!(has_key(&rt, "table-insert-degraded"), "whitespace is truthy");
+}
+
+#[test]
+fn long_unbroken_insert_notice_wraps_inside_the_window() {
+    let notice = "superlongunbreakabletoken".repeat(24);
+    let vm = TableStatusBannersVm {
+        insert_notice: Some(notice),
+        ..Default::default()
+    };
+    let size = (960.0, 640.0);
+    let rt = runtime(scene(vm, true), size);
+    let outside: Vec<String> = rt.elements().iter()
+        .filter(|e| {
+            let r = e.rect;
+            r[0] < -0.5 || r[1] < -0.5 || r[0] + r[2] > size.0 + 0.5 || r[1] + r[3] > size.1 + 0.5
+        })
+        .map(|e| format!("{} {:?}", e.key.as_deref().unwrap_or(&e.path), e.rect))
+        .collect();
+    assert!(outside.is_empty(), "a long unbroken notice must wrap: {outside:?}");
+}
