@@ -5,6 +5,8 @@
 
 mod ai_draft_bridge;
 mod query_contracts;
+mod query_error_chat_prompt;
+mod query_execution_risk;
 mod result_workspace;
 mod tabs;
 
@@ -34,6 +36,16 @@ pub use ai_draft_bridge::{
     AiChatDraftRequest, AiChatDraftSource, ContentViewCallbacks, OpenRelationSubTab,
     QueryOpenFocus, QueryOpenSource, TableContextInput, TableSqlActionKind, TableSqlActionSpec,
     AI_CHAT_DRAFT_FOCUS, AI_DRAFT_BRIDGE_GAP, AI_DRAFT_BRIDGE_SURFACE,
+};
+pub use query_error_chat_prompt::{
+    build_query_error_chat_prompt, send_query_error_chat_draft, QueryErrorChatContext,
+    QueryErrorDraftInput, MAX_PROMPT_ERROR_LENGTH, MAX_PROMPT_SQL_LENGTH,
+    QUERY_ERROR_CHAT_PROMPT_GAP, QUERY_ERROR_CHAT_PROMPT_SURFACE,
+};
+pub use query_execution_risk::{
+    assess_execution_risk, host_guard_would_block, ExecutionRiskDecision, ExecutionRiskMode,
+    HardBlockReason, HostGuardMode, SqlRiskAssessment, SqlRiskClassification, SqlRiskFinding,
+    SqlRiskFindingType, SqlStatementRisk, QUERY_EXECUTION_RISK_GAP,
 };
 
 /// One foreign key: this table's columns (a compound key stays together), the
