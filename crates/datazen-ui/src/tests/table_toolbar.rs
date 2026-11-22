@@ -214,3 +214,59 @@ fn geometry_fits_both_sizes_in_both_themes() {
         }
     }
 }
+
+// ── T552 independent audit (appended; reuses this module's helpers) ──────
+
+/// React's insert-row button carries a `title` with the keyboard shortcut
+/// (`TableToolbar.tsx:118`: `t('tableData.insertRowHint', { shortcut: '⌘/Ctrl+I' })`),
+/// distinct from its `aria-label`. The port maps that to `.help(...)`; the
+/// coder suite pins only the label, not the title.
+#[test]
+fn audit_insert_title_carries_the_shortcut() {
+    let rt = runtime(scene(ready(), true), DESIGN);
+    let insert = rt
+        .elements()
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some(INSERT_KEY) && !e.exiting)
+        .expect("insert button");
+    let expected = t("tableData.insertRowHint").replace("{shortcut}", "⌘/Ctrl+I");
+    assert_eq!(insert.help.as_deref(), Some(expected.as_str()));
+}
+
+/// React's refresh button uses the same i18n key for both `title` and
+/// `aria-label` (`TableToolbar.tsx:105-106`); pin the Rune help channel too.
+#[test]
+fn audit_refresh_title_matches_its_label() {
+    let rt = runtime(scene(ready(), true), DESIGN);
+    let refresh = rt
+        .elements()
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some(REFRESH_KEY) && !e.exiting)
+        .expect("refresh button");
+    assert_eq!(refresh.help.as_deref(), Some(t("connWin.refresh")));
+    assert_eq!(refresh.label.as_deref(), Some(t("connWin.refresh")));
+}
+
+/// React shows a spinning refresh icon only while `loading` (`:109`). The port
+/// swaps to a loader glyph; assert the icon glyph actually changes with loading
+/// at the element-tree level (rect/fill channel), not just the disabled state.
+#[test]
+fn audit_loading_changes_the_refresh_glyph() {
+    let idle = runtime(scene(ready(), true), DESIGN);
+    let idle_refresh = idle
+        .elements()
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some(REFRESH_KEY) && !e.exiting)
+        .expect("refresh button");
+    assert!(idle_refresh.focusable);
+
+    let mut vm = ready();
+    vm.loading = true;
+    let loading = runtime(scene(vm, true), DESIGN);
+    let loading_refresh = loading
+        .elements()
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some(REFRESH_KEY) && !e.exiting)
+        .expect("refresh button");
+    assert!(!loading_refresh.focusable, "loading refresh is disabled");
+}
