@@ -82,6 +82,8 @@ mod table_column_filter_audit;
 mod structure_index_table;
 // T550: TableStructureEditor port (titles/gates, toolbar actions, states, geometry).
 mod table_structure_editor;
+// T556: WorkspaceModeSidebar port (mode items/actions, update reminder, geometry).
+mod workspace_mode_sidebar;
 // T550 independent audit: validity edges, toolbar states, enabled/export gates.
 mod table_structure_editor_audit;
 mod structure_plan_preview;
