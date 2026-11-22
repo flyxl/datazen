@@ -113,9 +113,9 @@
 - [x] T538 · windows/connection · 0.80d · windows/connection/TableColumnFilter.tsx
 - [x] T540 · windows/connection · 0.50d · windows/connection/TableFilterToolbar.tsx
 - [x] T542 · windows/connection · 0.90d · windows/connection/TableFkBreadcrumb.tsx
-- [ ] T544 · windows/connection · 0.90d · windows/connection/TableFkErrorBanner.tsx windows/connection/TableLoadErrorState.tsx windows/connection/TableNoPrimaryKeyTip.tsx
-- [ ] T546 · windows/connection · 0.90d · windows/connection/TablePendingChangesBar.tsx
-- [ ] T548 · windows/connection · 0.60d · windows/connection/TableReadOnlyTip.tsx windows/connection/TableStatusBanners.tsx
+- [x] T544 · windows/connection · 0.90d · windows/connection/TableFkErrorBanner.tsx windows/connection/TableLoadErrorState.tsx windows/connection/TableNoPrimaryKeyTip.tsx
+- [x] T546 · windows/connection · 0.90d · windows/connection/TablePendingChangesBar.tsx
+- [x] T548 · windows/connection · 0.60d · windows/connection/TableReadOnlyTip.tsx windows/connection/TableStatusBanners.tsx
 - [ ] T550 · windows/connection · 1.30d · windows/connection/TableStructureEditor.tsx · split
 - [ ] T552 · windows/connection · 0.50d · windows/connection/TableToolbar.tsx
 - [ ] T554 · windows/connection · 5.80d · windows/connection/TableView.tsx · split

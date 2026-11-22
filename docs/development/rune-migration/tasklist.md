@@ -560,11 +560,11 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T541 · lib · 1.00d · lib/importMapping.ts lib/keymap.ts
 - [x] T542 · windows/connection · 0.90d · windows/connection/TableFkBreadcrumb.tsx
 - [ ] T543 · lib · 0.80d · lib/keysetPaging.ts
-- [ ] T544 · windows/connection · 0.90d · windows/connection/TableFkErrorBanner.tsx windows/connection/TableLoadErrorState.tsx windows/connection/TableNoPrimaryKeyTip.tsx
+- [x] T544 · windows/connection · 0.90d · windows/connection/TableFkErrorBanner.tsx windows/connection/TableLoadErrorState.tsx windows/connection/TableNoPrimaryKeyTip.tsx
 - [ ] T545 · lib · 0.80d · lib/kvAiContext.ts lib/kvSlotState.ts
-- [ ] T546 · windows/connection · 0.90d · windows/connection/TablePendingChangesBar.tsx
+- [x] T546 · windows/connection · 0.90d · windows/connection/TablePendingChangesBar.tsx
 - [ ] T547 · lib · 0.60d · lib/kvWorkspaceCapabilities.ts lib/kvWorkspaceSlots.ts
-- [ ] T548 · windows/connection · 0.60d · windows/connection/TableReadOnlyTip.tsx windows/connection/TableStatusBanners.tsx
+- [x] T548 · windows/connection · 0.60d · windows/connection/TableReadOnlyTip.tsx windows/connection/TableStatusBanners.tsx
 - [ ] T549 · lib · 0.90d · lib/languagePackRuntime.ts
 - [ ] T550 · windows/connection · 1.30d · windows/connection/TableStructureEditor.tsx · split
 - [ ] T551 · lib · 0.90d · lib/loadBatchExportTable.ts
