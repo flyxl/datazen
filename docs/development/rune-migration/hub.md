@@ -39,6 +39,13 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+### Wave31 seg1-only 合流 push（2026-11-22，seg3 阻塞）
+
+- 触发：阈值规则（合计 ahead 138 > 30）。但 **seg3 语义阻塞未裁决**，故按用户最初规则只合可合的段：seg1 32 commits (`843f74279`, parents 9c2a29f58+f520c3bac)，seg2/seg4 ahead=0 跳过，seg3 **显式跳过**。
+- **seg3 阻塞详情**（W30 首次发现，仍未解决）：seg3 与父分支 merge-base=4717f56f8（W29 纳入的 seg3 tip），此后 seg3 独立 107 commits 从未合并父分支；约 17 个同名 `datazen-ui-api` 模块类型形状不兼容（如 T433 `useDataTableContextMenu.ts` vs T462 `lib/dataTableContextMenu.ts` 都映射 `data_table_context_menu`，父 8 文件结构 vs seg3 5 文件结构），W30 合流 `cargo check` 报 ~40 类型错误后 `git merge --abort`。需 seg3 机器 rebase 到最新父分支（用户操作机器 C），主会话无法代劳。已在多次巡检中向用户报告并请裁决，用户未回复；按用户原始阈值规则继续合可合段，不无限期停摆。
+- 验证：三 crate check 全 PASS，icons 0 重复，仅 tests/mod.rs 一处加法冲突（双方 mod 声明合并去重）。gate 又因 test rustc U 态卡 23min（内存压力、磁盘 97%）按规则 kill，环境性非代码，按授权接受风险 push。
+- push 后残余：seg1=0, seg2=0, seg3=107, seg4=0。清理了 merge-w30/merge-w31seg1 worktree，磁盘 17Gi→28Gi。
+
 ### Wave29 阈值合流 push（2026-11-22，126 commits）
 
 - 触发：Wave 28 关闭时合计 ahead 122（seg1 13+seg2 36+seg3 62+seg4 11）> 30。
