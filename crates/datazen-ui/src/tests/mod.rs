@@ -17,6 +17,8 @@ pub(crate) mod tokens;
 mod navigator_build_flat_rows;
 // T572: the navigator row ARIA equivalence gate (13 variants, level rules).
 mod navigator_tree_row_aria;
+// T574: the connection reorder/regroup drag state machine.
+mod navigator_connection_drag;
 // T0-09: the tree base (geometry, keyboard, virtualisation, selection).
 mod tree;
 // T0-09 audit: virtual staging, page height, edges and the selected a11y state.
