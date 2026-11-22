@@ -583,3 +583,56 @@ fn d3_no_write_and_cancel_summaries_zero_their_shape() {
         (4, 0, 0, 3, true)
     );
 }
+
+// Independent lane-C repro probes (original D1/D2/D3), retained as regression guards.
+#[test]
+fn probe_json_named_missing_cell_is_json_null() {
+    let names = vec!["x".to_owned(), "y".to_owned()];
+    let out = serialize_cells(
+        &[vec![text("a")]],
+        ClipboardFormat::Json,
+        &names,
+        None,
+        "NULL",
+        true,
+    );
+    assert_eq!(out, r#"[{"x":"a","y":null}]"#, "React's rowToNamedRecord writes JSON null");
+}
+
+#[test]
+fn probe_json_positional_keeps_extra_row_cells() {
+    let names = vec!["x".to_owned()];
+    let out = serialize_cells(
+        &[vec![text("a"), text("b")]],
+        ClipboardFormat::Json,
+        &names,
+        None,
+        "",
+        false,
+    );
+    assert_eq!(out, r#"[["a","b"]]"#, "React serializes the whole row, not just the width");
+}
+
+#[test]
+fn probe_no_writes_summary_matches_react_zeros() {
+    let parsed = parse_clipboard_text("a\tb");
+    let summary = match clip::decide_paste(true, &parsed, &plan(0)) {
+        PasteDecision::NoWrites(summary) => summary,
+        other => panic!("expected NoWrites, got {other:?}"),
+    };
+    assert_eq!(
+        (summary.rows, summary.columns, summary.overwritten_pending),
+        (0, 0, 0),
+        "React hardcodes zero bounds and no overwritten changes for a no-writes paste"
+    );
+}
+
+#[test]
+fn probe_cancelled_summary_matches_react_zeros() {
+    let cancelled = clip::cancelled_summary(&plan(5));
+    assert_eq!(
+        (cancelled.rows, cancelled.columns),
+        (0, 0),
+        "React hardcodes zero bounds for a cancelled paste"
+    );
+}
