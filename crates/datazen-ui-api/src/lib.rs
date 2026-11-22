@@ -13,6 +13,7 @@ mod result_workspace;
 mod query_toolbar_width;
 mod result_workspace_index;
 mod tabs;
+mod workspace_mode_sidebar;
 mod use_query_builder_contribution;
 mod validate_bind_params;
 
@@ -86,6 +87,14 @@ pub use validate_bind_params::{
     find_missing_params, get_param_label, parse_sql_params, MissingParam, ParamValue, SqlParam,
     SqlParamDialectPolicy, SqlParamKind, SqlParamSyntax, VALIDATE_BIND_PARAMS_GAP,
     VALIDATE_BIND_PARAMS_SURFACE,
+};
+pub use workspace_mode_sidebar::{
+    build_sidebar_view, build_update_view, dispatch_nav_action, progress_label, progress_ring,
+    resolve_confirm_result, resolve_restart_prompt, update_label, NavAction, NavButton, NavButtonId,
+    ProgressRing, RestartPrompt, SidebarView, UpdateAction, UpdateButtonView, UpdateIconKind,
+    UpdateProgress, UpdateProgressPhase, UpdateState, WorkspaceMode, BUTTON_ACTIVE, BUTTON_BASE,
+    BUTTON_COLLAPSED, BUTTON_EXPANDED, BUTTON_INACTIVE, SIDEBAR_BASE,
+    WORKSPACE_MODE_SIDEBAR_GAP, WORKSPACE_MODE_SIDEBAR_SURFACE,
 };
 
 /// One foreign key: this table's columns (a compound key stays together), the
