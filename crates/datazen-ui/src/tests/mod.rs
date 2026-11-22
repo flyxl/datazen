@@ -118,6 +118,8 @@ mod table_status_banners;
 mod table_view;
 // T626: pure useTableDraftRows / draftInserts logic (drafts, dirty, wire shape).
 mod table_draft_rows;
+// T626 independent audit: dirty/interaction edges, Escape, paste, stale ids.
+mod table_draft_rows_audit;
 // T524 independent audit: any-column not-contains, replace-all splicing and
 // non-contains operator planning, checked against React resultFindReplace.
 mod result_table_view_audit;
