@@ -4,6 +4,7 @@
 //! interface can run before the desktop and HTTP adapters exist.
 
 mod ai_draft_bridge;
+mod query_contracts;
 mod tabs;
 
 use std::collections::HashMap;
@@ -11,6 +12,15 @@ use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
 use datazen_driver_api::{ConnectionConfig, SslMode};
 
+pub use query_contracts::{
+    build_query_panel_diagnosis_context, has_suspicious_postgres_double_quoted_literal,
+    read_current_query_panel_retry_validation_input, ActiveConnectionView, ConnectionContext,
+    DiagnosisContext, DiagnosisContextInput, ExecuteKind,
+    PendingExecute, PanelView, QueryContractsHost, QueryDiagnosisExecution,
+    QueryDiagnosisSchemaState, QueryExecutionGateRefs, QueryPanelCallbacks,
+    QueryPanelDiagnosisContextInput, QueryPanelProps, RetryValidationInput, SchemaContext,
+    QUERY_CONTRACTS_GAP, QUERY_CONTRACTS_SURFACE,
+};
 pub use tabs::{Tab, TabKind, Tabs};
 pub use ai_draft_bridge::{
     AiChatDraftRequest, AiChatDraftSource, ContentViewCallbacks, OpenRelationSubTab,
