@@ -7,6 +7,7 @@ mod ai_draft_bridge;
 mod query_contracts;
 mod result_workspace;
 mod tabs;
+mod use_query_builder_contribution;
 
 use std::collections::HashMap;
 
@@ -34,6 +35,11 @@ pub use ai_draft_bridge::{
     AiChatDraftRequest, AiChatDraftSource, ContentViewCallbacks, OpenRelationSubTab,
     QueryOpenFocus, QueryOpenSource, TableContextInput, TableSqlActionKind, TableSqlActionSpec,
     AI_CHAT_DRAFT_FOCUS, AI_DRAFT_BRIDGE_GAP, AI_DRAFT_BRIDGE_SURFACE,
+};
+pub use use_query_builder_contribution::{
+    client_snapshot, get_closed_snapshot, subscribe_falls_back_to_noop, QueryBuilderContribution,
+    QueryBuilderRunState, USE_QUERY_BUILDER_CONTRIBUTION_GAP,
+    USE_QUERY_BUILDER_CONTRIBUTION_SURFACE,
 };
 
 /// One foreign key: this table's columns (a compound key stays together), the
