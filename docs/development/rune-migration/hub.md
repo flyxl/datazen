@@ -39,6 +39,14 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+### Wave34 全段合流收口（2026-11-22，seg3 逐项解冲突 + 全段 ahead=0）
+
+- 前置：父分支 E0308 修复（测试夹具类型对齐，生产零改动）审计 PASS → 合流 `4d9a12d3d`；seg1 6 个 ahead（SavedConnection 统一 + T576/T578/T580/T582 navigator 簇）合流 `7befdd7fd`，lib.rs/tests/mod.rs 冲突按保留父分支权威导出 + seg1 新 mod 解法。
+- seg3 合流（113 ahead）：用户裁决「派专轨逐项解冲突」，coder 专轨 + tester 独立审计双通过。根因是父（485 独有提交 / 162 独有 mod）与 seg3（113 ahead / 34 独有 mod）两套深度分叉的 ui-api re-export 体系，合流产生 80+ E0252 + E0428 + E0432。
+- 裁决：data_table_context_menu 取父分支 ours 版（588 行，export_format/grid_clipboard 依赖其 API），seg3 版 14 行 bindings/resolve 被弃用（其 2 个死文件已删）；metadata 取 seg3 类型统一版；E0252 逐符号保留实际编译的 canonical 定义（签名敏感项 GridClipboardRange/path_key/SqlNamespace/CellCoord 族/PendingRowChange 族按父分支生产代码签名反证对齐）。
+- 真 merge commit `29ad8d8d2`，全量 `cargo test -p datazen-ui-api --lib` **2934 passed**（≥ 父基线 2559；多出为 seg3 新 task），0 failed；#[test] 2560→2935、assert 10300→12086 均增加，零断言弱化。已 push。
+- 全段状态：**seg1/2/3/4 ahead 全为 0**（全部成果已合入父分支）；清理 4 个 s2* worktree + parent-e0308-fix/rune-s3h/i/j 分支及 build queue bindings，主检出仅剩父分支。
+
 ### Wave33 seg1-only 合流 push（2026-11-22，81 commits）
 
 - 触发：可合积压 seg1=81 > 30（seg3=113 仍阻塞，seg2/seg4=0）。按上轮确立的「阈值看可合积压、排除 seg3 阻塞」规则执行。
