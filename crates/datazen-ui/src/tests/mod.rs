@@ -119,6 +119,10 @@ mod table_read_only_tip;
 mod table_status_banners;
 // T554: the TableView decision port (grid/editor/insert/dirty/filter/quick look).
 mod table_view;
+// T614: pure useDirtyIndex / dirtyIndex derivation logic (dirty rows, counts, anchors).
+mod use_dirty_index;
+// T614 independent audit: expression/count branches, structural sharing, identity escaping.
+mod use_dirty_index_audit;
 // T626: pure useTableDraftRows / draftInserts logic (drafts, dirty, wire shape).
 mod table_draft_rows;
 // T626 independent audit: dirty/interaction edges, Escape, paste, stale ids.
