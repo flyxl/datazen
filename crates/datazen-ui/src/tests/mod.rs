@@ -19,6 +19,8 @@ mod navigator_build_flat_rows;
 mod navigator_tree_row_aria;
 // T574: the connection reorder/regroup drag state machine.
 mod navigator_connection_drag;
+// T576: the per-session KV db-counts cache (shared/deduped, best-effort).
+mod navigator_kv_db_counts;
 // T0-09: the tree base (geometry, keyboard, virtualisation, selection).
 mod tree;
 // T0-09 audit: virtual staging, page height, edges and the selected a11y state.
