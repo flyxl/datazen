@@ -14,3 +14,4 @@ pub(crate) mod tree_row_aria;
 pub(crate) mod tree_status_dot;
 pub(crate) mod types;
 pub(crate) mod use_connection_drag;
+pub(crate) mod use_navigator_context_menus;

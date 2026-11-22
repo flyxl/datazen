@@ -19,6 +19,9 @@ mod navigator_build_flat_rows;
 mod navigator_tree_row_aria;
 // T574: the connection reorder/regroup drag state machine.
 mod navigator_connection_drag;
+// T578: the navigator context-menu decision module (item sets, separators,
+// exact keys, capability gating and emitted actions for every menu family).
+mod use_navigator_context_menus;
 // T0-09: the tree base (geometry, keyboard, virtualisation, selection).
 mod tree;
 // T0-09 audit: virtual staging, page height, edges and the selected a11y state.
