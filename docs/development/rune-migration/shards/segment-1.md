@@ -120,7 +120,7 @@
 - [ ] T552 · windows/connection · 0.50d · windows/connection/TableToolbar.tsx
 - [ ] T554 · windows/connection · 5.80d · windows/connection/TableView.tsx · split
 - [ ] T556 · windows/connection · 0.90d · windows/connection/WorkspaceModeSidebar.tsx
-- [ ] T558 · windows/connection · 0.90d · windows/connection/connectionPageUtils.ts
+- [x] T558 · windows/connection · 0.90d · windows/connection/connectionPageUtils.ts
 - [ ] T560 · windows/connection · 0.90d · windows/connection/contentViewHelpers.ts
 - [x] T562 · windows/connection · 2.00d · windows/connection/er/buildErGraph.ts · split
 - [x] T564 · windows/connection · 2.00d · windows/connection/er/interactionState.ts · split
