@@ -89,6 +89,8 @@ mod table_fk_breadcrumb;
 // T548: read-only tip + table status banners (copy, actions, geometry).
 mod table_read_only_tip;
 mod table_status_banners;
+// T554: the TableView decision port (grid/editor/insert/dirty/filter/quick look).
+mod table_view;
 // T524 independent audit: any-column not-contains, replace-all splicing and
 // non-contains operator planning, checked against React resultFindReplace.
 mod result_table_view_audit;
