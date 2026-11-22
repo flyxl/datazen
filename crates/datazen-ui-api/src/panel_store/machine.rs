@@ -83,7 +83,8 @@ fn lean_exec(table: &ExecTable) -> ExecMap {
                     QueryExecState {
                         running: state.running,
                         execution_id: state.execution_id.clone(),
-                        cancel_state: state.cancel_state.clone(),
+                        cancel_state: state.cancel_state,
+                        ..QueryExecState::empty()
                     },
                 )
             })

@@ -1,26 +1,4 @@
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum QueryCancelState {
-    Idle,
-    Requested,
-    Failed,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct QueryExecState {
-    pub running: bool,
-    pub execution_id: Option<String>,
-    pub cancel_state: QueryCancelState,
-}
-
-impl QueryExecState {
-    pub fn running(execution_id: impl Into<String>) -> Self {
-        Self {
-            running: true,
-            execution_id: Some(execution_id.into()),
-            cancel_state: QueryCancelState::Idle,
-        }
-    }
-}
+use crate::{QueryCancelState, QueryExecState};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ExecMap(pub Vec<(String, QueryExecState)>);
@@ -362,6 +340,7 @@ mod tests {
                     running: false,
                     cancel_state: QueryCancelState::Idle,
                     execution_id: None,
+                    ..QueryExecState::empty()
                 },
                 true,
             ),
@@ -405,6 +384,7 @@ mod tests {
                     running: false,
                     execution_id: Some("e".to_owned()),
                     cancel_state: QueryCancelState::Idle,
+                    ..QueryExecState::empty()
                 },
                 true,
                 0,
@@ -414,6 +394,7 @@ mod tests {
                     running: true,
                     execution_id: None,
                     cancel_state: QueryCancelState::Idle,
+                    ..QueryExecState::empty()
                 },
                 true,
                 0,
@@ -486,6 +467,7 @@ mod tests {
                     running: false,
                     execution_id: None,
                     cancel_state: QueryCancelState::Idle,
+                    ..QueryExecState::empty()
                 },
             ),
             exec("table", QueryExecState::running("e2")),

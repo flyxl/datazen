@@ -422,8 +422,8 @@ pub use metadata::{
 pub use panel_exec_cleanup::{
     can_cancel_pane, cancel_and_cleanup_exec, cancel_and_cleanup_pane_exec, request_pane_cancel,
     session_keys_of_panel, ExecMap, PaneCancelStore, Panel, PanelExecDeps, PanelType,
-    QueryCancelState, QueryExecState, SessionController, PANEL_EXEC_CLEANUP_ASYNC_GAP,
-    PANEL_EXEC_CLEANUP_GAP, PANEL_EXEC_CLEANUP_SURFACE,
+    SessionController, PANEL_EXEC_CLEANUP_ASYNC_GAP, PANEL_EXEC_CLEANUP_GAP,
+    PANEL_EXEC_CLEANUP_SURFACE,
 };
 pub use panel_query_context::{
     build_path_hierarchy_database_pin, namespace_branch_child_names, namespace_child_names,
@@ -477,9 +477,8 @@ pub use relation_prediction::{
 pub use query_exec_actions::{
     extract_error, is_cancellation_error, notify_schema_actions, patch_exec,
     post_success_view_mode, query_error_transition, reduce_query_execution_state, run_start_state,
-    should_apply_event, transition_exec, BindParams as QueryExecBindParams,
-    ExecTable as QueryExecTable, ExecutionError, QueryCancelState as QueryExecActionsCancelState,
-    QueryExecState as QueryExecActionsState, QueryExecutionTransition, QueryTerminalState,
+    should_apply_event, transition_exec, ExecutionError, QueryCancelState, QueryExecState,
+    QueryExecTable, QueryExecutionTransition, QueryTerminalState,
     SchemaAction, GENERIC_FAILURE_KEY, QUERY_ERROR_QUOTA_CODE, QUERY_EXEC_ACTIONS_GAP,
     QUERY_EXEC_ACTIONS_SURFACE, QUOTA_MESSAGE_KEY, REFRESH_CONNECTION_EVENT,
 };

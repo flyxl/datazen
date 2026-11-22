@@ -1,4 +1,4 @@
-use super::{ExecTable, QueryCancelState, QueryExecState, QueryTerminalState};
+use super::{QueryCancelState, QueryExecState, QueryExecTable, QueryTerminalState};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum QueryExecutionTransition {
@@ -128,7 +128,7 @@ pub fn query_error_transition(exec: &QueryExecState, message: &str) -> QueryExec
     }
 }
 
-pub fn patch_exec<F>(current: &ExecTable, key: &str, patch: F) -> ExecTable
+pub fn patch_exec<F>(current: &QueryExecTable, key: &str, patch: F) -> QueryExecTable
 where
     F: FnOnce(&mut QueryExecState),
 {
@@ -140,10 +140,10 @@ where
 }
 
 pub fn transition_exec(
-    current: &ExecTable,
+    current: &QueryExecTable,
     key: &str,
     transition: &QueryExecutionTransition,
-) -> ExecTable {
+) -> QueryExecTable {
     let exec = match current.get(key) {
         Some(exec) => exec,
         None => return current.clone(),
@@ -283,7 +283,7 @@ mod tests {
 
     #[test]
     fn patch_and_transition_preserve_other_panes() {
-        let mut table = ExecTable::new();
+        let mut table = QueryExecTable::new();
         table.insert("p1".to_owned(), running());
         table.insert("p2".to_owned(), QueryExecState::empty());
         let patched = patch_exec(&table, "p1", |state| state.sql = "select 1".to_owned());
