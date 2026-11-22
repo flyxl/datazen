@@ -49,6 +49,7 @@ pub(crate) mod table_load_error_state;
 pub(crate) mod table_no_primary_key_tip;
 pub(crate) mod table_read_only_tip;
 pub(crate) mod table_status_banners;
+pub(crate) mod table_view;
 
 mod connections;
 mod connections_home;
