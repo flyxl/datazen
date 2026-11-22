@@ -200,3 +200,21 @@ fn heartbeat_pings_only_connected_tabs_with_a_session() {
     assert_eq!(heartbeat_sessions(&tabs), vec!["s1".to_owned(), "s5".to_owned()]);
     assert!(heartbeat_sessions(&[]).is_empty());
 }
+
+#[test]
+fn bootstrap_without_an_action_has_no_pending_intent() {
+    let consumed = ConsumedConnection {
+        tab: tab("cfg-1", "", ConnectionStatus::Connecting),
+        action: None,
+    };
+    let vm = bootstrap(Some(&consumed));
+    assert_eq!(vm.tabs.len(), 1);
+    assert_eq!(vm.pending_action, None);
+}
+
+#[test]
+fn cross_failed_keeps_an_empty_error_string() {
+    let tabs = vec![tab("cfg-1", "", ConnectionStatus::Connecting)];
+    let next = apply_cross_failed(&tabs, Some("cfg-1"), Some("")).expect("failed");
+    assert_eq!(next[0].error.as_deref(), Some(""), "React's ?? keeps an empty error string");
+}
