@@ -3,6 +3,7 @@
 //! Hosts implement [`WorkspaceApi`]. The memory workspace is only a stand-in so the
 //! interface can run before the desktop and HTTP adapters exist.
 
+mod result_workspace;
 mod tabs;
 
 use std::collections::HashMap;
@@ -10,6 +11,13 @@ use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
 use datazen_driver_api::{ConnectionConfig, SslMode};
 
+pub use result_workspace::{
+    can_render_result_chart, get_top_level_sql_verb, infer_field_type, is_chartable_result,
+    is_mutation_execution, resolve_result_workspace_view, strip_leading_sql_comments,
+    InferredFieldType, ResultColumn, ResultValue, ResultWorkspaceFallbackReason, ResultWorkspaceView,
+    ResultWorkspaceViewResolution, StatementResultView, MUTATION_VERBS, QUERY_VERBS,
+    RESULT_WORKSPACE_GAP, RESULT_WORKSPACE_SURFACE,
+};
 pub use tabs::{Tab, TabKind, Tabs};
 
 /// One foreign key: this table's columns (a compound key stays together), the
