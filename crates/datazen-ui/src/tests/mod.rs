@@ -109,6 +109,9 @@ mod table_view_clipboard;
 // T624: the table action table decisions (navigation guard, notice
 // invalidation, count strategy and per-binding store delegation).
 mod use_table_actions;
+// T610: the connection-tab state machine (bootstrap, connect reuse, cross-window
+// events, active index and heartbeat selection).
+mod use_connection_tabs;
 // T618: the KV workspace slot resolver (both gates, shared props, panel-state
 // atom identity, landing home, overview jump and relay lifecycle).
 mod use_kv_workspace_slots;
