@@ -140,7 +140,7 @@
 - [x] T592 · windows/connection · 1.00d · windows/connection/query/queryErrorChatPrompt.ts windows/connection/query/queryExecutionRisk.ts
 - [x] T594 · windows/connection · 0.80d · windows/connection/query/queryResultPaneHeight.ts windows/connection/query/resolveExecutionTarget.ts
 - [x] T596 · windows/connection · 0.90d · windows/connection/query/useQueryBuilderContribution.ts
-- [ ] T598 · windows/connection · 0.90d · windows/connection/query/validateBindParams.ts windows/connection/queryToolbarWidth.ts windows/connection/result-workspace/index.ts
+- [x] T598 · windows/connection · 0.90d · windows/connection/query/validateBindParams.ts windows/connection/queryToolbarWidth.ts windows/connection/result-workspace/index.ts
 - [x] T600 · windows/connection · 0.80d · windows/connection/result-workspace/isMutationExecution.ts windows/connection/result-workspace/resultWorkspaceHelpers.ts
 - [ ] T602 · windows/connection · 0.60d · windows/connection/schema-tree/schemaTreeCategories.ts windows/connection/schema-tree/schemaTreeDrag.ts
 - [ ] T604 · windows/connection · 0.90d · windows/connection/schema-tree/useExpandedDbCacheRefresh.ts
