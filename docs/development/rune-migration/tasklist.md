@@ -572,7 +572,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T553 · lib · 0.90d · lib/localeSync.ts
 - [x] T554 · windows/connection · 5.80d · windows/connection/TableView.tsx · split
 - [ ] T555 · lib · 0.80d · lib/mainWindowContextMenu.ts
-- [ ] T556 · windows/connection · 0.90d · windows/connection/WorkspaceModeSidebar.tsx
+- [x] T556 · windows/connection · 0.90d · windows/connection/WorkspaceModeSidebar.tsx
 - [ ] T557 · lib · 0.90d · lib/mcpAgentConfig.ts
 - [ ] T558 · windows/connection · 0.90d · windows/connection/connectionPageUtils.ts
 - [ ] T559 · lib · 0.90d · lib/migrationJobHydration.ts
@@ -592,9 +592,9 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T573 · lib · 0.60d · lib/processListResult.ts lib/productFeatures.ts
 - [ ] T574 · windows/connection · 0.90d · windows/connection/navigator/useConnectionDrag.ts
 - [ ] T575 · lib · 0.80d · lib/queryContextPath.ts
-- [ ] T576 · windows/connection · 0.90d · windows/connection/navigator/useKvDbCounts.ts
+- [x] T576 · windows/connection · 0.90d · windows/connection/navigator/useKvDbCounts.ts
 - [ ] T577 · lib · 0.90d · lib/queryExecutionViewModel.ts
-- [ ] T578 · windows/connection · 1.30d · windows/connection/navigator/useNavigatorContextMenus.ts · split
+- [x] T578 · windows/connection · 1.30d · windows/connection/navigator/useNavigatorContextMenus.ts · split
 - [ ] T579 · lib · 0.90d · lib/querySidebarContextMenu.ts lib/queryStream.ts lib/relationMetadata/identity.ts
 - [ ] T580 · windows/connection · 2.00d · windows/connection/navigator/useNavigatorDbState.ts · split
 - [ ] T581 · lib · 0.30d · lib/resolveUiLanguage.ts
@@ -630,11 +630,11 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T611 · lib · 0.50d · lib/sqlEditorDefaults.ts
 - [ ] T612 · windows/connection · 0.90d · windows/connection/useConnectionWorkspaceMeta.ts
 - [ ] T613 · lib · 0.90d · lib/sqlFileExecution.ts
-- [ ] T614 · windows/connection · 0.90d · windows/connection/useDirtyIndex.ts
+- [x] T614 · windows/connection · 0.90d · windows/connection/useDirtyIndex.ts
 - [ ] T615 · lib · 0.80d · lib/sqlFormat.ts lib/sqlFunctionRegistry.ts
-- [ ] T616 · windows/connection · 0.90d · windows/connection/useKvSlotActions.ts
+- [x] T616 · windows/connection · 0.90d · windows/connection/useKvSlotActions.ts
 - [ ] T617 · lib · 0.80d · lib/sqlGenerator.ts lib/sqlNamespace.ts
-- [ ] T618 · windows/connection · 0.90d · windows/connection/useKvWorkspaceSlots.ts
+- [x] T618 · windows/connection · 0.90d · windows/connection/useKvWorkspaceSlots.ts
 - [ ] T619 · lib · 0.80d · lib/sqlPathPrefix.ts lib/sqlSchemaDropTargets.ts
 - [ ] T620 · windows/connection · 0.90d · windows/connection/useNamedViewMenu.ts
 - [ ] T621 · lib · 0.90d · lib/sqlStatementRange.ts lib/sqlTransactionGuard.ts lib/startupTimer.ts
@@ -642,11 +642,11 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T623 · lib · 0.90d · lib/surfaceBgCache.ts
 - [ ] T624 · windows/connection · 0.90d · windows/connection/useTableActions.ts
 - [ ] T625 · lib · 0.90d · lib/syncPairing.ts
-- [ ] T626 · windows/connection · 0.90d · windows/connection/useTableDraftRows.ts
+- [x] T626 · windows/connection · 0.90d · windows/connection/useTableDraftRows.ts
 - [ ] T627 · lib · 0.30d · lib/syncTaxonomy.ts
-- [ ] T628 · windows/connection · 1.30d · windows/connection/useTableForeignKeyNavigation.ts · split
+- [x] T628 · windows/connection · 1.30d · windows/connection/useTableForeignKeyNavigation.ts · split
 - [ ] T629 · lib · 1.30d · lib/tableChanges.ts · split
-- [ ] T630 · windows/connection · 0.90d · windows/connection/useTableViewClipboard.ts
+- [x] T630 · windows/connection · 0.90d · windows/connection/useTableViewClipboard.ts
 - [ ] T631 · lib · 0.80d · lib/tableSchemaForSql.ts lib/tableSqlActions.ts
 - [ ] T632 · lib · 2.00d · lib/themeEditorColors.ts · split
 - [ ] T633 · lib · 1.30d · lib/themePackApply.ts · split

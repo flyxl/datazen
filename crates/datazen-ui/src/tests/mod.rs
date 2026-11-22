@@ -89,6 +89,10 @@ mod table_column_filter_audit;
 mod structure_index_table;
 // T550: TableStructureEditor port (titles/gates, toolbar actions, states, geometry).
 mod table_structure_editor;
+// T556: WorkspaceModeSidebar port (mode items/actions, update reminder, geometry).
+mod workspace_mode_sidebar;
+// T556 independent audit: progress phases, label precedence, percent rounding.
+mod workspace_mode_sidebar_audit;
 // T550 independent audit: validity edges, toolbar states, enabled/export gates.
 mod table_structure_editor_audit;
 mod structure_plan_preview;
@@ -96,6 +100,12 @@ mod structure_plan_preview;
 mod structure_index_audit;
 // T536: the one-line table clipboard status (paste summary, problems, deadline).
 mod table_clipboard_status;
+// T630: the TableView clipboard adapter decisions (intent, formatting, mapping,
+// gating and host-clock feedback state).
+mod table_view_clipboard;
+// T618: the KV workspace slot resolver (both gates, shared props, panel-state
+// atom identity, landing home, overview jump and relay lifecycle).
+mod use_kv_workspace_slots;
 // T544: FK error banner, load-error state and no-primary-key tip ports.
 mod table_fk_error_banner;
 mod table_load_error_state;
@@ -109,6 +119,14 @@ mod table_read_only_tip;
 mod table_status_banners;
 // T554: the TableView decision port (grid/editor/insert/dirty/filter/quick look).
 mod table_view;
+// T614: pure useDirtyIndex / dirtyIndex derivation logic (dirty rows, counts, anchors).
+mod use_dirty_index;
+// T614 independent audit: expression/count branches, structural sharing, identity escaping.
+mod use_dirty_index_audit;
+// T626: pure useTableDraftRows / draftInserts logic (drafts, dirty, wire shape).
+mod table_draft_rows;
+// T626 independent audit: dirty/interaction edges, Escape, paste, stale ids.
+mod table_draft_rows_audit;
 // T524 independent audit: any-column not-contains, replace-all splicing and
 // non-contains operator planning, checked against React resultFindReplace.
 mod result_table_view_audit;
@@ -2132,3 +2150,9 @@ mod table_filter_toolbar;
 mod table_pending_changes_bar;
 // T552: TableToolbar port (E2E anchors, refresh/insert actions, gating, filter threading, geometry).
 mod table_toolbar;
+// T576: useKvDbCounts logic (row derivation, fetch dedup, refresh/invalidate, alive guard).
+mod use_kv_db_counts;
+// T628: useTableForeignKeyNavigation logic (FK index/navigability, jump, breadcrumb, history).
+mod table_foreign_key_navigation;
+// T616: useKvSlotActions logic (wired/unwired branches, warnings, dangerous gate).
+mod use_kv_slot_actions;

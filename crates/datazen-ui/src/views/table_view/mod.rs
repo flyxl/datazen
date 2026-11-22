@@ -12,6 +12,7 @@
 //! snapshot and apply the actions. Per-item allow annotations carry that stage.
 
 mod logic;
+pub(crate) mod draft_rows;
 mod view;
 
 pub(crate) use logic::*;
