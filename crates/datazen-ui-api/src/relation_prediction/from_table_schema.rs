@@ -12,16 +12,11 @@
 //!
 //! ## Input types
 //!
-//! React's input is `TableSchema` from `types/connection.ts`. The full React
-//! shape is already ported crate-privately in
-//! `crates/datazen-ui/src/relation_metadata/schema.rs` (T079) — it cannot be
-//! reused here because `datazen-ui` depends on `datazen-ui-api`, not the
-//! reverse, and the twin is `pub(crate)`. The structs below therefore carry
-//! only the fields this adapter reads, under React's own names; a consumer
-//! wiring task (the ER diagram view / query builder host, both of which call
-//! `predictRelations(toPredictionTablesFromSchemas(...))` in React) can bridge
-//! from the metadata family or the host loader, and unifying the two twins
-//! belongs to that consumer.
+//! React's input is `TableSchema` from `types/connection.ts`. The adapter uses
+//! the single canonical facade definition from `connection_types` (T128) —
+//! three names at the crate root, `ColumnSchema` via the `types` aggregate —
+//! and reads only the name/type/nullability, key and foreign-key columns from
+//! the full shape. There are no local slice twins.
 //!
 //! ## Output types
 //!
@@ -38,45 +33,8 @@
 
 use std::collections::HashSet;
 
-/// One column of a table, as the adapter reads it: name, driver-reported type
-/// string, nullability. React's full `ColumnSchema` also carries defaults,
-/// primary-key/auto-increment flags and comments; those feed the metadata
-/// family and never enter prediction.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ColumnSchema {
-    pub name: String,
-    pub data_type: String,
-    pub nullable: bool,
-}
-
-/// One index of a table, as the adapter reads it: its columns in index order
-/// and whether it is unique. React's full `IndexInfo` also carries the name,
-/// `isPrimary` and the index type; the adapter only asks "is this a key?".
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct IndexInfo {
-    pub columns: Vec<String>,
-    pub is_unique: bool,
-}
-
-/// One declared foreign key, as the adapter reads it: this table's columns, the
-/// referenced table and its columns. React's full `ForeignKeyInfo` also carries
-/// the constraint name and the update/delete/deferrability actions.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ForeignKeyInfo {
-    pub columns: Vec<String>,
-    pub referenced_table: String,
-    pub referenced_columns: Vec<String>,
-}
-
-/// One table's schema, the adapter's whole input (React `TableSchema`).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct TableSchema {
-    pub table_name: String,
-    pub columns: Vec<ColumnSchema>,
-    pub primary_keys: Vec<String>,
-    pub indexes: Vec<IndexInfo>,
-    pub foreign_keys: Vec<ForeignKeyInfo>,
-}
+use crate::types::ColumnSchema;
+use crate::{ForeignKeyInfo, IndexInfo, TableSchema};
 
 /// One column of a table under consideration (React `types.ts`
 /// `PredictionColumn`, the fields this adapter fills).
@@ -223,6 +181,7 @@ mod tests {
             name: name.to_string(),
             data_type: data_type.to_string(),
             nullable,
+            ..Default::default()
         }
     }
 
@@ -230,6 +189,7 @@ mod tests {
         IndexInfo {
             columns: columns.iter().map(|c| c.to_string()).collect(),
             is_unique,
+            ..Default::default()
         }
     }
 
@@ -242,6 +202,7 @@ mod tests {
             columns: columns.iter().map(|c| c.to_string()).collect(),
             referenced_table: referenced_table.to_string(),
             referenced_columns: referenced_columns.iter().map(|c| c.to_string()).collect(),
+            ..Default::default()
         }
     }
 
@@ -420,6 +381,7 @@ mod tests {
         source.indexes = vec![IndexInfo {
             columns: Vec::new(),
             is_unique: true,
+            ..Default::default()
         }];
         let table = to_prediction_table_from_schema("orders", &source);
         assert_eq!(table.unique_column_sets, vec![vec!["id"]]);
