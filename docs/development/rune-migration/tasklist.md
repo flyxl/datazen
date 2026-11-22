@@ -622,11 +622,11 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T603 · lib · 0.80d · lib/setValueActions.ts lib/splash.ts
 - [ ] T604 · windows/connection · 0.90d · windows/connection/schema-tree/useExpandedDbCacheRefresh.ts
 - [ ] T605 · lib · 0.80d · lib/sqlBindParams.ts
-- [ ] T606 · windows/connection · 1.30d · windows/connection/tableEditing.ts · split
+- [x] T606 · windows/connection · 1.30d · windows/connection/tableEditing.ts · split
 - [ ] T607 · lib · 2.00d · lib/sqlCompletionContext.ts · split
-- [ ] T608 · windows/connection · 1.30d · windows/connection/useConnectionContextMenu.ts · split
+- [x] T608 · windows/connection · 1.30d · windows/connection/useConnectionContextMenu.ts · split
 - [ ] T609 · lib · 2.00d · lib/sqlCompletions.ts · split
-- [ ] T610 · windows/connection · 0.90d · windows/connection/useConnectionTabs.ts
+- [x] T610 · windows/connection · 0.90d · windows/connection/useConnectionTabs.ts
 - [ ] T611 · lib · 0.50d · lib/sqlEditorDefaults.ts
 - [ ] T612 · windows/connection · 0.90d · windows/connection/useConnectionWorkspaceMeta.ts
 - [ ] T613 · lib · 0.90d · lib/sqlFileExecution.ts
