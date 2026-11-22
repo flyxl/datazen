@@ -16,3 +16,4 @@ pub(crate) mod types;
 pub(crate) mod use_connection_drag;
 pub(crate) mod use_kv_db_counts;
 pub(crate) mod use_navigator_context_menus;
+pub(crate) mod use_navigator_db_state;
