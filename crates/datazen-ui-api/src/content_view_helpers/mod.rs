@@ -14,6 +14,5 @@ pub use labels::{
 };
 pub use types::{
     ActiveConnectionEntry, ContentViewConnectionContext, ContentViewPanel, PanelIcon, PanelKind,
-    SavedConnection, SubTab, SubTabId, CONTENT_VIEW_HELPERS_GAP, CONTENT_VIEW_HELPERS_SURFACE,
-    ICON_CLASS,
+    SubTab, SubTabId, CONTENT_VIEW_HELPERS_GAP, CONTENT_VIEW_HELPERS_SURFACE, ICON_CLASS,
 };

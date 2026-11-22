@@ -22,6 +22,16 @@ mod navigator_connection_drag;
 // T578: the navigator context-menu decision module (item sets, separators,
 // exact keys, capability gating and emitted actions for every menu family).
 mod use_navigator_context_menus;
+// T576: the per-session KV db-counts cache (shared/deduped, best-effort).
+mod navigator_kv_db_counts;
+// T578: the navigator's seven context menus (gates, order, action payloads).
+mod navigator_context_menus;
+// T580: the per-database caches and the refresh ladder (pointer-first
+// toggles, background-neutral loads, the cache-refresh wave).
+mod navigator_db_state;
+// T582: the navigator utils (namespace leaf context, the row-key contract,
+// depth padding, the multi-db decision, the ghost spec).
+mod navigator_utils;
 // T0-09: the tree base (geometry, keyboard, virtualisation, selection).
 mod tree;
 // T0-09 audit: virtual staging, page height, edges and the selected a11y state.

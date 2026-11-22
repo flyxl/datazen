@@ -5,6 +5,8 @@
 
 mod ai_draft_bridge;
 mod connection_page_utils;
+mod connection_shared;
+mod expanded_db_cache_refresh;
 mod open_history_query;
 mod query_contracts;
 mod query_drop_handler;
@@ -17,6 +19,7 @@ mod query_toolbar_width;
 mod result_workspace_index;
 mod schema_tree;
 mod tabs;
+mod workspace_mode_sidebar;
 mod use_query_builder_contribution;
 mod validate_bind_params;
 
@@ -25,10 +28,11 @@ use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
 use datazen_driver_api::{ConnectionConfig, SslMode};
 
+pub use connection_shared::SavedConnection;
 pub use open_history_query::{
     open_history_query, ActiveConnection, HistoryQueryEntry, OpenHistoryOutcome,
     OpenHistoryQueryOptions, OpenHistoryQueryHost, PathHierarchySplit, PendingHistoryQuery,
-    QueryPanelState, SavedConnection, OPEN_HISTORY_QUERY_GAP, OPEN_HISTORY_QUERY_SURFACE,
+    QueryPanelState, OPEN_HISTORY_QUERY_GAP, OPEN_HISTORY_QUERY_SURFACE,
 };
 pub use query_contracts::{
     build_query_panel_diagnosis_context, has_suspicious_postgres_double_quoted_literal,
@@ -63,8 +67,8 @@ pub use content_view_helpers::{
     get_panel_icon, get_panel_label, get_panel_short_label, get_panel_tab_label, get_sub_tabs,
     get_view_sub_tabs, resolve_connection_context, resolve_connection_context_by_connection,
     resolve_panel_tab_database, ActiveConnectionEntry, ContentViewConnectionContext,
-    ContentViewPanel, PanelIcon, PanelKind, SavedConnection as ContentViewSavedConnection, SubTab,
-    SubTabId, CONTENT_VIEW_HELPERS_GAP, CONTENT_VIEW_HELPERS_SURFACE, ICON_CLASS,
+    ContentViewPanel, PanelIcon, PanelKind, SubTab, SubTabId, CONTENT_VIEW_HELPERS_GAP,
+    CONTENT_VIEW_HELPERS_SURFACE, ICON_CLASS,
 };
 pub use query_toolbar_width::{
     path_hierarchy_label_width, query_context_select_width, query_toolbar_expanded_min_width,
@@ -92,6 +96,11 @@ pub use connection_page_utils::{
     MainView, PendingOpenQuery, WorkspaceMode, CONNECTION_PAGE_UTILS_GAP,
     CONNECTION_PAGE_UTILS_SURFACE, DEFAULT_DATABASE_TYPE, PENDING_CONNECTION_KEY,
 };
+pub use expanded_db_cache_refresh::{
+    schema_fingerprint, ConnectionRef, ExpandedDbCacheRefresh, RefreshDeps, RefreshEffect,
+    RefreshInput, SchemaSnapshot, EXPANDED_DB_CACHE_REFRESH_GAP,
+    EXPANDED_DB_CACHE_REFRESH_SURFACE,
+};
 pub use tabs::{Tab, TabKind, Tabs};
 pub use ai_draft_bridge::{
     AiChatDraftRequest, AiChatDraftSource, ContentViewCallbacks, OpenRelationSubTab,
@@ -117,6 +126,14 @@ pub use validate_bind_params::{
     find_missing_params, get_param_label, parse_sql_params, MissingParam, ParamValue, SqlParam,
     SqlParamDialectPolicy, SqlParamKind, SqlParamSyntax, VALIDATE_BIND_PARAMS_GAP,
     VALIDATE_BIND_PARAMS_SURFACE,
+};
+pub use workspace_mode_sidebar::{
+    build_sidebar_view, build_update_view, dispatch_nav_action, progress_label, progress_ring,
+    resolve_confirm_result, resolve_restart_prompt, update_label, NavAction, NavButton, NavButtonId,
+    ProgressRing, RestartPrompt, SidebarView, UpdateAction, UpdateButtonView, UpdateIconKind,
+    UpdateProgress, UpdateProgressPhase, UpdateState, BUTTON_ACTIVE, BUTTON_BASE,
+    BUTTON_COLLAPSED, BUTTON_EXPANDED, BUTTON_INACTIVE, SIDEBAR_BASE,
+    WORKSPACE_MODE_SIDEBAR_GAP, WORKSPACE_MODE_SIDEBAR_SURFACE,
 };
 
 /// One foreign key: this table's columns (a compound key stays together), the

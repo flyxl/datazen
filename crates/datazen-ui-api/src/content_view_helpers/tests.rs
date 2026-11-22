@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use crate::SavedConnection;
+
 use super::*;
 
 fn panel(kind: PanelKind) -> ContentViewPanel {
@@ -145,9 +147,15 @@ fn fixtures() -> (BTreeMap<String, ActiveConnectionEntry>, Vec<SavedConnection>)
         SavedConnection {
             id: "conn-a".to_owned(),
             name: "Production".to_owned(),
-            database_type: Some("postgres".to_owned()),
+            database_type: "postgres".to_owned(),
+            database: None,
         },
-        SavedConnection { id: "conn-c".to_owned(), name: "Unused".to_owned(), database_type: None },
+        SavedConnection {
+            id: "conn-c".to_owned(),
+            name: "Unused".to_owned(),
+            database_type: String::new(),
+            database: None,
+        },
     ];
     (active, saved)
 }
@@ -159,7 +167,7 @@ fn connection_context_resolves_by_session_then_by_saved_id() {
     assert_eq!(context.connection_id, "conn-a");
     assert_eq!(context.db_session_id, "sess-a");
     assert_eq!(context.connection_name, "Production");
-    assert_eq!(context.database_type.as_deref(), Some("postgres"));
+    assert_eq!(context.database_type, "postgres");
 
     assert_eq!(resolve_connection_context("unknown", &active, &saved), None);
     assert_eq!(resolve_connection_context("", &active, &saved), None);

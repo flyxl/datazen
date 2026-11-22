@@ -47,7 +47,7 @@ use deps::object_filter::{
     should_show_schema, ObjectFilterPrefs,
 };
 use deps::tree_rules::{effective_expanded, searched_row_levels};
-use deps::utils::{
+use crate::views::navigator::utils::{
     flatten_namespace_tree, group_by_schema, should_use_multi_database_tree,
     CONNECTION_CHILD_DEPTH, DATABASE_CHILD_DEPTH,
 };
