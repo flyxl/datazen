@@ -476,3 +476,51 @@ fn empty_copy_never_lights_up_without_a_flavor() {
     assert!(st::empty_copy_allowed("text", None));
     assert!(st::empty_copy_allowed("", Some("<table></table>")));
 }
+
+#[test]
+fn semicolon_delimiter_splits_rows() {
+    let parsed = parse_clipboard_text("a;b\nx;y");
+    let ParseResult::Ok { cells, .. } = parsed else {
+        panic!("semicolon-delimited block must parse");
+    };
+    assert_eq!(cells, vec![vec!["a", "b"], vec!["x", "y"]]);
+}
+
+#[test]
+fn html_without_rows_omits_tbody() {
+    let out = serialize_cells(
+        &[],
+        ClipboardFormat::Html,
+        &["x".to_owned()],
+        None,
+        "",
+        false,
+    );
+    assert_eq!(out, "<table>\n<thead><tr><th>x</th></tr></thead>\n</table>");
+}
+
+#[test]
+fn markdown_without_names_uses_blank_header() {
+    let out = serialize_cells(
+        &[vec![text("a"), text("b")]],
+        ClipboardFormat::Markdown,
+        &[],
+        None,
+        "",
+        false,
+    );
+    assert_eq!(out, "|  |  |\n| --- | --- |\n| a | b |");
+}
+
+#[test]
+fn plain_header_is_written_only_with_column_names() {
+    let out = serialize_cells(
+        &[vec![text("a")]],
+        ClipboardFormat::Plain,
+        &["x".to_owned()],
+        Some(true),
+        "NULL",
+        false,
+    );
+    assert_eq!(out, "x\na");
+}
