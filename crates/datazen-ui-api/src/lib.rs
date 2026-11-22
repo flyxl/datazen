@@ -5,6 +5,7 @@
 
 mod ai_draft_bridge;
 mod query_contracts;
+mod query_drop_handler;
 mod query_error_chat_prompt;
 mod query_execution_risk;
 mod query_execution_target;
@@ -25,6 +26,12 @@ pub use query_contracts::{
     QueryDiagnosisSchemaState, QueryExecutionGateRefs, QueryPanelCallbacks,
     QueryPanelDiagnosisContextInput, QueryPanelProps, RetryValidationInput, SchemaContext,
     QUERY_CONTRACTS_GAP, QUERY_CONTRACTS_SURFACE,
+};
+pub use query_drop_handler::{
+    create_query_drop_handler, detect_drop_context, ChartConfigLike, DashboardWidgetRequest,
+    DroppedTable, DropEffect, DropOptions, ExplainResultLike, QueryPanelWorkflows,
+    RetryValidationInputLike, WorkflowEffect, WorkflowHost, WorkflowOptions, WorkflowState,
+    QUERY_DROP_HANDLER_GAP, QUERY_DROP_HANDLER_SURFACE,
 };
 pub use query_execution_target::{
     estimate_query_result_pane_height, offset_to_line, query_result_pane_sizing,
