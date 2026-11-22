@@ -3,6 +3,7 @@
 //! navigation guard and Quick Look. No store, IPC or timer access.
 
 use super::*;
+use crate::i18n::t;
 
 /// React `SHARED_FILTER_OPERATORS` (existing set plus the newer operators).
 #[allow(dead_code)] // pure table; consumed by the operator resolver and tests.
@@ -136,13 +137,18 @@ pub(crate) fn normalize_selection_range(anchor: usize, focus: usize) -> (usize, 
 #[allow(dead_code)] // pure helper; consumed by Quick Look and tests.
 pub(crate) fn is_quick_lookable(value: &CellValue, column_type: &str) -> bool {
     let kind = column_type.to_ascii_lowercase();
-    if kind.contains("blob") || kind.contains("binary") || kind.contains("bytea") {
+    if kind.contains("blob")
+        || kind.contains("binary")
+        || kind.contains("bytea")
+        || kind.contains("image")
+        || kind.contains("raw")
+    {
         return true;
     }
     match value {
         CellValue::Null => false,
         CellValue::Json(_) => true,
-        CellValue::Text(text) => text.len() > 120,
+        CellValue::Text(text) => text.encode_utf16().count() > 120,
         CellValue::Number(_) | CellValue::Bool(_) | CellValue::Blob(_) => false,
     }
 }
@@ -183,7 +189,7 @@ pub(crate) enum NoticeEvent {
 pub(crate) fn reduce_notice(_current: Option<&str>, event: NoticeEvent) -> (Option<String>, Option<usize>) {
     match event {
         NoticeEvent::CommitNotLocated => (
-            Some("the new row could not be located".to_owned()),
+            Some(t("tableData.insertReturningUnavailable").to_owned()),
             None,
         ),
         NoticeEvent::CommitLocated(row) => (None, Some(row)),

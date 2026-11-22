@@ -125,7 +125,11 @@ fn add_row_entry_is_gated_by_read_only_and_drafts_are_host_owned() {
 #[test]
 fn insert_notice_expires_on_page_state_changes_and_later_success() {
     let (notice, _) = reduce_notice(None, NoticeEvent::CommitNotLocated);
-    assert_eq!(notice.as_deref(), Some("the new row could not be located"));
+    assert_eq!(
+        notice.as_deref(),
+        Some(crate::i18n::t("tableData.insertReturningUnavailable")),
+        "the notice comes from the locale pack"
+    );
     for event in [
         NoticeEvent::PageChanged,
         NoticeEvent::LoadRetried,
@@ -195,6 +199,16 @@ fn quick_lookable_values_are_length_json_or_blob() {
     assert!(is_quick_lookable(&CellValue::Text("x".repeat(121)), "text"));
     assert!(is_quick_lookable(&CellValue::Json("{}".to_owned()), "text"));
     assert!(is_quick_lookable(&CellValue::Blob(vec![1]), "bytea"));
+    assert!(
+        is_quick_lookable(&CellValue::Text("x".to_owned()), "image"),
+        "type image is a blob in React and must be quick-lookable"
+    );
+    assert!(is_quick_lookable(&CellValue::Text("x".to_owned()), "raw"));
+    assert!(
+        !is_quick_lookable(&CellValue::Text("中".repeat(60)), "text"),
+        "React uses value.length (UTF-16 units), not byte length"
+    );
+    assert!(is_quick_lookable(&CellValue::Text("😀".repeat(61)), "text"));
 }
 
 #[test]
