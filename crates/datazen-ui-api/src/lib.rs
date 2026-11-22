@@ -3,6 +3,7 @@
 //! Hosts implement [`WorkspaceApi`]. The memory workspace is only a stand-in so the
 //! interface can run before the desktop and HTTP adapters exist.
 
+mod query_contracts;
 mod tabs;
 
 use std::collections::HashMap;
@@ -10,6 +11,15 @@ use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
 use datazen_driver_api::{ConnectionConfig, SslMode};
 
+pub use query_contracts::{
+    build_query_panel_diagnosis_context, has_suspicious_postgres_double_quoted_literal,
+    read_current_query_panel_retry_validation_input, ActiveConnectionView, ConnectionContext,
+    ContentViewCallbacks, DiagnosisContext, DiagnosisContextInput, ExecuteKind,
+    PendingExecute, PanelView, QueryContractsHost, QueryDiagnosisExecution,
+    QueryDiagnosisSchemaState, QueryExecutionGateRefs, QueryPanelDiagnosisContextInput,
+    QueryPanelProps, RetryValidationInput, SchemaContext, QUERY_CONTRACTS_GAP,
+    QUERY_CONTRACTS_SURFACE,
+};
 pub use tabs::{Tab, TabKind, Tabs};
 
 /// One foreign key: this table's columns (a compound key stays together), the
