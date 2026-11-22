@@ -291,7 +291,7 @@ fn overview_jump_tab_actions_use_initial_database_and_fallback() {
             pending: Some(KvPendingAction { tab: Some("console".to_owned()), ..KvPendingAction::default() }),
         }
     );
-    for (section, expected) in [("info", "info"), ("memory", "memory"), ("slowlog", "slowlog"), ("other", "info")] {
+    for (section, expected) in [("info", "info"), ("memory", "memory"), ("slowlog", "slowlog"), ("other", "other"), ("custom", "custom")] {
         let mut target = jump(KvJumpKind::Monitor, Some(1));
         target.section = Some(section.to_owned());
         assert_eq!(
@@ -401,4 +401,38 @@ fn commit_uses_object_is_semantics_for_nan_and_minus_zero() {
         ..KvSlotPatch::default()
     };
     assert!(commit_slot_patch(&minus_zero, &plus_zero).is_some(), "Object.is(-0, 0) is false");
+}
+
+// ── D1 / D2 regression repros ─────────────────────────────────────────────
+
+#[test]
+fn d1_empty_initial_database_is_kept_not_falled_back() {
+    for kind in [KvJumpKind::Console, KvJumpKind::Pubsub, KvJumpKind::Monitor, KvJumpKind::ImportExport] {
+        let action = plan_overview_jump(&jump(kind, Some(1)), Some(""));
+        let KvJumpAction::Open { database, .. } = action else {
+            panic!("a tab jump must open a database");
+        };
+        assert_eq!(database, "");
+    }
+    // None still falls back, and a real value is kept.
+    let KvJumpAction::Open { database: absent, .. } = plan_overview_jump(&jump(KvJumpKind::Console, None), None) else {
+        panic!("a tab jump must open a database");
+    };
+    assert_eq!(absent, "db0");
+}
+
+#[test]
+fn d2_monitor_section_is_forwarded_defaulting_only_when_absent() {
+    let mut target = jump(KvJumpKind::Monitor, Some(1));
+    target.section = Some("custom".to_owned());
+    let KvJumpAction::Open { pending, .. } = plan_overview_jump(&target, Some("db3")) else {
+        panic!("a monitor jump must open a database");
+    };
+    assert_eq!(pending.expect("pending action").monitor_sub_page, "custom");
+
+    target.section = None;
+    let KvJumpAction::Open { pending, .. } = plan_overview_jump(&target, Some("db3")) else {
+        panic!("a monitor jump must open a database");
+    };
+    assert_eq!(pending.expect("pending action").monitor_sub_page, "info");
 }

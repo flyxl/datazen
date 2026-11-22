@@ -374,8 +374,9 @@ pub(crate) enum KvJumpAction {
 }
 
 /// React's `onOpenTarget` switch. An absent numeric index reads as `0`; tab
-/// jumps fall back to `initialDatabase ?? 'db0'`; a monitor section outside
-/// info/memory/slowlog falls back to `info`.
+/// jumps use `initialDatabase ?? 'db0'` (nullish — an empty string is kept);
+/// a monitor section is the cast string forwarded verbatim, defaulting to
+/// `info` only when absent.
 #[allow(dead_code)] // decision; remove when the KV home host wires the bridge.
 pub(crate) fn plan_overview_jump(
     target: &KvJumpTarget,
@@ -383,7 +384,7 @@ pub(crate) fn plan_overview_jump(
 ) -> KvJumpAction {
     let db_num = target.db_index.unwrap_or(0);
     let database = format!("db{db_num}");
-    let fallback = initial_database.filter(|value| !value.is_empty()).unwrap_or("db0");
+    let fallback = initial_database.unwrap_or("db0");
     let open = |database: String, pending: KvPendingAction| KvJumpAction::Open {
         database,
         pending: Some(pending),
@@ -408,11 +409,7 @@ pub(crate) fn plan_overview_jump(
             open(fallback.to_owned(), KvPendingAction { tab: Some("pubsub".to_owned()), ..KvPendingAction::default() })
         }
         KvJumpKind::Monitor => {
-            let sub = match target.section.as_deref() {
-                Some("memory") => "memory",
-                Some("slowlog") => "slowlog",
-                _ => "info",
-            };
+            let sub = target.section.as_deref().unwrap_or("info");
             open(
                 fallback.to_owned(),
                 KvPendingAction {
