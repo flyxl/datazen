@@ -285,3 +285,71 @@ fn history_viewport_snapshots_are_latest_and_consumed_once() {
     assert!(machine.take_viewport("panel-a").is_none(), "taking consumes it");
     assert!(machine.take_viewport("panel-zzz").is_none());
 }
+
+// ── T628 independent audit (appended; reuses this module's helpers) ──────
+
+/// React `fkNavKey` is `JSON.stringify([...])`: booleans and strings with JSON
+/// metacharacters must be encoded exactly (a differing key breaks the cycle /
+/// dedup rule). The coder suite only pins numbers and schema presence.
+#[test]
+fn audit_nav_key_encodes_booleans_and_escapes_strings() {
+    let target = FkNavTargetIdentityVm {
+        database: "app".to_owned(),
+        schema: None,
+        table: "orders".to_owned(),
+        columns: vec!["code".to_owned()],
+    };
+    let key = fk_nav_key(&target, &[FkValue::Bool(false)]);
+    assert_eq!(key, r#"["app",null,"orders",["code"],[false]]"#);
+
+    let quoted = fk_nav_key(&target, &[FkValue::Str("a\"b\\c\n".to_owned())]);
+    assert_eq!(quoted, r#"["app",null,"orders",["code"],["a\"b\\c\n"]]"#);
+}
+
+/// React `findForeignKey` ignores a falsy constraint name (`if (constraintName)`),
+/// so `Some("")` must fall back to the ordered-column match.
+#[test]
+fn audit_find_fk_empty_name_falls_back_to_columns() {
+    let keys = [fk("named", &["id"], "customers", &["id"])];
+    let found = find_foreign_key(&keys, &["id".to_owned()], Some(""));
+    assert_eq!(found.unwrap().name, "named");
+}
+
+/// React `pickAnchorRow` keeps the active row at the exact last visible row
+/// (`activeRow <= lastVisible`). The coder suite only tests inside and way out.
+#[test]
+fn audit_anchor_row_at_last_visible_boundary() {
+    // scrollTop 280 / 28 = row 10; viewport 112 / 28 = 4 rows → last = 13.
+    assert_eq!(pick_anchor_row(280.0, 28.0, 112.0, Some(13)), (13, true));
+    assert_eq!(pick_anchor_row(280.0, 28.0, 112.0, Some(14)), (10, false));
+}
+
+/// React `goBack` at the bottom of an empty stack is a no-op (returns null),
+/// and `reset` forgets the whole history/viewports.
+#[test]
+fn audit_empty_stack_back_and_reset_are_noops() {
+    let mut machine = FkNavigationMachine::default();
+    assert!(machine.go_back(&panels(&[])).is_none());
+    assert!(machine.go_forward(&panels(&[])).is_none());
+
+    machine.push("panel-b", "key-b", origin());
+    machine.record_viewport("panel-a", GridViewportVm { scroll_top: 42, anchor_row: None, anchor_column: None });
+    machine.reset();
+    assert!(machine.back.is_empty());
+    assert!(machine.forward.is_empty());
+    assert!(machine.viewports().is_empty());
+    assert!(!machine.truncated);
+}
+
+/// React `push` sets `truncated` only when the cap is exceeded; a later normal
+/// push must not clear the flag.
+#[test]
+fn audit_truncated_flag_persists_after_normal_push() {
+    let mut machine = FkNavigationMachine::default();
+    for index in 0..=FK_NAV_MAX_DEPTH {
+        machine.push(&format!("panel-{index}"), &format!("key-{index}"), origin());
+    }
+    assert!(machine.truncated);
+    machine.push("panel-final", "key-final", origin());
+    assert!(machine.truncated, "truncated stays true once the stack overflowed");
+}
