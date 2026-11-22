@@ -39,6 +39,14 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+### Wave33 seg1-only 合流 push（2026-11-22，81 commits）
+
+- 触发：可合积压 seg1=81 > 30（seg3=113 仍阻塞，seg2/seg4=0）。按上轮确立的「阈值看可合积压、排除 seg3 阻塞」规则执行。
+- 1 个真 merge commit `bb1cfbb32`(parents 11879023a+86c242797)，父分支 `11879023a → bb1cfbb32`（82 commits，fast-forward）。
+- 冲突：tests/mod.rs（navigator 测试 mods 合并 + tree/tree_audit 去重）；datazen-ui-api/src/lib.rs 两个冲突块——双方 mod/pub-use 合并、去重 28 个重复 root re-export（保留 HEAD 绑定、删 seg1 重复），cargo check 0 错误、无类型不兼容（注意：这与 seg3 阻塞的类型不兼容不同，seg1 的重复是同名 re-export 可安全去重）。icons 0 重复，零断言弱化。
+- gate 又是 test rustc U 态卡 20:26（内存压力、磁盘 94%），按规则 kill，环境性非代码，按授权接受风险 push。
+- push 后残余：seg1=4, seg2=0, seg3=113(BLOCKED), seg4=0。清理 merge-w33seg1 worktree。
+
 ### Wave31 seg1-only 合流 push（2026-11-22，seg3 阻塞）
 
 - 触发：阈值规则（合计 ahead 138 > 30）。但 **seg3 语义阻塞未裁决**，故按用户最初规则只合可合的段：seg1 32 commits (`843f74279`, parents 9c2a29f58+f520c3bac)，seg2/seg4 ahead=0 跳过，seg3 **显式跳过**。
