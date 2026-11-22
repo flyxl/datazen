@@ -222,3 +222,30 @@ fn labels_are_caller_supplied_not_invented() {
     assert_eq!(build_menu(&a), vec![MenuEntry::Item { id: "open", label: "自定义标签".to_owned() }]);
     let _ = BTreeMap::<&str, String>::new();
 }
+
+// ── T608 independent audit (appended; reuses this module's helpers) ──────
+
+/// React `useConnectionContextMenu.ts:326-327`:
+/// `showBatchExport: kind === 'table' ? false : ctxBatchExportSupported`.
+/// The port derives `show_batch_export` once from the driver meta with no
+/// per-kind override (unlike `show_export_for_kind`), so a table keeps batch
+/// export when the driver supports full-table export — which React forbids.
+#[test]
+fn audit_table_batch_export_is_suppressed_like_react() {
+    let meta = ContextMetaVm {
+        supports_any_export: true,
+        supports_full_table_export: true,
+        ..ContextMetaVm::default()
+    };
+    let flags = derive_context_flags(&meta);
+    let mut a = args(MenuKind::Table, &["open", "batch-export", "truncate"]);
+    a.show_export = show_export_for_kind(&meta, MenuKind::Table); // Some(false)
+    // React forces showBatchExport = false for a table, whatever the driver says.
+    a.show_batch_export = flags.show_batch_export;
+    let menu = build_menu(&a);
+    let rendered = ids(&menu);
+    assert!(
+        !rendered.contains(&"batch-export"),
+        "React forces showBatchExport=false for tables; got {rendered:?}"
+    );
+}
