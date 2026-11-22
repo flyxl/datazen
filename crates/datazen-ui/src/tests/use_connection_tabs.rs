@@ -218,3 +218,17 @@ fn cross_failed_keeps_an_empty_error_string() {
     let next = apply_cross_failed(&tabs, Some("cfg-1"), Some("")).expect("failed");
     assert_eq!(next[0].error.as_deref(), Some(""), "React's ?? keeps an empty error string");
 }
+
+// Independent lane-C repro probe (original D1), retained as a regression guard.
+#[test]
+fn probe_empty_pending_action_is_not_retained() {
+    let consumed = ConsumedConnection {
+        tab: tab("cfg-1", "", ConnectionStatus::Connecting),
+        action: Some(String::new()),
+    };
+    let vm = bootstrap(Some(&consumed));
+    assert_eq!(
+        vm.pending_action, None,
+        "React's `if (initialPendingRef.current?.action)` treats an empty string as absent"
+    );
+}
