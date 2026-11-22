@@ -114,6 +114,8 @@ mod use_table_actions;
 mod use_connection_tabs;
 // T612: pure useConnectionWorkspaceMeta derivation (contexts, toolbar, connecting).
 mod use_connection_workspace_meta;
+// T612 independent audit: fallback edges, recent panels, meta/scope split.
+mod use_connection_workspace_meta_audit;
 // T618: the KV workspace slot resolver (both gates, shared props, panel-state
 // atom identity, landing home, overview jump and relay lifecycle).
 mod use_kv_workspace_slots;
