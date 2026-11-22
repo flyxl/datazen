@@ -106,6 +106,9 @@ mod table_clipboard_status;
 // T630: the TableView clipboard adapter decisions (intent, formatting, mapping,
 // gating and host-clock feedback state).
 mod table_view_clipboard;
+// T618: the KV workspace slot resolver (both gates, shared props, panel-state
+// atom identity, landing home, overview jump and relay lifecycle).
+mod use_kv_workspace_slots;
 // T544: FK error banner, load-error state and no-primary-key tip ports.
 mod table_fk_error_banner;
 mod table_load_error_state;
