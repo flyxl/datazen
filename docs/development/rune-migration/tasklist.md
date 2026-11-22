@@ -586,7 +586,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T567 · lib · 0.90d · lib/nativeContextMenu.ts lib/objectBrowserContextMenu.ts lib/objectFilter.ts
 - [x] T568 · windows/connection · 0.60d · windows/connection/er/nodeMetrics.ts windows/connection/er/relationStyle.ts
 - [ ] T569 · lib · 0.30d · lib/panelContextPath.ts
-- [ ] T570 · windows/connection · 1.30d · windows/connection/navigator/buildFlatRows.ts · split
+- [x] T570 · windows/connection · 1.30d · windows/connection/navigator/buildFlatRows.ts · split
 - [ ] T571 · lib · 0.90d · lib/pathPicker.ts
 - [ ] T572 · windows/connection · 0.80d · windows/connection/navigator/treeRowAria.ts windows/connection/navigator/types.ts
 - [ ] T573 · lib · 0.60d · lib/processListResult.ts lib/productFeatures.ts

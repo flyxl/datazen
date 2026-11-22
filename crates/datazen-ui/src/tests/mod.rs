@@ -12,6 +12,11 @@ pub(crate) use rune::{Env, Runtime};
 
 pub(crate) mod support;
 pub(crate) mod tokens;
+// T570: the navigator flat-row builder (sections, connections, dbs,
+// schemas, categories, namespace trees, search and stable keys).
+mod navigator_build_flat_rows;
+// T572: the navigator row ARIA equivalence gate (13 variants, level rules).
+mod navigator_tree_row_aria;
 // T0-09: the tree base (geometry, keyboard, virtualisation, selection).
 mod tree;
 // T0-09 audit: virtual staging, page height, edges and the selected a11y state.

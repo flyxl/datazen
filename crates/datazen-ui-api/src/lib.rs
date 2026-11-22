@@ -3,14 +3,90 @@
 //! Hosts implement [`WorkspaceApi`]. The memory workspace is only a stand-in so the
 //! interface can run before the desktop and HTTP adapters exist.
 
+mod ai_draft_bridge;
+mod query_contracts;
+mod query_drop_handler;
+mod query_error_chat_prompt;
+mod query_execution_risk;
+mod query_execution_target;
+mod result_workspace;
+mod query_toolbar_width;
+mod result_workspace_index;
 mod tabs;
+mod use_query_builder_contribution;
+mod validate_bind_params;
 
 use std::collections::HashMap;
 
 #[cfg(not(target_arch = "wasm32"))]
 use datazen_driver_api::{ConnectionConfig, SslMode};
 
+pub use query_contracts::{
+    build_query_panel_diagnosis_context, has_suspicious_postgres_double_quoted_literal,
+    read_current_query_panel_retry_validation_input, ActiveConnectionView, ConnectionContext,
+    DiagnosisContext, DiagnosisContextInput, ExecuteKind,
+    PendingExecute, PanelView, QueryContractsHost, QueryDiagnosisExecution,
+    QueryDiagnosisSchemaState, QueryExecutionGateRefs, QueryPanelCallbacks,
+    QueryPanelDiagnosisContextInput, QueryPanelProps, RetryValidationInput, SchemaContext,
+    QUERY_CONTRACTS_GAP, QUERY_CONTRACTS_SURFACE,
+};
+pub use query_drop_handler::{
+    create_query_drop_handler, detect_drop_context, ChartConfigLike, DashboardWidgetRequest,
+    DroppedTable, DropEffect, DropOptions, ExplainResultLike, QueryPanelWorkflows,
+    RetryValidationInputLike, WorkflowEffect, WorkflowHost, WorkflowOptions, WorkflowState,
+    QUERY_DROP_HANDLER_GAP, QUERY_DROP_HANDLER_SURFACE,
+};
+pub use query_execution_target::{
+    estimate_query_result_pane_height, offset_to_line, query_result_pane_sizing,
+    resolve_execution_target, statement_target_info, strategy_as_str, view_is_chart,
+    effective_strategy, ExecutionTargetInput, QueryResultPaneHeightInput, ResolveExecutionTargetResult,
+    ResultPaneSizing, SqlExecutionStrategy, StatementRange, StatementTargetInfo,
+    RESULT_PANE_MIN_HEIGHT, QUERY_EXECUTION_TARGET_GAP, QUERY_EXECUTION_TARGET_SURFACE,
+};
+pub use result_workspace::{
+    can_render_result_chart, get_top_level_sql_verb, infer_field_type, is_chartable_result,
+    is_mutation_execution, resolve_result_workspace_view, strip_leading_sql_comments,
+    InferredFieldType, ResultColumn, ResultValue, ResultWorkspaceFallbackReason, ResultWorkspaceView,
+    ResultWorkspaceViewResolution, StatementResultView, MUTATION_VERBS, QUERY_VERBS,
+    RESULT_WORKSPACE_GAP, RESULT_WORKSPACE_SURFACE,
+};
+pub use query_toolbar_width::{
+    path_hierarchy_label_width, query_context_select_width, query_toolbar_expanded_min_width,
+    PathSelectorSegment, SelectorSegmentKind, ToolbarWidthOptions, PATH_HIERARCHY_LABEL_MAX,
+    PATH_HIERARCHY_SELECT_CHROME, PATH_HIERARCHY_SELECT_MAX, PATH_HIERARCHY_SELECT_MIN,
+    PATH_HIERARCHY_SEGMENT_GAP, QUERY_TOOLBAR_ICON_BUTTON_WIDTH, QUERY_TOOLBAR_STATUS_WIDTH,
+    QUERY_TOOLBAR_WIDTH_GAP, QUERY_TOOLBAR_WIDTH_SURFACE, TOOLBAR_GAP,
+    TOOLBAR_HORIZONTAL_PADDING,
+};
+pub use result_workspace_index::{
+    RESULT_WORKSPACE_INDEX_GAP, RESULT_WORKSPACE_INDEX_SURFACE,
+};
 pub use tabs::{Tab, TabKind, Tabs};
+pub use ai_draft_bridge::{
+    AiChatDraftRequest, AiChatDraftSource, ContentViewCallbacks, OpenRelationSubTab,
+    QueryOpenFocus, QueryOpenSource, TableContextInput, TableSqlActionKind, TableSqlActionSpec,
+    AI_CHAT_DRAFT_FOCUS, AI_DRAFT_BRIDGE_GAP, AI_DRAFT_BRIDGE_SURFACE,
+};
+pub use query_error_chat_prompt::{
+    build_query_error_chat_prompt, send_query_error_chat_draft, QueryErrorChatContext,
+    QueryErrorDraftInput, MAX_PROMPT_ERROR_LENGTH, MAX_PROMPT_SQL_LENGTH,
+    QUERY_ERROR_CHAT_PROMPT_GAP, QUERY_ERROR_CHAT_PROMPT_SURFACE,
+};
+pub use query_execution_risk::{
+    assess_execution_risk, host_guard_would_block, ExecutionRiskDecision, ExecutionRiskMode,
+    HardBlockReason, HostGuardMode, SqlRiskAssessment, SqlRiskClassification, SqlRiskFinding,
+    SqlRiskFindingType, SqlStatementRisk, QUERY_EXECUTION_RISK_GAP,
+};
+pub use use_query_builder_contribution::{
+    client_snapshot, get_closed_snapshot, subscribe_falls_back_to_noop, QueryBuilderContribution,
+    QueryBuilderRunState, USE_QUERY_BUILDER_CONTRIBUTION_GAP,
+    USE_QUERY_BUILDER_CONTRIBUTION_SURFACE,
+};
+pub use validate_bind_params::{
+    find_missing_params, get_param_label, parse_sql_params, MissingParam, ParamValue, SqlParam,
+    SqlParamDialectPolicy, SqlParamKind, SqlParamSyntax, VALIDATE_BIND_PARAMS_GAP,
+    VALIDATE_BIND_PARAMS_SURFACE,
+};
 
 /// One foreign key: this table's columns (a compound key stays together), the
 /// target table and its columns.

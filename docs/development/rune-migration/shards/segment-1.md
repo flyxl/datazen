@@ -126,22 +126,22 @@
 - [x] T564 · windows/connection · 2.00d · windows/connection/er/interactionState.ts · split
 - [x] T566 · windows/connection · 2.00d · windows/connection/er/layoutErGraph.ts · split
 - [x] T568 · windows/connection · 0.60d · windows/connection/er/nodeMetrics.ts windows/connection/er/relationStyle.ts
-- [ ] T570 · windows/connection · 1.30d · windows/connection/navigator/buildFlatRows.ts · split
-- [ ] T572 · windows/connection · 0.80d · windows/connection/navigator/treeRowAria.ts windows/connection/navigator/types.ts
+- [x] T570 · windows/connection · 1.30d · windows/connection/navigator/buildFlatRows.ts · split
+- [x] T572 · windows/connection · 0.80d · windows/connection/navigator/treeRowAria.ts windows/connection/navigator/types.ts
 - [ ] T574 · windows/connection · 0.90d · windows/connection/navigator/useConnectionDrag.ts
 - [ ] T576 · windows/connection · 0.90d · windows/connection/navigator/useKvDbCounts.ts
 - [ ] T578 · windows/connection · 1.30d · windows/connection/navigator/useNavigatorContextMenus.ts · split
 - [ ] T580 · windows/connection · 2.00d · windows/connection/navigator/useNavigatorDbState.ts · split
 - [ ] T582 · windows/connection · 0.80d · windows/connection/navigator/utils.ts
 - [ ] T584 · windows/connection · 0.90d · windows/connection/openHistoryQuery.ts
-- [ ] T586 · windows/connection · 0.30d · windows/connection/query/aiDraftBridge.ts
-- [ ] T588 · windows/connection · 0.90d · windows/connection/query/contracts.ts
-- [ ] T590 · windows/connection · 1.30d · windows/connection/query/queryDropHandler.ts · split
-- [ ] T592 · windows/connection · 1.00d · windows/connection/query/queryErrorChatPrompt.ts windows/connection/query/queryExecutionRisk.ts
-- [ ] T594 · windows/connection · 0.80d · windows/connection/query/queryResultPaneHeight.ts windows/connection/query/resolveExecutionTarget.ts
-- [ ] T596 · windows/connection · 0.90d · windows/connection/query/useQueryBuilderContribution.ts
-- [ ] T598 · windows/connection · 0.90d · windows/connection/query/validateBindParams.ts windows/connection/queryToolbarWidth.ts windows/connection/result-workspace/index.ts
-- [ ] T600 · windows/connection · 0.80d · windows/connection/result-workspace/isMutationExecution.ts windows/connection/result-workspace/resultWorkspaceHelpers.ts
+- [x] T586 · windows/connection · 0.30d · windows/connection/query/aiDraftBridge.ts
+- [x] T588 · windows/connection · 0.90d · windows/connection/query/contracts.ts
+- [x] T590 · windows/connection · 1.30d · windows/connection/query/queryDropHandler.ts · split
+- [x] T592 · windows/connection · 1.00d · windows/connection/query/queryErrorChatPrompt.ts windows/connection/query/queryExecutionRisk.ts
+- [x] T594 · windows/connection · 0.80d · windows/connection/query/queryResultPaneHeight.ts windows/connection/query/resolveExecutionTarget.ts
+- [x] T596 · windows/connection · 0.90d · windows/connection/query/useQueryBuilderContribution.ts
+- [x] T598 · windows/connection · 0.90d · windows/connection/query/validateBindParams.ts windows/connection/queryToolbarWidth.ts windows/connection/result-workspace/index.ts
+- [x] T600 · windows/connection · 0.80d · windows/connection/result-workspace/isMutationExecution.ts windows/connection/result-workspace/resultWorkspaceHelpers.ts
 - [ ] T602 · windows/connection · 0.60d · windows/connection/schema-tree/schemaTreeCategories.ts windows/connection/schema-tree/schemaTreeDrag.ts
 - [ ] T604 · windows/connection · 0.90d · windows/connection/schema-tree/useExpandedDbCacheRefresh.ts
 - [ ] T606 · windows/connection · 1.30d · windows/connection/tableEditing.ts · split
