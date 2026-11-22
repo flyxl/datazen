@@ -135,7 +135,7 @@
 - [ ] T582 · windows/connection · 0.80d · windows/connection/navigator/utils.ts
 - [ ] T584 · windows/connection · 0.90d · windows/connection/openHistoryQuery.ts
 - [x] T586 · windows/connection · 0.30d · windows/connection/query/aiDraftBridge.ts
-- [ ] T588 · windows/connection · 0.90d · windows/connection/query/contracts.ts
+- [x] T588 · windows/connection · 0.90d · windows/connection/query/contracts.ts
 - [ ] T590 · windows/connection · 1.30d · windows/connection/query/queryDropHandler.ts · split
 - [ ] T592 · windows/connection · 1.00d · windows/connection/query/queryErrorChatPrompt.ts windows/connection/query/queryExecutionRisk.ts
 - [ ] T594 · windows/connection · 0.80d · windows/connection/query/queryResultPaneHeight.ts windows/connection/query/resolveExecutionTarget.ts
