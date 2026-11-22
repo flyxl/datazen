@@ -119,7 +119,7 @@
 - [x] T550 · windows/connection · 1.30d · windows/connection/TableStructureEditor.tsx · split
 - [x] T552 · windows/connection · 0.50d · windows/connection/TableToolbar.tsx
 - [x] T554 · windows/connection · 5.80d · windows/connection/TableView.tsx · split
-- [ ] T556 · windows/connection · 0.90d · windows/connection/WorkspaceModeSidebar.tsx
+- [x] T556 · windows/connection · 0.90d · windows/connection/WorkspaceModeSidebar.tsx
 - [x] T558 · windows/connection · 0.90d · windows/connection/connectionPageUtils.ts
 - [x] T560 · windows/connection · 0.90d · windows/connection/contentViewHelpers.ts
 - [x] T562 · windows/connection · 2.00d · windows/connection/er/buildErGraph.ts · split
