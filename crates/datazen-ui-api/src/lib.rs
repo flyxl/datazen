@@ -5,6 +5,7 @@
 
 mod ai_draft_bridge;
 mod query_contracts;
+mod query_execution_target;
 mod result_workspace;
 mod tabs;
 
@@ -21,6 +22,13 @@ pub use query_contracts::{
     QueryDiagnosisSchemaState, QueryExecutionGateRefs, QueryPanelCallbacks,
     QueryPanelDiagnosisContextInput, QueryPanelProps, RetryValidationInput, SchemaContext,
     QUERY_CONTRACTS_GAP, QUERY_CONTRACTS_SURFACE,
+};
+pub use query_execution_target::{
+    estimate_query_result_pane_height, offset_to_line, query_result_pane_sizing,
+    resolve_execution_target, statement_target_info, strategy_as_str, view_is_chart,
+    effective_strategy, ExecutionTargetInput, QueryResultPaneHeightInput, ResolveExecutionTargetResult,
+    ResultPaneSizing, SqlExecutionStrategy, StatementRange, StatementTargetInfo,
+    RESULT_PANE_MIN_HEIGHT, QUERY_EXECUTION_TARGET_GAP, QUERY_EXECUTION_TARGET_SURFACE,
 };
 pub use result_workspace::{
     can_render_result_chart, get_top_level_sql_verb, infer_field_type, is_chartable_result,
