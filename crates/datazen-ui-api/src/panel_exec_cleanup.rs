@@ -507,7 +507,7 @@ mod tests {
         assert_eq!(PANEL_EXEC_CLEANUP_ASYNC_GAP.len(), 3);
         assert_eq!(crate::PANEL_EXEC_CLEANUP_SURFACE.len(), 6);
         assert_eq!(crate::PANEL_EXEC_CLEANUP_GAP.len(), 5);
-        let _: Option<crate::Panel> = Some(Panel::query("p", "c"));
+        let _: Option<Panel> = Some(Panel::query("p", "c"));
         let _: Option<crate::ExecMap> = Some(ExecMap::default());
     }
 }
