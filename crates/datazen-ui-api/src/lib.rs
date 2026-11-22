@@ -4,6 +4,7 @@
 //! interface can run before the desktop and HTTP adapters exist.
 
 mod tabs;
+mod use_query_builder_contribution;
 
 use std::collections::HashMap;
 
@@ -11,6 +12,11 @@ use std::collections::HashMap;
 use datazen_driver_api::{ConnectionConfig, SslMode};
 
 pub use tabs::{Tab, TabKind, Tabs};
+pub use use_query_builder_contribution::{
+    client_snapshot, get_closed_snapshot, subscribe_falls_back_to_noop, QueryBuilderContribution,
+    QueryBuilderRunState, USE_QUERY_BUILDER_CONTRIBUTION_GAP,
+    USE_QUERY_BUILDER_CONTRIBUTION_SURFACE,
+};
 
 /// One foreign key: this table's columns (a compound key stays together), the
 /// target table and its columns.
