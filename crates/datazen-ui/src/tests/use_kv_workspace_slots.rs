@@ -364,3 +364,41 @@ fn prune_slot_states_removes_only_absent_panels() {
     assert!(prune_slot_states(&atoms, &all_live).is_empty());
     assert!(prune_slot_states(&atoms, &BTreeSet::new()).len() == 3);
 }
+
+#[test]
+fn db_index_safe_integer_boundary_is_exact() {
+    let indexed = Some(meta());
+    assert_eq!(
+        resolve_kv_database_index(indexed.as_ref(), Some("db9007199254740991")),
+        Some(9_007_199_254_740_991),
+        "MAX_SAFE_INTEGER itself is still safe"
+    );
+    assert_eq!(
+        resolve_kv_database_index(indexed.as_ref(), Some("db9007199254740992")),
+        None,
+        "one past MAX_SAFE_INTEGER is refused"
+    );
+}
+
+#[test]
+fn commit_uses_object_is_semantics_for_nan_and_minus_zero() {
+    let nan = KvSlotSnapshot {
+        last_write_duration_ms: Some(f64::NAN),
+        ..KvSlotSnapshot::empty()
+    };
+    let same_nan = KvSlotPatch {
+        last_write: Some((None, Some(f64::NAN))),
+        ..KvSlotPatch::default()
+    };
+    assert!(commit_slot_patch(&nan, &same_nan).is_none(), "identical NaN bits are a no-op");
+
+    let minus_zero = KvSlotSnapshot {
+        last_write_duration_ms: Some(-0.0),
+        ..KvSlotSnapshot::empty()
+    };
+    let plus_zero = KvSlotPatch {
+        last_write: Some((None, Some(0.0))),
+        ..KvSlotPatch::default()
+    };
+    assert!(commit_slot_patch(&minus_zero, &plus_zero).is_some(), "Object.is(-0, 0) is false");
+}
