@@ -47,6 +47,7 @@ pub(crate) mod table_foreign_key_navigation;
 pub(crate) mod table_toolbar;
 pub(crate) mod table_clipboard_status;
 pub(crate) mod table_view_clipboard;
+pub(crate) mod use_table_actions;
 pub(crate) mod use_kv_workspace_slots;
 pub(crate) mod table_fk_breadcrumb;
 pub(crate) mod table_fk_error_banner;
