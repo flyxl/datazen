@@ -63,6 +63,9 @@ pub(crate) mod table_editing;
 pub(crate) mod use_kv_slot_actions;
 pub(crate) mod use_panel_handlers;
 pub(crate) mod use_connection_context_menu;
+// T612: pure useConnectionWorkspaceMeta derivation (contexts, capabilities, toolbar).
+mod use_connection_workspace_meta;
+pub(crate) use use_connection_workspace_meta::*;
 
 mod connections;
 mod connections_home;
