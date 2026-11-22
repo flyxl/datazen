@@ -198,3 +198,54 @@ fn session_change_refetches_and_updates_the_active_key() {
     assert_eq!(machine.counts().get(&2), Some(&7));
     assert!(machine.is_pending("s1"), "s1's request was not evicted by a session switch");
 }
+
+// ── T576 independent audit (appended; reuses this module's helpers) ──────
+
+/// React's `fetchDbCounts` caches the promise and `cache.delete` runs ONLY in
+/// `.catch` (`useKvDbCounts.ts:22-27`). A resolved promise stays in the module
+/// cache, so a later subscribe for the same session reuses it and the driver
+/// command is NOT re-issued. The port's `Resolve` removes the pending entry, so
+/// it refetches on the next subscribe — a semantic divergence.
+#[test]
+fn audit_resolved_fetch_stays_cached_until_invalidated() {
+    let mut machine = KvDbCountsMachine::default();
+    assert_eq!(
+        machine.step(subscribe("s1", "cmd")),
+        KvCountsEffect::Execute { db_session_id: "s1".to_owned(), command: "cmd".to_owned() }
+    );
+    machine.step(KvCountsEvent::Resolve {
+        db_session_id: "s1".to_owned(),
+        rows: Some(rows()),
+    });
+    // The resolved entry must still be cached; no new command may be issued.
+    assert_eq!(
+        machine.step(subscribe("s1", "cmd")),
+        KvCountsEffect::None,
+        "React keeps the resolved promise cached; only reject/invalidate evict it"
+    );
+
+    // After an explicit invalidate, the next subscribe must refetch.
+    machine.step(KvCountsEvent::Invalidate { db_session_id: "s1".to_owned() });
+    assert_eq!(
+        machine.step(subscribe("s1", "cmd")),
+        KvCountsEffect::Execute { db_session_id: "s1".to_owned(), command: "cmd".to_owned() }
+    );
+}
+
+/// After a successful resolve, React's cache is also keyed by session only — a
+/// subscribe with a DIFFERENT command for the same session still reuses the
+/// resolved promise (no refetch). The port must not re-run the driver command.
+#[test]
+fn audit_resolved_fetch_is_reused_across_command_change() {
+    let mut machine = KvDbCountsMachine::default();
+    machine.step(subscribe("s1", "cmdA"));
+    machine.step(KvCountsEvent::Resolve {
+        db_session_id: "s1".to_owned(),
+        rows: Some(rows()),
+    });
+    assert_eq!(
+        machine.step(subscribe("s1", "cmdB")),
+        KvCountsEffect::None,
+        "cache key is the session only; a resolved entry is reused across commands"
+    );
+}
