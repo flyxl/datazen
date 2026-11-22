@@ -316,5 +316,5 @@ fn gap_and_surface_are_pinned_and_root_reexports_match() {
     assert_eq!(STAGE_CELL_VALUE_GAP.len(), 3);
     assert_eq!(crate::STAGE_CELL_VALUE_SURFACE.len(), 9);
     assert_eq!(crate::STAGE_CELL_VALUE_GAP.len(), 3);
-    let _: Option<crate::PendingRowChange> = Some(change_with(&[]));
+    let _: Option<PendingRowChange> = Some(change_with(&[]));
 }

@@ -24,7 +24,7 @@ pub fn compute_unstage_delete_result(change: &PendingRowChange) -> Option<Pendin
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::collections::HashMap;
 
     use serde_json::json;
 
@@ -37,12 +37,18 @@ mod tests {
         identity
     }
 
+    fn stage_identity() -> ValueMap {
+        let mut identity = ValueMap::new();
+        identity.insert("id".to_owned(), json!(7));
+        identity
+    }
+
     fn marked_change(changed_columns: Vec<String>) -> PendingRowChange {
-        let mut original_values = ValueMap::new();
+        let mut original_values = HashMap::new();
         original_values.insert("qty".to_owned(), json!(1));
-        let mut current_values = ValueMap::new();
+        let mut current_values = HashMap::new();
         current_values.insert("qty".to_owned(), json!(2));
-        let mut expression_values = BTreeMap::new();
+        let mut expression_values = HashMap::new();
         expression_values.insert("when".to_owned(), WriteExpressionId::CurrentTimestamp);
         PendingRowChange {
             row_index: Some(3),
@@ -94,7 +100,7 @@ mod tests {
             column: "qty".to_owned(),
             original_value: Some(json!(1)),
             current_value: Some(json!(2)),
-            row_identity: identity(),
+            row_identity: stage_identity(),
             row_index: 4,
         };
         let result = compute_stage_result(&input);
@@ -112,7 +118,7 @@ mod tests {
             column: "qty".to_owned(),
             original_value: Some(json!(1)),
             current_value: Some(json!(1)),
-            row_identity: identity(),
+            row_identity: stage_identity(),
             row_index: 4,
         };
         let result = compute_stage_result(&input);
