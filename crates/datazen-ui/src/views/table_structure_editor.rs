@@ -90,9 +90,12 @@ pub(crate) struct StructureEditorVm {
 
 #[allow(dead_code)] // pure helpers; remove with the host.
 impl StructureEditorVm {
-    /// React `resolveUiConfig(...)` non-null gate.
+    /// React `resolveUiConfig(...)`: null unless the config exists and is not
+    /// explicitly disabled (`enabled === false`).
     pub(crate) fn supported(&self) -> bool {
-        self.ui_config.is_some()
+        self.ui_config
+            .as_ref()
+            .is_some_and(|cfg| cfg.enabled != Some(false))
     }
 
     /// React's header title per mode.
@@ -134,7 +137,10 @@ impl StructureEditorVm {
     /// React's export control condition.
     pub(crate) fn can_export(&self) -> bool {
         self.mode == EditorMode::Alter
-            && self.initial_table_name.is_some()
+            && self
+                .initial_table_name
+                .as_deref()
+                .is_some_and(|name| !name.is_empty())
             && self.export_supported
     }
 
@@ -259,6 +265,7 @@ pub(crate) fn build<S: 'static>(
             false,
             on_action,
             StructureEditorAction::Back,
+            None,
             dark,
         ));
     }
@@ -291,6 +298,7 @@ pub(crate) fn build<S: 'static>(
             vm.exporting,
             on_action,
             StructureEditorAction::Export,
+            None,
             dark,
         ));
     }
@@ -304,6 +312,7 @@ pub(crate) fn build<S: 'static>(
         !vm.can_preview(),
         on_action,
         StructureEditorAction::Preview,
+        None,
         dark,
     ));
     if !vm.show_back_button {
@@ -313,6 +322,7 @@ pub(crate) fn build<S: 'static>(
             false,
             on_action,
             StructureEditorAction::Cancel,
+            None,
             dark,
         ));
     }
@@ -322,6 +332,7 @@ pub(crate) fn build<S: 'static>(
         !vm.can_execute(),
         on_action,
         StructureEditorAction::Execute,
+        None,
         dark,
     ));
     root = root.child(toolbar);
@@ -376,6 +387,7 @@ pub(crate) fn build<S: 'static>(
                         !vm.can_add_column(),
                         on_action,
                         StructureEditorAction::AddColumn,
+                        if vm.can_add_column() { None } else { Some(t("structEditor.capDisabled").to_owned()) },
                         dark,
                     )),
             )
@@ -399,6 +411,7 @@ pub(crate) fn build<S: 'static>(
                                 !vm.can_add_index(),
                                 on_action,
                                 StructureEditorAction::AddIndex,
+                                if vm.can_add_index() { None } else { Some(t("structEditor.capDisabled").to_owned()) },
                                 dark,
                             )),
                     )
@@ -473,6 +486,7 @@ fn toolbar_button<S: 'static>(
     disabled: bool,
     on_action: &Option<StructureEditorActionFn<S>>,
     action: StructureEditorAction,
+    help: Option<String>,
     dark: bool,
 ) -> El {
     let k = kit(dark);
@@ -483,6 +497,9 @@ fn toolbar_button<S: 'static>(
         .build(k)
         .key(key.to_owned())
         .label(label.clone());
+    if let Some(help) = help {
+        button = button.help(help);
+    }
     if !disabled {
         let press = emit(on_action, action);
         button = button.on_press(move |s: &mut S| press(s));
