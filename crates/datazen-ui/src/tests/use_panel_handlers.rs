@@ -290,3 +290,59 @@ fn patch_applies_clearing_values() {
     assert_eq!(panel.schema, None);
     assert!(!panel.structure_editing);
 }
+
+// ── T622 independent audit (appended; reuses this module's helpers) ──────
+
+/// React `panelSchema` (panelTypes.ts:214-235) returns `viewSchema` for a view
+/// panel. The port's `active_schema` only reads `schema` then `table_schema`,
+/// so opening an ER diagram while a VIEW tab is active loses that namespace.
+#[test]
+fn audit_er_inherits_active_view_panel_schema() {
+    let mut active = panel("v-1", PanelKind::View);
+    active.view_schema = Some("reporting".to_owned());
+    let effect = open_er_diagram(
+        Some(&ctx()), &[active], Some("v-1"), None, None,
+        Some("db_a"), None, None, &[],
+    );
+    assert_eq!(
+        added(&effect).schema.as_deref(),
+        Some("reporting"),
+        "React panelSchema(view) inherits the view's schema"
+    );
+}
+
+/// React `panelSchema` returns `objectSchema` for a db-object panel. The port
+/// never reads `object_schema`, so the same namespace loss affects that case.
+#[test]
+fn audit_er_inherits_active_db_object_panel_schema() {
+    let mut active = panel("obj-1", PanelKind::DbObject);
+    active.object_schema = Some("reporting".to_owned());
+    let effect = open_er_diagram(
+        Some(&ctx()), &[active], Some("obj-1"), None, None,
+        Some("db_a"), None, None, &[],
+    );
+    assert_eq!(
+        added(&effect).schema.as_deref(),
+        Some("reporting"),
+        "React panelSchema(db-object) inherits the object's schema"
+    );
+}
+
+/// React `buildConnectionTabContextMenuItems` (connectionTabContextMenu.ts:60-66)
+/// pushes items in the order close, close-others, close-to-the-right,
+/// close-to-the-left, **close-all last**. The port puts CloseAll third.
+#[test]
+fn audit_context_menu_order_matches_react_push_order() {
+    let panels: Vec<PanelVm> = ["a", "b", "c"].iter().map(|id| panel(id, PanelKind::Query)).collect();
+    assert_eq!(
+        tab_context_menu_items(&panels, "b"),
+        vec![
+            TabMenuItem::Close,
+            TabMenuItem::CloseOthers,
+            TabMenuItem::CloseToRight,
+            TabMenuItem::CloseToLeft,
+            TabMenuItem::CloseAll,
+        ],
+        "React pushes close-all after the to-the-right/to-the-left entries"
+    );
+}
