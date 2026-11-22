@@ -773,3 +773,5 @@ mod table_foreign_key_navigation;
 mod use_kv_slot_actions;
 // T622: usePanelHandlers logic (query binding, ER schema, table identity, close/menu/refresh).
 mod use_panel_handlers;
+// T608: useConnectionContextMenu logic (tree menu families, order/gates, danger SQL).
+mod use_connection_context_menu;
