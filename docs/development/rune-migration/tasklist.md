@@ -622,13 +622,13 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T603 · lib · 0.80d · lib/setValueActions.ts lib/splash.ts
 - [ ] T604 · windows/connection · 0.90d · windows/connection/schema-tree/useExpandedDbCacheRefresh.ts
 - [ ] T605 · lib · 0.80d · lib/sqlBindParams.ts
-- [ ] T606 · windows/connection · 1.30d · windows/connection/tableEditing.ts · split
+- [x] T606 · windows/connection · 1.30d · windows/connection/tableEditing.ts · split
 - [ ] T607 · lib · 2.00d · lib/sqlCompletionContext.ts · split
-- [ ] T608 · windows/connection · 1.30d · windows/connection/useConnectionContextMenu.ts · split
+- [x] T608 · windows/connection · 1.30d · windows/connection/useConnectionContextMenu.ts · split
 - [ ] T609 · lib · 2.00d · lib/sqlCompletions.ts · split
-- [ ] T610 · windows/connection · 0.90d · windows/connection/useConnectionTabs.ts
+- [x] T610 · windows/connection · 0.90d · windows/connection/useConnectionTabs.ts
 - [ ] T611 · lib · 0.50d · lib/sqlEditorDefaults.ts
-- [ ] T612 · windows/connection · 0.90d · windows/connection/useConnectionWorkspaceMeta.ts
+- [x] T612 · windows/connection · 0.90d · windows/connection/useConnectionWorkspaceMeta.ts
 - [ ] T613 · lib · 0.90d · lib/sqlFileExecution.ts
 - [x] T614 · windows/connection · 0.90d · windows/connection/useDirtyIndex.ts
 - [ ] T615 · lib · 0.80d · lib/sqlFormat.ts lib/sqlFunctionRegistry.ts
@@ -636,11 +636,11 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T617 · lib · 0.80d · lib/sqlGenerator.ts lib/sqlNamespace.ts
 - [x] T618 · windows/connection · 0.90d · windows/connection/useKvWorkspaceSlots.ts
 - [ ] T619 · lib · 0.80d · lib/sqlPathPrefix.ts lib/sqlSchemaDropTargets.ts
-- [ ] T620 · windows/connection · 0.90d · windows/connection/useNamedViewMenu.ts
+- [x] T620 · windows/connection · 0.90d · windows/connection/useNamedViewMenu.ts
 - [ ] T621 · lib · 0.90d · lib/sqlStatementRange.ts lib/sqlTransactionGuard.ts lib/startupTimer.ts
-- [ ] T622 · windows/connection · 1.30d · windows/connection/usePanelHandlers.ts · split
+- [x] T622 · windows/connection · 1.30d · windows/connection/usePanelHandlers.ts · split
 - [ ] T623 · lib · 0.90d · lib/surfaceBgCache.ts
-- [ ] T624 · windows/connection · 0.90d · windows/connection/useTableActions.ts
+- [x] T624 · windows/connection · 0.90d · windows/connection/useTableActions.ts
 - [ ] T625 · lib · 0.90d · lib/syncPairing.ts
 - [x] T626 · windows/connection · 0.90d · windows/connection/useTableDraftRows.ts
 - [ ] T627 · lib · 0.30d · lib/syncTaxonomy.ts

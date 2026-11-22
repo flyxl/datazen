@@ -1297,6 +1297,11 @@ pub use content_view_helpers::{
     resolve_panel_tab_database, ContentViewConnectionContext, ContentViewPanel, PanelIcon, SubTab, CONTENT_VIEW_HELPERS_GAP, CONTENT_VIEW_HELPERS_SURFACE,
     ICON_CLASS,
 };
+// `resolve_connection_context` takes content_view_helpers' structurally-identical
+// ActiveConnectionEntry, while the root `ActiveConnectionEntry` name is held by
+// ai_sessions. Expose the content-view one under an explicit alias so callers
+// can build the map the resolver expects without colliding at the root.
+pub use content_view_helpers::ActiveConnectionEntry as ContentViewActiveConnectionEntry;
 pub use query_toolbar_width::{
     path_hierarchy_label_width, query_context_select_width, query_toolbar_expanded_min_width, PathSelectorSegment, SelectorSegmentKind, ToolbarWidthOptions, PATH_HIERARCHY_LABEL_MAX, PATH_HIERARCHY_SELECT_CHROME,
     PATH_HIERARCHY_SELECT_MAX, PATH_HIERARCHY_SELECT_MIN, PATH_HIERARCHY_SEGMENT_GAP, QUERY_TOOLBAR_ICON_BUTTON_WIDTH, QUERY_TOOLBAR_STATUS_WIDTH, QUERY_TOOLBAR_WIDTH_GAP, QUERY_TOOLBAR_WIDTH_SURFACE, TOOLBAR_GAP,

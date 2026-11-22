@@ -44,12 +44,15 @@ pub(crate) mod structure_view;
 pub(crate) mod table_structure_editor;
 pub(crate) mod workspace_mode_sidebar;
 pub(crate) mod use_dirty_index;
+pub(crate) mod use_named_view_menu;
 pub(crate) mod table_filter_toolbar;
 pub(crate) mod table_pending_changes_bar;
 pub(crate) mod table_foreign_key_navigation;
 pub(crate) mod table_toolbar;
 pub(crate) mod table_clipboard_status;
 pub(crate) mod table_view_clipboard;
+pub(crate) mod use_table_actions;
+pub(crate) mod use_connection_tabs;
 pub(crate) mod use_kv_workspace_slots;
 pub(crate) mod table_fk_breadcrumb;
 pub(crate) mod table_fk_error_banner;
@@ -58,7 +61,14 @@ pub(crate) mod table_no_primary_key_tip;
 pub(crate) mod table_read_only_tip;
 pub(crate) mod table_status_banners;
 pub(crate) mod table_view;
+// T606: pure tableEditing decisions (editability, navigation, candidates, set value).
+pub(crate) mod table_editing;
 pub(crate) mod use_kv_slot_actions;
+pub(crate) mod use_panel_handlers;
+pub(crate) mod use_connection_context_menu;
+// T612: pure useConnectionWorkspaceMeta derivation (contexts, capabilities, toolbar).
+mod use_connection_workspace_meta;
+pub(crate) use use_connection_workspace_meta::*;
 
 mod connections;
 mod connections_home;

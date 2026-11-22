@@ -144,16 +144,16 @@
 - [x] T600 · windows/connection · 0.80d · windows/connection/result-workspace/isMutationExecution.ts windows/connection/result-workspace/resultWorkspaceHelpers.ts
 - [x] T602 · windows/connection · 0.60d · windows/connection/schema-tree/schemaTreeCategories.ts windows/connection/schema-tree/schemaTreeDrag.ts
 - [x] T604 · windows/connection · 0.90d · windows/connection/schema-tree/useExpandedDbCacheRefresh.ts
-- [ ] T606 · windows/connection · 1.30d · windows/connection/tableEditing.ts · split
-- [ ] T608 · windows/connection · 1.30d · windows/connection/useConnectionContextMenu.ts · split
-- [ ] T610 · windows/connection · 0.90d · windows/connection/useConnectionTabs.ts
-- [ ] T612 · windows/connection · 0.90d · windows/connection/useConnectionWorkspaceMeta.ts
+- [x] T606 · windows/connection · 1.30d · windows/connection/tableEditing.ts · split
+- [x] T608 · windows/connection · 1.30d · windows/connection/useConnectionContextMenu.ts · split
+- [x] T610 · windows/connection · 0.90d · windows/connection/useConnectionTabs.ts
+- [x] T612 · windows/connection · 0.90d · windows/connection/useConnectionWorkspaceMeta.ts
 - [x] T614 · windows/connection · 0.90d · windows/connection/useDirtyIndex.ts
 - [x] T616 · windows/connection · 0.90d · windows/connection/useKvSlotActions.ts
 - [x] T618 · windows/connection · 0.90d · windows/connection/useKvWorkspaceSlots.ts
-- [ ] T620 · windows/connection · 0.90d · windows/connection/useNamedViewMenu.ts
-- [ ] T622 · windows/connection · 1.30d · windows/connection/usePanelHandlers.ts · split
-- [ ] T624 · windows/connection · 0.90d · windows/connection/useTableActions.ts
+- [x] T620 · windows/connection · 0.90d · windows/connection/useNamedViewMenu.ts
+- [x] T622 · windows/connection · 1.30d · windows/connection/usePanelHandlers.ts · split
+- [x] T624 · windows/connection · 0.90d · windows/connection/useTableActions.ts
 - [x] T626 · windows/connection · 0.90d · windows/connection/useTableDraftRows.ts
 - [x] T628 · windows/connection · 1.30d · windows/connection/useTableForeignKeyNavigation.ts · split
 - [x] T630 · windows/connection · 0.90d · windows/connection/useTableViewClipboard.ts

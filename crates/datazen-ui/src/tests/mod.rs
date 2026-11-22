@@ -103,6 +103,16 @@ mod table_clipboard_status;
 // T630: the TableView clipboard adapter decisions (intent, formatting, mapping,
 // gating and host-clock feedback state).
 mod table_view_clipboard;
+// T624: the table action table decisions (navigation guard, notice
+// invalidation, count strategy and per-binding store delegation).
+mod use_table_actions;
+// T610: the connection-tab state machine (bootstrap, connect reuse, cross-window
+// events, active index and heartbeat selection).
+mod use_connection_tabs;
+// T612: pure useConnectionWorkspaceMeta derivation (contexts, toolbar, connecting).
+mod use_connection_workspace_meta;
+// T612 independent audit: fallback edges, recent panels, meta/scope split.
+mod use_connection_workspace_meta_audit;
 // T618: the KV workspace slot resolver (both gates, shared props, panel-state
 // atom identity, landing home, overview jump and relay lifecycle).
 mod use_kv_workspace_slots;
@@ -119,8 +129,16 @@ mod table_read_only_tip;
 mod table_status_banners;
 // T554: the TableView decision port (grid/editor/insert/dirty/filter/quick look).
 mod table_view;
+// T606: pure tableEditing decisions (editability, navigation, candidates, set value).
+mod table_editing;
+// T606 independent audit: candidate branches, dialog routing, byte-size boundary.
+mod table_editing_audit;
 // T614: pure useDirtyIndex / dirtyIndex derivation logic (dirty rows, counts, anchors).
 mod use_dirty_index;
+// T620: pure useNamedViewMenu decisions (scope, apply path, raw/refusal, dirty).
+mod use_named_view_menu;
+// T620 independent audit: scope edges, raw/filter branches, equality fields.
+mod use_named_view_menu_audit;
 // T614 independent audit: expression/count branches, structural sharing, identity escaping.
 mod use_dirty_index_audit;
 // T626: pure useTableDraftRows / draftInserts logic (drafts, dirty, wire shape).
@@ -2156,3 +2174,7 @@ mod use_kv_db_counts;
 mod table_foreign_key_navigation;
 // T616: useKvSlotActions logic (wired/unwired branches, warnings, dangerous gate).
 mod use_kv_slot_actions;
+// T622: usePanelHandlers logic (query binding, ER schema, table identity, close/menu/refresh).
+mod use_panel_handlers;
+// T608: useConnectionContextMenu logic (tree menu families, order/gates, danger SQL).
+mod use_connection_context_menu;
