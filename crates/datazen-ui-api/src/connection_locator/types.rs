@@ -1,5 +1,5 @@
 use crate::connection_types::{ConnectionConfig, DatabaseObject, TableInfo};
-use crate::SqlNamespace;
+use crate::build_editor_schema::SqlNamespace;
 
 pub const RECENT_CONNECTION_LIMIT: usize = 5;
 pub const RECENT_GROUP_KEY: &str = "__recent__";

@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 
 use crate::connection_types::{ConnectionConfig, TableInfo, TableType};
-use crate::{is_leaf, SqlNamespace};
+use crate::build_editor_schema::{is_leaf, SqlNamespace};
 
 use super::types::{
     get, ActiveConnectionSlice, ActiveStatus, Candidate, ConnectionLocatorResult,

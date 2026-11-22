@@ -44,11 +44,11 @@ mod normalize;
 mod predict_relations;
 mod related_tables;
 
-// `ColumnSchema`/`ForeignKeyInfo`/`IndexInfo`/`TableSchema` are no longer
-// re-exported here (or at the crate root): the root names now carry the
-// full `types/connection.ts` facade shapes (`connection_types`, T128), and
-// these prediction slices stay local to `from_table_schema` — nothing
-// outside this module used them through either path.
+// `ColumnSchema`/`ForeignKeyInfo`/`IndexInfo`/`TableSchema` have a single
+// canonical definition in `connection_types` (`ColumnSchema` reaches the root
+// through the `types` aggregate, the other three are re-exported directly).
+// `from_table_schema` imports those full facade shapes; the former prediction
+// slices and their re-exports are gone.
 pub use from_table_schema::{
     DeclaredForeignKey, PredictionColumn, PredictionTable, to_prediction_table_from_schema,
     to_prediction_tables_from_schemas,

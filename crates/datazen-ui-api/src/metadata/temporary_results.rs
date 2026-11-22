@@ -18,22 +18,12 @@
 //! ## Type mirrors: where `SessionHandle` / `ResultProvenance` live
 //!
 //! React imports both from `@datazen/backend-client` (`types/session.ts`).
-//! No Rust mirror existed anywhere the wasm-safe part of the graph can reach
-//! (the kernel's equivalents sit behind the native-only `datazen` dependency
-//! — see the same trade `identity.rs` (T080) and `connection_views` (T029)
-//! record), so both land **here**: `temporaryResults.ts` is their first Rust
-//! consumer, and `identity.rs`'s charter stays the cache-key types. Both are
-//! re-exported through `metadata/mod.rs` and the crate root like every other
-//! metadata type.
-//!
-//! Scope of the [`ResultProvenance`] mirror: the invalidation rules compare
-//! exactly the connection / config-revision / requested-target dimensions,
-//! so the mirror keeps those three fields and deliberately omits the
-//! audit-only ones (`organizationId`, `principalId`, `contextBefore`,
-//! `contextAfter`, `capabilitySnapshot`, `executedAt`) that no rule reads —
-//! a task that surfaces provenance for display should extend this mirror
-//! rather than fork it. `Id` mirrors as `String` and `Counter` as `u64`,
-//! the same spellings `identity.rs` pinned for the metadata family.
+//! Both are defined once in `types::query` — the wire-faithful, aggregate-backed
+//! family — and re-exported through `metadata/mod.rs` and the crate root.
+//! `ResultProvenance::for_invalidation` fills the audit-only legs with neutral
+//! placeholders for callers that only compare the connection / config-revision /
+//! requested-target dimensions; the full nine-field shape stays the canonical
+//! definition.
 //!
 //! ## Naming and generic decisions
 //!
@@ -58,32 +48,7 @@
 //! `rename_all = "camelCase"` (and would first need serde on `identity.rs`'s
 //! target mirrors).
 
-use super::identity::ExecutionTarget;
-
-/// Mirror of backend-client `SessionHandle` (`types/session.ts`).
-///
-/// A session handle pairs the session with the runtime epoch it was bound to.
-/// After an epoch change the old handle is dead — that is why it is a pair
-/// and not a bare id. `dbSessionId` is the runtime, in-memory session id
-/// (never persisted); `runtimeEpoch` is the epoch it was bound to.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SessionHandle {
-    pub db_session_id: String,
-    pub runtime_epoch: String,
-}
-
-/// Mirror of backend-client `ResultProvenance` (`types/session.ts`):
-/// "result provenance for the whole call, before/after, not per statement."
-///
-/// Kept to the dimensions the invalidation rules read — connection,
-/// config revision, requested target — see the module docs for why the
-/// audit-only fields are not mirrored yet.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ResultProvenance {
-    pub connection_id: String,
-    pub config_revision: u64,
-    pub requested_target: ExecutionTarget,
-}
+use crate::types::{ExecutionTarget, ResultProvenance, SessionHandle};
 
 /// A temporary object bound to the runtime handle (and, when known, the call
 /// provenance) that produced it. React's `TemporaryResult<T>`, field for
@@ -164,7 +129,7 @@ pub fn check_temporary_result<T>(
         if provenance.connection_id != current.connection_id {
             reasons.push(InvalidationReason::ConnectionChanged);
         }
-        if provenance.config_revision != current.config_revision {
+        if provenance.config_revision.0 != current.config_revision {
             reasons.push(InvalidationReason::ConfigRevisionChanged);
         }
         let requested = &provenance.requested_target;
@@ -214,7 +179,7 @@ pub fn is_provenance_current(
     if provenance.connection_id != current.connection_id {
         return false;
     }
-    if provenance.config_revision != current.config_revision {
+    if provenance.config_revision.0 != current.config_revision {
         return false;
     }
     let requested = &provenance.requested_target.namespace;
@@ -293,11 +258,7 @@ mod tests {
     /// 'c1'`, `configRevision: 3`, `requestedTarget: target()`); React also
     /// fills the audit-only fields with cast placeholders this mirror omits.
     fn provenance() -> ResultProvenance {
-        ResultProvenance {
-            connection_id: "c1".to_string(),
-            config_revision: 3,
-            requested_target: target(),
-        }
+        ResultProvenance::for_invalidation("c1".to_string(), crate::types::Counter(3), target())
     }
 
     /// React's bottom-of-file `verifiedProvenance()` helper: it just forwards

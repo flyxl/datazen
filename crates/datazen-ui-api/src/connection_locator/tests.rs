@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use crate::connection_types::{
     ConnectionConfig, DatabaseObject, DatabaseObjectKind, SslMode, TableInfo, TableType,
 };
-use crate::SqlNamespace;
+use crate::build_editor_schema::SqlNamespace;
 
 use super::*;
 

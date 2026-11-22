@@ -645,7 +645,7 @@ pub struct TableInfo {
 /// `comment`/`isPrimaryKey`/`isAutoIncrement` and defaults deferrability
 /// concerns elsewhere); `defaultValue` is `?: string | null` — the
 /// backend twin emits `null` — while the flags and comment are plain `?:`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ColumnSchema {
     pub name: String,
@@ -663,7 +663,7 @@ pub struct ColumnSchema {
 }
 
 /// React `IndexInfo` — one index of a table's schema.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexInfo {
     pub name: String,
@@ -704,7 +704,7 @@ impl ForeignKeyDeferrability {
 ///
 /// Frontend-narrowed twin of driver-api's `ForeignKeyInfo` (which requires
 /// `onUpdate`/`onDelete` as strings and defaults `deferrability`).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ForeignKeyInfo {
     pub name: String,
@@ -725,7 +725,7 @@ pub struct ForeignKeyInfo {
 /// Frontend-narrowed twin of driver-api's `TableSchema` (which additionally
 /// carries `checkConstraints` and `tableOptions` — the metadata family's
 /// facts, never rendered by these panels).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TableSchema {
     pub table_name: String,

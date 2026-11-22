@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::{is_leaf, overlay_column_map, SqlNamespace};
+use crate::build_editor_schema::{is_leaf, overlay_column_map, SqlNamespace};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NamespaceMergeKind {
