@@ -34,11 +34,11 @@
 //! `datazen::execution::target::{ExecutionTarget, ObjectTarget}` and the
 //! `datazen::shared::id` newtypes), but `datazen` is a
 //! `cfg(not(target_arch = "wasm32"))`-only dependency of this crate while the
-//! wasm host compiles these pure modules too — so this module keeps local
-//! contract mirrors, the same trade `connection_views` made (T029). A task
-//! that wires kernel DTOs to UI contracts should convert *into* these types
-//! and leave the key derivation single-sourced here. `Id` mirrors as `String`
-//! and `Counter` as `u64` (see the number-form note above).
+//! wasm host compiles these pure modules too — so the wasm-safe definitions
+//! live in `types::query` and this module re-exports them. A task that wires
+//! kernel DTOs to UI contracts should convert *into* those types and leave
+//! the key derivation single-sourced here. `Id` mirrors as `String` and
+//! `Counter` as the newtype above (see the number-form note above).
 //!
 //! Downstream: `lib/metadata/batch.ts` (tasklist T031) buckets through
 //! [`metadata_batch_bucket`] and deduplicates through [`metadata_cache_key`]
@@ -46,76 +46,7 @@
 
 use serde_json::Value;
 
-/// Mirror of backend-client `NamespaceTarget` (`types/session.ts`): database
-/// / catalog / schema resolution. Absent layers are `null`; only layers the
-/// driver declares may carry values. `path` holds driver namespace ids,
-/// **not** a filesystem path.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct NamespaceTarget {
-    pub database: Option<String>,
-    pub catalog: Option<String>,
-    pub schema: Option<String>,
-    pub path: Vec<String>,
-}
-
-impl NamespaceTarget {
-    /// Field-for-field constructor, same argument order the kernel's
-    /// `datazen::connection::domain::NamespaceTarget::new` uses.
-    pub fn new(
-        database: Option<String>,
-        catalog: Option<String>,
-        schema: Option<String>,
-        path: Vec<String>,
-    ) -> Self {
-        Self {
-            database,
-            catalog,
-            schema,
-            path,
-        }
-    }
-}
-
-/// Mirror of backend-client `ObjectTarget`: one addressable object inside a
-/// namespace (table, view, …). `signature` is `null` when it cannot be
-/// determined.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ObjectTarget {
-    pub kind: String,
-    pub name: String,
-    pub signature: Option<String>,
-}
-
-impl ObjectTarget {
-    /// Full object identity without a signature (the undetermined case).
-    pub fn new(kind: impl Into<String>, name: impl Into<String>) -> Self {
-        Self {
-            kind: kind.into(),
-            name: name.into(),
-            signature: None,
-        }
-    }
-
-    /// Attach the signature the backend reported (`table|view`, …).
-    pub fn with_signature(mut self, signature: impl Into<String>) -> Self {
-        self.signature = Some(signature.into());
-        self
-    }
-}
-
-/// Mirror of backend-client `ExecutionTarget`: what an execution runs
-/// *against* — connection, namespace, optional object.
-///
-/// The key derivations below never read this struct's `connection_id`:
-/// React's `metadataCacheKey` uses the request-level `connectionId` on
-/// [`MetadataIdentityInput`], and the field is mirrored anyway so the
-/// contract stays field-for-field.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ExecutionTarget {
-    pub connection_id: String,
-    pub namespace: NamespaceTarget,
-    pub object: Option<ObjectTarget>,
-}
+use crate::types::{ExecutionTarget, NamespaceTarget, ObjectTarget};
 
 /// React's `ExecutionTarget | NamespaceTarget` union.
 ///

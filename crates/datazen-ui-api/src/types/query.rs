@@ -105,13 +105,29 @@ impl<'de> Deserialize<'de> for Counter {
 /// React `NamespaceTarget` — database / catalog / schema resolution,
 /// normalized. All three legs are required-but-nullable (`string | null`):
 /// `None` serializes as an explicit `null` and the key stays present.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NamespaceTarget {
     pub database: Option<String>,
     pub catalog: Option<String>,
     pub schema: Option<String>,
     pub path: Vec<String>,
+}
+
+impl NamespaceTarget {
+    pub fn new(
+        database: Option<String>,
+        catalog: Option<String>,
+        schema: Option<String>,
+        path: Vec<String>,
+    ) -> Self {
+        Self {
+            database,
+            catalog,
+            schema,
+            path,
+        }
+    }
 }
 
 /// React `ObjectTarget` — a single addressable object inside a namespace
@@ -122,6 +138,21 @@ pub struct ObjectTarget {
     pub kind: String,
     pub name: String,
     pub signature: Option<String>,
+}
+
+impl ObjectTarget {
+    pub fn new(kind: impl Into<String>, name: impl Into<String>) -> Self {
+        Self {
+            kind: kind.into(),
+            name: name.into(),
+            signature: None,
+        }
+    }
+
+    pub fn with_signature(mut self, signature: impl Into<String>) -> Self {
+        self.signature = Some(signature.into());
+        self
+    }
 }
 
 /// React `ExecutionTarget` — what an execution runs *against*. What is
@@ -240,6 +271,40 @@ pub struct ResultProvenance {
     pub requested_target: ExecutionTarget,
     pub capability_snapshot: CapabilitySnapshot,
     pub executed_at: Timestamp,
+}
+
+impl ResultProvenance {
+    pub fn for_invalidation(
+        connection_id: Id,
+        config_revision: Counter,
+        requested_target: ExecutionTarget,
+    ) -> Self {
+        let context = SessionContext {
+            namespace: NamespaceTarget::default(),
+            search_path: None,
+            effective_identity: None,
+            transaction_state: TransactionState::None,
+            autocommit: None,
+            confidence: SessionContextConfidence::Unknown,
+        };
+        Self {
+            organization_id: String::new(),
+            principal_id: String::new(),
+            connection_id,
+            config_revision,
+            context_before: context.clone(),
+            context_after: context,
+            requested_target,
+            capability_snapshot: CapabilitySnapshot {
+                driver_id: String::new(),
+                driver_version: String::new(),
+                protocol_version: 0,
+                capability_revision: Counter(0),
+                confirmed: BTreeMap::new(),
+            },
+            executed_at: 0,
+        }
+    }
 }
 
 /// React `RuntimeResultBinding` — where a live result is still bound.
