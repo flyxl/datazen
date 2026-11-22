@@ -124,6 +124,10 @@ mod table_status_banners;
 mod table_view;
 // T614: pure useDirtyIndex / dirtyIndex derivation logic (dirty rows, counts, anchors).
 mod use_dirty_index;
+// T620: pure useNamedViewMenu decisions (scope, apply path, raw/refusal, dirty).
+mod use_named_view_menu;
+// T620 independent audit: scope edges, raw/filter branches, equality fields.
+mod use_named_view_menu_audit;
 // T614 independent audit: expression/count branches, structural sharing, identity escaping.
 mod use_dirty_index_audit;
 // T626: pure useTableDraftRows / draftInserts logic (drafts, dirty, wire shape).
