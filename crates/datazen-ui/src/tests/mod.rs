@@ -21,6 +21,8 @@ mod navigator_tree_row_aria;
 mod navigator_connection_drag;
 // T576: the per-session KV db-counts cache (shared/deduped, best-effort).
 mod navigator_kv_db_counts;
+// T578: the navigator's seven context menus (gates, order, action payloads).
+mod navigator_context_menus;
 // T0-09: the tree base (geometry, keyboard, virtualisation, selection).
 mod tree;
 // T0-09 audit: virtual staging, page height, edges and the selected a11y state.

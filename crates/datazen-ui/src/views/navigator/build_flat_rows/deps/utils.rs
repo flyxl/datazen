@@ -1,11 +1,13 @@
-//! `windows/connection/navigator/utils.ts` — the flat-row half of it, ported
-//! verbatim for T570. Removal stage: T582 ports this file formally (its other
-//! exports — the SQL quoting, the error extractor, the drag ghost — belong to
-//! the navigator host and later tasks); when it lands, these move and the
-//! builder re-points, behaviour unchanged.
+//! `windows/connection/navigator/utils.ts` — ported for T570 (the flat-row
+//! half) and extended for T578 (the SQL quoting, the error extractor, the
+//! drop-database fallback). Removal stage: T582 ports this file formally;
+//! when it lands, this moves to `views/navigator/utils.rs` and every reader
+//! re-points, behaviour unchanged.
 //!
 //! What lives here: the depth ladder's two constants, the multi-database
-//! decision, schema grouping, and the namespace-tree flattener.
+//! decision, schema grouping, the namespace-tree flattener, identifier
+//! quoting for truncate/drop SQL, the error-message extractor, and the
+//! database a dropped database falls back to.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -183,5 +185,76 @@ pub(crate) fn flatten_namespace_tree(
                 }
             }
         }
+    }
+}
+
+/// React `escapeIdent` (lib/databaseTypes.ts) — quote with the driver's
+/// `quoteChar` (default `"`), doubling the quote char inside the name.
+/// `` ` `` and `[` have their own closing rules; a driver with no quoting
+/// (Redis) gets the name as-is. Removal stage: shard 2's registry task
+/// (T450) ports `DB_REGISTRY` formally; the quote char arrives from the
+/// caller's meta snapshot until then.
+pub(crate) fn escape_ident(name: &str, quote_char: &str) -> String {
+    match quote_char {
+        "`" => format!("`{}`", name.replace('`', "``")),
+        "\"" => format!("\"{}\"", name.replace('"', "\"\"\"")),
+        "[" => format!("[{}]", name.replace(']', "]]")),
+        // No quoting (e.g. Redis).
+        _ => name.to_owned(),
+    }
+}
+
+/// React `quoteRelationName` — `schema.name` with both halves quoted by the
+/// driver's identifier quoter (the escape char arrives from the caller's
+/// registry snapshot; `"\""` is PostgreSQL's and the default).
+pub(crate) fn quote_relation_name(
+    name: &str,
+    schema: Option<&str>,
+    quote_char: &str,
+) -> String {
+    match schema {
+        Some(schema) => format!(
+            "{}.{}",
+            escape_ident(schema, quote_char),
+            escape_ident(name, quote_char)
+        ),
+        None => escape_ident(name, quote_char),
+    }
+}
+
+/// React `resolveDropDatabaseFallback` — pick a safe database to switch to
+/// before dropping `dropping`: `postgres` first (the maintenance database is
+/// always there on PG), then the configured database, then whatever else
+/// remains. `None` when `dropping` was the last one.
+pub(crate) fn resolve_drop_database_fallback(
+    databases: &[String],
+    dropping: &str,
+    configured_db: Option<&str>,
+) -> Option<String> {
+    if databases.iter().any(|d| d == "postgres") && dropping != "postgres" {
+        return Some("postgres".to_owned());
+    }
+    let configured = configured_db.map(str::trim).filter(|c| !c.is_empty());
+    if let Some(configured) = configured {
+        if configured != dropping && databases.iter().any(|d| d == configured) {
+            return Some(configured.to_owned());
+        }
+    }
+    databases.iter().find(|d| *d != dropping).cloned()
+}
+
+/// React `extractErrorMessage` — the message to show for a failed command:
+/// a non-empty string as-is, an error's `.message`, an object's `message`
+/// field, else the localized fallback. The command failures arrive here as
+/// JSON values (the driver IPC shape), so the object branch reads
+/// `message` off `serde_json::Value` exactly as React reads it off `unknown`.
+pub(crate) fn extract_error_message(error: &serde_json::Value, fallback: &str) -> String {
+    match error {
+        serde_json::Value::String(s) if !s.trim().is_empty() => s.clone(),
+        serde_json::Value::Object(obj) => match obj.get("message") {
+            Some(serde_json::Value::String(s)) if !s.trim().is_empty() => s.clone(),
+            _ => fallback.to_owned(),
+        },
+        _ => fallback.to_owned(),
     }
 }
