@@ -768,3 +768,5 @@ mod use_kv_db_counts;
 mod table_foreign_key_navigation;
 // T616: useKvSlotActions logic (wired/unwired branches, warnings, dangerous gate).
 mod use_kv_slot_actions;
+// T622: usePanelHandlers logic (query binding, ER schema, table identity, close/menu/refresh).
+mod use_panel_handlers;

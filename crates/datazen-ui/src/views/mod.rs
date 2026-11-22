@@ -57,6 +57,7 @@ pub(crate) mod table_read_only_tip;
 pub(crate) mod table_status_banners;
 pub(crate) mod table_view;
 pub(crate) mod use_kv_slot_actions;
+pub(crate) mod use_panel_handlers;
 
 mod connections;
 mod connections_home;
