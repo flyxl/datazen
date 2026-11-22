@@ -86,6 +86,9 @@ mod table_no_primary_key_tip;
 mod table_banners_audit;
 // T542: the FK jump breadcrumb (segment labels, host actions, empty/truncated).
 mod table_fk_breadcrumb;
+// T548: read-only tip + table status banners (copy, actions, geometry).
+mod table_read_only_tip;
+mod table_status_banners;
 // T524 independent audit: any-column not-contains, replace-all splicing and
 // non-contains operator planning, checked against React resultFindReplace.
 mod result_table_view_audit;

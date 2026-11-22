@@ -45,6 +45,8 @@ pub(crate) mod table_fk_breadcrumb;
 pub(crate) mod table_fk_error_banner;
 pub(crate) mod table_load_error_state;
 pub(crate) mod table_no_primary_key_tip;
+pub(crate) mod table_read_only_tip;
+pub(crate) mod table_status_banners;
 
 mod connections;
 mod connections_home;
