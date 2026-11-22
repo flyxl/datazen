@@ -53,6 +53,7 @@ pub(crate) mod table_no_primary_key_tip;
 pub(crate) mod table_read_only_tip;
 pub(crate) mod table_status_banners;
 pub(crate) mod table_view;
+pub(crate) mod use_kv_slot_actions;
 
 mod connections;
 mod connections_home;

@@ -755,3 +755,5 @@ mod table_toolbar;
 mod use_kv_db_counts;
 // T628: useTableForeignKeyNavigation logic (FK index/navigability, jump, breadcrumb, history).
 mod table_foreign_key_navigation;
+// T616: useKvSlotActions logic (wired/unwired branches, warnings, dangerous gate).
+mod use_kv_slot_actions;
