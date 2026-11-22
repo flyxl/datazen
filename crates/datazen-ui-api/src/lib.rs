@@ -5,6 +5,7 @@
 
 mod ai_draft_bridge;
 mod connection_page_utils;
+mod expanded_db_cache_refresh;
 mod open_history_query;
 mod query_contracts;
 mod query_drop_handler;
@@ -92,6 +93,11 @@ pub use connection_page_utils::{
     ConnectionLookup, ConnectionStatus, ConnectionStoreAction, ConnectionTab, ConsumedConnection,
     MainView, PendingOpenQuery, WorkspaceMode, CONNECTION_PAGE_UTILS_GAP,
     CONNECTION_PAGE_UTILS_SURFACE, DEFAULT_DATABASE_TYPE, PENDING_CONNECTION_KEY,
+};
+pub use expanded_db_cache_refresh::{
+    schema_fingerprint, ConnectionRef, ExpandedDbCacheRefresh, RefreshDeps, RefreshEffect,
+    RefreshInput, SchemaSnapshot, EXPANDED_DB_CACHE_REFRESH_GAP,
+    EXPANDED_DB_CACHE_REFRESH_SURFACE,
 };
 pub use tabs::{Tab, TabKind, Tabs};
 pub use ai_draft_bridge::{
