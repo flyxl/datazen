@@ -121,7 +121,7 @@
 - [x] T554 · windows/connection · 5.80d · windows/connection/TableView.tsx · split
 - [ ] T556 · windows/connection · 0.90d · windows/connection/WorkspaceModeSidebar.tsx
 - [x] T558 · windows/connection · 0.90d · windows/connection/connectionPageUtils.ts
-- [ ] T560 · windows/connection · 0.90d · windows/connection/contentViewHelpers.ts
+- [x] T560 · windows/connection · 0.90d · windows/connection/contentViewHelpers.ts
 - [x] T562 · windows/connection · 2.00d · windows/connection/er/buildErGraph.ts · split
 - [x] T564 · windows/connection · 2.00d · windows/connection/er/interactionState.ts · split
 - [x] T566 · windows/connection · 2.00d · windows/connection/er/layoutErGraph.ts · split
@@ -142,7 +142,7 @@
 - [x] T596 · windows/connection · 0.90d · windows/connection/query/useQueryBuilderContribution.ts
 - [x] T598 · windows/connection · 0.90d · windows/connection/query/validateBindParams.ts windows/connection/queryToolbarWidth.ts windows/connection/result-workspace/index.ts
 - [x] T600 · windows/connection · 0.80d · windows/connection/result-workspace/isMutationExecution.ts windows/connection/result-workspace/resultWorkspaceHelpers.ts
-- [ ] T602 · windows/connection · 0.60d · windows/connection/schema-tree/schemaTreeCategories.ts windows/connection/schema-tree/schemaTreeDrag.ts
+- [x] T602 · windows/connection · 0.60d · windows/connection/schema-tree/schemaTreeCategories.ts windows/connection/schema-tree/schemaTreeDrag.ts
 - [ ] T604 · windows/connection · 0.90d · windows/connection/schema-tree/useExpandedDbCacheRefresh.ts
 - [ ] T606 · windows/connection · 1.30d · windows/connection/tableEditing.ts · split
 - [ ] T608 · windows/connection · 1.30d · windows/connection/useConnectionContextMenu.ts · split
