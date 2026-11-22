@@ -4,6 +4,8 @@
 //! interface can run before the desktop and HTTP adapters exist.
 
 mod ai_draft_bridge;
+mod connection_page_utils;
+mod open_history_query;
 mod query_contracts;
 mod query_drop_handler;
 mod query_error_chat_prompt;
@@ -21,6 +23,11 @@ use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
 use datazen_driver_api::{ConnectionConfig, SslMode};
 
+pub use open_history_query::{
+    open_history_query, ActiveConnection, HistoryQueryEntry, OpenHistoryOutcome,
+    OpenHistoryQueryOptions, OpenHistoryQueryHost, PathHierarchySplit, PendingHistoryQuery,
+    QueryPanelState, SavedConnection, OPEN_HISTORY_QUERY_GAP, OPEN_HISTORY_QUERY_SURFACE,
+};
 pub use query_contracts::{
     build_query_panel_diagnosis_context, has_suspicious_postgres_double_quoted_literal,
     read_current_query_panel_retry_validation_input, ActiveConnectionView, ConnectionContext,
@@ -60,6 +67,13 @@ pub use query_toolbar_width::{
 };
 pub use result_workspace_index::{
     RESULT_WORKSPACE_INDEX_GAP, RESULT_WORKSPACE_INDEX_SURFACE,
+};
+pub use connection_page_utils::{
+    consume_pending_connection, enrich_open_connection_payload, make_tab_from_payload,
+    pending_open_query_sql, remove_connection_from_stores, sync_stores_active_connection,
+    ConnectionLookup, ConnectionStatus, ConnectionStoreAction, ConnectionTab, ConsumedConnection,
+    MainView, PendingOpenQuery, WorkspaceMode, CONNECTION_PAGE_UTILS_GAP,
+    CONNECTION_PAGE_UTILS_SURFACE, DEFAULT_DATABASE_TYPE, PENDING_CONNECTION_KEY,
 };
 pub use tabs::{Tab, TabKind, Tabs};
 pub use ai_draft_bridge::{

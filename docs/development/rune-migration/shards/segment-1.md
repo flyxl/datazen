@@ -120,7 +120,7 @@
 - [x] T552 · windows/connection · 0.50d · windows/connection/TableToolbar.tsx
 - [x] T554 · windows/connection · 5.80d · windows/connection/TableView.tsx · split
 - [ ] T556 · windows/connection · 0.90d · windows/connection/WorkspaceModeSidebar.tsx
-- [ ] T558 · windows/connection · 0.90d · windows/connection/connectionPageUtils.ts
+- [x] T558 · windows/connection · 0.90d · windows/connection/connectionPageUtils.ts
 - [ ] T560 · windows/connection · 0.90d · windows/connection/contentViewHelpers.ts
 - [x] T562 · windows/connection · 2.00d · windows/connection/er/buildErGraph.ts · split
 - [x] T564 · windows/connection · 2.00d · windows/connection/er/interactionState.ts · split
@@ -128,12 +128,12 @@
 - [x] T568 · windows/connection · 0.60d · windows/connection/er/nodeMetrics.ts windows/connection/er/relationStyle.ts
 - [x] T570 · windows/connection · 1.30d · windows/connection/navigator/buildFlatRows.ts · split
 - [x] T572 · windows/connection · 0.80d · windows/connection/navigator/treeRowAria.ts windows/connection/navigator/types.ts
-- [ ] T574 · windows/connection · 0.90d · windows/connection/navigator/useConnectionDrag.ts
+- [x] T574 · windows/connection · 0.90d · windows/connection/navigator/useConnectionDrag.ts
 - [ ] T576 · windows/connection · 0.90d · windows/connection/navigator/useKvDbCounts.ts
 - [ ] T578 · windows/connection · 1.30d · windows/connection/navigator/useNavigatorContextMenus.ts · split
 - [ ] T580 · windows/connection · 2.00d · windows/connection/navigator/useNavigatorDbState.ts · split
 - [ ] T582 · windows/connection · 0.80d · windows/connection/navigator/utils.ts
-- [ ] T584 · windows/connection · 0.90d · windows/connection/openHistoryQuery.ts
+- [x] T584 · windows/connection · 0.90d · windows/connection/openHistoryQuery.ts
 - [x] T586 · windows/connection · 0.30d · windows/connection/query/aiDraftBridge.ts
 - [x] T588 · windows/connection · 0.90d · windows/connection/query/contracts.ts
 - [x] T590 · windows/connection · 1.30d · windows/connection/query/queryDropHandler.ts · split
