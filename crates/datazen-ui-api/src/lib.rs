@@ -458,12 +458,10 @@ pub use platform_shared::{
     McpToolCallResult, WebMcpClient, WebMcpClientManager, WebMcpConnectedServer,
     WebMcpServerConfig, WebMcpToolInfo, format_call_tool_result, mcp_qualified_name,
 };
-// `ColumnSchema`/`IndexInfo`/`ForeignKeyInfo`/`TableSchema` moved to the
-// `connection_types` export above: the crate root now carries the full
-// `types/connection.ts` facade shapes under those names (T128). The
-// prediction slices — the fields `from_table_schema.rs` reads — stay
-// reachable inside `relation_prediction`, which had no root-path consumer
-// outside this crate.
+// `ColumnSchema`/`IndexInfo`/`ForeignKeyInfo`/`TableSchema` keep a single
+// canonical definition in `connection_types`; `ColumnSchema` reaches the root
+// once through the `types` aggregate. `from_table_schema` now imports those
+// facade shapes, so there are no prediction slices to re-export here.
 pub use relation_prediction::{
     ColumnPair, DECLARED_RELATION_BOOST, DEFAULT_AMBIGUITY_MARGIN, DEFAULT_HIGH_THRESHOLD,
     DEFAULT_MEDIUM_THRESHOLD, DeclaredForeignKey, EVIDENCE_WEIGHTS, EvidenceWeights,
