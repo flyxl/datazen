@@ -148,9 +148,9 @@
 - [ ] T608 · windows/connection · 1.30d · windows/connection/useConnectionContextMenu.ts · split
 - [ ] T610 · windows/connection · 0.90d · windows/connection/useConnectionTabs.ts
 - [ ] T612 · windows/connection · 0.90d · windows/connection/useConnectionWorkspaceMeta.ts
-- [ ] T614 · windows/connection · 0.90d · windows/connection/useDirtyIndex.ts
-- [ ] T616 · windows/connection · 0.90d · windows/connection/useKvSlotActions.ts
-- [ ] T618 · windows/connection · 0.90d · windows/connection/useKvWorkspaceSlots.ts
+- [x] T614 · windows/connection · 0.90d · windows/connection/useDirtyIndex.ts
+- [x] T616 · windows/connection · 0.90d · windows/connection/useKvSlotActions.ts
+- [x] T618 · windows/connection · 0.90d · windows/connection/useKvWorkspaceSlots.ts
 - [ ] T620 · windows/connection · 0.90d · windows/connection/useNamedViewMenu.ts
 - [ ] T622 · windows/connection · 1.30d · windows/connection/usePanelHandlers.ts · split
 - [ ] T624 · windows/connection · 0.90d · windows/connection/useTableActions.ts

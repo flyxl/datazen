@@ -630,11 +630,11 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T611 · lib · 0.50d · lib/sqlEditorDefaults.ts
 - [ ] T612 · windows/connection · 0.90d · windows/connection/useConnectionWorkspaceMeta.ts
 - [ ] T613 · lib · 0.90d · lib/sqlFileExecution.ts
-- [ ] T614 · windows/connection · 0.90d · windows/connection/useDirtyIndex.ts
+- [x] T614 · windows/connection · 0.90d · windows/connection/useDirtyIndex.ts
 - [ ] T615 · lib · 0.80d · lib/sqlFormat.ts lib/sqlFunctionRegistry.ts
-- [ ] T616 · windows/connection · 0.90d · windows/connection/useKvSlotActions.ts
+- [x] T616 · windows/connection · 0.90d · windows/connection/useKvSlotActions.ts
 - [ ] T617 · lib · 0.80d · lib/sqlGenerator.ts lib/sqlNamespace.ts
-- [ ] T618 · windows/connection · 0.90d · windows/connection/useKvWorkspaceSlots.ts
+- [x] T618 · windows/connection · 0.90d · windows/connection/useKvWorkspaceSlots.ts
 - [ ] T619 · lib · 0.80d · lib/sqlPathPrefix.ts lib/sqlSchemaDropTargets.ts
 - [ ] T620 · windows/connection · 0.90d · windows/connection/useNamedViewMenu.ts
 - [ ] T621 · lib · 0.90d · lib/sqlStatementRange.ts lib/sqlTransactionGuard.ts lib/startupTimer.ts
