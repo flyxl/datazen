@@ -28,17 +28,17 @@ fn ids(entries: &[MenuEntry]) -> Vec<&str> {
 fn table_menu_uses_tableplus_order_with_danger_section() {
     let mut a = args(MenuKind::Table, &[
         "open", "open-structure", "focus-er", "new-query", "copy-name", "copy-ddl",
-        "export", "batch-export", "import", "truncate", "drop",
+        "export", "import", "truncate", "drop",
     ]);
     assert_eq!(ids(&build_menu(&a)), [
         "open", "open-structure", "focus-er", "new-query", "copy-name", "copy-ddl",
-        "export", "batch-export", "import", "separator", "truncate", "drop",
+        "export", "import", "separator", "truncate", "drop",
     ]);
     // Optional structure/ER items disappear when their flags are off.
     a.show_open_structure = false;
     a.show_er_focus = false;
     assert_eq!(ids(&build_menu(&a)), [
-        "open", "new-query", "copy-name", "copy-ddl", "export", "batch-export",
+        "open", "new-query", "copy-name", "copy-ddl", "export",
         "import", "separator", "truncate", "drop",
     ]);
 }
@@ -46,12 +46,12 @@ fn table_menu_uses_tableplus_order_with_danger_section() {
 #[test]
 fn table_read_only_hides_import_truncate_drop() {
     let mut a = args(MenuKind::Table, &[
-        "open", "copy-name", "copy-ddl", "new-query", "export", "batch-export",
+        "open", "copy-name", "copy-ddl", "new-query", "export",
         "import", "truncate", "drop",
     ]);
     a.read_only = true;
     assert_eq!(ids(&build_menu(&a)), [
-        "open", "new-query", "copy-name", "copy-ddl", "export", "batch-export",
+        "open", "new-query", "copy-name", "copy-ddl", "export",
     ]);
 }
 

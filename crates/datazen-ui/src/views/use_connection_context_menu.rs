@@ -62,7 +62,10 @@ pub(crate) fn derive_context_flags(meta: &ContextMetaVm) -> ContextFlags {
         // React `showExport: kind === 'table' ? false : ctxExportDataSupported`;
         // the per-kind override is applied by the caller.
         show_export: None,
-        show_batch_export: Some(meta.supports_full_table_export),
+        // React forces `showBatchExport: kind === 'table' ? false : supported`.
+        // The safe default for a kind-agnostic derivation is false; callers for
+        // non-table kinds use `show_batch_export_for_kind`.
+        show_batch_export: Some(false),
         show_new_table: meta.can_open_structure_editor && !read_only,
     }
 }
@@ -75,6 +78,17 @@ pub(crate) fn show_export_for_kind(meta: &ContextMetaVm, kind: MenuKind) -> Opti
         Some(false)
     } else {
         Some(meta.supports_any_export)
+    }
+}
+
+/// React `useConnectionContextMenu.ts:327`: tables always suppress batch
+/// export; other kinds follow `supportsFullTableExport`.
+#[allow(dead_code)] // pure rule; remove with the host wiring.
+pub(crate) fn show_batch_export_for_kind(meta: &ContextMetaVm, kind: MenuKind) -> Option<bool> {
+    if kind == MenuKind::Table {
+        Some(false)
+    } else {
+        Some(meta.supports_full_table_export)
     }
 }
 

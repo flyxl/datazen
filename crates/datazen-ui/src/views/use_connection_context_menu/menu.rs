@@ -74,6 +74,11 @@ impl MenuArgs {
     /// React `batchExportShown(kind)`: default follows `showExport` (true only
     /// for views when `showExport === true`), else `showExport !== false`.
     fn batch_export_shown(&self) -> bool {
+        // React forces `showBatchExport = false` for tables, whatever the
+        // driver/caller says.
+        if self.kind == MenuKind::Table {
+            return false;
+        }
         match self.show_batch_export {
             Some(value) => value,
             None if self.kind == MenuKind::View => self.show_export == Some(true),
