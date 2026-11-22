@@ -734,3 +734,5 @@ mod table_filter_toolbar;
 mod table_pending_changes_bar;
 // T552: TableToolbar port (E2E anchors, refresh/insert actions, gating, filter threading, geometry).
 mod table_toolbar;
+// T576: useKvDbCounts logic (row derivation, fetch dedup, refresh/invalidate, alive guard).
+mod use_kv_db_counts;
