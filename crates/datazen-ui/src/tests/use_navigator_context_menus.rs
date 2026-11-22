@@ -603,6 +603,45 @@ fn d2_disconnected_query_history_stages_pending_intent() {
     );
 }
 
+// Independent lane-C repro probes (original D1/D2), retained as regression guards.
+#[test]
+fn probe_format_group_label_matches_react() {
+    assert_eq!(menus::format_group_label("preset:production"), t("newConn.groupProd"));
+    assert_eq!(menus::format_group_label("preset:development"), t("newConn.groupDev"));
+    assert_eq!(menus::format_group_label("preset:testing"), t("newConn.groupTest"));
+    assert_eq!(menus::format_group_label("My Team"), "My Team");
+    assert_eq!(menus::format_group_label(""), "", "React returns the empty key verbatim");
+}
+
+#[test]
+fn probe_organize_move_target_uses_preset_locale_label() {
+    let mut input = connection_input(false);
+    input.group = None;
+    input.move_targets = vec!["preset:production".to_owned()];
+    let items = connection::build_connection_menu(&input);
+    let move_target = find(&items, "move-group-preset:production");
+    assert_eq!(
+        move_target.label,
+        t("newConn.groupProd"),
+        "a preset group is localized in move targets too"
+    );
+}
+
+#[test]
+fn probe_empty_group_key_stays_empty() {
+    assert_eq!(menus::format_group_label(""), "", "React returns the empty key verbatim");
+}
+
+#[test]
+fn probe_disconnected_query_history_uses_pending_action() {
+    let items = connection::build_connection_menu(&connection_input(false));
+    assert_eq!(
+        find(&items, "query-history").action.as_ref().map(|a| a.kind),
+        Some(NavActionKind::PendingQueryHistory),
+        "React stages a pending query-history intent when disconnected"
+    );
+}
+
 // ── cross-cutting invariants ───────────────────────────────────────────────
 
 #[test]
