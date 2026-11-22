@@ -746,3 +746,5 @@ mod table_pending_changes_bar;
 mod table_toolbar;
 // T576: useKvDbCounts logic (row derivation, fetch dedup, refresh/invalidate, alive guard).
 mod use_kv_db_counts;
+// T628: useTableForeignKeyNavigation logic (FK index/navigability, jump, breadcrumb, history).
+mod table_foreign_key_navigation;

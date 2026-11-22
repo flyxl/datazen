@@ -42,6 +42,7 @@ pub(crate) mod table_structure_editor;
 pub(crate) mod workspace_mode_sidebar;
 pub(crate) mod table_filter_toolbar;
 pub(crate) mod table_pending_changes_bar;
+pub(crate) mod table_foreign_key_navigation;
 pub(crate) mod table_toolbar;
 pub(crate) mod table_clipboard_status;
 pub(crate) mod table_fk_breadcrumb;
