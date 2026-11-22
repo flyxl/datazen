@@ -4,6 +4,7 @@
 //! interface can run before the desktop and HTTP adapters exist.
 
 mod ai_draft_bridge;
+mod connection_page_utils;
 mod query_contracts;
 mod query_drop_handler;
 mod query_error_chat_prompt;
@@ -60,6 +61,13 @@ pub use query_toolbar_width::{
 };
 pub use result_workspace_index::{
     RESULT_WORKSPACE_INDEX_GAP, RESULT_WORKSPACE_INDEX_SURFACE,
+};
+pub use connection_page_utils::{
+    consume_pending_connection, enrich_open_connection_payload, make_tab_from_payload,
+    pending_open_query_sql, remove_connection_from_stores, sync_stores_active_connection,
+    ConnectionLookup, ConnectionStatus, ConnectionStoreAction, ConnectionTab, ConsumedConnection,
+    MainView, PendingOpenQuery, WorkspaceMode, CONNECTION_PAGE_UTILS_GAP,
+    CONNECTION_PAGE_UTILS_SURFACE, DEFAULT_DATABASE_TYPE, PENDING_CONNECTION_KEY,
 };
 pub use tabs::{Tab, TabKind, Tabs};
 pub use ai_draft_bridge::{
