@@ -248,7 +248,7 @@ pub(crate) fn open_er_diagram(
         .map(str::to_owned);
     let active_schema = active_panel_id
         .and_then(|id| panels.iter().find(|panel| panel.id == id))
-        .and_then(|panel| panel.schema.clone().or_else(|| panel.table_schema.clone()));
+        .and_then(super::model::panel_schema);
     let focused_schema = focus.and_then(|table| {
         resolve_focus_schema
             .and_then(|resolve| resolve(table))

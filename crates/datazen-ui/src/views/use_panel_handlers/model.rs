@@ -188,3 +188,16 @@ pub(crate) enum TabMenuItem {
     CloseToRight,
     CloseToLeft,
 }
+
+/// React `panelSchema(panel)` (`panelTypes.ts`): the schema a panel contributes
+/// to an ER diagram, selected by panel type.
+#[allow(dead_code)] // pure helper; remove with the host wiring.
+pub(crate) fn panel_schema(panel: &PanelVm) -> Option<String> {
+    match panel.kind {
+        Some(PanelKind::Table) | Some(PanelKind::CreateTable) => panel.table_schema.clone(),
+        Some(PanelKind::View) => panel.view_schema.clone(),
+        Some(PanelKind::Query) | Some(PanelKind::ErDiagram) => panel.schema.clone(),
+        Some(PanelKind::DbObject) => panel.object_schema.clone(),
+        _ => None,
+    }
+}

@@ -84,7 +84,7 @@ fn new_query_without_context_or_with_sql() {
 #[test]
 fn er_inherits_active_panel_schema_and_binds_database() {
     let mut active = panel("tbl-1", PanelKind::Table);
-    active.schema = Some("reporting".to_owned());
+    active.table_schema = Some("reporting".to_owned());
     let effect = open_er_diagram(Some(&ctx()), &[active], Some("tbl-1"), None, None, Some("db_a"), None, None, &[]);
     let panel = added(&effect);
     assert_eq!(panel.schema.as_deref(), Some("reporting"));
@@ -266,9 +266,9 @@ fn close_transitions() {
 #[test]
 fn context_menu_flags_follow_tab_position() {
     let panels: Vec<PanelVm> = ["a", "b", "c"].iter().map(|id| panel(id, PanelKind::Query)).collect();
-    assert_eq!(tab_context_menu_items(&panels, "a"), vec![TabMenuItem::Close, TabMenuItem::CloseOthers, TabMenuItem::CloseAll, TabMenuItem::CloseToRight]);
-    assert_eq!(tab_context_menu_items(&panels, "b"), vec![TabMenuItem::Close, TabMenuItem::CloseOthers, TabMenuItem::CloseAll, TabMenuItem::CloseToRight, TabMenuItem::CloseToLeft]);
-    assert_eq!(tab_context_menu_items(&panels, "c"), vec![TabMenuItem::Close, TabMenuItem::CloseOthers, TabMenuItem::CloseAll, TabMenuItem::CloseToLeft]);
+    assert_eq!(tab_context_menu_items(&panels, "a"), vec![TabMenuItem::Close, TabMenuItem::CloseOthers, TabMenuItem::CloseToRight, TabMenuItem::CloseAll]);
+    assert_eq!(tab_context_menu_items(&panels, "b"), vec![TabMenuItem::Close, TabMenuItem::CloseOthers, TabMenuItem::CloseToRight, TabMenuItem::CloseToLeft, TabMenuItem::CloseAll]);
+    assert_eq!(tab_context_menu_items(&panels, "c"), vec![TabMenuItem::Close, TabMenuItem::CloseOthers, TabMenuItem::CloseToLeft, TabMenuItem::CloseAll]);
     assert_eq!(tab_context_menu_items(&[], "a"), vec![TabMenuItem::Close, TabMenuItem::CloseOthers, TabMenuItem::CloseAll]);
 }
 

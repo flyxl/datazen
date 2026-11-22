@@ -48,13 +48,15 @@ pub(crate) fn close_panels_side(panels: &[PanelVm], panel_id: &str, to_right: bo
 #[allow(dead_code)] // pure rule; remove with the host wiring.
 pub(crate) fn tab_context_menu_items(panels: &[PanelVm], panel_id: &str) -> Vec<TabMenuItem> {
     let idx = panels.iter().position(|panel| panel.id == panel_id);
-    let mut items = vec![TabMenuItem::Close, TabMenuItem::CloseOthers, TabMenuItem::CloseAll];
+    let mut items = vec![TabMenuItem::Close, TabMenuItem::CloseOthers];
     if idx.is_some_and(|index| index < panels.len().saturating_sub(1)) {
         items.push(TabMenuItem::CloseToRight);
     }
     if idx.is_some_and(|index| index > 0) {
         items.push(TabMenuItem::CloseToLeft);
     }
+    // React pushes close-all last.
+    items.push(TabMenuItem::CloseAll);
     items
 }
 
