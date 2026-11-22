@@ -3,6 +3,7 @@
 //! Hosts implement [`WorkspaceApi`]. The memory workspace is only a stand-in so the
 //! interface can run before the desktop and HTTP adapters exist.
 
+mod ai_draft_bridge;
 mod tabs;
 
 use std::collections::HashMap;
@@ -11,6 +12,11 @@ use std::collections::HashMap;
 use datazen_driver_api::{ConnectionConfig, SslMode};
 
 pub use tabs::{Tab, TabKind, Tabs};
+pub use ai_draft_bridge::{
+    AiChatDraftRequest, AiChatDraftSource, ContentViewCallbacks, OpenRelationSubTab,
+    QueryOpenFocus, QueryOpenSource, TableContextInput, TableSqlActionKind, TableSqlActionSpec,
+    AI_CHAT_DRAFT_FOCUS, AI_DRAFT_BRIDGE_GAP, AI_DRAFT_BRIDGE_SURFACE,
+};
 
 /// One foreign key: this table's columns (a compound key stays together), the
 /// target table and its columns.
