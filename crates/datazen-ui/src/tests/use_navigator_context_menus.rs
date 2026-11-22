@@ -518,6 +518,55 @@ fn object_menu_is_a_single_copy_name_carrying_the_name() {
     assert_eq!(items[0].action.as_ref().map(|a| a.target.name.as_str()), Some("created_at"));
 }
 
+#[test]
+fn server_submenu_separates_only_when_both_groups_present() {
+    let mut input = connection_input(true);
+    input.driver.supports_backup = false; // monitoring only
+    let items = connection::build_connection_menu(&input);
+    assert_eq!(
+        ids(&find(&items, "server-submenu").children),
+        ["process-list", "server-status"]
+    );
+
+    let mut input = connection_input(true);
+    input.has_server_status_command = false;
+    input.has_process_list_command = false;
+    input.driver.supports_backup = true; // backup/restore only
+    let items = connection::build_connection_menu(&input);
+    assert_eq!(ids(&find(&items, "server-submenu").children), ["backup", "restore"]);
+}
+
+#[test]
+fn category_new_table_needs_create_table_action() {
+    let mut view = all_view_actions();
+    view.create_table = false;
+    let input = category::CategoryMenuInput {
+        cat_id: "tables".to_owned(),
+        read_only: false,
+        view,
+    };
+    assert_eq!(ids(&category::build_category_menu(&input)), ["refresh"]);
+}
+
+#[test]
+fn database_create_schema_needs_driver_support() {
+    let mut input = database_input();
+    input.driver.supports_create_schema = false;
+    let items = database::build_database_menu(&input);
+    assert!(menus::find_entry(&items, "create-schema").is_none());
+}
+
+#[test]
+fn view_menu_never_offers_er_or_generate_sql() {
+    let mut input = table_input(table::TableKind::View);
+    input.supports_er_diagram = true;
+    input.view.open_table_structure = true;
+    let items = table::build_table_menu(&input);
+    assert!(menus::find_entry(&items, "focus-er").is_none());
+    assert!(menus::find_entry(&items, "generate-sql").is_none());
+    assert!(menus::find_entry(&items, "new-query").is_none());
+}
+
 // ── cross-cutting invariants ───────────────────────────────────────────────
 
 #[test]
