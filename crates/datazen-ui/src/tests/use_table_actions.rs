@@ -198,3 +198,30 @@ fn count_exact_is_a_full_reread_not_a_paged_one() {
     assert!(!options.skip_count);
     assert_eq!(options.count_strategy, CountStrategy::Exact);
 }
+
+#[test]
+fn auto_strategy_never_estimates_with_an_infinite_threshold() {
+    for threshold in [f64::INFINITY, f64::NEG_INFINITY] {
+        assert_eq!(
+            resolve_count_strategy(CountMode::Auto, threshold, Some(1.0)),
+            Some(CountStrategy::Exact),
+            "a non-finite threshold must not produce an estimate"
+        );
+    }
+}
+
+#[test]
+fn panel_strategy_respects_an_explicit_threshold() {
+    assert_eq!(
+        resolve_panel_count_strategy(CountMode::Auto, Some(10.0), Some(11.0)),
+        Some(CountStrategy::Estimated)
+    );
+    assert_eq!(
+        resolve_panel_count_strategy(CountMode::Auto, Some(10.0), Some(10.0)),
+        Some(CountStrategy::Exact)
+    );
+    assert_eq!(
+        resolve_panel_count_strategy(CountMode::Auto, Some(10.0), None),
+        None
+    );
+}
