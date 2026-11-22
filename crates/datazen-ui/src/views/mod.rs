@@ -57,6 +57,8 @@ pub(crate) mod table_no_primary_key_tip;
 pub(crate) mod table_read_only_tip;
 pub(crate) mod table_status_banners;
 pub(crate) mod table_view;
+// T606: pure tableEditing decisions (editability, navigation, candidates, set value).
+pub(crate) mod table_editing;
 pub(crate) mod use_kv_slot_actions;
 pub(crate) mod use_panel_handlers;
 
