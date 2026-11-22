@@ -88,9 +88,18 @@ pub(crate) struct WorkspaceModeSidebarVm {
 
 #[allow(dead_code)] // pure helpers; remove with the host.
 impl WorkspaceModeSidebarVm {
-    /// React's update button presence: available or pending-restart version.
+    /// React's update button presence: a truthy available or pending-restart
+    /// version string (an empty string is falsy in JS; whitespace stays truthy).
     pub(crate) fn update_visible(&self) -> bool {
-        self.update.available_version.is_some() || self.update.pending_restart_version.is_some()
+        self.update
+            .available_version
+            .as_deref()
+            .is_some_and(|version| !version.is_empty())
+            || self
+                .update
+                .pending_restart_version
+                .as_deref()
+                .is_some_and(|version| !version.is_empty())
     }
 
     /// React `progressLabel`: downloading / installing / generic installing.
@@ -98,7 +107,11 @@ impl WorkspaceModeSidebarVm {
         match self.update.progress.as_ref() {
             Some(progress) if progress.phase_downloading => {
                 if progress.total > 0 {
-                    let pct = (progress.downloaded * 100 / progress.total).min(100);
+                    // React Math.round((downloaded / total) * 100), then clamp.
+                    let pct = ((progress.downloaded as f64 / progress.total as f64) * 100.0)
+                        .round()
+                        as i64;
+                    let pct = pct.min(100);
                     t("settings.updater.downloading").replace("{pct}", &pct.to_string())
                 } else {
                     t("settings.updater.downloadingIndeterminate").to_owned()
