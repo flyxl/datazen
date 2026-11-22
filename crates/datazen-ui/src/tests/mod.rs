@@ -21,6 +21,14 @@ mod navigator_tree_row_aria;
 mod navigator_connection_drag;
 // T576: the per-session KV db-counts cache (shared/deduped, best-effort).
 mod navigator_kv_db_counts;
+// T578: the navigator's seven context menus (gates, order, action payloads).
+mod navigator_context_menus;
+// T580: the per-database caches and the refresh ladder (pointer-first
+// toggles, background-neutral loads, the cache-refresh wave).
+mod navigator_db_state;
+// T582: the navigator utils (namespace leaf context, the row-key contract,
+// depth padding, the multi-db decision, the ghost spec).
+mod navigator_utils;
 // T0-09 tree/tree_audit are declared once below with the rest of the T0-09 family.
 // T0-11 patch: a compact tooltip's long hint wraps inside the window.
 mod tooltip_text;

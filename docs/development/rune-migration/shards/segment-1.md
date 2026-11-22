@@ -130,9 +130,9 @@
 - [x] T572 · windows/connection · 0.80d · windows/connection/navigator/treeRowAria.ts windows/connection/navigator/types.ts
 - [x] T574 · windows/connection · 0.90d · windows/connection/navigator/useConnectionDrag.ts
 - [x] T576 · windows/connection · 0.90d · windows/connection/navigator/useKvDbCounts.ts
-- [ ] T578 · windows/connection · 1.30d · windows/connection/navigator/useNavigatorContextMenus.ts · split
-- [ ] T580 · windows/connection · 2.00d · windows/connection/navigator/useNavigatorDbState.ts · split
-- [ ] T582 · windows/connection · 0.80d · windows/connection/navigator/utils.ts
+- [x] T578 · windows/connection · 1.30d · windows/connection/navigator/useNavigatorContextMenus.ts · split
+- [x] T580 · windows/connection · 2.00d · windows/connection/navigator/useNavigatorDbState.ts · split
+- [x] T582 · windows/connection · 0.80d · windows/connection/navigator/utils.ts
 - [x] T584 · windows/connection · 0.90d · windows/connection/openHistoryQuery.ts
 - [x] T586 · windows/connection · 0.30d · windows/connection/query/aiDraftBridge.ts
 - [x] T588 · windows/connection · 0.90d · windows/connection/query/contracts.ts

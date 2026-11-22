@@ -224,6 +224,7 @@ pub mod table_changes;
 pub mod theme_pack_apply;
 mod ai_draft_bridge;
 mod connection_page_utils;
+mod connection_shared;
 mod expanded_db_cache_refresh;
 mod open_history_query;
 mod query_contracts;
@@ -874,8 +875,11 @@ pub use total_rows_display::{
 pub use types::{
     AppSettings, ChangedColumnDiff, CheckConstraintDiffEntry, ColumnDiffEntry, ColumnInfo, CommandAccessLevel, CommandCategory, Counter, DefaultTableSort, DriverCommandDefinition, DriverCommandMetadata, DriverSaveDialogSpec, ErrorHandlingConfig, ErrorHandlingStrategy, FavoriteQuery, GridDensity, HistoryEntry, HistoryListItem, Id, KeyDetail, KeyEntry, KeyScanResult, LogLevel, McpApprovalDecision, McpApprovalRequest, McpAuditDecision, McpAuditRecord, McpHttpTransport, McpHttpStatus, McpPermissionMode, MergeSource, MultiQueryResult, OnboardingState, QueryResult, QueryStreamEvent, ResultCompleteness, RuntimeResultBinding, SessionContext, SessionContextConfidence, SortCondition, SqlExecutionStrategy, SqlFormatOptions, StatementResult, SyncObjectKind, TableCompareStatus, TableComparison, TableDataResult, TableOptionsDiff, TableOptionsSnapshot, TableSchemaDiff, Timestamp, TransactionState, TransformColumn, TunnelSource, TunnelUsage, WritableMapping, WorkflowBlock, WorkflowBlockRetry, WorkflowBlockType, WorkflowDefinition, WorkflowExecuteRequest, WorkflowIdRequest, WorkflowOutput, WorkflowRunGetRequest, WorkflowRunListItem, WorkflowRunRecord, WorkflowRunsListRequest, WorkflowSaveRequest, WorkflowSchedule, WorkflowStep, WorkflowStepType, WorkflowVisibility, WorkflowYamlSaveRequest, is_valid_mcp_server_id,
 };
+pub use connection_shared::SavedConnection;
 pub use open_history_query::{
-    open_history_query, ActiveConnection, HistoryQueryEntry, OpenHistoryOutcome, OpenHistoryQueryOptions, OpenHistoryQueryHost, PathHierarchySplit, PendingHistoryQuery, QueryPanelState, SavedConnection, OPEN_HISTORY_QUERY_GAP, OPEN_HISTORY_QUERY_SURFACE,
+    open_history_query, ActiveConnection, HistoryQueryEntry, OpenHistoryOutcome,
+    OpenHistoryQueryOptions, OpenHistoryQueryHost, PathHierarchySplit, PendingHistoryQuery,
+    QueryPanelState, OPEN_HISTORY_QUERY_GAP, OPEN_HISTORY_QUERY_SURFACE,
 };
 pub use query_contracts::{
     build_query_panel_diagnosis_context, has_suspicious_postgres_double_quoted_literal, read_current_query_panel_retry_validation_input, ActiveConnectionView, ConnectionContext, DiagnosisContext, DiagnosisContextInput, ExecuteKind, PendingExecute, PanelView, QueryContractsHost, QueryDiagnosisExecution, QueryDiagnosisSchemaState, QueryExecutionGateRefs, QueryPanelCallbacks, QueryPanelDiagnosisContextInput, QueryPanelProps, SchemaContext, QUERY_CONTRACTS_GAP, QUERY_CONTRACTS_SURFACE,
@@ -890,7 +894,10 @@ pub use result_workspace::{
     can_render_result_chart, get_top_level_sql_verb, infer_field_type, is_chartable_result, is_mutation_execution, resolve_result_workspace_view, strip_leading_sql_comments, ResultColumn, ResultValue, ResultWorkspaceFallbackReason, ResultWorkspaceView, ResultWorkspaceViewResolution, StatementResultView, MUTATION_VERBS, QUERY_VERBS, RESULT_WORKSPACE_GAP, RESULT_WORKSPACE_SURFACE,
 };
 pub use content_view_helpers::{
-    get_panel_icon, get_panel_label, get_panel_short_label, get_panel_tab_label, get_sub_tabs, get_view_sub_tabs, resolve_connection_context, resolve_connection_context_by_connection, resolve_panel_tab_database, ContentViewConnectionContext, ContentViewPanel, PanelIcon, SavedConnection as ContentViewSavedConnection, SubTab, SubTabId, CONTENT_VIEW_HELPERS_GAP, CONTENT_VIEW_HELPERS_SURFACE, ICON_CLASS,
+    get_panel_icon, get_panel_label, get_panel_short_label, get_panel_tab_label, get_sub_tabs,
+    get_view_sub_tabs, resolve_connection_context, resolve_connection_context_by_connection,
+    resolve_panel_tab_database, ContentViewConnectionContext, ContentViewPanel, PanelIcon, SubTab,
+    SubTabId, CONTENT_VIEW_HELPERS_GAP, CONTENT_VIEW_HELPERS_SURFACE, ICON_CLASS,
 };
 pub use query_toolbar_width::{
     path_hierarchy_label_width, query_context_select_width, query_toolbar_expanded_min_width, PathSelectorSegment, SelectorSegmentKind, ToolbarWidthOptions, PATH_HIERARCHY_LABEL_MAX, PATH_HIERARCHY_SELECT_CHROME, PATH_HIERARCHY_SELECT_MAX, PATH_HIERARCHY_SELECT_MIN, PATH_HIERARCHY_SEGMENT_GAP, QUERY_TOOLBAR_ICON_BUTTON_WIDTH, QUERY_TOOLBAR_STATUS_WIDTH, QUERY_TOOLBAR_WIDTH_GAP, QUERY_TOOLBAR_WIDTH_SURFACE, TOOLBAR_GAP, TOOLBAR_HORIZONTAL_PADDING,

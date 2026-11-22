@@ -12,13 +12,7 @@ pub struct OpenHistoryQueryOptions {
     pub current_connection_id: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SavedConnection {
-    pub id: String,
-    pub name: String,
-    pub database_type: String,
-    pub database: Option<String>,
-}
+use crate::SavedConnection;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActiveConnection {

@@ -116,6 +116,10 @@ pub(crate) struct SchemaStateSnapshot {
     pub loading: bool,
     pub ensuring_count: usize,
     pub error: Option<String>,
+    /// React `schemaEpoch` — bumped by admin ops; a change means the
+    /// connection's schema surface genuinely changed (T580's cache-refresh
+    /// fingerprint reads it).
+    pub schema_epoch: u64,
 }
 
 /// React `ConnectionLocatorUsageState` — the runtime caches the locator
