@@ -1,4 +1,5 @@
 use super::*;
+use crate::WorkspaceMode;
 
 fn t(key: &str) -> String {
     format!("T:{key}")

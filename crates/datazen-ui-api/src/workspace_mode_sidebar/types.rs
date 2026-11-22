@@ -18,26 +18,7 @@ pub const WORKSPACE_MODE_SIDEBAR_GAP: [&str; 6] = [
     "NavButton DOM click wiring",
 ];
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum WorkspaceMode {
-    Connections,
-    Workflow,
-    Dashboard,
-    Workspace,
-    Extension,
-}
-
-impl WorkspaceMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            WorkspaceMode::Connections => "connections",
-            WorkspaceMode::Workflow => "workflow",
-            WorkspaceMode::Dashboard => "dashboard",
-            WorkspaceMode::Workspace => "workspace",
-            WorkspaceMode::Extension => "extension",
-        }
-    }
-}
+pub(crate) use crate::WorkspaceMode;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NavButtonId {

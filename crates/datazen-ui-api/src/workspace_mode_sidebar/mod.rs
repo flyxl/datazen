@@ -8,7 +8,7 @@ mod tests;
 pub use events::{dispatch_nav_action, resolve_confirm_result, resolve_restart_prompt};
 pub use types::{
     NavAction, NavButton, NavButtonId, ProgressRing, RestartPrompt, SidebarView, UpdateAction,
-    UpdateButtonView, UpdateIconKind, UpdateProgress, UpdateProgressPhase, UpdateState, WorkspaceMode,
+    UpdateButtonView, UpdateIconKind, UpdateProgress, UpdateProgressPhase, UpdateState,
     WORKSPACE_MODE_SIDEBAR_GAP, WORKSPACE_MODE_SIDEBAR_SURFACE,
 };
 pub use view::{

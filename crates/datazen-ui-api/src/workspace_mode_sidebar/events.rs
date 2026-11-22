@@ -1,4 +1,5 @@
 use super::types::{NavAction, NavButtonId, RestartPrompt, UpdateAction, UpdateState};
+use crate::WorkspaceMode;
 
 pub fn dispatch_nav_action(id: NavButtonId) -> Option<NavAction> {
     match id {

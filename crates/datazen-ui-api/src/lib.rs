@@ -123,7 +123,7 @@ pub use workspace_mode_sidebar::{
     build_sidebar_view, build_update_view, dispatch_nav_action, progress_label, progress_ring,
     resolve_confirm_result, resolve_restart_prompt, update_label, NavAction, NavButton, NavButtonId,
     ProgressRing, RestartPrompt, SidebarView, UpdateAction, UpdateButtonView, UpdateIconKind,
-    UpdateProgress, UpdateProgressPhase, UpdateState, WorkspaceMode, BUTTON_ACTIVE, BUTTON_BASE,
+    UpdateProgress, UpdateProgressPhase, UpdateState, BUTTON_ACTIVE, BUTTON_BASE,
     BUTTON_COLLAPSED, BUTTON_EXPANDED, BUTTON_INACTIVE, SIDEBAR_BASE,
     WORKSPACE_MODE_SIDEBAR_GAP, WORKSPACE_MODE_SIDEBAR_SURFACE,
 };
