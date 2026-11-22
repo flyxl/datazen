@@ -165,7 +165,7 @@ fn resolve_updates_counts_only_while_alive() {
     });
     assert_eq!(machine.counts().get(&9), None);
     assert_eq!(machine.counts().get(&0), Some(&3));
-    assert!(!machine.is_pending("s1"), "resolve always settles the cache entry");
+    assert!(machine.is_pending("s1"), "a resolved promise stays cached until reject/invalidate");
 }
 
 #[test]

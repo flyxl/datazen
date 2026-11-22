@@ -12,13 +12,13 @@
 //!
 //! ## Semantics kept 1:1
 //!
-//! * `fetchDbCounts`: one in-flight request per session; `Number(r.db)` keys and
+//! * `fetchDbCounts`: one cached request per session (a resolved promise is kept too); `Number(r.db)` keys and
 //!   `Number(r.keys)` values; a non-array payload yields an empty map; a reject
 //!   evicts the cache entry so the next read refetches.
 //! * `useKvDbCounts`: no session or no command ⇒ no fetch and no state change;
 //!   a resolve updates the exposed counts only while `alive`, and a reject is
 //!   swallowed.
-//! * `invalidateKvDbCounts`: evicts the pending entry; exposed counts stay until
+//! * `invalidateKvDbCounts`: evicts the cached entry; exposed counts stay until
 //!   the next resolve (React only deletes from the promise cache).
 //!
 //! ## Consumer / removal stage
@@ -98,7 +98,7 @@ pub(crate) enum KvCountsEvent {
     },
     /// The driver command rejected (cache entry evicted, counts untouched).
     Reject { db_session_id: String },
-    /// `invalidateKvDbCounts(dbSessionId)` — evict the pending entry.
+    /// `invalidateKvDbCounts(dbSessionId)` — evict the cached entry.
     Invalidate { db_session_id: String },
 }
 
@@ -117,7 +117,8 @@ pub(crate) enum KvCountsEffect {
 #[allow(dead_code)] // state machine; consumer: the navigator tree host (not wired).
 #[derive(Default)]
 pub(crate) struct KvDbCountsMachine {
-    /// Sessions with an in-flight fetch — the promise cache's dedup set.
+    /// Sessions with a cached promise — in-flight AND settled. React only deletes
+    /// an entry in `.catch` or via `invalidateKvDbCounts`, so a resolve stays cached.
     pending: BTreeSet<String>,
     /// The active effect `(dbSessionId, command)`; `None` means not alive.
     active: Option<(String, String)>,
@@ -196,8 +197,8 @@ impl KvDbCountsMachine {
                 db_session_id,
                 rows,
             } => {
-                // The settled promise leaves the cache regardless of `alive`.
-                self.pending.remove(&db_session_id);
+                // A resolved promise STAYS in React's cache — only `.catch`
+                // (Reject) and `invalidateKvDbCounts` (Invalidate) delete it.
                 let alive = self
                     .active
                     .as_ref()
