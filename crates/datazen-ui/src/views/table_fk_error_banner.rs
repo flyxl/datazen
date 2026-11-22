@@ -87,7 +87,9 @@ pub(crate) fn build<S: 'static>(
     dark: bool,
     layer: &mut Vec<El>,
 ) {
-    let Some(message) = vm.message() else {
+    // React returns null for a falsy composed message; only "" is falsy
+    // (whitespace-only stays truthy), so do not trim.
+    let Some(message) = vm.message().filter(|message| !message.is_empty()) else {
         return;
     };
     let k: &Kit = kit(dark);
@@ -113,7 +115,13 @@ pub(crate) fn build<S: 'static>(
             .px(12.0)
             .py(6.0)
             .fill(k.alpha(k.c.danger.fg, 0.10))
-            .child(CopyableError::new(TEXT_KEY, message).build::<S>(k).grow(1.0).min_w(0.0))
+            .child(
+                CopyableError::new(TEXT_KEY, message)
+                    .copy_button(true)
+                    .build::<S>(k)
+                    .grow(1.0)
+                    .min_w(0.0),
+            )
             .child(close.shrink()),
     );
 }

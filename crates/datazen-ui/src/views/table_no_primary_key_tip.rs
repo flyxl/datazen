@@ -78,6 +78,7 @@ pub(crate) fn build<S: 'static>(
             text(vm.message.clone())
                 .key(TEXT_KEY)
                 .label(vm.message.clone())
+                .help(vm.message.clone())
                 .font(k.ty.text_small)
                 .color(k.c.text_muted)
                 .truncate()

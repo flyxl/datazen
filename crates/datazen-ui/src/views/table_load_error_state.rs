@@ -78,7 +78,11 @@ pub(crate) fn build<S: 'static>(
                     .w_full()
                     .max_w(512.0)
                     .center()
-                    .child(CopyableError::new(TEXT_KEY, vm.error.clone()).build::<S>(k))
+                    .child(
+                        CopyableError::new(TEXT_KEY, vm.error.clone())
+                            .copy_button(true)
+                            .build::<S>(k),
+                    )
                     .child(row().key("table-load-error-retry-row").mt(8.0).child(retry)),
             ),
     );
