@@ -61,6 +61,7 @@ pub(crate) mod table_view;
 pub(crate) mod table_editing;
 pub(crate) mod use_kv_slot_actions;
 pub(crate) mod use_panel_handlers;
+pub(crate) mod use_connection_context_menu;
 
 mod connections;
 mod connections_home;
