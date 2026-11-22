@@ -73,6 +73,8 @@ mod table_column_filter;
 mod table_column_filter_audit;
 // T532: StructureIndexTable + StructurePlanPreview ports (rows/flags/actions, states, geometry).
 mod structure_index_table;
+// T550: TableStructureEditor port (titles/gates, toolbar actions, states, geometry).
+mod table_structure_editor;
 mod structure_plan_preview;
 // T532 independent audit: helper branches, capability gates, plan-preview states.
 mod structure_index_audit;
