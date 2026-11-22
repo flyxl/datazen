@@ -33,7 +33,11 @@ use crate::i18n::t;
 
 pub(crate) mod deps;
 pub(crate) mod inputs;
-pub(crate) mod row_model;
+
+// The row union lives in `views/navigator/types.rs` since T572 (the formal
+// `types.ts` port); re-exported here because every builder consumer reads it
+// through this module.
+pub(crate) use super::types::{row_key, DepthPair, NavigatorRow};
 
 use deps::categories::get_categories_for_driver;
 use deps::groups::format_group_label;
@@ -51,7 +55,6 @@ use inputs::{
     ActiveEntrySnapshot, ConnectionSnapshot, DatabaseObject, DriverMeta, GroupedSection,
     SchemaStateSnapshot, TableInfo, TableType, UsageStateSnapshot,
 };
-use row_model::{row_key, DepthPair, NavigatorRow};
 
 /// React `BuildNavigatorFlatRowsParams`.
 #[derive(Clone, Default)]

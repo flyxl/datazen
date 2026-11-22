@@ -12,9 +12,7 @@ use crate::views::navigator::build_flat_rows::inputs::{
     ActiveEntrySnapshot, ConnectionSnapshot, DatabaseObject, DriverMeta, GroupedSection,
     SchemaStateSnapshot, TableInfo, TableType,
 };
-use crate::views::navigator::build_flat_rows::row_model::{
-    row_key as navigator_row_key, NavigatorRow,
-};
+use crate::views::navigator::types::{row_key as navigator_row_key, NavigatorRow};
 use crate::views::navigator::build_flat_rows::{build_navigator_flat_rows, BuildFlatRowsParams};
 
 // ---------------------------------------------------------------------------

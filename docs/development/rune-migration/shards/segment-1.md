@@ -127,7 +127,7 @@
 - [x] T566 · windows/connection · 2.00d · windows/connection/er/layoutErGraph.ts · split
 - [x] T568 · windows/connection · 0.60d · windows/connection/er/nodeMetrics.ts windows/connection/er/relationStyle.ts
 - [x] T570 · windows/connection · 1.30d · windows/connection/navigator/buildFlatRows.ts · split
-- [ ] T572 · windows/connection · 0.80d · windows/connection/navigator/treeRowAria.ts windows/connection/navigator/types.ts
+- [x] T572 · windows/connection · 0.80d · windows/connection/navigator/treeRowAria.ts windows/connection/navigator/types.ts
 - [ ] T574 · windows/connection · 0.90d · windows/connection/navigator/useConnectionDrag.ts
 - [ ] T576 · windows/connection · 0.90d · windows/connection/navigator/useKvDbCounts.ts
 - [ ] T578 · windows/connection · 1.30d · windows/connection/navigator/useNavigatorContextMenus.ts · split
