@@ -524,3 +524,62 @@ fn plain_header_is_written_only_with_column_names() {
     );
     assert_eq!(out, "x\na");
 }
+
+// ── D1 / D2 / D3 regression repros ────────────────────────────────────────
+
+#[test]
+fn d1_json_named_records_use_raw_null_not_the_null_literal() {
+    let out = serialize_cells(
+        &[vec![text("a")]],
+        ClipboardFormat::Json,
+        &["x".to_owned(), "y".to_owned()],
+        None,
+        "NULL",
+        true,
+    );
+    assert_eq!(out, "[{\"x\":\"a\",\"y\":null}]");
+    // An empty column name is skipped; a raw null in positional JSON stays null.
+    let named = serialize_cells(
+        &[vec![text("a"), ClipValue::Null]],
+        ClipboardFormat::Json,
+        &["x".to_owned(), String::new()],
+        None,
+        "NULL",
+        true,
+    );
+    assert_eq!(named, "[{\"x\":\"a\"}]");
+    assert_eq!(
+        serialize_cells(&[vec![ClipValue::Null]], ClipboardFormat::Json, &["x".to_owned()], None, "NULL", false),
+        "[[null]]"
+    );
+}
+
+#[test]
+fn d2_positional_json_keeps_the_whole_row() {
+    let out = serialize_cells(
+        &[vec![text("a"), text("b")]],
+        ClipboardFormat::Json,
+        &["x".to_owned()],
+        None,
+        "NULL",
+        false,
+    );
+    assert_eq!(out, "[[\"a\",\"b\"]]");
+}
+
+#[test]
+fn d3_no_write_and_cancel_summaries_zero_their_shape() {
+    let ok = parse_clipboard_text("a\tb");
+    let PasteDecision::NoWrites(empty) = clip::decide_paste(true, &ok, &plan(0)) else {
+        panic!("a zero-write plan must produce a no-writes summary");
+    };
+    assert_eq!((empty.rows, empty.columns, empty.overwritten_pending), (0, 0, 0));
+    assert_eq!((empty.cells, empty.staged, empty.skipped, empty.cancelled), (0, 0, 7, false));
+
+    let cancelled = clip::cancelled_summary(&plan(4));
+    assert_eq!((cancelled.rows, cancelled.columns), (0, 0));
+    assert_eq!(
+        (cancelled.cells, cancelled.staged, cancelled.skipped, cancelled.overwritten_pending, cancelled.cancelled),
+        (4, 0, 0, 3, true)
+    );
+}

@@ -1,27 +1,15 @@
 //! `windows/connection/useTableViewClipboard.ts` — the TableView → clipboard
 //! adapter and the decisions it delegates to `useGridClipboard` / `gridClipboard`,
-//! ported as pure logic for T630.
+//! ported as pure logic for T630. React's hook is a wiring shell (empty fallbacks,
+//! panel-bound actions); the ported decisions are: cell-vs-row copy intent and
+//! the paste gate (read-only → parse refusal → no writes → confirm → stage);
+//! the single TSV/CSV/JSON/plain/HTML/Markdown serializer and clipboard parser;
+//! selection/row → matrix and matrix → draft mapping; and reported problems,
+//! paste summaries and the optimistic "copied" host-clock deadline. No timer,
+//! IPC or promise lives here — the host reads the clipboard and applies actions.
 //!
-//! React's hook is a wiring shell: it substitutes stable empty fallbacks for a
-//! panel that has not loaded, binds the panel's action table, and forwards the
-//! grid's bridge. The decisions worth porting are the ones made around it:
-//!
-//! - **intent**: cell-vs-row copy target, can-copy / can-paste / can-use-row-copy,
-//!   the paste gate (read-only → parse refusal → no writes → confirm → stage),
-//!   and the row-copy/paste-rows flow.
-//! - **formatting**: the single TSV/CSV/JSON/plain/HTML/Markdown serializer,
-//!   the clipboard parser with its byte/cell limits and ragged-row refusal.
-//! - **mapping**: selection coordinates and covered rows → value matrices, and
-//!   a copied row matrix → draft values (no primary key / auto-increment).
-//! - **state**: reported problems (capped at 100), the last paste summary, and
-//!   the optimistic "copied" window with its host-clock deadline. No timer, IPC
-//!   or promise lives here — the host reads the clipboard and applies actions.
-//!
-//! Types already ported for the clipboard status line ([`PasteProblem`],
-//! [`PasteSummary`]) are reused, not duplicated.
-//!
+//! [`PasteProblem`] / [`PasteSummary`] are reused from the status-line port.
 //! ## Consumer / removal stage
-//!
 //! No production table host mounts this yet. Every reusable item carries a
 //! per-item `#[allow(dead_code)]` with this stage as its removal note; the
 //! attributes are dropped together when the host lands. All labels come from
@@ -344,11 +332,8 @@ fn escape_html_cell(text: &str) -> String {
 
 #[allow(dead_code)] // pure helper; remove with the host.
 fn escape_markdown_cell(text: &str) -> String {
-    text.replace('\\', "\\\\")
-        .replace('|', "\\|")
-        .replace("\r\n", "\n")
-        .replace('\r', "\n")
-        .replace('\n', "<br>")
+    text.replace('\\', "\\\\").replace('|', "\\|")
+        .replace("\r\n", "\n").replace('\r', "\n").replace('\n', "<br>")
 }
 
 #[allow(dead_code)] // pure helper; remove with the host.
@@ -356,10 +341,8 @@ fn json_string(text: &str) -> String {
     let mut out = String::from("\"");
     for ch in text.chars() {
         match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
+            '"' => out.push_str("\\\""), '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"), '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
             c if c < ' ' => out.push_str(&format!("\\u{:04x}", c as u32)),
             c => out.push(c),
@@ -390,16 +373,26 @@ pub(crate) fn serialize_cells(
             Some(value) => value.as_text(),
         }
     };
+    // React's JSON branch uses the RAW values: nullLiteral is a delimited-text
+    // concern only. rowToNamedRecord writes `row[index] ?? null` (and skips
+    // empty names); positional JSON is `[...row]` verbatim, width included.
+    let json_value = |value: Option<&ClipValue>| -> String {
+        match value {
+            None | Some(ClipValue::Null) => "null".to_owned(),
+            Some(value) => json_string(&value.as_text()),
+        }
+    };
     let named = |row: &[ClipValue]| -> String {
         let fields: Vec<String> = column_names
             .iter()
             .enumerate()
-            .map(|(i, name)| format!("{}:{}", json_string(name), json_string(&cell_text(row, i))))
+            .filter(|(_, name)| !name.is_empty())
+            .map(|(i, name)| format!("{}:{}", json_string(name), json_value(row.get(i))))
             .collect();
         format!("{{{}}}", fields.join(","))
     };
     let positional = |row: &[ClipValue]| -> String {
-        let fields: Vec<String> = (0..width).map(|i| json_string(&cell_text(row, i))).collect();
+        let fields: Vec<String> = row.iter().map(|value| json_value(Some(value))).collect();
         format!("[{}]", fields.join(","))
     };
 
@@ -725,7 +718,9 @@ pub(crate) fn decide_paste(
         return PasteDecision::ParseRefused;
     }
     if plan.writes == 0 {
-        return PasteDecision::NoWrites(summary(plan, 0, plan.skipped, false));
+        let mut empty = zero_shape(summary(plan, 0, plan.skipped, false));
+        empty.overwritten_pending = 0; // React pins this to zero on a no-write
+        return PasteDecision::NoWrites(empty);
     }
     if plan.requires_confirmation || plan.writes > GRID_PASTE_CONFIRM_CELLS {
         return PasteDecision::NeedConfirm;
@@ -745,6 +740,14 @@ pub(crate) enum PasteDecision {
     Stage { chunks: usize },
 }
 
+/// React's no-write and cancelled summaries both report zero rows/columns even
+/// when a landing rectangle is known; only the staged path carries bounds.
+fn zero_shape(mut result: PasteSummary) -> PasteSummary {
+    result.rows = 0;
+    result.columns = 0;
+    result
+}
+
 fn summary(plan: &PastePlanInput, staged: usize, skipped: usize, cancelled: bool) -> PasteSummary {
     let rows = plan.bounds.as_ref().map_or(0, |b| b.bottom_row.saturating_sub(b.top_row) + 1);
     PasteSummary {
@@ -760,7 +763,7 @@ fn summary(plan: &PastePlanInput, staged: usize, skipped: usize, cancelled: bool
 
 #[allow(dead_code)] // pure helper; remove with the host.
 pub(crate) fn cancelled_summary(plan: &PastePlanInput) -> PasteSummary {
-    summary(plan, 0, 0, true)
+    zero_shape(summary(plan, 0, 0, true))
 }
 
 #[allow(dead_code)] // pure helper; remove with the host.
