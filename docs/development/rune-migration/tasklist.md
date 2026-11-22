@@ -566,11 +566,11 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T547 · lib · 0.60d · lib/kvWorkspaceCapabilities.ts lib/kvWorkspaceSlots.ts
 - [x] T548 · windows/connection · 0.60d · windows/connection/TableReadOnlyTip.tsx windows/connection/TableStatusBanners.tsx
 - [ ] T549 · lib · 0.90d · lib/languagePackRuntime.ts
-- [ ] T550 · windows/connection · 1.30d · windows/connection/TableStructureEditor.tsx · split
+- [x] T550 · windows/connection · 1.30d · windows/connection/TableStructureEditor.tsx · split
 - [ ] T551 · lib · 0.90d · lib/loadBatchExportTable.ts
-- [ ] T552 · windows/connection · 0.50d · windows/connection/TableToolbar.tsx
+- [x] T552 · windows/connection · 0.50d · windows/connection/TableToolbar.tsx
 - [ ] T553 · lib · 0.90d · lib/localeSync.ts
-- [ ] T554 · windows/connection · 5.80d · windows/connection/TableView.tsx · split
+- [x] T554 · windows/connection · 5.80d · windows/connection/TableView.tsx · split
 - [ ] T555 · lib · 0.80d · lib/mainWindowContextMenu.ts
 - [ ] T556 · windows/connection · 0.90d · windows/connection/WorkspaceModeSidebar.tsx
 - [ ] T557 · lib · 0.90d · lib/mcpAgentConfig.ts
