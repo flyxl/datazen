@@ -13,6 +13,7 @@ mod query_execution_target;
 mod result_workspace;
 mod query_toolbar_width;
 mod result_workspace_index;
+mod schema_tree;
 mod tabs;
 mod use_query_builder_contribution;
 mod validate_bind_params;
@@ -61,6 +62,14 @@ pub use query_toolbar_width::{
 };
 pub use result_workspace_index::{
     RESULT_WORKSPACE_INDEX_GAP, RESULT_WORKSPACE_INDEX_SURFACE,
+};
+pub use schema_tree::{
+    build_legacy_table_payload, build_schema_object_payload, get_categories_for_driver,
+    leaf_kind_icon, object_kind_category, set_drag_payload, BASE_CATEGORIES, DragMimeEntry,
+    DragMimeValue, DragPayloadOptions, DragPayloadPlan, LEAF_KIND_ICONS, LegacyTableDragPayload,
+    LegacyTableEntry, OBJECT_KIND_CATEGORIES, SCHEMA_OBJECT_MIME, SCHEMA_PAYLOAD_VERSION,
+    SCHEMA_TREE_GAP, SCHEMA_TREE_SURFACE, SchemaObjectDragKind, SchemaObjectDragPayloadV1,
+    SchemaObjectNamespace, LEGACY_TABLE_MIME, TEXT_PLAIN_MIME,
 };
 pub use connection_page_utils::{
     consume_pending_connection, enrich_open_connection_payload, make_tab_from_payload,
