@@ -4,6 +4,7 @@
 //! interface can run before the desktop and HTTP adapters exist.
 
 mod ai_draft_bridge;
+mod open_history_query;
 mod query_contracts;
 mod query_drop_handler;
 mod query_error_chat_prompt;
@@ -21,6 +22,11 @@ use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
 use datazen_driver_api::{ConnectionConfig, SslMode};
 
+pub use open_history_query::{
+    open_history_query, ActiveConnection, HistoryQueryEntry, OpenHistoryOutcome,
+    OpenHistoryQueryOptions, OpenHistoryQueryHost, PathHierarchySplit, PendingHistoryQuery,
+    QueryPanelState, SavedConnection, OPEN_HISTORY_QUERY_GAP, OPEN_HISTORY_QUERY_SURFACE,
+};
 pub use query_contracts::{
     build_query_panel_diagnosis_context, has_suspicious_postgres_double_quoted_literal,
     read_current_query_panel_retry_validation_input, ActiveConnectionView, ConnectionContext,
