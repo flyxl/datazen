@@ -80,6 +80,10 @@ mod table_column_filter;
 mod table_column_filter_audit;
 // T532: StructureIndexTable + StructurePlanPreview ports (rows/flags/actions, states, geometry).
 mod structure_index_table;
+// T550: TableStructureEditor port (titles/gates, toolbar actions, states, geometry).
+mod table_structure_editor;
+// T550 independent audit: validity edges, toolbar states, enabled/export gates.
+mod table_structure_editor_audit;
 mod structure_plan_preview;
 // T532 independent audit: helper branches, capability gates, plan-preview states.
 mod structure_index_audit;
@@ -96,6 +100,8 @@ mod table_fk_breadcrumb;
 // T548: read-only tip + table status banners (copy, actions, geometry).
 mod table_read_only_tip;
 mod table_status_banners;
+// T554: the TableView decision port (grid/editor/insert/dirty/filter/quick look).
+mod table_view;
 // T524 independent audit: any-column not-contains, replace-all splicing and
 // non-contains operator planning, checked against React resultFindReplace.
 mod result_table_view_audit;
@@ -722,3 +728,5 @@ mod er_build_er_graph;
 mod table_filter_toolbar;
 // T546: TablePendingChangesBar + TableTransactionControls (counts, actions, busy, states, geometry).
 mod table_pending_changes_bar;
+// T552: TableToolbar port (E2E anchors, refresh/insert actions, gating, filter threading, geometry).
+mod table_toolbar;
