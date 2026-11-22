@@ -34,7 +34,7 @@ use deps::schema_tree_menu::{
 };
 
 use crate::views::navigator::build_flat_rows::deps::groups::format_group_label;
-use crate::views::navigator::build_flat_rows::deps::utils::{
+use crate::views::navigator::utils::{
     quote_relation_name, should_use_multi_database_tree,
 };
 

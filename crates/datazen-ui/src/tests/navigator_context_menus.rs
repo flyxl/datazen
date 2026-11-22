@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use serde_json::json;
 
-use crate::views::navigator::build_flat_rows::deps::utils::{
+use crate::views::navigator::utils::{
     extract_error_message, quote_relation_name, resolve_drop_database_fallback,
 };
 use crate::views::navigator::use_navigator_context_menus::deps::connection_url::{

@@ -1612,7 +1612,7 @@ fn a_search_with_no_matches_yields_only_the_nothing_found_shape() {
 
 #[test]
 fn a_pinned_logical_database_locks_the_standard_tree_but_a_domain_does_not() {
-    use crate::views::navigator::build_flat_rows::deps::utils::should_use_multi_database_tree;
+    use crate::views::navigator::utils::should_use_multi_database_tree;
     // name-typed field: a configured database locks the tree.
     assert!(!should_use_multi_database_tree(true, "name", Some("shop")));
     assert!(

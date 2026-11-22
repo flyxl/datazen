@@ -26,6 +26,9 @@ mod navigator_context_menus;
 // T580: the per-database caches and the refresh ladder (pointer-first
 // toggles, background-neutral loads, the cache-refresh wave).
 mod navigator_db_state;
+// T582: the navigator utils (namespace leaf context, the row-key contract,
+// depth padding, the multi-db decision, the ghost spec).
+mod navigator_utils;
 // T0-09: the tree base (geometry, keyboard, virtualisation, selection).
 mod tree;
 // T0-09 audit: virtual staging, page height, edges and the selected a11y state.

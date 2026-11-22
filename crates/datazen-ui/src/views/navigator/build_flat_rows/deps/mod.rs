@@ -9,7 +9,6 @@
 //! | [`sql_namespace`] | `lib/sqlNamespace.ts` (tree + navigators) | shard 2, T617 |
 //! | [`tree_rules`] | `@datazen/ui` `tree/{geometry,navigation}.ts` | shared tree kit |
 //! | [`categories`] | `schema-tree/schemaTreeCategories.ts` | schema-tree family |
-//! | [`utils`] | `navigator/utils.ts` (flat-row half) | T582 |
 //! | [`groups`] | `lib/connectionGroups.ts` (label half) | shard 2, T394 |
 
 pub(crate) mod categories;
@@ -18,4 +17,3 @@ pub(crate) mod locator;
 pub(crate) mod object_filter;
 pub(crate) mod sql_namespace;
 pub(crate) mod tree_rules;
-pub(crate) mod utils;

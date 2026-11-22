@@ -34,7 +34,7 @@ pub(crate) mod expanded_cache_refresh;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::views::navigator::build_flat_rows::deps::utils::should_use_multi_database_tree;
+use crate::views::navigator::utils::should_use_multi_database_tree;
 use crate::views::navigator::build_flat_rows::inputs::{
     ActiveEntrySnapshot, ConnectionSnapshot, DatabaseObject, DriverMeta, SchemaStateSnapshot,
     TableInfo,
