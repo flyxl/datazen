@@ -12,6 +12,16 @@ pub(crate) use rune::{Env, Runtime};
 
 pub(crate) mod support;
 pub(crate) mod tokens;
+// T570: the navigator flat-row builder (sections, connections, dbs,
+// schemas, categories, namespace trees, search and stable keys).
+mod navigator_build_flat_rows;
+// T572: the navigator row ARIA equivalence gate (13 variants, level rules).
+mod navigator_tree_row_aria;
+// T574: the connection reorder/regroup drag state machine.
+mod navigator_connection_drag;
+// T576: the per-session KV db-counts cache (shared/deduped, best-effort).
+mod navigator_kv_db_counts;
+// T0-09 tree/tree_audit are declared once below with the rest of the T0-09 family.
 // T0-11 patch: a compact tooltip's long hint wraps inside the window.
 mod tooltip_text;
 // T0-04: chrome icons come from one 24-view lucide registry.
@@ -69,13 +79,28 @@ mod table_column_filter;
 mod table_column_filter_audit;
 // T532: StructureIndexTable + StructurePlanPreview ports (rows/flags/actions, states, geometry).
 mod structure_index_table;
+// T550: TableStructureEditor port (titles/gates, toolbar actions, states, geometry).
+mod table_structure_editor;
+// T550 independent audit: validity edges, toolbar states, enabled/export gates.
+mod table_structure_editor_audit;
 mod structure_plan_preview;
 // T532 independent audit: helper branches, capability gates, plan-preview states.
 mod structure_index_audit;
 // T536: the one-line table clipboard status (paste summary, problems, deadline).
 mod table_clipboard_status;
+// T544: FK error banner, load-error state and no-primary-key tip ports.
+mod table_fk_error_banner;
+mod table_load_error_state;
+mod table_no_primary_key_tip;
+// T544 independent audit: message edges, copy controls, empty guard, tooltip.
+mod table_banners_audit;
 // T542: the FK jump breadcrumb (segment labels, host actions, empty/truncated).
 mod table_fk_breadcrumb;
+// T548: read-only tip + table status banners (copy, actions, geometry).
+mod table_read_only_tip;
+mod table_status_banners;
+// T554: the TableView decision port (grid/editor/insert/dirty/filter/quick look).
+mod table_view;
 // T524 independent audit: any-column not-contains, replace-all splicing and
 // non-contains operator planning, checked against React resultFindReplace.
 mod result_table_view_audit;
@@ -2095,3 +2120,7 @@ mod er_layout_er_graph;
 mod er_build_er_graph;
 // T540: TableFilterToolbar port (E2E keys, filter states, toggle/quick actions, geometry).
 mod table_filter_toolbar;
+// T546: TablePendingChangesBar + TableTransactionControls (counts, actions, busy, states, geometry).
+mod table_pending_changes_bar;
+// T552: TableToolbar port (E2E anchors, refresh/insert actions, gating, filter threading, geometry).
+mod table_toolbar;

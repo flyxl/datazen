@@ -222,6 +222,23 @@ pub mod server_status_trends;
 pub mod sql_editor_defaults;
 pub mod table_changes;
 pub mod theme_pack_apply;
+mod ai_draft_bridge;
+mod connection_page_utils;
+mod expanded_db_cache_refresh;
+mod open_history_query;
+mod query_contracts;
+mod query_drop_handler;
+mod query_error_chat_prompt;
+mod content_view_helpers;
+mod query_execution_risk;
+mod query_execution_target;
+mod result_workspace;
+mod query_toolbar_width;
+mod result_workspace_index;
+mod schema_tree;
+mod workspace_mode_sidebar;
+mod use_query_builder_contribution;
+mod validate_bind_params;
 
 use std::collections::HashMap;
 
@@ -232,125 +249,86 @@ use std::collections::HashMap;
 use datazen_driver_api::{ConnectionConfig as DriverConnectionConfig, SslMode as DriverSslMode};
 
 pub use ai_memory_correction::{
-    AiMemoryCommands, MemoryCorrectionSubmission, SchemaStaleSubmission,
-    mark_stale_for_schema_drops, submit_memory_correction_if_needed,
+    AiMemoryCommands, MemoryCorrectionSubmission, SchemaStaleSubmission, mark_stale_for_schema_drops, submit_memory_correction_if_needed,
 };
 pub use cell_editor_candidates::{
-    CANDIDATE_VALUE_LIMIT, FETCH_FIRST_ROW_LIMIT, LIMIT_ROW_LIMIT, TOP_ROW_LIMIT,
-    CandidateDialect, DistinctCandidatesArgs, IdentifierQuote, RowLimitPlacement, RowLimitShape,
-    build_distinct_candidates_sql, build_row_limited_select, normalized_limit,
+    CANDIDATE_VALUE_LIMIT, FETCH_FIRST_ROW_LIMIT, LIMIT_ROW_LIMIT, TOP_ROW_LIMIT, CandidateDialect, DistinctCandidatesArgs, IdentifierQuote, RowLimitPlacement, RowLimitShape, build_distinct_candidates_sql, build_row_limited_select, normalized_limit,
 };
 pub use connection_editor::{
     ConnectionEditorState, close_new_connection_dialog, open_new_connection_dialog,
 };
 pub use connection_share::{
-    ConnectionImportSource, ConnectionShareMode, ConnectionShareState,
-    close_connection_share_dialog, open_connection_share_dialog,
+    ConnectionImportSource, ConnectionShareMode, ConnectionShareState, close_connection_share_dialog, open_connection_share_dialog,
 };
 pub use cross_window_bus::{
-    CHANNEL_NAME, CrossWindowMessage, CrossWindowRail, cross_window_rail, make_message,
-    matches_event, payload_of,
+    CHANNEL_NAME, CrossWindowMessage, CrossWindowRail, cross_window_rail, make_message, matches_event, payload_of,
 };
 pub use data_fetcher::{
-    DataFetcherKind, ExportContext, ExportProgress, ExportScope, FetchColumn, FetchOutcome,
-    FetchRequest, FetchResult, FetchTableInput, FetchTableSource, ProvidedFormatPlan,
-    resolve_fetcher,
+    DataFetcherKind, ExportContext, ExportProgress, ExportScope, FetchColumn, FetchOutcome, FetchRequest, FetchResult, FetchTableInput, FetchTableSource, ProvidedFormatPlan, resolve_fetcher,
 };
-pub use default_sort::{DefaultOrderOverride, resolve_default_table_sort};
+pub use default_sort::{
+    DefaultOrderOverride, resolve_default_table_sort,
+};
 pub use docs_urls::{
     DOCS_BASE_EN, DOCS_BASE_ZH, DocsSectionId, build_docs_url, is_chinese_ui_language,
 };
 pub use document_scroll_lock::{
-    ScrollAxis, ScrollLockRail, ScrollLockState, ScrollPosition, apply_snap, scroll_lock_rail,
-    snap_targets,
+    ScrollAxis, ScrollLockRail, ScrollLockState, ScrollPosition, apply_snap, scroll_lock_rail, snap_targets,
 };
 pub use ensure_namespace::{
-    CatalogResult, EnsureDeps, EnsurePlan, EnsureStrategy, MergeCall, MergeKind,
-    build_slash_fetch_path, inflight_key, is_path_nav, is_schema_grouping_schema,
-    namespace_ensure_pending, namespace_has_child, namespace_path_loaded, path_key,
-    path_nav_segment, plan_default_sql, plan_path_hierarchy, plan_postgresql,
-    resolve_ensure_strategy, resolve_for_ensure, resolve_path_root, run_ensure_plan, table_names,
-    uses_current_database_root,
+    CatalogResult, EnsureDeps, EnsurePlan, EnsureStrategy, MergeCall, MergeKind, build_slash_fetch_path, inflight_key, is_path_nav, is_schema_grouping_schema, namespace_ensure_pending, namespace_has_child, namespace_path_loaded, path_key, path_nav_segment, plan_default_sql, plan_path_hierarchy, plan_postgresql, resolve_ensure_strategy, resolve_for_ensure, resolve_path_root, run_ensure_plan, table_names, uses_current_database_root,
 };
 pub use er_node_context_menu::{
-    ErMenuAction, ErMenuItem, ErNodeContextMenuHandlers, ErNodeContextMenuLabels,
-    build_er_node_context_menu_items,
+    ErMenuAction, ErMenuItem, ErNodeContextMenuHandlers, ErNodeContextMenuLabels, build_er_node_context_menu_items,
 };
 pub use export_dialog_shared::{
-    ARRAY_EXPORT_FORMAT_OPTIONS, OBJECT_EXPORT_FORMAT_OPTIONS, SHARED_EXPORT_FORMAT_OPTIONS,
-    BuildExportFormatOptions, BuildExportScopeOptions, DisabledReasonKey, EntireTableAvailability,
-    ExportFormatOption, ExportScopeOption, FormatOptionSpec, ScopeLabels,
-    build_export_format_options, build_export_scope_options,
+    ARRAY_EXPORT_FORMAT_OPTIONS, OBJECT_EXPORT_FORMAT_OPTIONS, SHARED_EXPORT_FORMAT_OPTIONS, BuildExportFormatOptions, BuildExportScopeOptions, DisabledReasonKey, EntireTableAvailability, ExportFormatOption, ExportScopeOption, FormatOptionSpec, ScopeLabels, build_export_format_options, build_export_scope_options,
 };
 pub use extract_sql::{
     extract_sql_from_response, extract_sql_streaming, looks_like_sql, starts_sql_statement,
 };
 pub use filter_expression::{
-    FilterExpression, FilterExpressionLogic, FilterExpressionOperator, FilterExpressionValue,
-    FlattenedFilterCondition, ParseFailure, ParsedFilterApplication,
-    filter_expression_to_conditions, flatten_parts, flatten_to_connectors,
-    has_or_group_under_and, parse_filter_expression, parse_filter_for_apply, token_positions,
+    FilterExpression, FilterExpressionLogic, FilterExpressionOperator, FilterExpressionValue, FlattenedFilterCondition, ParseFailure, ParsedFilterApplication, filter_expression_to_conditions, flatten_parts, flatten_to_connectors, has_or_group_under_and, parse_filter_expression, parse_filter_for_apply, token_positions,
 };
 pub use fk_navigation_actions::{
-    FkActionDeps, FkActionEffects, FkJumpError, FkJumpOutcome, FkNavEntry, FkNavOrigin, FkNavState,
-    OpenForeignKeyTargetInput, Panel, PanelKind, PanelState, TableChangeContext, TableIdentity,
-    host_error_message, open_foreign_key_target,
+    FkActionDeps, FkActionEffects, FkJumpError, FkJumpOutcome, FkNavEntry, FkNavOrigin, FkNavState, OpenForeignKeyTargetInput, Panel, PanelKind, PanelState, TableChangeContext, TableIdentity, host_error_message, open_foreign_key_target,
 };
 pub use grid_keyboard::{
-    CellCoord, CellRange, EMPTY_ROW_MODE_SELECTION, GridEdge, GridKeyCommand, GridKeyEventLike,
-    GridKeyIntent, GridKeyboardContext, GridNativeKeyEventLike, GridPageDirection, GridSelection,
-    GridSelectionMode, cell_coord_equals, clamp_cell_coord, clamp_grid_cursor, coord_at,
-    grid_cursor_equals, is_ime_composing_key, move_cell_focus, read_grid_key_intent,
-    resolve_grid_key_command, resolve_keyboard_cursor, resolve_page_delta,
-    selection_from_anchor_focus, to_grid_key_event_like,
+    CellCoord, CellRange, EMPTY_ROW_MODE_SELECTION, GridEdge, GridKeyCommand, GridKeyEventLike, GridKeyIntent, GridKeyboardContext, GridNativeKeyEventLike, GridPageDirection, GridSelection, GridSelectionMode, cell_coord_equals, clamp_cell_coord, clamp_grid_cursor, coord_at, grid_cursor_equals, is_ime_composing_key, move_cell_focus, read_grid_key_intent, resolve_grid_key_command, resolve_keyboard_cursor, resolve_page_delta, selection_from_anchor_focus, to_grid_key_event_like,
 };
 pub use html_sanitizer::{
-    HtmlNode, STRIP_TAGS, VOID_TAGS, decode_entities, get_attr, is_event_attr, is_javascript_href,
-    is_strip_tag, is_void_tag, parse_html, regex_sanitize, sanitize_html, serialize_html, set_attr,
+    HtmlNode, STRIP_TAGS, VOID_TAGS, decode_entities, get_attr, is_event_attr, is_javascript_href, is_strip_tag, is_void_tag, parse_html, regex_sanitize, sanitize_html, serialize_html, set_attr,
 };
 pub use import_mapping::{
-    ImportMappingConflict, ImportMappingEntry, ImportMappingMode, ImportMappingPlan,
-    ImportMatchKind, PlanImportMappingInput, mapping_is_executable, plan_import_mapping,
+    ImportMappingConflict, ImportMappingEntry, ImportMappingMode, ImportMappingPlan, ImportMatchKind, PlanImportMappingInput, mapping_is_executable, plan_import_mapping,
 };
 pub use keymap::{
-    KEYMAP_ACTIONS, KEYMAP_PRESETS, KeymapAction, KeymapPreset, format_mod_key,
-    format_shortcut_for_display, get_action_shortcut, normalize_shortcut_input,
-    to_code_mirror_key_format, to_shortcut_hook_format,
+    KEYMAP_ACTIONS, KEYMAP_PRESETS, KeymapAction, KeymapPreset, format_mod_key, format_shortcut_for_display, get_action_shortcut, normalize_shortcut_input, to_code_mirror_key_format, to_shortcut_hook_format,
 };
 pub use language_pack_runtime::{
-    BUILTIN_LOCALES, EnsureOutcome, LanguagePackDeps, LanguagePackMessages, LanguagePackRuntime,
-    ensure_language_pack_messages, is_builtin_locale, reset_language_pack_runtime_for_tests,
-    unload_language_pack,
+    BUILTIN_LOCALES, EnsureOutcome, LanguagePackDeps, LanguagePackMessages, LanguagePackRuntime, ensure_language_pack_messages, is_builtin_locale, reset_language_pack_runtime_for_tests, unload_language_pack,
 };
 pub use mcp_agent_config::{
-    AppExecutablePathResolver, McpAgentSnippet, McpAgentTarget, McpServerEntry,
-    build_mcp_agent_snippet, build_mcp_agent_snippet_default, build_mcp_server_entry,
-    format_mcp_cli_command, initial_app_executable_path,
+    AppExecutablePathResolver, McpAgentSnippet, McpAgentTarget, McpServerEntry, build_mcp_agent_snippet, build_mcp_agent_snippet_default, build_mcp_server_entry, format_mcp_cli_command, initial_app_executable_path,
 };
-pub use migration_verification::{VERIFIED_MIGRATION_TYPES, is_verified_migration_pair};
+pub use migration_verification::{
+    VERIFIED_MIGRATION_TYPES, is_verified_migration_pair,
+};
 pub use migration_window_prefill::{
-    EndpointPrefillEffect, MigrationEndpointConnection, MigrationWindowKind, MigrationWindowPrefill,
-    PREFILL_KEYS, PrefillSide, apply_migration_endpoint_prefill, build_migration_window_url_params,
-    pick_prefill_database, pick_prefill_schema, read_migration_prefill_from_url,
-    resolve_default_database,
+    EndpointPrefillEffect, MigrationEndpointConnection, MigrationWindowKind, MigrationWindowPrefill, PREFILL_KEYS, PrefillSide, apply_migration_endpoint_prefill, build_migration_window_url_params, pick_prefill_database, pick_prefill_schema, read_migration_prefill_from_url, resolve_default_database,
 };
 pub use path_picker::{
     PathPicker, PathPickerFileFilter, PickPathInput, pick_path, web_path_picker,
 };
 pub use query_context_path::{
-    PATH_HIERARCHY_PLACEHOLDER_SELECTOR_SEGMENTS, NamespaceNode, PathHierarchySelectorSegment,
-    QueryContextResolveOpts, SplitDatabasePin, auto_complete_path_hierarchy_path,
-    build_path_hierarchy_database_pin, build_path_hierarchy_selector_segments,
-    infer_sql_relation_path, namespace_roots_from, path_hierarchy_connection_root,
-    path_hierarchy_relative_namespace_path, path_hierarchy_selector_segments_for_ui,
-    paths_equal, resolve_query_context_path, split_path_hierarchy_database_pin, unquote_ident,
+    PATH_HIERARCHY_PLACEHOLDER_SELECTOR_SEGMENTS, NamespaceNode, PathHierarchySelectorSegment, QueryContextResolveOpts, SplitDatabasePin, auto_complete_path_hierarchy_path, build_path_hierarchy_database_pin, build_path_hierarchy_selector_segments, infer_sql_relation_path, namespace_roots_from, path_hierarchy_connection_root, path_hierarchy_relative_namespace_path, path_hierarchy_selector_segments_for_ui, paths_equal, resolve_query_context_path, split_path_hierarchy_database_pin, unquote_ident,
 };
 pub use result_find_replace::{
-    EMPTY_RESULT_FIND_QUERY, ResultFindOperator, ResultFindQuery, ResultReplacePlanItem,
-    cell_matches, cell_text, filter_result_rows, next_plan_item, plan_result_replacements,
-    replace_text, row_matches,
+    EMPTY_RESULT_FIND_QUERY, ResultFindOperator, ResultFindQuery, ResultReplacePlanItem, cell_matches, cell_text, filter_result_rows, next_plan_item, plan_result_replacements, replace_text, row_matches,
 };
-pub use row_count_strategy::{CountStrategyInput, resolve_count_strategy};
+pub use row_count_strategy::{
+    CountStrategyInput, resolve_count_strategy,
+};
 pub use schema_diff_confirm::{
     DESTRUCTIVE_CONFIRM_TOKEN, CanRunDeployOptions, can_confirm_destructive_deploy, can_run_deploy,
 };
@@ -361,16 +339,10 @@ pub use chart_colors::{
     COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
 };
 pub use chart_empty_state::{
-    build_chart_empty_state, ChartEmptyReason, ChartEmptyStateView, EMPTY_CONTAINER_CLASS,
-    EMPTY_ICON_CLASS, EMPTY_KEY_NO_CONFIG, EMPTY_KEY_NO_DATA, EMPTY_KEY_NO_NUMERIC_FIELD,
-    EMPTY_TEXT_CLASS,
+    build_chart_empty_state, ChartEmptyReason, ChartEmptyStateView, EMPTY_CONTAINER_CLASS, EMPTY_ICON_CLASS, EMPTY_KEY_NO_CONFIG, EMPTY_KEY_NO_DATA, EMPTY_KEY_NO_NUMERIC_FIELD, EMPTY_TEXT_CLASS,
 };
 pub use chart_toolbar::{
-    chart_type_class, chart_type_label_key, chart_type_test_id, reduce_toolbar,
-    resolve_toolbar_labels, split_available, split_class, visible_controls, ChartExportFormat,
-    ChartToolbarState, CHART_TYPES, KEY_EXPAND, KEY_EXPORT, KEY_GRID, KEY_LEGEND, KEY_SPLIT_VIEW,
-    KEY_VALUES, TOOLBAR_SHELL_CLASS, ToolbarControl, ToolbarContext, ToolbarEffect, ToolbarLabels,
-    ToolbarOutcome, ACTIVE_CLASS, INACTIVE_CLASS,
+    chart_type_class, chart_type_label_key, chart_type_test_id, reduce_toolbar, resolve_toolbar_labels, split_available, split_class, visible_controls, ChartExportFormat, ChartToolbarState, CHART_TYPES, KEY_EXPAND, KEY_EXPORT, KEY_GRID, KEY_LEGEND, KEY_SPLIT_VIEW, KEY_VALUES, TOOLBAR_SHELL_CLASS, ToolbarControl, ToolbarContext, ToolbarEffect, ToolbarLabels, ToolbarOutcome, ACTIVE_CLASS, INACTIVE_CLASS,
 };
 pub use bootstrap_icon_resolver::{
     DbIcon, IconResolverSeed, ResolvedIcon, default_icon_resolver_seed, resolve_icon,
@@ -379,26 +351,16 @@ pub use build_connection_url::{
     ConnectionMode, ConnectionUrlDriverMeta, build_connection_url,
 };
 pub use build_editor_schema::{
-    BuildEditorSchemaInput, SqlNamespace, build_editor_schema, flat_from_tables,
-    hoist_namespace_child, hoist_namespace_path, hoist_nested_table_leaves,
-    is_leaf, is_namespace_empty, merge_unqualified_tables, overlay_column_map,
+    BuildEditorSchemaInput, SqlNamespace, build_editor_schema, flat_from_tables, hoist_namespace_child, hoist_namespace_path, hoist_nested_table_leaves, is_leaf, is_namespace_empty, merge_unqualified_tables, overlay_column_map,
 };
 pub use app_root_surface::{
-    app_module_mark, resolve_window_component, should_hide_splash, AppWindowRoute,
-    APP_CHUNK_LOAD_MARKS, APP_DEFAULT_COMPONENT, APP_DEFAULT_WINDOW_KIND, APP_DOM_GAP,
-    APP_GLOBAL_HOSTS, APP_MOUNT_MARK, APP_SELECTION_INSTALLERS, APP_SHELL_WRAPPERS,
-    APP_WINDOW_ROUTES,
+    app_module_mark, resolve_window_component, should_hide_splash, AppWindowRoute, APP_CHUNK_LOAD_MARKS, APP_DEFAULT_COMPONENT, APP_DEFAULT_WINDOW_KIND, APP_DOM_GAP, APP_GLOBAL_HOSTS, APP_MOUNT_MARK, APP_SELECTION_INSTALLERS, APP_SHELL_WRAPPERS, APP_WINDOW_ROUTES,
 };
 pub use cell_editors::{
-    build_enum_view, build_json_view, build_long_text_view, enum_key_decision, json_indent_of,
-    reformat_json, text_area, EnumEditorInput, EnumEditorMode, JsonAction, JsonEditorInput,
-    JsonEditorView, KeyDecision, LoadButtonView, LongTextEditorInput, SelectOption, TextAreaView,
-    CELL_EDITORS_GAP, CELL_EDITORS_SURFACE,
+    build_enum_view, build_json_view, build_long_text_view, enum_key_decision, json_indent_of, reformat_json, text_area, EnumEditorInput, EnumEditorMode, JsonAction, JsonEditorInput, JsonEditorView, KeyDecision, LoadButtonView, LongTextEditorInput, SelectOption, TextAreaView, CELL_EDITORS_GAP, CELL_EDITORS_SURFACE,
 };
 pub use ai_memory_patterns::{
-    HistorySort, MemoryPatternCommands, MemoryPatternExtractionInput, MemoryPatternScheduler,
-    QueryHistoryPage, QueryHistoryPageParams, SubmitDecision, extract_memory_patterns_if_needed,
-    extract_once, MEMORY_PATTERN_MIN_OCCURRENCES, MEMORY_PATTERN_WINDOW_DAYS,
+    HistorySort, MemoryPatternCommands, MemoryPatternExtractionInput, MemoryPatternScheduler, QueryHistoryPage, QueryHistoryPageParams, SubmitDecision, extract_memory_patterns_if_needed, extract_once, MEMORY_PATTERN_MIN_OCCURRENCES, MEMORY_PATTERN_WINDOW_DAYS,
 };
 // T228's two lib halves ride the crate root the family way.
 pub use ai_memory_settings::{
@@ -410,15 +372,12 @@ pub use ai_message_blocks::{
 // T251: the React lib/aiProviders.ts surface — the lookup, the two ordered
 // lists, the const aliases and the three pure helpers.
 pub use ai_providers::{
-    DEEP_SEEK_PROVIDER, LOCAL_CLI_PROVIDER_TYPES, OLLAMA_PROVIDER, PROVIDER_ORDER,
-    is_known_provider_type, is_local_cli_provider, normalize_ai_providers, provider_preset,
+    DEEP_SEEK_PROVIDER, LOCAL_CLI_PROVIDER_TYPES, OLLAMA_PROVIDER, PROVIDER_ORDER, is_known_provider_type, is_local_cli_provider, normalize_ai_providers, provider_preset,
 };
 // T291: the React `lib/aiSafetyPresets.ts` surface — the three named gates,
 // the default/detection helpers and the local-endpoint predicate.
 pub use ai_safety_presets::{
-    CLOUD_STRICT_PRESET, ENTERPRISE_BALANCED_PRESET, LOCAL_TRUST_PRESET, AiSafetyPresetType,
-    detect_safety_preset, get_default_safety_gate, is_local_endpoint, preset_from_str,
-    safety_preset,
+    CLOUD_STRICT_PRESET, ENTERPRISE_BALANCED_PRESET, LOCAL_TRUST_PRESET, AiSafetyPresetType, detect_safety_preset, get_default_safety_gate, is_local_endpoint, preset_from_str, safety_preset,
 };
 // T291: the React `lib/aiSkills.ts` surface. `normalize_loaded_skills` is
 // already rooted through `ai_sessions` (T230), so only the settings
@@ -427,169 +386,88 @@ pub use ai_skills::normalize_ai_skills_settings;
 // T291: the React `lib/anyColumnFilter.ts` surface — the expansion, its
 // options/result and the type-resolution vocabulary it speaks.
 pub use any_column_filter::{
-    DEFAULT_CELL_TYPE_RULES, AnyColumnExpansion, AnyColumnFilterOptions, CellType, CellTypeHints,
-    CellTypeMatch, CellTypeRule, ValueSearchTypeGroup, ValueSearchTypeScope,
-    expand_any_column_filter, resolve_cell_type,
+    DEFAULT_CELL_TYPE_RULES, AnyColumnExpansion, AnyColumnFilterOptions, CellType, CellTypeHints, CellTypeMatch, CellTypeRule, ValueSearchTypeGroup, ValueSearchTypeScope, expand_any_column_filter, resolve_cell_type,
 };
 // T272: the React `lib/aiQueryActions.ts` surface — the guarded context
 // builder, the three action descriptors and their param helpers.
 pub use ai_query_actions::{
-    bound_params_from_json, build_explain_action, build_fix_sql_action,
-    build_query_diagnosis_context, build_retry_action, equal_bound_params, BoundParamValue,
-    BoundParams, ExplainActionDescriptor, FixSqlActionDescriptor, PromptConnectionContext,
-    QueryActionBuildFailure, QueryActionBuildResult, QueryActionBuildSuccess, QueryActionError,
-    QueryActionErrorCode, QueryDiagnosisContext, QueryDiagnosisContextLike, QueryDiagnosisParams,
-    QueryPromptContext, RetryActionDescriptor, RetryRequest, RetryValidation,
-    RetryValidationFailure, RetryValidationInput, RetryValidationSuccess,
-    SanitizedConnectionContext, SanitizedJson, SqlDiff, SqlEditorDraft,
+    bound_params_from_json, build_explain_action, build_fix_sql_action, build_query_diagnosis_context, build_retry_action, equal_bound_params, BoundParamValue, BoundParams, ExplainActionDescriptor, FixSqlActionDescriptor, PromptConnectionContext, QueryActionBuildFailure, QueryActionBuildResult, QueryActionBuildSuccess, QueryActionError, QueryActionErrorCode, QueryDiagnosisContext, QueryDiagnosisContextLike, QueryDiagnosisParams, QueryPromptContext, RetryActionDescriptor, RetryRequest, RetryValidation, RetryValidationFailure, RetryValidationInput, RetryValidationSuccess, SanitizedConnectionContext, SanitizedJson, SqlDiff, SqlEditorDraft,
 };
 pub use ai_sessions::{
-    ActiveConnectionEntry, ActiveConnections, AiSessionBackend, AiSessionStore, ExportFormat,
-    MigrationOutcome, NewId, SessionClock, SessionDeleteResult, SessionExport, SessionKey,
-    SessionListParams, SessionLocalStorage, SessionMap, SessionPersistResult,
-    SessionRestoreResult, SessionScope, StoredSession, chat_session_from_detail,
-    chat_session_from_stored, chat_session_to_upsert_input, compute_session_key, export_filename,
-    iso_from_epoch_ms, local_detail, markdown_for, message_from_stored, message_metadata,
-    message_status, new_chat_session, normalize_loaded_skills, split_legacy_key, title_for,
-    truncate_bytes, MAX_MESSAGES_PER_SESSION, MAX_MESSAGE_BYTES, MAX_SESSIONS,
-    MIGRATION_MARKER_KEY, STORAGE_KEY,
+    ActiveConnectionEntry, ActiveConnections, AiSessionBackend, AiSessionStore, ExportFormat, MigrationOutcome, NewId, SessionClock, SessionDeleteResult, SessionExport, SessionKey, SessionListParams, SessionLocalStorage, SessionMap, SessionPersistResult, SessionRestoreResult, SessionScope, StoredSession, chat_session_from_detail, chat_session_from_stored, chat_session_to_upsert_input, compute_session_key, export_filename, iso_from_epoch_ms, local_detail, markdown_for, message_from_stored, message_metadata, message_status, new_chat_session, normalize_loaded_skills, split_legacy_key, title_for, truncate_bytes, MAX_MESSAGES_PER_SESSION, MAX_MESSAGE_BYTES, MAX_SESSIONS, MIGRATION_MARKER_KEY, STORAGE_KEY,
 };
 // The T126 AiStore contract: the zustand store's state struct and action
 // trait (the aiStore port, T128, is the implementer), the NL2SQL slice with
 // its initial literal, and the field-complete lean mirrors of the
 // `types/index.ts` shapes the store holds (T213 owns the real ports).
 pub use ai_store_types::{
-    AiMemoryMode, AiMemoryScope, AiStoreActions, AiStoreState, AnalyzeExplainParams,
-    AnalyzeQueriesParams, CallMcpToolParams, ConnectionDiagnosis, ConnectionSolution,
-    DiagnoseConnectionParams, DiagnoseErrorParams, EventListenerTeardown, ExecuteWorkflowParams,
-    GenerateSchemaDocParams, GenerateSqlParams, McpClientStatus, McpServerConfig,
-    McpServerTransport, McpToolInfo, MemoryCandidateNotice, Nl2SqlState, ParseFilterParams,
-    QueryAnalysis, QueryCategory, SendChatMessageParams, SendWorkflowChatMessageParams,
-    StepExecutionResult, StepStatus, WorkflowExecutionResult, WorkflowListItem,
-    WorkflowVariable, initial_nl2sql,
+    AiMemoryMode, AiMemoryScope, AiStoreActions, AiStoreState, AnalyzeExplainParams, AnalyzeQueriesParams, CallMcpToolParams, ConnectionDiagnosis, ConnectionSolution, DiagnoseConnectionParams, DiagnoseErrorParams, EventListenerTeardown, ExecuteWorkflowParams, GenerateSchemaDocParams, GenerateSqlParams, McpClientStatus, McpServerConfig, McpServerTransport, McpToolInfo, MemoryCandidateNotice, Nl2SqlState, ParseFilterParams, QueryAnalysis, QueryCategory, SendChatMessageParams, SendWorkflowChatMessageParams, StepExecutionResult, StepStatus, WorkflowExecutionResult, WorkflowListItem, WorkflowVariable, initial_nl2sql,
 };
 // The T088 streaming adapter: the module's own types plus the seam
 // vocabulary the future sibling tasks (streamRegistry/sessionCancel/
 // targetClaim/commands-ai, T503/T505, T126/T128) will implement or wire.
 pub use ai_streaming::{
-    AiCancelCommand, AiStoreView, AiStreaming, AiTargetClaim, ApplyChunkGate, ApplyGateResult,
-    CancelReceipt, ChatSessionPersister, ExtractionSeams, ExtractQuestionsOutcome,
-    Nl2sqlStreamingSlice, SessionCancellerOps, StreamRegistryOps, StreamingClock,
-    find_mcp_tool_name,
+    AiCancelCommand, AiStoreView, AiStreaming, AiTargetClaim, ApplyChunkGate, ApplyGateResult, CancelReceipt, ChatSessionPersister, ExtractionSeams, ExtractQuestionsOutcome, Nl2sqlStreamingSlice, SessionCancellerOps, StreamRegistryOps, StreamingClock, find_mcp_tool_name,
 };
 pub use ai_types::{
-    AiAgentMode, AiChatAttribution, AiChatContextSnapshot, AiChatInjectionEvent,
-    AiChatInjectionSnapshot, AiChatMessage, AiChatResultPreview, AiChatSession, AiDataEgressLevel,
-    AiLoadedSkill, AiMemoryCandidatesEvent, AiMemoryCloudPolicy, AiMemoryCorrectionInput,
-    AiMemoryCreateInput, AiMemoryEntry, AiMemoryExtractionInput, AiMemoryKind, AiMemoryListParams,
-    AiMemoryPage, AiMemoryReference, AiMemoryScopeKind, AiMemorySensitivity, AiMemorySettings,
-    AiMemorySource, AiMemorySqlSample, AiMemoryStaleInput, AiMemoryStats, AiMemoryStatus,
-    AiMemoryUpdateInput,
-    AiMessageRole, AiMessageStatus, AiModelProfile, AiPreviewCell, AiProviderConfig,
-    AiProviderType, AiQuestion, AiQuestionOption, AiSafetyGateConfig, AiSessionDetail,
-    AiSessionMessage, AiSessionMessageInput, AiSessionSummary, AiSessionUpsertInput,
-    AiSettingsConfig, AiSkillContent, AiSkillSource, AiSkillSummary, AiSkillsSettings, AiToolCall,
-    AiToolPermissionPolicy, AiToolResult, AiWriteApplyReceipt, AiWriteAuditDecision,
-    AiWriteAuditDecisionKind, AiWriteAuditRecord, AiWriteImpact, AiWriteProposal,
-    AiWriteStatement, Bottleneck, BottleneckSeverity, DiagnosisResult, ExplainAnalysis,
-    ExplainSuggestion, ModelInfo, PromptTemplate, ProviderListItem, StreamChunkPayload,
-    StreamChunkUsage, StreamErrorPayload, DEFAULT_AI_MEMORY_SETTINGS, DEFAULT_AI_SKILLS_SETTINGS,
+    AiAgentMode, AiChatAttribution, AiChatContextSnapshot, AiChatInjectionEvent, AiChatInjectionSnapshot, AiChatMessage, AiChatResultPreview, AiChatSession, AiDataEgressLevel, AiLoadedSkill, AiMemoryCandidatesEvent, AiMemoryCloudPolicy, AiMemoryCorrectionInput, AiMemoryCreateInput, AiMemoryEntry, AiMemoryExtractionInput, AiMemoryKind, AiMemoryListParams, AiMemoryPage, AiMemoryReference, AiMemoryScopeKind, AiMemorySensitivity, AiMemorySettings, AiMemorySource, AiMemorySqlSample, AiMemoryStaleInput, AiMemoryStats, AiMemoryStatus, AiMemoryUpdateInput, AiMessageRole, AiMessageStatus, AiModelProfile, AiPreviewCell, AiProviderConfig, AiProviderType, AiQuestion, AiQuestionOption, AiSafetyGateConfig, AiSessionDetail, AiSessionMessage, AiSessionMessageInput, AiSessionSummary, AiSessionUpsertInput, AiSettingsConfig, AiSkillContent, AiSkillSource, AiSkillSummary, AiSkillsSettings, AiToolCall, AiToolPermissionPolicy, AiToolResult, AiWriteApplyReceipt, AiWriteAuditDecision, AiWriteAuditDecisionKind, AiWriteAuditRecord, AiWriteImpact, AiWriteProposal, AiWriteStatement, Bottleneck, BottleneckSeverity, DiagnosisResult, ExplainAnalysis, ExplainSuggestion, ModelInfo, PromptTemplate, ProviderListItem, StreamChunkPayload, StreamChunkUsage, StreamErrorPayload, DEFAULT_AI_MEMORY_SETTINGS, DEFAULT_AI_SKILLS_SETTINGS,
 };
 pub use batch_export_job::{
-    export_single_table_structure_via_rust, export_single_table_via_rust, run_batch_export_job,
-    BatchExportColumn, BatchExportDataFormat, BatchExportMode, BatchExportOutputMode,
-    BatchExportProgress, BatchExportTableInput, CancelHandle, ExportTableInput, ExportTablesRequest,
-    ExportTablesResult, LoadedTableExportData, RunBatchExportJobOptions, RunBatchExportJobResult,
-    SingleFetchOutcome, SingleTableExportOptions, SingleTableExportResult, SingleTableFetchConfig,
-    SingleTableFetchScope, SingleTableStructureExportOptions, SingleTableStructureExportResult,
+    export_single_table_structure_via_rust, export_single_table_via_rust, run_batch_export_job, BatchExportColumn, BatchExportDataFormat, BatchExportMode, BatchExportOutputMode, BatchExportProgress, BatchExportTableInput, CancelHandle, ExportTableInput, ExportTablesRequest, ExportTablesResult, LoadedTableExportData, RunBatchExportJobOptions, RunBatchExportJobResult, SingleFetchOutcome, SingleTableExportOptions, SingleTableExportResult, SingleTableFetchConfig, SingleTableFetchScope, SingleTableStructureExportOptions, SingleTableStructureExportResult,
 };
 pub use backup_progress::{
-    append_progress_log, backup_progress_ratio, format_backup_progress, format_restore_progress,
-    BackupDumpPhase, BackupProgressPayload, ProgressLogPump, Translate, KEY_LOG_OMITTED,
-    KEY_PROGRESS_OBJECT, KEY_PROGRESS_PREPARING, KEY_PROGRESS_WRITING, KEY_RESTORE_PREPARING,
-    KEY_RESTORE_PROGRESS, KEY_RESTORE_SUCCESS, KEY_RESTORING, KEY_SUCCESS, MAX_PROGRESS_LOG_CHARS,
-    MAX_PROGRESS_LOG_LINES,
+    append_progress_log, backup_progress_ratio, format_backup_progress, format_restore_progress, BackupDumpPhase, BackupProgressPayload, ProgressLogPump, Translate, KEY_LOG_OMITTED, KEY_PROGRESS_OBJECT, KEY_PROGRESS_PREPARING, KEY_PROGRESS_WRITING, KEY_RESTORE_PREPARING, KEY_RESTORE_PROGRESS, KEY_RESTORE_SUCCESS, KEY_RESTORING, KEY_SUCCESS, MAX_PROGRESS_LOG_CHARS, MAX_PROGRESS_LOG_LINES,
 };
-pub use base64::{base64_to_bytes, bytes_to_base64, Base64DecodeError};
+pub use base64::{
+    base64_to_bytes, bytes_to_base64, Base64DecodeError,
+};
 pub use chart_types::{
-    AggregationType, ChartConfig, ChartDataPoint, ChartDataPointValue, ChartField,
-    ChartRecommendation, ChartSortBy, ChartType, InferredFieldType,
+    AggregationType, ChartConfig, ChartDataPoint, ChartDataPointValue, ChartField, ChartRecommendation, ChartSortBy, ChartType, InferredFieldType,
 };
 pub use command_schema::{
-    all_privileges, field_label, field_placeholder, get_schema_field, has_command,
-    has_schema_field, privilege_groups, schema_properties, PrivilegeGroup, SchemaField,
+    all_privileges, field_label, field_placeholder, get_schema_field, has_command, has_schema_field, privilege_groups, schema_properties, PrivilegeGroup, SchemaField,
 };
 pub use connection_clipboard::{
-    apply_connection_clipboard_fill, apply_matched_clipboard, match_connection_clipboard,
-    parse_generic_connection_url, ClipboardDriverMeta, ConnectionClipboardFill,
-    ConnectionClipboardParser, ConnectionFormOps, MatchedConnectionClipboard,
+    apply_connection_clipboard_fill, apply_matched_clipboard, match_connection_clipboard, parse_generic_connection_url, ClipboardDriverMeta, ConnectionClipboardFill, ConnectionClipboardParser, ConnectionFormOps, MatchedConnectionClipboard,
 };
 pub use connection_config::{
     clone_connection_config_for_ipc, to_ipc_connection_config, PlainConfigAssertion,
 };
 pub use connection_form_model::{
-    assert_plain_connection_config, build_connection_config, clone_plain_json,
-    coerce_connection_group, normalize_index_database_field, plain_config_assertion,
-    sanitize_connection_options, BuildConnectionConfigInput, ConnectionFormDriverMeta,
-    ConnectionFormSnapshot, DatabaseFieldType,
+    assert_plain_connection_config, build_connection_config, clone_plain_json, coerce_connection_group, normalize_index_database_field, plain_config_assertion, sanitize_connection_options, BuildConnectionConfigInput, ConnectionFormDriverMeta, ConnectionFormSnapshot, DatabaseFieldType,
 };
 pub use connection_groups::{
-    format_group_label, KEY_GROUP_DEV, KEY_GROUP_PROD, KEY_GROUP_TEST, PRESET_DEVELOPMENT,
-    PRESET_GROUP_OPTIONS, PRESET_PRODUCTION, PRESET_TESTING,
+    format_group_label, KEY_GROUP_DEV, KEY_GROUP_PROD, KEY_GROUP_TEST, PRESET_DEVELOPMENT, PRESET_GROUP_OPTIONS, PRESET_PRODUCTION, PRESET_TESTING,
 };
 pub use connection_locator::{
-    connection_expand_key, group_connections_with_recent_sections, normalize,
-    order_connections_for_display, parse_connection_expand_key, rank_connections,
-    ActiveConnectionSlice, ActiveStatus, Candidate, ConnectionLocatorResult,
-    ConnectionLocatorUsageState, ConnectionMatch, ConnectionMatchReason, ConnectionSection,
-    ExpandKey, SchemaSlice, PINNED_GROUP_KEY, RECENT_CONNECTION_LIMIT, RECENT_GROUP_KEY,
+    connection_expand_key, group_connections_with_recent_sections, normalize, order_connections_for_display, parse_connection_expand_key, rank_connections, ActiveConnectionSlice, ActiveStatus, Candidate, ConnectionLocatorResult, ConnectionLocatorUsageState, ConnectionMatch, ConnectionMatchReason, ConnectionSection, ExpandKey, SchemaSlice, PINNED_GROUP_KEY, RECENT_CONNECTION_LIMIT, RECENT_GROUP_KEY,
 };
 pub use connection_share_error::{
-    format_connection_import_success, ipc_connection_share_error, translate_connection_share_error,
-    ConnectionImportResult, ShareErrorSource,
+    format_connection_import_success, ipc_connection_share_error, translate_connection_share_error, ConnectionImportResult, ShareErrorSource,
 };
 pub use connection_tab_context_menu::{
-    build_connection_tab_context_menu_items, BuildConnectionTabContextMenuArgs,
-    ConnectionTabAction, ConnectionTabContextMenuHandlers, ConnectionTabContextMenuLabels,
-    ConnectionTabMenuItem,
+    build_connection_tab_context_menu_items, BuildConnectionTabContextMenuArgs, ConnectionTabAction, ConnectionTabContextMenuHandlers, ConnectionTabContextMenuLabels, ConnectionTabMenuItem,
 };
 pub use connection_types::{
-    ConnectionConfig, ContextEntry, DatabaseObject, DatabaseObjectKind, DatabaseType,
-    DriverCapabilities, ExplainPlanDetail, ExplainPlanNode, ExplainResult,
-    ForeignKeyDeferrability, ForeignKeyInfo, ForeignKeyTargetRef, ForeignKeyTargetResolution,
-    HttpProxyScheme, HttpProxyTunnelConfig, IndexInfo, PrivilegeGrant, QueryHistoryEntry,
-    ResolveForeignKeyTargetsRequest, SavedTunnel, SavedTunnelKind, ServerInfo, SshAuthMethod,
-    SshTunnelConfig, SslMode, TableInfo, TableSchema, TableType, TunnelKind, Value, WebSocketMode,
-    WebSocketTunnelConfig,
+    ConnectionConfig, ContextEntry, DatabaseObject, DatabaseObjectKind, DatabaseType, DriverCapabilities, ExplainPlanDetail, ExplainPlanNode, ExplainResult, ForeignKeyDeferrability, ForeignKeyInfo, ForeignKeyTargetRef, ForeignKeyTargetResolution, HttpProxyScheme, HttpProxyTunnelConfig, IndexInfo, PrivilegeGrant, QueryHistoryEntry, ResolveForeignKeyTargetsRequest, SavedTunnel, SavedTunnelKind, ServerInfo, SshAuthMethod, SshTunnelConfig, SslMode, TableInfo, TableSchema, TableType, TunnelKind, Value, WebSocketMode, WebSocketTunnelConfig,
 };
 pub use connection_view_registry::{
     get_connection_view, is_builtin_document_mode, ConnectionViewSelection, BUILTIN_DOCUMENT_MODE,
 };
 pub use connection_views::{
-    ConnectionOpenTarget, ConnectionViewActions, ConnectionViewProps, NewQueryContext,
-    NodeContextMenuPayload, ObjectKind, TableContextInput, TableSqlActionKind,
+    ConnectionOpenTarget, ConnectionViewActions, ConnectionViewProps, NewQueryContext, NodeContextMenuPayload, ObjectKind, TableContextInput, TableSqlActionKind,
 };
-pub use context_items::{ContextItem, ContextKind, SplitContextItems, split_context_items};
+pub use context_items::{
+    ContextItem, ContextKind, SplitContextItems, split_context_items,
+};
 pub use workflow_chat_panel::{
-    answer_questions_params, build_send_request, connection_options, copied_block_index,
-    extract_workflow_yaml, handle_new_chat_reset, handle_stop, is_configured_gate, is_last_assistant,
-    is_user, questions_visible, save_yaml, selected_database, selected_db_session_id,
-    streaming_bubble_visible, thinking_visible, validation_connections, yaml_actions_visible,
-    ActiveSessionSnapshot, MultiDbProvider, NewChatReset, SaveSuccess, SendRequest,
-    WorkflowChatPanelPorts, WorkflowChatState, ParsedWorkflowDefinition, WorkflowPanelConnection,
-    WorkflowSaveError, WorkflowValidationConnection, COPIED_FEEDBACK_MS, SAVE_OK_RESET_MS,
-    WORKFLOW_CHAT_PANEL_GAP,
+    answer_questions_params, build_send_request, connection_options, copied_block_index, extract_workflow_yaml, handle_new_chat_reset, handle_stop, is_configured_gate, is_last_assistant, is_user, questions_visible, save_yaml, selected_database, selected_db_session_id, streaming_bubble_visible, thinking_visible, validation_connections, yaml_actions_visible, ActiveSessionSnapshot, MultiDbProvider, NewChatReset, SaveSuccess, SendRequest, WorkflowChatPanelPorts, WorkflowChatState, ParsedWorkflowDefinition, WorkflowPanelConnection, WorkflowSaveError, WorkflowValidationConnection, COPIED_FEEDBACK_MS, SAVE_OK_RESET_MS, WORKFLOW_CHAT_PANEL_GAP,
 };
 pub use diff_detail::{
-    cell_view, clear_all_op, diff_rows, footer_visible, format_cell, is_changed, is_empty_state,
-    key_label, max_cols, next_disabled, operation_allowed, operation_badge_class, page_count,
-    page_rows, prev_disabled, row_key_string, row_selectable, safe_page, select_all_op,
-    server_paged, toggle_row, CellView, DataSyncOperation, DataSyncRowChange,
-    DataSyncTableResult, SyncOptions, DIFF_DETAIL_DOM_GAP, PAGE_SIZE,
+    cell_view, clear_all_op, diff_rows, footer_visible, format_cell, is_changed, is_empty_state, key_label, max_cols, next_disabled, operation_allowed, operation_badge_class, page_count, page_rows, prev_disabled, row_key_string, row_selectable, safe_page, select_all_op, server_paged, toggle_row, CellView, DataSyncOperation, DataSyncRowChange, DataSyncTableResult, SyncOptions, DIFF_DETAIL_DOM_GAP, PAGE_SIZE,
 };
 pub use context_menu_position::{
-    CONTEXT_MENU_PAD, Point, Rect, RootMenuPosition, Size, SubmenuPosition, SubmenuSide, Viewport,
-    position_root_menu, position_root_menu_with_pad, position_submenu, position_submenu_with_pad,
+    CONTEXT_MENU_PAD, Point, Rect, RootMenuPosition, Size, SubmenuPosition, SubmenuSide, Viewport, position_root_menu, position_root_menu_with_pad, position_submenu, position_submenu_with_pad,
 };
 // The T159 dashboard vocabulary (see `dashboard_types`' docs): every
 // name the React facade re-exports rides the crate root, but the display
@@ -597,128 +475,77 @@ pub use context_menu_position::{
 // module-local serde `ExecutionTarget` family stay module-path only —
 // the mounting note there rules the split.
 pub use dashboard_types::{
-    AlertChannel, AlertMetric, AlertMetricAgg, AlertMetricKind, AlertOperator, AlertRule,
-    CreateWidgetFromSqlParams, CreateWidgetFromWorkflowParams, CreateWidgetResult, Dashboard,
-    DashboardLayout, DashboardWorkflowRef, MonitorEmailSettings, MonitorGrant,
-    MonitorScheduleGrantSummary, MonitorSettings, MonitorScope, RefreshMode, RefreshPolicy,
-    RunIndexEntry, UpdateHiddenWidgetSqlParams, ViewMode, WidgetLayout, WidgetRun,
-    WidgetRunStatus, DEFAULT_MONITOR_SETTINGS, DEFAULT_REFRESH, MIN_REFRESH_SEC,
-    REFRESH_WARN_BELOW_SEC, clamp_refresh_sec, normalize_refresh_policy,
-    should_warn_refresh_sec,
+    AlertChannel, AlertMetric, AlertMetricAgg, AlertMetricKind, AlertOperator, AlertRule, CreateWidgetFromSqlParams, CreateWidgetFromWorkflowParams, CreateWidgetResult, Dashboard, DashboardLayout, DashboardWorkflowRef, MonitorEmailSettings, MonitorGrant, MonitorScheduleGrantSummary, MonitorSettings, MonitorScope, RefreshMode, RefreshPolicy, RunIndexEntry, UpdateHiddenWidgetSqlParams, ViewMode, WidgetLayout, WidgetRun, WidgetRunStatus, DEFAULT_MONITOR_SETTINGS, DEFAULT_REFRESH, MIN_REFRESH_SEC, REFRESH_WARN_BELOW_SEC, clamp_refresh_sec, normalize_refresh_policy, should_warn_refresh_sec,
 };
 pub use dangerous_sql::{
-    classify_risk, is_dangerous_write_statement, normalize_fullwidth, scan_sql,
-    sql_contains_dangerous_write, SigKind, SigTok, SqlRiskAssessment, SqlRiskClassification,
-    SqlRiskFinding, SqlRiskFindingType, SqlStatementRange, SqlStatementRisk, SqlToken, SqlTokenKind,
-    DESTRUCTIVE_VERBS, FALSE_SQL_VALUES, MAIN_VERBS, READ_VERBS, WHERE_NEEDS_VERBS, WRITE_VERBS,
+    classify_risk, is_dangerous_write_statement, normalize_fullwidth, scan_sql, sql_contains_dangerous_write, SigKind, SigTok, SqlRiskAssessment, SqlRiskClassification, SqlRiskFinding, SqlRiskFindingType, SqlStatementRange, SqlStatementRisk, SqlToken, SqlTokenKind, DESTRUCTIVE_VERBS, FALSE_SQL_VALUES, MAIN_VERBS, READ_VERBS, WHERE_NEEDS_VERBS, WRITE_VERBS,
 };
 pub use database_object_identity::database_object_identity_key;
 pub use data_sync_bars::{
-    build_endpoints_bar_config, build_execute_bar_view, can_fire, resolve_action_note, ActionNote,
-    ActivePairing, CancelVariant, EndpointsBarConfig, EndpointsLayout, ExecuteBarEvent,
-    ExecuteBarInput, ExecuteBarView, RunVariant, SyncPairingPath, TranslateFn, ACTION_NOTE_CLASS,
-    CANCEL_TEST_ID, COMPARE_LABEL_KEY, CONTAINER_CLASS, DELETE_CLASS, ENDPOINTS_I18N_PREFIX,
-    ENDPOINTS_TEST_ID_PREFIX, EXECUTE_TEST_ID, EXPERIMENTAL_HINT_KEY, EXPERIMENTAL_PAIR_KEY,
-    KEY_CANCEL, KEY_DELETE_WILL_APPLY, KEY_EXECUTE, KEY_EXECUTING,
-    KEY_EXECUTE_UNAVAILABLE, KEY_SELECTED_ROWS, KEY_TARGET_READ_ONLY, PATH_DIRECT_KEY, PATH_IR_KEY,
-    PATH_TEST_ID, READ_ONLY_CLASS, START_DISABLED_TEST_ID, START_TEST_ID, SUPPORTED_CLASS,
-    UNSUPPORTED_CLASS, USE_TRANSFER_HINT_KEY,
+    build_endpoints_bar_config, build_execute_bar_view, can_fire, resolve_action_note, ActionNote, ActivePairing, CancelVariant, EndpointsBarConfig, EndpointsLayout, ExecuteBarEvent, ExecuteBarInput, ExecuteBarView, RunVariant, SyncPairingPath, TranslateFn, ACTION_NOTE_CLASS, CANCEL_TEST_ID, COMPARE_LABEL_KEY, CONTAINER_CLASS, DELETE_CLASS, ENDPOINTS_I18N_PREFIX, ENDPOINTS_TEST_ID_PREFIX, EXECUTE_TEST_ID, EXPERIMENTAL_HINT_KEY, EXPERIMENTAL_PAIR_KEY, KEY_CANCEL, KEY_DELETE_WILL_APPLY, KEY_EXECUTE, KEY_EXECUTING, KEY_EXECUTE_UNAVAILABLE, KEY_SELECTED_ROWS, KEY_TARGET_READ_ONLY, PATH_DIRECT_KEY, PATH_IR_KEY, PATH_TEST_ID, READ_ONLY_CLASS, START_DISABLED_TEST_ID, START_TEST_ID, SUPPORTED_CLASS, UNSUPPORTED_CLASS, USE_TRANSFER_HINT_KEY,
 };
 // The T188 filter vocabulary: the aggregate (`types/index`) re-exports
 // everything `types/filters.ts` declares, so the crate root carries the
 // same names.
 pub use database_types::{
-    default_escape_sql_value, escape_ident, format_connection_addr, get_db_icon, get_db_label,
-    get_driver_icon_map, get_driver_icon_parents, get_escape_sql_value,
-    normalize_index_database_field_default,
-    sort_db_types_by_popularity, ConnectionAddrInput, DatabaseRegistry, DatabaseTypeMeta, DbIconInfo,
-    PopularityValue,
-    EscapeSqlValue, SqlValueEscaper, SshTunnelAddr, DB_TYPE_POPULARITY_ORDER,
-    DEFAULT_MAX_DATABASE_INDEX,
+    default_escape_sql_value, escape_ident, format_connection_addr, get_db_icon, get_db_label, get_driver_icon_map, get_driver_icon_parents, get_escape_sql_value, normalize_index_database_field_default, sort_db_types_by_popularity, ConnectionAddrInput, DatabaseRegistry, DatabaseTypeMeta, DbIconInfo, PopularityValue, EscapeSqlValue, SqlValueEscaper, SshTunnelAddr, DB_TYPE_POPULARITY_ORDER, DEFAULT_MAX_DATABASE_INDEX,
 };
 pub use data_table_context_menu::{
-    build_data_table_context_menu_items, format_row_as_sql_delete, format_row_as_sql_insert,
-    format_row_as_sql_update, format_rows_as_sql_insert, format_rows_as_sql_update, invoke,
-    resolve_data_table_cell_from_event, resolve_data_table_header_col_from_event,
-    resolve_set_value_actions, row_to_named_record, serialize_cells,
-    serialize_data_table_column_values, serialize_data_table_rows_as_csv,
-    serialize_data_table_rows_as_json, serialize_data_table_rows_as_tsv, set_value_action_label,
-    BuildDataTableContextMenuArgs, CellContext, CopyFormat, DataTableContextMenuHandlers,
-    DataTableContextMenuLabels, DomElement, HeaderFreeze, HeaderPresentation, HeaderSort,
-    HeaderStats, MenuAction, NativeMenuItemDef, RowKind, SerializeFormat, SetValueAction,
-    SetValueActionId, SetValueState, LOAD_CANDIDATES_LABEL_KEY,
+    build_data_table_context_menu_items, format_row_as_sql_delete, format_row_as_sql_insert, format_row_as_sql_update, format_rows_as_sql_insert, format_rows_as_sql_update, invoke, resolve_data_table_cell_from_event, resolve_data_table_header_col_from_event, resolve_set_value_actions, row_to_named_record, serialize_cells, serialize_data_table_column_values, serialize_data_table_rows_as_csv, serialize_data_table_rows_as_json, serialize_data_table_rows_as_tsv, set_value_action_label, BuildDataTableContextMenuArgs, CellContext, CopyFormat, DataTableContextMenuHandlers, DataTableContextMenuLabels, DomElement, HeaderFreeze, HeaderPresentation, HeaderSort, HeaderStats, MenuAction, NativeMenuItemDef, RowKind, SerializeFormat, SetValueAction, SetValueActionId, SetValueState, LOAD_CANDIDATES_LABEL_KEY,
 };
 pub use dedicated_db_session::{
-    DatabaseOverride, DedicatedConnectResult, DedicatedSessionPorts, DedicatedSessionService,
-    DedicatedSideSession, ListDatabasesResult,
+    DatabaseOverride, DedicatedConnectResult, DedicatedSessionPorts, DedicatedSessionService, DedicatedSideSession, ListDatabasesResult,
 };
-pub use dismiss_prefs::{create_dismiss_prefs, DismissPrefs};
+pub use dismiss_prefs::{
+    create_dismiss_prefs, DismissPrefs,
+};
 pub use driver_capabilities::{
-    capabilities_for_db_session, has_schema_level, relation_schema_for, supports_offset,
-    CapabilityAnswer, SessionCapabilitiesEntry,
+    capabilities_for_db_session, has_schema_level, relation_schema_for, supports_offset, CapabilityAnswer, SessionCapabilitiesEntry,
 };
 pub use driver_command_ids::{
     ESTIMATE_TABLE_ROWS_COMMAND, LIST_PROCESSES_COMMAND, SERVER_STATUS_SNAPSHOT_COMMAND,
 };
-pub use endpoint_identity::{is_same_endpoint_identity, EndpointIdentity};
-pub use error_message::{to_error_message, ErrorLike};
-pub use export_capability::{
-    driver_export_scope, min_scope, resolve_export_scope, supports_any_export,
-    supports_full_table_export, DataExportCapability, ExportDriverMeta,
+pub use endpoint_identity::{
+    is_same_endpoint_identity, EndpointIdentity,
 };
-pub use export_data::{ExportDataFormat, ExportDataScope};
+pub use error_message::{
+    to_error_message, ErrorLike,
+};
+pub use export_capability::{
+    driver_export_scope, min_scope, resolve_export_scope, supports_any_export, supports_full_table_export, DataExportCapability, ExportDriverMeta,
+};
+pub use export_data::{
+    ExportDataFormat, ExportDataScope,
+};
 pub use export_format::{
-    apply_csv_formula_guard, build_provided_export_filename, bytes_to_xlsx_cell,
-    default_escape_sql_literal, escape_sql_ident, escape_sql_literal, format_extension,
-    format_rows_as_text, format_rows_as_xlsx, format_sql_insert_script, format_sql_update_script,
-    mysql_escape_sql_literal, sql_quote_char, text_mime_type, to_xlsx_cell, update_key_column,
-    xlsx_sheet_rows, BinaryExportResult, ExportColumn, ExportFormatError, FormatRowsOptions,
-    TextExportResult, XlsxCellValue, SQL_INSERT_BATCH_SIZE, XLSX_MIME_TYPE,
+    apply_csv_formula_guard, build_provided_export_filename, bytes_to_xlsx_cell, default_escape_sql_literal, escape_sql_ident, escape_sql_literal, format_extension, format_rows_as_text, format_rows_as_xlsx, format_sql_insert_script, format_sql_update_script, mysql_escape_sql_literal, sql_quote_char, text_mime_type, to_xlsx_cell, update_key_column, xlsx_sheet_rows, BinaryExportResult, ExportColumn, ExportFormatError, FormatRowsOptions, TextExportResult, XlsxCellValue, SQL_INSERT_BATCH_SIZE, XLSX_MIME_TYPE,
 };
 pub use export_table_structure::{
-    export_table_structure_to_file, DdlDialect, DdlQuery, DdlRowExtractor, DdlFetcher,
-    ExportTableStructureResult, SqlDialectProvider, StructureExportInput, StructureExporter,
+    export_table_structure_to_file, DdlDialect, DdlQuery, DdlRowExtractor, DdlFetcher, ExportTableStructureResult, SqlDialectProvider, StructureExportInput, StructureExporter,
 };
-pub use extract_questions::{extract_questions, parse_tool_call_questions, ExtractQuestionsResult};
+pub use extract_questions::{
+    extract_questions, parse_tool_call_questions, ExtractQuestionsResult,
+};
 pub use fetch_relation_ddl::{
-    copy_rich_text_to_clipboard, copy_to_clipboard, fetch_relation_ddl, CachedDdlFetcher,
-    ClipboardSteps, DdlRowValueExtractor, ObjectDdlFetcher, RelationDdlDialect,
-    RelationDialectProvider, RichClipboardSteps,
+    copy_rich_text_to_clipboard, copy_to_clipboard, fetch_relation_ddl, CachedDdlFetcher, ClipboardSteps, DdlRowValueExtractor, ObjectDdlFetcher, RelationDdlDialect, RelationDialectProvider, RichClipboardSteps,
 };
-pub use filter_db_types::{filter_db_types_by_query, DbTypeOption};
+pub use filter_db_types::{
+    filter_db_types_by_query, DbTypeOption,
+};
 pub use filter_operators::{
-    cell_types_for_operator, convert_filter_value, default_operator_for_column,
-    dialect_operators_by_cell_type, filter_operator_metas, like_case_insensitive_for_meta,
-    normalize_operator_for_column, operator_meta, operators_by_cell_type, operators_for_column,
-    operators_for_driver, supported_operators_for_meta, value_input_for, value_input_for_literal,
-    ALL_CELL_TYPES, ALL_OPERATORS, FilterDriverMeta, FilterOperatorGroup, FilterOperatorMeta,
-    FilterValue, FilterValueInputKind,
+    cell_types_for_operator, convert_filter_value, default_operator_for_column, dialect_operators_by_cell_type, filter_operator_metas, like_case_insensitive_for_meta, normalize_operator_for_column, operator_meta, operators_by_cell_type, operators_for_column, operators_for_driver, supported_operators_for_meta, value_input_for, value_input_for_literal, ALL_CELL_TYPES, ALL_OPERATORS, FilterDriverMeta, FilterOperatorGroup, FilterOperatorMeta, FilterValue, FilterValueInputKind,
 };
 pub use fk_navigation::{
-    build_fk_filters, find_foreign_key, fk_nav_key, index_foreign_keys, is_fk_cell_navigable,
-    pick_anchor_row, scroll_top_for_anchor_row, AnchorInput, AnchorResult, FkBreadcrumbModel,
-    FkFilterTarget, FkGroupAffordance, FkIndex, FkNavInput, FkNavTargetIdentity, GridViewport,
-    NavValue, FK_NAV_MAX_DEPTH,
+    build_fk_filters, find_foreign_key, fk_nav_key, index_foreign_keys, is_fk_cell_navigable, pick_anchor_row, scroll_top_for_anchor_row, AnchorInput, AnchorResult, FkBreadcrumbModel, FkFilterTarget, FkGroupAffordance, FkIndex, FkNavInput, FkNavTargetIdentity, GridViewport, NavValue, FK_NAV_MAX_DEPTH,
 };
 pub use fk_referenced_by::{
-    build_inbound_filters, catalog_key, inbound_catalog, open_referencing_rows,
-    referenced_values_of_row, CatalogScope, CreatedPanel, FkOrigin, GridErrorClassifier,
-    InboundCatalogCache, InboundCatalogFetcher, InboundForeignKeyCatalog, InboundForeignKeyRef,
-    NavEntry, NavOrigin, OpenReferencingRowsInput, OutcomeError, OutcomeErrorCode,
-    ReferencedByOutcome, ReferencingRowsHost, SourcePanelInfo,
-    TableChangeContext as InboundTableChangeContext,
-    MAX_REFERENCING_TABS, NO_REFERENCES_EMPTY, PROBE_FAILED_MESSAGE,
+    build_inbound_filters, catalog_key, inbound_catalog, open_referencing_rows, referenced_values_of_row, CatalogScope, CreatedPanel, FkOrigin, GridErrorClassifier, InboundCatalogCache, InboundCatalogFetcher, InboundForeignKeyCatalog, InboundForeignKeyRef, NavEntry, NavOrigin, OpenReferencingRowsInput, OutcomeError, OutcomeErrorCode, ReferencedByOutcome, ReferencingRowsHost, SourcePanelInfo, TableChangeContext as InboundTableChangeContext, MAX_REFERENCING_TABS, NO_REFERENCES_EMPTY, PROBE_FAILED_MESSAGE,
 };
 pub use fk_selector::{
-    candidates_to_picker_options, fk_group_is_pickable, format_fk_candidate,
-    index_fk_candidate_sources, FkCandidateGroup, FkCandidateSource, FkCandidateSourceIndex,
-    FK_SELECTOR_CANDIDATE_LIMIT,
+    candidates_to_picker_options, fk_group_is_pickable, format_fk_candidate, index_fk_candidate_sources, FkCandidateGroup, FkCandidateSource, FkCandidateSourceIndex, FK_SELECTOR_CANDIDATE_LIMIT,
 };
 pub use global_text_selection::{
-    is_interactive_control, is_native_selectable, is_selectable, is_selectable_hint,
-    should_prevent_select_all, ContextMenuSuppressor, DragMouseDownInput, DragSelectionGuard,
-    RightDragSuppressor, SelectAllTarget, SelectionSnapshot, DOM_GAP_SURFACES,
-    INTERACTIVE_CONTROL_SELECTOR, NATIVE_SELECTABLE_SELECTOR, SELECTABLE_HINT_SELECTOR,
+    is_interactive_control, is_native_selectable, is_selectable, is_selectable_hint, should_prevent_select_all, ContextMenuSuppressor, DragMouseDownInput, DragSelectionGuard, RightDragSuppressor, SelectAllTarget, SelectionSnapshot, DOM_GAP_SURFACES, INTERACTIVE_CONTROL_SELECTOR, NATIVE_SELECTABLE_SELECTOR, SELECTABLE_HINT_SELECTOR,
 };
 pub use grid_errors::{
     classify_grid_error, GridErrorCode, GRID_ERROR_CODES, GRID_ERROR_NAMESPACE, REGISTERED_PREFIXES,
@@ -727,217 +554,136 @@ pub use grid_event_guards::{
     is_composing_event, is_editable_target, ComposingEventLike, EDITABLE_TARGET_SELECTOR,
 };
 pub use history_groups::{
-    find_group_for_database, group_query_history, HistoryGroupEntry, HistoryScope,
-    QueryHistoryGroup, HISTORY_UNKNOWN_DB_KEY,
+    find_group_for_database, group_query_history, HistoryGroupEntry, HistoryScope, QueryHistoryGroup, HISTORY_UNKNOWN_DB_KEY,
 };
-pub use host_error_message::{extract_host_error_message, HostError};
+pub use host_error_message::{
+    extract_host_error_message, HostError,
+};
 pub use host_lucide_map::{
-    build_host_lucide_by_id, host_lucide_seed, settings_section_icon_id, HOST_LUCIDE_MAP,
-    SETTINGS_SECTION_LUCIDE_MAP,
+    build_host_lucide_by_id, host_lucide_seed, settings_section_icon_id, HOST_LUCIDE_MAP, SETTINGS_SECTION_LUCIDE_MAP,
 };
-pub use icon_ids::{UI_ICON_IDS, UiIconId};
+pub use icon_ids::{
+    UI_ICON_IDS, UiIconId,
+};
 pub use icon_resolver_api::{
-    default_placeholder_for_db, get_active_icon_resolver, resolve_with_active,
-    set_active_icon_resolver, ui_placeholder, ICON_KIND_LUCIDE, ICON_KIND_PLACEHOLDER,
-    ICON_KIND_URL,
+    default_placeholder_for_db, get_active_icon_resolver, resolve_with_active, set_active_icon_resolver, ui_placeholder, ICON_KIND_LUCIDE, ICON_KIND_PLACEHOLDER, ICON_KIND_URL,
 };
 pub use import_connection_file::{
     import_file_display_name, import_file_password_policy, ImportPasswordPolicy,
 };
 pub use import_execution::{
-    build_multi_row_insert_sql, execute_import, plan_import_chunks, AbortSignal, ImportBatch,
-    ImportChunk, ImportColumnPair, ImportCommitMode, ImportErrorStrategy, ImportFinalStatus,
-    ImportProgress, ImportProgressStatus, ImportRowFailure, ImportRunResult, ImportSqlDialect,
-    ImportSqlOptions, ImportStreamEvent, ImportStreamProgress, ImportTransport,
-    PlanImportChunksOptions, IMPORT_DEFAULT_MAX_BATCHES_PER_CHUNK,
-    IMPORT_DEFAULT_MAX_ROWS_PER_BATCH, IMPORT_DEFAULT_MAX_SQL_BYTES, IMPORT_STREAM_GAP,
+    build_multi_row_insert_sql, execute_import, plan_import_chunks, AbortSignal, ImportBatch, ImportChunk, ImportColumnPair, ImportCommitMode, ImportErrorStrategy, ImportFinalStatus, ImportProgress, ImportProgressStatus, ImportRowFailure, ImportRunResult, ImportSqlDialect, ImportSqlOptions, ImportStreamEvent, ImportStreamProgress, ImportTransport, PlanImportChunksOptions, IMPORT_DEFAULT_MAX_BATCHES_PER_CHUNK, IMPORT_DEFAULT_MAX_ROWS_PER_BATCH, IMPORT_DEFAULT_MAX_SQL_BYTES, IMPORT_STREAM_GAP,
 };
 pub use kv_ai_context::{
     build_kv_ai_context, compose_kv_ai_message, has_kv_ai_facts, KvAiContext, KvAiFacts,
 };
 pub use kv_slot_state::{
-    create_kv_slot_state, get_kv_slot_state, prune_kv_slot_states,
-    reset_kv_slot_states_for_tests, KvSlotSnapshot, KvSlotState,
+    create_kv_slot_state, get_kv_slot_state, prune_kv_slot_states, reset_kv_slot_states_for_tests, KvSlotSnapshot, KvSlotState,
 };
 pub use locale_sync::{
-    apply_language, current_language, start_locale_sync, Defer, Deferred, LocaleEnginePorts,
-    SettingsLanguageStore, DEFAULT_LOCALE,
+    apply_language, current_language, start_locale_sync, Defer, Deferred, LocaleEnginePorts, SettingsLanguageStore, DEFAULT_LOCALE,
 };
 pub use migration_job_verdict::{
-    derive_cancel_disposition, derive_migration_job_verdict, derive_uncertainty,
-    is_backend_scope_rejection, is_migration_job_in_flight, is_pipeline_budget_interception,
-    is_plan_consumed_rejection, read_job_counter, sum_job_counters, CancelDisposition,
-    CommitBoundaryFacts, JobCounterValue, MigrationJobVerdict, MigrationJobVerdictInput,
-    UncertaintyReason, VerdictSeverity, PIPELINE_BUDGET_BYTES,
+    derive_cancel_disposition, derive_migration_job_verdict, derive_uncertainty, is_backend_scope_rejection, is_migration_job_in_flight, is_pipeline_budget_interception, is_plan_consumed_rejection, read_job_counter, sum_job_counters, CancelDisposition, CommitBoundaryFacts, JobCounterValue, MigrationJobVerdict, MigrationJobVerdictInput, UncertaintyReason, VerdictSeverity, PIPELINE_BUDGET_BYTES,
 };
-pub use native_context_menu::{DRIVER_SDK_MENU_GAP, NATIVE_CONTEXT_MENU_SURFACE};
+pub use native_context_menu::{
+    DRIVER_SDK_MENU_GAP, NATIVE_CONTEXT_MENU_SURFACE,
+};
 pub use query_sidebar_context_menu::{
-    build_favorite_sidebar_context_menu_items, build_history_sidebar_context_menu_items,
-    build_history_sidebar_header_context_menu_items, BuildFavoriteSidebarContextMenuArgs,
-    BuildHistorySidebarContextMenuArgs, BuildHistorySidebarHeaderContextMenuArgs,
-    QuerySidebarFavoriteHandlers, QuerySidebarFavoriteLabels, QuerySidebarHistoryHandlers,
-    QuerySidebarHistoryHeaderHandlers, QuerySidebarHistoryHeaderLabels, QuerySidebarHistoryLabels,
-    QuerySidebarMenuItem,
+    build_favorite_sidebar_context_menu_items, build_history_sidebar_context_menu_items, build_history_sidebar_header_context_menu_items, BuildFavoriteSidebarContextMenuArgs, BuildHistorySidebarContextMenuArgs, BuildHistorySidebarHeaderContextMenuArgs, QuerySidebarFavoriteHandlers, QuerySidebarFavoriteLabels, QuerySidebarHistoryHandlers, QuerySidebarHistoryHeaderHandlers, QuerySidebarHistoryHeaderLabels, QuerySidebarHistoryLabels, QuerySidebarMenuItem,
 };
-pub use query_stream::{apply_query_stream_event, StreamableQueryTab};
+pub use query_stream::{
+    apply_query_stream_event, StreamableQueryTab,
+};
 pub use relation_identity::{
-    build_editor_relation_key, fold_segment, has_namespace, qualified_name_text,
-    relation_base_name, relation_identity_key, EditorRelationKey, QualifiedRelationId,
-    SqlIdentifierSegment, SqlRelationSourceKind,
+    build_editor_relation_key, fold_segment, has_namespace, qualified_name_text, relation_base_name, relation_identity_key, EditorRelationKey, QualifiedRelationId, SqlIdentifierSegment, SqlRelationSourceKind,
 };
 pub use object_browser_context_menu::{
-    build_object_browser_editor_menu_items, build_object_browser_list_menu_items,
-    native_edit_menu_items, NativeEditItem, ObjectBrowserEditorMenuHandlers,
-    ObjectBrowserEditorMenuLabels, ObjectBrowserListMenuHandlers, ObjectBrowserListMenuLabels,
-    ObjectBrowserMenuAction, ObjectBrowserMenuItem,
+    build_object_browser_editor_menu_items, build_object_browser_list_menu_items, native_edit_menu_items, NativeEditItem, ObjectBrowserEditorMenuHandlers, ObjectBrowserEditorMenuLabels, ObjectBrowserListMenuHandlers, ObjectBrowserListMenuLabels, ObjectBrowserMenuAction, ObjectBrowserMenuItem,
 };
 pub use object_filter::{
-    filter_table_items, get_object_filter, is_system_database_name, is_system_schema_name,
-    match_name_pattern, matches_table_name_filter, should_show_database, should_show_schema,
-    with_object_filter_options, ObjectFilterPrefs,
+    filter_table_items, get_object_filter, is_system_database_name, is_system_schema_name, match_name_pattern, matches_table_name_filter, should_show_database, should_show_schema, with_object_filter_options, ObjectFilterPrefs,
 };
 pub use query_execution_view_model::{
-    get_cancel_action_state, get_cancel_capability, is_cancellation_error,
-    reduce_query_execution_state, to_query_execution_view_model, CancelActionState,
-    CancelCapability, QueryCancelState, QueryExecutionTransition, QueryExecutionViewModel,
-    QueryPhase, QueryTerminalState, QueryExecState,
+    get_cancel_action_state, get_cancel_capability, is_cancellation_error, reduce_query_execution_state, to_query_execution_view_model, CancelActionState, CancelCapability, QueryCancelState, QueryExecutionTransition, QueryExecutionViewModel, QueryPhase, QueryTerminalState, QueryExecState,
 };
 pub use result_editability::{
-    grid_read_only_message_key, is_column_editable, origin_channel_writable,
-    resolve_grid_editability, resolve_result_editability, resolve_result_write_back,
-    resolve_row_addressability, GridColumn, GridEditability, GridReadOnlyReason, IdentityColumn,
-    ResultTableRef, ServerEditability, RESULT_ORIGIN_WRITE_BACK_ENABLED,
+    grid_read_only_message_key, is_column_editable, origin_channel_writable, resolve_grid_editability, resolve_result_editability, resolve_result_write_back, resolve_row_addressability, GridColumn, GridEditability, GridReadOnlyReason, IdentityColumn, ResultTableRef, ServerEditability, RESULT_ORIGIN_WRITE_BACK_ENABLED,
 };
 pub use schema_cache::{
-    cache_key, composite_cache_key, ddl_cache_key, DdlCacheIdentity, DdlCacheInvalidateScope,
-    SchemaCacheFacade, SchemaObjectKind,
+    cache_key, composite_cache_key, ddl_cache_key, DdlCacheIdentity, DdlCacheInvalidateScope, SchemaCacheFacade, SchemaObjectKind,
 };
 pub use schema_changing_sql::{
-    is_data_modifying_statement, is_schema_changing_statement, is_schema_mutating_statement,
-    mask_semicolons_in_literals, split_sql_statements, sql_contains_data_modifying,
-    sql_contains_schema_changing_ddl, sql_may_mutate_schema,
+    is_data_modifying_statement, is_schema_changing_statement, is_schema_mutating_statement, mask_semicolons_in_literals, split_sql_statements, sql_contains_data_modifying, sql_contains_schema_changing_ddl, sql_may_mutate_schema,
 };
 pub use schema_tree_context_menu::{
-    build_schema_tree_context_menu_items, BuildSchemaTreeContextMenuArgs, SchemaTreeAction,
-    SchemaTreeContextMenuHandlers, SchemaTreeContextMenuLabels, SchemaTreeMenuItem,
-    SchemaTreeNodeContextMenuPayload, SchemaTreeNodeKind,
+    build_schema_tree_context_menu_items, BuildSchemaTreeContextMenuArgs, SchemaTreeAction, SchemaTreeContextMenuHandlers, SchemaTreeContextMenuLabels, SchemaTreeMenuItem, SchemaTreeNodeContextMenuPayload, SchemaTreeNodeKind,
 };
 pub use filter_types::{
-    DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector,
-    FilterOperator, SHARED_FILTER_OPERATORS,
+    DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector, FilterOperator, SHARED_FILTER_OPERATORS,
 };
 pub use grid_clipboard::{
-    build_rows_matrix, build_selection_matrix, escape_csv_field, escape_html_cell_text,
-    escape_markdown_cell_text_value, escape_markdown_field, parse_clipboard_matrix,
-    serialize_clipboard_cells, sniff_clipboard_delimiter, to_clipboard_range, utf8_byte_length,
-    ClipboardCellCoord, ClipboardDelimiter, ClipboardFormat, ClipboardMatrix, ClipboardParseResult,
-    GridClipboardAnchor, GridClipboardRange, PasteParseErrorCode, PasteParseRefusal, PasteProblem,
-    PasteProblemCode,
-    SerializeCellsOptions, GRID_PASTE_CHUNK_CELLS, GRID_PASTE_CONFIRM_CELLS, GRID_PASTE_MAX_BYTES,
-    GRID_PASTE_MAX_CELLS,
+    build_rows_matrix, build_selection_matrix, escape_csv_field, escape_html_cell_text, escape_markdown_cell_text_value, escape_markdown_field, parse_clipboard_matrix, serialize_clipboard_cells, sniff_clipboard_delimiter, to_clipboard_range, utf8_byte_length, ClipboardCellCoord, ClipboardDelimiter, ClipboardFormat, ClipboardMatrix, ClipboardParseResult, GridClipboardAnchor, GridClipboardRange, PasteParseErrorCode, PasteParseRefusal, PasteProblem, PasteProblemCode, SerializeCellsOptions, GRID_PASTE_CHUNK_CELLS, GRID_PASTE_CONFIRM_CELLS, GRID_PASTE_MAX_BYTES, GRID_PASTE_MAX_CELLS,
 };
 pub use grid_paste_plan::{
-    clear_clipboard_source, clear_row_copy, column_writability, normalize_clipboard_text,
-    peek_clipboard_source, peek_row_copy, pending_cell_key, plan_paste, record_clipboard_source,
-    record_row_copy, row_copy_for_clipboard_text, source_for_clipboard_text, table_change_key,
-    CellPasteWrite, ClipboardSource, ColumnWritability, ColumnWritabilityReason, PasteAlignment,
-    PasteOverflow, PastePlan, PastePlanOptions, RowCopyPayload,
+    clear_clipboard_source, clear_row_copy, column_writability, normalize_clipboard_text, peek_clipboard_source, peek_row_copy, pending_cell_key, plan_paste, record_clipboard_source, record_row_copy, row_copy_for_clipboard_text, source_for_clipboard_text, table_change_key, CellPasteWrite, ClipboardSource, ColumnWritability, ColumnWritabilityReason, PasteAlignment, PasteOverflow, PastePlan, PastePlanOptions, RowCopyPayload,
 };
 pub use import_data::{
-    decode_import_base64, decode_import_text, dedupe_columns, detect_csv_delimiter,
-    detect_import_format, generate_insert_sql, is_supported_encoding, parse_csv_import,
-    parse_import_data, parse_json_import, parse_xlsx, parse_xlsx_import, CsvParseOptions,
-    ImportDiagnostic, ImportEmptyFieldPolicy, ImportFormat, ImportParseError, ImportParseErrorKind,
-    ImportParseResult, ImportTextDecoder, JsonParseOptions, ParsedData, Utf8TextDecoder,
-    XlsxBookReader, XlsxParseOptions, XlsxParseResult, XlsxWorkbook, IMPORT_ENCODINGS,
+    decode_import_base64, decode_import_text, dedupe_columns, detect_csv_delimiter, detect_import_format, generate_insert_sql, is_supported_encoding, parse_csv_import, parse_import_data, parse_json_import, parse_xlsx, parse_xlsx_import, CsvParseOptions, ImportDiagnostic, ImportEmptyFieldPolicy, ImportFormat, ImportParseError, ImportParseErrorKind, ImportParseResult, ImportTextDecoder, JsonParseOptions, ParsedData, Utf8TextDecoder, XlsxBookReader, XlsxParseOptions, XlsxParseResult, XlsxWorkbook, IMPORT_ENCODINGS,
 };
 pub use grid_cell::{
-    build_grid_cell_view, cell_command, dispatch_cell_event, CellChild, CellCommand, CellEvent,
-    CellRendererView, CellWriteTarget, ColumnCellFacts, DispatchOutcome, EditorCellFacts,
-    FkButtonView, FkCellAffordance, FkTextKind, GridCellInput, GridCellView, StickyInfo,
-    StickyStyle, CLASS_BASE, CLASS_DIRTY_BG, CLASS_DIRTY_BORDER, CLASS_DIRTY_MARK, CLASS_FK_JUMP,
-    CLASS_FK_PICK, CLASS_STICKY, CLASS_STICKY_OVERLAY, CELL_TEST_ID, EDITOR_KIND_ENUM,
-    FkTextFn, ROLE_GRIDCELL,
+    build_grid_cell_view, cell_command, dispatch_cell_event, CellChild, CellCommand, CellEvent, CellRendererView, CellWriteTarget, ColumnCellFacts, DispatchOutcome, EditorCellFacts, FkButtonView, FkCellAffordance, FkTextKind, GridCellInput, GridCellView, StickyInfo, StickyStyle, CLASS_BASE, CLASS_DIRTY_BG, CLASS_DIRTY_BORDER, CLASS_DIRTY_MARK, CLASS_FK_JUMP, CLASS_FK_PICK, CLASS_STICKY, CLASS_STICKY_OVERLAY, CELL_TEST_ID, EDITOR_KIND_ENUM, FkTextFn, ROLE_GRIDCELL,
 };
 // The T234 keyset paging vocabulary: the aggregate (`types/index`)
 // re-exports everything `types/keyset.ts` declares, so the crate root
 // carries the same names.
 pub use keyset_paging::{
-    apply_paging_info, cursor_for_page, empty_keyset_paging_state, filter_signature,
-    is_usable_boundary, next_request_cursor, order_signature, paging_signature, push_cursor,
-    reanchor, FilterLogic, KeysetCursor, KeysetPagingState, KeysetRequestPlan, PushedCursor,
-    KEYSET_STACK_LIMIT,
+    apply_paging_info, cursor_for_page, empty_keyset_paging_state, filter_signature, is_usable_boundary, next_request_cursor, order_signature, paging_signature, push_cursor, reanchor, FilterLogic, KeysetCursor, KeysetPagingState, KeysetRequestPlan, PushedCursor, KEYSET_STACK_LIMIT,
 };
 pub use keyset_types::{
     CursorValue, KeysetUnavailableReason, OrderColumn, PagePagingInfo, PagingMode,
 };
 pub use kv_workspace::{
-    capability_key_for_slot, get_kv_slot_component, has_kv_slot_capability, KvDriverMeta,
-    KvSlotComponent, KvSlotComponentProvider, KvSlotMetaProvider, KvSlotName,
-    KvWorkspaceCapabilities, KV_SLOT_NAMES,
+    capability_key_for_slot, get_kv_slot_component, has_kv_slot_capability, KvDriverMeta, KvSlotComponent, KvSlotComponentProvider, KvSlotMetaProvider, KvSlotName, KvWorkspaceCapabilities, KV_SLOT_NAMES,
 };
 pub use load_batch_export_table::{
-    load_batch_export_table_data, rows_to_records, BatchDdlFetcher, BatchDdlRowExtractor,
-    LoadBatchExportDeps, LoadBatchExportTableParams, RelationSchemaProvider, SchemaFetcher,
-    TableDataFetcher, TableDataRequest, DEFAULT_MAX_ROWS, DEFAULT_PAGE_SIZE,
+    load_batch_export_table_data, rows_to_records, BatchDdlFetcher, BatchDdlRowExtractor, LoadBatchExportDeps, LoadBatchExportTableParams, RelationSchemaProvider, SchemaFetcher, TableDataFetcher, TableDataRequest, DEFAULT_MAX_ROWS, DEFAULT_PAGE_SIZE,
 };
 pub use main_window_context_menu::{
-    build_main_blank_context_menu_items, build_main_connection_context_menu_items,
-    build_main_group_context_menu_items, invoke as invoke_main_window, MainWindowAction,
-    MainWindowConnectionHandlers, MainWindowContextMenuLabels, MainWindowMenuItem, MoveTarget,
+    build_main_blank_context_menu_items, build_main_connection_context_menu_items, build_main_group_context_menu_items, invoke as invoke_main_window, MainWindowAction, MainWindowConnectionHandlers, MainWindowContextMenuLabels, MainWindowMenuItem, MoveTarget,
 };
 pub use migration_job_hydration::{
-    bind_backend_client, bound_backend_client, classify_job_view, hydrate_migration_jobs,
-    is_stale_plan_error, job_kinds, latest_apply_job, update_migration_job_projection,
-    ErrorLike as MigrationErrorLike, GetJobFn, JobClassification, JobState, JobView, ListJobsFn,
-    MigrationJobClient, MigrationWindow, MigrationJobHydration, STALE_PLAN_ERROR_CODES,
+    bind_backend_client, bound_backend_client, classify_job_view, hydrate_migration_jobs, is_stale_plan_error, job_kinds, latest_apply_job, update_migration_job_projection, ErrorLike as MigrationErrorLike, GetJobFn, JobClassification, JobState, JobView, ListJobsFn, MigrationJobClient, MigrationWindow, MigrationJobHydration, STALE_PLAN_ERROR_CODES,
 };
 pub use named_views::{
-    build_named_view_export, is_host_filter_operator, named_view_scope_key, named_views_available,
-    normalize_view_name, normalized_name_key, parse_named_view_export, read_view_filters,
-    resolve_import_name, sort_named_views, view_from_table_state, view_names_equal,
-    views_for_scope, BackendClientCapabilities, NamedView, NamedViewExportFile, NamedViewScope,
-    PortFilterCondition, TableStateForView, ViewFilterReadout, ViewFromTableStateOptions,
-    NAMED_VIEW_EXPORT_VERSION,
+    build_named_view_export, is_host_filter_operator, named_view_scope_key, named_views_available, normalize_view_name, normalized_name_key, parse_named_view_export, read_view_filters, resolve_import_name, sort_named_views, view_from_table_state, view_names_equal, views_for_scope, BackendClientCapabilities, NamedView, NamedViewExportFile, NamedViewScope, PortFilterCondition, TableStateForView, ViewFilterReadout, ViewFromTableStateOptions, NAMED_VIEW_EXPORT_VERSION,
 };
-pub use panel_context_path::{format_panel_context_path, PanelContextPathArgs};
+pub use panel_context_path::{
+    format_panel_context_path, PanelContextPathArgs,
+};
 pub use process_list_result::{
-    command_result_columns, command_result_rows, default_process_columns, process_column_label_key,
-    process_record_to_row, ProcessColumnDef,
+    command_result_columns, command_result_rows, default_process_columns, process_column_label_key, process_record_to_row, ProcessColumnDef,
 };
 pub use product_features::{
     is_product_feature_enabled, ProductFeatureKey, PRODUCT_FEATURE_KEYS,
 };
 pub use metadata::{
-    BatchFlush, CurrentCallContext, CurrentProvenanceContext, ExecutionTarget,
-    InvalidationDecision, InvalidationReason, MetadataBatcher, MetadataBatcherOptions,
-    MetadataClock, MetadataIdentityInput, MetadataSessionIdentity, MetadataTarget, NamespaceTarget,
-    ObjectTarget, ResultProvenance, SessionHandle, TemporaryResult, check_temporary_result,
-    is_provenance_current, metadata_batch_bucket, metadata_cache_key, metadata_config_bucket,
-    metadata_session_key, read_temporary_result, METADATA_IDENTITY_SURFACE,
+    BatchFlush, CurrentCallContext, CurrentProvenanceContext, ExecutionTarget, InvalidationDecision, InvalidationReason, MetadataBatcher, MetadataBatcherOptions, MetadataClock, MetadataIdentityInput, MetadataSessionIdentity, MetadataTarget, NamespaceTarget, ObjectTarget, ResultProvenance, SessionHandle, TemporaryResult, check_temporary_result, is_provenance_current, metadata_batch_bucket, metadata_cache_key, metadata_config_bucket, metadata_session_key, read_temporary_result, METADATA_IDENTITY_SURFACE,
 };
 // seg3's panel modules re-export several names already present at the root
 // (from the parent's established facades); only their unique names are listed
 // here so the root keeps one binding per name.
 pub use panel_exec_cleanup::{
-    can_cancel_pane, cancel_and_cleanup_exec, cancel_and_cleanup_pane_exec, request_pane_cancel,
-    session_keys_of_panel, ExecMap, PaneCancelStore, PanelExecDeps, PanelType,
-    SessionController, PANEL_EXEC_CLEANUP_ASYNC_GAP,
-    PANEL_EXEC_CLEANUP_GAP, PANEL_EXEC_CLEANUP_SURFACE,
+    can_cancel_pane, cancel_and_cleanup_exec, cancel_and_cleanup_pane_exec, request_pane_cancel, session_keys_of_panel, ExecMap, PaneCancelStore, PanelExecDeps, PanelType, SessionController, PANEL_EXEC_CLEANUP_ASYNC_GAP, PANEL_EXEC_CLEANUP_GAP, PANEL_EXEC_CLEANUP_SURFACE,
 };
 pub use panel_query_context::{
     panel_target_database, panel_target_schema, QueryPanelContext, SchemaStateForPanel,
 };
 pub use panel_result_edit::{
-    assert_result_writable, columns_from_key, columns_key, effect_dependency_key, effect_request,
-    result_edit_key, start_effect, verdict_view, PanelResultEditStore, ResolveTicket,
-    ResultEditabilityOptions, ResultOriginRequest, ResultWritableError, VerdictView,
-    PANEL_RESULT_EDIT_GAP,
+    assert_result_writable, columns_from_key, columns_key, effect_dependency_key, effect_request, result_edit_key, start_effect, verdict_view, PanelResultEditStore, ResolveTicket, ResultEditabilityOptions, ResultOriginRequest, ResultWritableError, VerdictView, PANEL_RESULT_EDIT_GAP,
 };
 pub use platform_shared::{
-    McpContentBlock, McpError, McpFetch, McpHttpResponse, McpJsonRpcError, McpRequestInit,
-    McpToolCallResult, WebMcpClient, WebMcpClientManager, WebMcpConnectedServer,
-    WebMcpServerConfig, WebMcpToolInfo, format_call_tool_result, mcp_qualified_name,
+    McpContentBlock, McpError, McpFetch, McpHttpResponse, McpJsonRpcError, McpRequestInit, McpToolCallResult, WebMcpClient, WebMcpClientManager, WebMcpConnectedServer, WebMcpServerConfig, WebMcpToolInfo, format_call_tool_result, mcp_qualified_name,
 };
 // `ColumnSchema`/`IndexInfo`/`ForeignKeyInfo`/`TableSchema` moved to the
 // `connection_types` export above: the crate root now carries the full
@@ -946,166 +692,97 @@ pub use platform_shared::{
 // reachable inside `relation_prediction`, which had no root-path consumer
 // outside this crate.
 pub use relation_prediction::{
-    ColumnPair, DECLARED_RELATION_BOOST, DEFAULT_AMBIGUITY_MARGIN, DEFAULT_HIGH_THRESHOLD,
-    DEFAULT_MEDIUM_THRESHOLD, DeclaredForeignKey, EVIDENCE_WEIGHTS, EvidenceWeights,
-    PREDICTED_RELATION_BOOST, PredictionColumn, PredictionEvidence, PredictionEvidenceCode,
-    PredictionOptions, PredictionTable, PredictionTier, RelatedTableHint, RelatedTableOrigin,
-    RelationCandidate, TypeFamily, is_generic_key_name, normalize_data_type, normalize_identifier,
-    predict_relations, related_table_boost_map, related_table_hints, singularize,
-    split_identifier_words, to_prediction_table_from_schema, to_prediction_tables_from_schemas,
-    type_family,
+    ColumnPair, DECLARED_RELATION_BOOST, DEFAULT_AMBIGUITY_MARGIN, DEFAULT_HIGH_THRESHOLD, DEFAULT_MEDIUM_THRESHOLD, DeclaredForeignKey, EVIDENCE_WEIGHTS, EvidenceWeights, PREDICTED_RELATION_BOOST, PredictionColumn, PredictionEvidence, PredictionEvidenceCode, PredictionOptions, PredictionTable, PredictionTier, RelatedTableHint, RelatedTableOrigin, RelationCandidate, TypeFamily, is_generic_key_name, normalize_data_type, normalize_identifier, predict_relations, related_table_boost_map, related_table_hints, singularize, split_identifier_words, to_prediction_table_from_schema, to_prediction_tables_from_schemas, type_family,
 };
 pub use relative_time::{
-    RELATIVE_WINDOW_MS, RelativeTimeParts, RelativeTimeUnit, format_relative_time,
-    get_relative_time_parts,
+    RELATIVE_WINDOW_MS, RelativeTimeParts, RelativeTimeUnit, format_relative_time, get_relative_time_parts,
 };
 pub use resolve_ui_language::{
-    normalize_settings_language, resolve_ui_language, SupportedUiLanguage,
-    SUPPORTED_UI_LANGUAGES,
+    normalize_settings_language, resolve_ui_language, SupportedUiLanguage, SUPPORTED_UI_LANGUAGES,
 };
 pub use row_to_record::row_to_record;
 pub use run_predefined_edit::{
     predefined_edit_command, run_predefined_edit, NativeMenuPredefined,
 };
 pub use schema_diff_limitations_prefs::{
-    clear_schema_diff_limitations_dismissed, create_schema_diff_limitations_dismiss_prefs,
-    is_schema_diff_limitations_dismissed, set_schema_diff_limitations_dismissed,
-    SCHEMA_DIFF_LIMITATIONS_DISMISSED_KEY,
+    clear_schema_diff_limitations_dismissed, create_schema_diff_limitations_dismiss_prefs, is_schema_diff_limitations_dismissed, set_schema_diff_limitations_dismissed, SCHEMA_DIFF_LIMITATIONS_DISMISSED_KEY,
 };
 pub use schema_object_search::{
-    filter_object_search_results_by_type, filter_schema_objects_by_type, group_object_search_results,
-    group_schema_objects, matching_columns, object_type_order, search_schema_objects,
-    table_matches_object_search, ObjectSearchFilters, ObjectSearchMatchField,
-    ObjectSearchObjectType, ObjectSearchResult, ObjectSearchResultGroup, ObjectSearchSourceKind,
-    SchemaObjectIndex, SchemaObjectIndexEntry, SchemaObjectSearchIndex,
+    filter_object_search_results_by_type, filter_schema_objects_by_type, group_object_search_results, group_schema_objects, matching_columns, object_type_order, search_schema_objects, table_matches_object_search, ObjectSearchFilters, ObjectSearchMatchField, ObjectSearchObjectType, ObjectSearchResult, ObjectSearchResultGroup, ObjectSearchSourceKind, SchemaObjectIndex, SchemaObjectIndexEntry, SchemaObjectSearchIndex,
 };
 pub use server_status_trends::{
-    align_timestamp, card_rate_from_history, compute_trend_time_axis, desired_tick_count,
-    format_byte_rate, format_bytes, format_rate, latest_series_value, number_from, pick_tick_step,
-    update_trend_history, CommandKey, StatusRecord, TrendAxisOptions, TrendKind, TrendPoint,
-    TrendPrevSample, TrendSeries, TrendSeriesDef, TrendTimeAxis, TrendUpdateInput,
-    TrendUpdateResult, COMMAND_KEYS, DEFAULT_MIN_WINDOW_MS, DEFAULT_REFRESH_PERIOD_MS,
-    HISTORY_MAX, HISTORY_WINDOW_MS, TICK_STEP_CANDIDATES_MS, TREND_SERIES,
+    align_timestamp, card_rate_from_history, compute_trend_time_axis, desired_tick_count, format_byte_rate, format_bytes, format_rate, latest_series_value, number_from, pick_tick_step, update_trend_history, CommandKey, StatusRecord, TrendAxisOptions, TrendKind, TrendPoint, TrendPrevSample, TrendSeries, TrendSeriesDef, TrendTimeAxis, TrendUpdateInput, TrendUpdateResult, COMMAND_KEYS, DEFAULT_MIN_WINDOW_MS, DEFAULT_REFRESH_PERIOD_MS, HISTORY_MAX, HISTORY_WINDOW_MS, TICK_STEP_CANDIDATES_MS, TREND_SERIES,
 };
 pub use splash::{
-    hide_splash_plan, run_startup_wait_task, HideSplashPlan, StartupSettlement, StartupWaitResult,
-    HIDE_SPLASH_DELAY_MS, SPLASH_DOM_GAP, STARTUP_TASK_GAP,
+    hide_splash_plan, run_startup_wait_task, HideSplashPlan, StartupSettlement, StartupWaitResult, HIDE_SPLASH_DELAY_MS, SPLASH_DOM_GAP, STARTUP_TASK_GAP,
 };
 pub use sync_taxonomy::normalize_driver_id;
 pub use tunnel_draft::{
-    copy_tunnel_name, draft_to_saved_tunnel, empty_tunnel_draft, is_positive_port,
-    is_tunnel_draft_valid, positive_port, saved_tunnel_to_draft, timeout_seconds,
-    tunnel_draft_problem, HttpProxyDraft, SshDraft, SshJumpDraft, TunnelDraft,
-    TunnelDraftProblem, WebSocketDraft, DEFAULT_HTTP_PROXY_PORT, DEFAULT_SSH_PORT,
-    DEFAULT_TUNNEL_TIMEOUT, SAVED_TUNNEL_KINDS,
+    copy_tunnel_name, draft_to_saved_tunnel, empty_tunnel_draft, is_positive_port, is_tunnel_draft_valid, positive_port, saved_tunnel_to_draft, timeout_seconds, tunnel_draft_problem, HttpProxyDraft, SshDraft, SshJumpDraft, TunnelDraft, TunnelDraftProblem, WebSocketDraft, DEFAULT_HTTP_PROXY_PORT, DEFAULT_SSH_PORT, DEFAULT_TUNNEL_TIMEOUT, SAVED_TUNNEL_KINDS,
 };
 pub use value_search::{
-    base_cell_types, cell_types_for, filter_operator_for_mode, locate_conditions,
-    locate_filter_logic, rank_tables, searchable_columns, target_key, type_scopes_for_driver,
-    value_search_targets, value_search_type_groups_for, Clock, DriverExtraTypes, ExtraTypesProvider,
-    SchemaReader, SearchTableValuesRequest, SearchTableValuesResponse, TableValueSearcher,
-    ValueSearchDriver, ValueSearchDriverParams, ValueSearchLocateIntent, ValueSearchMode,
-    ValueSearchProgress, ValueSearchStatus, ValueSearchTableResult, ValueSearchTarget,
+    base_cell_types, cell_types_for, filter_operator_for_mode, locate_conditions, locate_filter_logic, rank_tables, searchable_columns, target_key, type_scopes_for_driver, value_search_targets, value_search_type_groups_for, Clock, DriverExtraTypes, ExtraTypesProvider, SchemaReader, SearchTableValuesRequest, SearchTableValuesResponse, TableValueSearcher, ValueSearchDriver, ValueSearchDriverParams, ValueSearchLocateIntent, ValueSearchMode, ValueSearchProgress, ValueSearchStatus, ValueSearchTableResult, ValueSearchTarget,
 };
 pub use theme_editor_colors::{
-    apply_sql_syntax_preset, build_editor_highlight_rules, default_editor_colors,
-    editor_colors_from_json, editor_colors_with_pack_overlay, find_sql_property_names,
-    is_sql_syntax_theme_id, parse_pack_editor_overlay, read_editor_colors,
-    set_pack_editor_color_overlay, EditorColorContract, EditorColors, ExtendedHighlightColors,
-    HighlightRule, Palette, SqlSyntaxPreset, StyleColors, SyntaxNodeSpan, CM_VARS,
-    CODEMIRROR_COLOR_GAP, CODEMIRROR_HIGHLIGHT_GAP, SQL_SYNTAX_PRESETS,
+    apply_sql_syntax_preset, build_editor_highlight_rules, default_editor_colors, editor_colors_from_json, editor_colors_with_pack_overlay, find_sql_property_names, is_sql_syntax_theme_id, parse_pack_editor_overlay, read_editor_colors, set_pack_editor_color_overlay, EditorColorContract, EditorColors, ExtendedHighlightColors, HighlightRule, Palette, SqlSyntaxPreset, StyleColors, SyntaxNodeSpan, CM_VARS, CODEMIRROR_COLOR_GAP, CODEMIRROR_HIGHLIGHT_GAP, SQL_SYNTAX_PRESETS,
 };
 pub use sql_bind_params::{
-    DEFAULT_ENABLE_AT, DEFAULT_ENABLE_DOLLAR_NAMED, DEFAULT_ENABLE_DOLLAR_POSITIONAL,
-    DEFAULT_ENABLE_QUESTION, DEFAULT_ENABLE_TEMPLATE, ParamValue, SqlBindPayloadV2, SqlParam,
-    SqlParamDialectPolicy, SqlParamFilter, SqlParamKind, SqlParamOccurrence, SqlParamOccurrenceV2,
-    SqlParamStableId, SqlParamSyntax, build_bind_payload_v2, coerce_param_value,
-    default_dialect_policy, get_param_label, is_sensitive_param_name, param_fingerprint,
-    params_to_payload, parse_sql_param_occurrences, parse_sql_params, sensitive_param_names,
-    substitute_sql_params,
+    DEFAULT_ENABLE_AT, DEFAULT_ENABLE_DOLLAR_NAMED, DEFAULT_ENABLE_DOLLAR_POSITIONAL, DEFAULT_ENABLE_QUESTION, DEFAULT_ENABLE_TEMPLATE, ParamValue, SqlBindPayloadV2, SqlParam, SqlParamDialectPolicy, SqlParamFilter, SqlParamKind, SqlParamOccurrence, SqlParamOccurrenceV2, SqlParamStableId, SqlParamSyntax, build_bind_payload_v2, coerce_param_value, default_dialect_policy, get_param_label, is_sensitive_param_name, param_fingerprint, params_to_payload, parse_sql_param_occurrences, parse_sql_params, sensitive_param_names, substitute_sql_params,
 };
 pub use sql_completion_context::{
-    contextual_keyword_completion, contextual_schema_completion, detect_alias_dot_context,
-    extract_qualifier_parts, filter_completions_by_kind, filter_keywords_by_kind,
-    infer_sql_completion_kind, is_table_context, last_bare_sql_keyword,
-    last_bare_sql_keyword_with_offset, CompletionContextInput, CompletionOption, CompletionOutcome,
-    CompletionResult, CompletionSourceFn, SqlCompletionKind, COLUMN_CONTEXT_ALLOWED_KEYWORDS,
-    TABLE_CONTEXT_ALLOWED_KEYWORDS,
+    contextual_keyword_completion, contextual_schema_completion, detect_alias_dot_context, extract_qualifier_parts, filter_completions_by_kind, filter_keywords_by_kind, infer_sql_completion_kind, is_table_context, last_bare_sql_keyword, last_bare_sql_keyword_with_offset, CompletionContextInput, CompletionOption, CompletionOutcome, CompletionResult, CompletionSourceFn, SqlCompletionKind, COLUMN_CONTEXT_ALLOWED_KEYWORDS, TABLE_CONTEXT_ALLOWED_KEYWORDS,
 };
 pub use sql_completions::{
-    keyword_completions, sql_function_completions, SqlFunctionCompletion,
-    DEFAULT_SQL_COMPLETION_DIALECT, SQL_COMPLETION_KEYWORDS,
+    keyword_completions, sql_function_completions, SqlFunctionCompletion, DEFAULT_SQL_COMPLETION_DIALECT, SQL_COMPLETION_KEYWORDS,
 };
 pub use sql_format::{
-    LANGUAGE_MAP, SqlDialectLookup, SqlFormatConfig, SqlFormatRequest, SqlFormatter, SqlIndent,
-    default_sql_format_options, format_sql, sql_format_indentation, sql_format_language,
-    DEFAULT_BREAK_BEFORE_BOOLEAN_OPERATORS, DEFAULT_INDENT_STYLE, DEFAULT_KEYWORD_CASE,
-    DEFAULT_LINES_BETWEEN_QUERIES,
+    LANGUAGE_MAP, SqlDialectLookup, SqlFormatConfig, SqlFormatRequest, SqlFormatter, SqlIndent, default_sql_format_options, format_sql, sql_format_indentation, sql_format_language, DEFAULT_BREAK_BEFORE_BOOLEAN_OPERATORS, DEFAULT_INDENT_STYLE, DEFAULT_KEYWORD_CASE, DEFAULT_LINES_BETWEEN_QUERIES,
 };
 pub use sql_function_registry::{
-    DIALECT_ALIASES, DriverFunctionMeta, DriverFunctionRegistry, FunctionCompletion, FunctionEntry,
-    FunctionParam, build_function_completions, common_functions, get_driver_functions,
-    get_function_entries, resolve_dialect_family, to_sql_function_completions, COMMON_FUNCTION_NAMES,
+    DIALECT_ALIASES, DriverFunctionMeta, DriverFunctionRegistry, FunctionCompletion, FunctionEntry, FunctionParam, build_function_completions, common_functions, get_driver_functions, get_function_entries, resolve_dialect_family, to_sql_function_completions, COMMON_FUNCTION_NAMES,
 };
 pub use sql_generator::{
-    format_table_identifier, generate_table_sql, BaseTableSqlGenerator, GeneratedSqlType,
-    TableSqlDialect,
+    format_table_identifier, generate_table_sql, BaseTableSqlGenerator, GeneratedSqlType, TableSqlDialect,
 };
 pub use sql_namespace_ops::{
-    collect_table_leaf_names, merge_namespace_path, namespace_branch_child_names,
-    namespace_child_names, namespace_has_child as namespace_tree_has_child, omit_table_leaf,
-    overlay_column_map_owned, NamespaceMergeKind,
+    collect_table_leaf_names, merge_namespace_path, namespace_branch_child_names, namespace_child_names, namespace_has_child as namespace_tree_has_child, omit_table_leaf, overlay_column_map_owned, NamespaceMergeKind,
 };
 pub use sql_editor_defaults::{
-    infer_default_schema, infer_default_table, table_clause_fingerprint,
-    tables_referenced_in_sql, ReferencedRelation, RelationSourceKind, ScopeRelations,
-    StatementRange,
+    infer_default_schema, infer_default_table, table_clause_fingerprint, tables_referenced_in_sql, ReferencedRelation, RelationSourceKind, ScopeRelations, StatementRange,
 };
 pub use sql_file_execution::{
-    execution_error_message, sql_file_execution_plan, ConfirmationMode, ExecutionFailure,
-    InvokeOutcome, SqlFileExecutionOutcome, SqlFileExecutionPlan, OVERWRITE_OPTION,
-    RESTORE_PROGRESS_EVENT, RESTORE_SQL_FILE_COMMAND, SQL_FILE_EXECUTION_GAP,
+    execution_error_message, sql_file_execution_plan, ConfirmationMode, ExecutionFailure, InvokeOutcome, SqlFileExecutionOutcome, SqlFileExecutionPlan, OVERWRITE_OPTION, RESTORE_PROGRESS_EVENT, RESTORE_SQL_FILE_COMMAND, SQL_FILE_EXECUTION_GAP,
 };
-pub use run_to_chart::{ChartTransformResult, has_renderable_chart, widget_run_to_chart_data};
+pub use run_to_chart::{
+    ChartTransformResult, has_renderable_chart, widget_run_to_chart_data,
+};
 pub use run_to_result::widget_run_to_statement_result;
 pub use scalar_cell_editors::{
-    build_number_view, build_temporal_view, build_text_view, common_flags, CommonEditorFlags,
-    FocusStrategy, NumberEditorView, ScalarEditorInput, TemporalEditorView, TemporalKindValue,
-    TextEditorView, DEFAULT_TEMPORAL_KIND, SCALAR_CELL_EDITORS_GAP, SCALAR_CELL_EDITORS_SURFACE,
+    build_number_view, build_temporal_view, build_text_view, common_flags, CommonEditorFlags, FocusStrategy, NumberEditorView, ScalarEditorInput, TemporalEditorView, TemporalKindValue, TextEditorView, DEFAULT_TEMPORAL_KIND, SCALAR_CELL_EDITORS_GAP, SCALAR_CELL_EDITORS_SURFACE,
 };
 // Duplicate grid/selection type names already re-exported by the parent's
 // grid_keyboard / table_changes facades are intentionally omitted here.
 pub use selection_actions::{
-    apply_begin_cell_selection, apply_clear_grid_selection, apply_grid_selection,
-    apply_reconcile_selection, apply_row_mode_transition, apply_row_select,
-    apply_toggle_select_all, displayed_column_names, normalize_cell_range, panel_column_order,
-    reconcile_grid_selection, resolve_selection_patch, row_index_selection_reset,
-    SelectionAction, SelectionOpts, SelectionPatch, TableStateForSelection,
+    apply_begin_cell_selection, apply_clear_grid_selection, apply_grid_selection, apply_reconcile_selection, apply_row_mode_transition, apply_row_select, apply_toggle_select_all, displayed_column_names, normalize_cell_range, panel_column_order, reconcile_grid_selection, resolve_selection_patch, row_index_selection_reset, SelectionAction, SelectionOpts, SelectionPatch, TableStateForSelection,
 };
 pub use stage_cell_value::{
-    compute_stage_cell_value_result, compute_stage_expression_value_result, compute_stage_result,
-    has_pending_column_change, restored_cell_value,
-    StageCellValueInput, StageCellValueResult, StageEditInput, StageEditResult,
-    StageExpressionValueInput, ValueMap, STAGE_CELL_VALUE_GAP,
-    STAGE_CELL_VALUE_SURFACE,
+    compute_stage_cell_value_result, compute_stage_expression_value_result, compute_stage_result, has_pending_column_change, restored_cell_value, StageCellValueInput, StageCellValueResult, StageEditInput, StageEditResult, StageExpressionValueInput, ValueMap, STAGE_CELL_VALUE_GAP, STAGE_CELL_VALUE_SURFACE,
 };
 pub use stage_edit_actions::{
     compute_unstage_delete_result, STAGE_EDIT_ACTIONS_GAP, STAGE_EDIT_ACTIONS_SURFACE,
 };
 pub use workflow_panel::{
-    connection_options as panel_connection_options, error_text, feedback_tone,
-    is_connection_variable, is_loading, variable_defaults, variable_input, ConfirmKind,
-    ConnectionSummary, ExecuteParams, FeedbackTone, PanelTab, VariableInput, WorkflowPanel,
-    WorkflowPanelEffect, WorkflowPanelHost, WorkflowPanelLabels, WorkflowPanelOptions,
-    WorkflowPanelState, WorkflowSelectOption, WorkflowStoreView, WORKFLOW_PANEL_GAP,
-    WORKFLOW_PANEL_SURFACE,
+    connection_options as panel_connection_options, error_text, feedback_tone, is_connection_variable, is_loading, variable_defaults, variable_input, ConfirmKind, ConnectionSummary, ExecuteParams, FeedbackTone, PanelTab, VariableInput, WorkflowPanel, WorkflowPanelEffect, WorkflowPanelHost, WorkflowPanelLabels, WorkflowPanelOptions, WorkflowPanelState, WorkflowSelectOption, WorkflowStoreView, WORKFLOW_PANEL_GAP, WORKFLOW_PANEL_SURFACE,
 };
 pub use sql_path_prefix::{
-    QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes,
-    parse_qualified_path_parents, resolve_ensure_segments,
+    QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes, parse_qualified_path_parents, resolve_ensure_segments,
 };
-pub use sql_schema_drop_targets::{SqlSchemaDropTarget, parse_schema_drop_targets};
-pub use sql_statement_range::{get_statement_at_cursor, StatementAtCursorFn, STATEMENT_RANGE_GAP};
+pub use sql_schema_drop_targets::{
+    SqlSchemaDropTarget, parse_schema_drop_targets,
+};
+pub use sql_statement_range::{
+    get_statement_at_cursor, StatementAtCursorFn, STATEMENT_RANGE_GAP,
+};
 pub use sql_transaction_guard::{
     analyze_transaction_sql, is_aborted_transaction_error, strip_sql_noise, TransactionSqlAnalysis,
 };
@@ -1113,135 +790,72 @@ pub use startup_timer::{
     format_wall_clock, StartupMark, StartupTimer, STARTUP_TIMER_GAP, WallClockParts,
 };
 pub use surface_bg_cache::{
-    css_color_to_hex, is_safe_css_hex, persist_surface_background, DEFAULT_SURFACE_DARK,
-    DEFAULT_SURFACE_LIGHT, SURFACE_BG_CACHE_GAP,
+    css_color_to_hex, is_safe_css_hex, persist_surface_background, DEFAULT_SURFACE_DARK, DEFAULT_SURFACE_LIGHT, SURFACE_BG_CACHE_GAP,
 };
 pub use sync_pairing::{
-    compute_sync_pairing_state, normalize_sync_family, sync_category, sync_path_from_str,
-    view_to_result, PairingView, SyncCategory, SyncConnection, SyncPairingCache,
-    SyncPairingResult, SyncPairingState, SyncPath, SyncRegistryMeta,
-    SYNC_PAIRING_CACHE_DELIMITER,
+    compute_sync_pairing_state, normalize_sync_family, sync_category, sync_path_from_str, view_to_result, PairingView, SyncCategory, SyncConnection, SyncPairingCache, SyncPairingResult, SyncPairingState, SyncPath, SyncRegistryMeta, SYNC_PAIRING_CACHE_DELIMITER,
 };
 pub use table_changes::{
-    build_row_identity, clone_pending_row_change, draft_write_columns,
-    duplicate_row_identity_keys, is_complete_table_change_context, normalize_edit_value,
-    row_identity_key, stable_serialize, table_change_context_key, values_equal, ChangeSeverity,
-    ChangeWarning, ColumnValues, CommitOperation, CommitPendingChangesResponse,
-    CommitPendingChangesResult, CommitStatementResult, CommitStatus, InsertLocation, PendingInsert,
-    PendingRowChange, PendingStatus, PlannedStatement, RefreshStatus, RowChangePlan, RowIdentity,
-    TableChangeContext as TableChangesContext, WriteExpressionId,
+    build_row_identity, clone_pending_row_change, draft_write_columns, duplicate_row_identity_keys, is_complete_table_change_context, normalize_edit_value, row_identity_key, stable_serialize, table_change_context_key, values_equal, ChangeSeverity, ChangeWarning, ColumnValues, CommitOperation, CommitPendingChangesResponse, CommitPendingChangesResult, CommitStatementResult, CommitStatus, InsertLocation, PendingInsert, PendingRowChange, PendingStatus, PlannedStatement, RefreshStatus, RowChangePlan, RowIdentity, TableChangeContext as TableChangesContext, WriteExpressionId,
 };
 pub use table_schema_for_sql::{
-    build_pseudo_table_schema, fetch_table_schema_for_sql_generation,
-    generate_table_sql_with_fallbacks, FetchTableSchemaInput, GenerateFallbackOptions,
-    ReadCachedSchema, ReadColumnsRow, ReadColumnsValue, ReadRelationColumns, RelationRef,
+    build_pseudo_table_schema, fetch_table_schema_for_sql_generation, generate_table_sql_with_fallbacks, FetchTableSchemaInput, GenerateFallbackOptions, ReadCachedSchema, ReadColumnsRow, ReadColumnsValue, ReadRelationColumns, RelationRef,
 };
 pub use table_sql_actions::{
-    build_no_primary_key_edit_template, build_query_open_context, build_safe_table_sql_template,
-    build_table_context, build_table_sql_action, build_table_sql_actions, no_primary_key_edit_spec,
-    quote_table_identifier, QueryOpenContext, QueryOpenFocus, QueryOpenSource, SqlActionExecution,
-    TableActionInput, TableContext, TableSqlAction, TableSqlActionSpec, TABLE_SQL_ACTION_KINDS,
+    build_no_primary_key_edit_template, build_query_open_context, build_safe_table_sql_template, build_table_context, build_table_sql_action, build_table_sql_actions, no_primary_key_edit_spec, quote_table_identifier, QueryOpenContext, QueryOpenFocus, QueryOpenSource, SqlActionExecution, TableActionInput, TableContext, TableSqlAction, TableSqlActionSpec, TABLE_SQL_ACTION_KINDS,
 };
 pub use theme_pack_apply::{
-    classify_theme_pack, encode_wapp_theme_pack_id, invalid_wapp_theme_id_error,
-    join_relative_path, mime_for_path, parse_charts_json, parse_wapp_theme_pack_id, probe_icon,
-    rewrite_css_urls, unknown_theme_pack_error, plan_theme_pack_apply, ThemePackApplyPlan,
-    ThemePackApplyResult, ThemePackSelection, THEME_PACK_APPLY_GAP, THEME_PACK_CHANGED_EVENT,
-    THEME_PACK_STYLE_ID, WAPP_THEME_PACK_PREFIX,
+    classify_theme_pack, encode_wapp_theme_pack_id, invalid_wapp_theme_id_error, join_relative_path, mime_for_path, parse_charts_json, parse_wapp_theme_pack_id, probe_icon, rewrite_css_urls, unknown_theme_pack_error, plan_theme_pack_apply, ThemePackApplyPlan, ThemePackApplyResult, ThemePackSelection, THEME_PACK_APPLY_GAP, THEME_PACK_CHANGED_EVENT, THEME_PACK_STYLE_ID, WAPP_THEME_PACK_PREFIX,
 };
 pub use table_list_panel::{
-    build_table_list_view, display_table_name, filter_label_key, filter_table_rows,
-    filter_test_id, row_diff_counts, table_has_row_diffs, table_is_unchanged, table_key,
-    FilterButtonView, RowDiffCounts, TableDiffFilter, TableItemBadge, TableListItemView,
-    TableListRow, TableListView, TableSyncStatus, DATA_SYNC_FILTERS, IDENTICAL_KEY,
-    MAPPING_INCOMPATIBLE_KEY, NO_TABLES_MATCH_KEY, ROW_DIFFS_KEY, SEARCH_PLACEHOLDER_KEY,
-    TABLE_ITEM_TEST_ID, TABLE_LIST_PANEL_GAP, TABLE_LIST_PANEL_SURFACE,
+    build_table_list_view, display_table_name, filter_label_key, filter_table_rows, filter_test_id, row_diff_counts, table_has_row_diffs, table_is_unchanged, table_key, FilterButtonView, RowDiffCounts, TableDiffFilter, TableItemBadge, TableListItemView, TableListRow, TableListView, TableSyncStatus, DATA_SYNC_FILTERS, IDENTICAL_KEY, MAPPING_INCOMPATIBLE_KEY, NO_TABLES_MATCH_KEY, ROW_DIFFS_KEY, SEARCH_PLACEHOLDER_KEY, TABLE_ITEM_TEST_ID, TABLE_LIST_PANEL_GAP, TABLE_LIST_PANEL_SURFACE,
 };
-pub use tabs::{Tab, TabKind, Tabs};
+pub use tabs::{
+    Tab, TabKind, Tabs,
+};
 pub use transfer_limitations_prefs::{
-    clear_transfer_limitations_dismissed, create_transfer_limitations_dismiss_prefs,
-    is_transfer_limitations_dismissed, set_transfer_limitations_dismissed,
-    TRANSFER_LIMITATIONS_DISMISSED_KEY,
+    clear_transfer_limitations_dismissed, create_transfer_limitations_dismiss_prefs, is_transfer_limitations_dismissed, set_transfer_limitations_dismissed, TRANSFER_LIMITATIONS_DISMISSED_KEY,
 };
 pub use transfer_pairing::{
-    is_transfer_target_supported, resolve_transfer_pairing, TransferPairingResult, TransferPath,
-    TransferRegistry,
+    is_transfer_target_supported, resolve_transfer_pairing, TransferPairingResult, TransferPath, TransferRegistry,
 };
 pub use tunnel_deletion::{
-    delete_tunnel_and_unbind, unbind_connection_patch, DeleteTunnel, DeleteTunnelDeps,
-    DeleteTunnelOutcome, GetConnections, SaveConnection, KEY_DELETE_FAILED, KEY_UNBIND_FAILED,
+    delete_tunnel_and_unbind, unbind_connection_patch, DeleteTunnel, DeleteTunnelDeps, DeleteTunnelOutcome, GetConnections, SaveConnection, KEY_DELETE_FAILED, KEY_UNBIND_FAILED,
 };
 pub use update_reminder_schedule::{
-    dispatch_event, on_interval_tick, start_update_reminder_schedule,
-    stop_update_reminder_schedule, ScheduleDeps, ScheduleHandle, CHECK_INTERVAL_MS, CHANNEL_AUTO,
-    EVENT_FOCUS, EVENT_ONLINE, EVENT_VISIBILITY_CHANGE, VISIBILITY_VISIBLE,
+    dispatch_event, on_interval_tick, start_update_reminder_schedule, stop_update_reminder_schedule, ScheduleDeps, ScheduleHandle, CHECK_INTERVAL_MS, CHANNEL_AUTO, EVENT_FOCUS, EVENT_ONLINE, EVENT_VISIBILITY_CHANGE, VISIBILITY_VISIBLE,
 };
 pub use updater::{
-    check_for_updates, current_variant, download_and_install_update, get_update_channel,
-    has_updater_channel, is_updater_supported, manifest_belongs_to_build, maybe_check_on_startup,
-    normalize_sku, read_manifest_variant, relaunch_to_apply_update, UpdateChannel,
-    UpdateCheckResult, UpdaterBuildConfig, UpdaterLog, UpdaterLogLevel, UpdateProgress,
-    StartupCheckPlan,
+    check_for_updates, current_variant, download_and_install_update, get_update_channel, has_updater_channel, is_updater_supported, manifest_belongs_to_build, maybe_check_on_startup, normalize_sku, read_manifest_variant, relaunch_to_apply_update, UpdateChannel, UpdateCheckResult, UpdaterBuildConfig, UpdaterLog, UpdaterLogLevel, UpdateProgress, StartupCheckPlan,
 };
 pub use wapp_asset_origin::{
-    build_wapp_asset_src, build_wapp_icon_src, configure_wapp_asset_resolver,
-    is_safe_wapp_asset_path, is_valid_wapp_id, parse_wapp_asset_target,
-    reset_wapp_asset_resolver, DESKTOP_WAPP_ASSET_RESOLVER, WappAssetQueryMap, WappAssetResolver,
-    WappAssetTarget, WEB_WAPP_ASSET_RESOLVER, WAPP_ASSET_CSP, WAPP_ASSET_PATH_PREFIX,
+    build_wapp_asset_src, build_wapp_icon_src, configure_wapp_asset_resolver, is_safe_wapp_asset_path, is_valid_wapp_id, parse_wapp_asset_target, reset_wapp_asset_resolver, DESKTOP_WAPP_ASSET_RESOLVER, WappAssetQueryMap, WappAssetResolver, WappAssetTarget, WEB_WAPP_ASSET_RESOLVER, WAPP_ASSET_CSP, WAPP_ASSET_PATH_PREFIX,
 };
 pub use window_kind::{
-    get_url_param, get_window_kind, reset_window_kind_cache, resolve_window_kind, WindowKind,
-    LEGACY_MAIN_ALIASES,
+    get_url_param, get_window_kind, reset_window_kind_cache, resolve_window_kind, WindowKind, LEGACY_MAIN_ALIASES,
 };
 pub use window_manager::{
-    backup_window_options, connection_payload, connection_window_plan, dashboard_window_plan,
-    data_sync_window_options, data_transfer_window_options, docs_window_plan,
-    emit_menu_action_plan, is_main_shell_menu_id, schema_diff_window_options,
-    settings_window_plan, workflow_window_plan, BackupMode, BackupPrefill, ConnectionWindowOpts,
-    ConnectionWindowPlan, DashboardWindowPlan, DocsWindowPlan, MenuActionPlan, PostOnboardingSample,
-    SingletonWindowPlan, MAIN_SHELL_MENU_IDS, PENDING_CONNECTION_KEY, POST_ONBOARDING_SAMPLE_KEY,
-    WINDOW_CAPABILITY_LABEL_SAMPLES, WINDOW_MANAGER_GAP,
+    backup_window_options, connection_payload, connection_window_plan, dashboard_window_plan, data_sync_window_options, data_transfer_window_options, docs_window_plan, emit_menu_action_plan, is_main_shell_menu_id, schema_diff_window_options, settings_window_plan, workflow_window_plan, BackupMode, BackupPrefill, ConnectionWindowOpts, ConnectionWindowPlan, DashboardWindowPlan, DocsWindowPlan, MenuActionPlan, PostOnboardingSample, SingletonWindowPlan, MAIN_SHELL_MENU_IDS, PENDING_CONNECTION_KEY, POST_ONBOARDING_SAMPLE_KEY, WINDOW_CAPABILITY_LABEL_SAMPLES, WINDOW_MANAGER_GAP,
 };
 // extract_workflow_yaml / WorkflowValidationConnection are already re-exported
 // by the parent's ai-chat facade; only seg3's unique yaml helpers are listed.
 pub use workflow_yaml::{
-    looks_like_workflow, parse_validated_workflow_definition,
-    parse_workflow_blocks, parse_workflow_yaml, validate_workflow_fields,
+    looks_like_workflow, parse_validated_workflow_definition, parse_workflow_blocks, parse_workflow_yaml, validate_workflow_fields,
 };
 pub use wapp_bridge::{
-    err_envelope, host_ready_envelope, is_request_envelope, is_wapp_command_allowed, ok_envelope,
-    parse_command_invoke, parse_i18n_key, parse_notify, parse_request, parse_storage,
-    response_type_of, route_for, theme_apply_envelope, theme_snapshot_value, timeout_disposition,
-    to_public_connection, as_nonempty_string, looks_like_not_found, AttachBridgeOptions,
-    BridgeApiError, BridgeConnectionSummary, BridgeEffect, BridgeErrorPayload, BridgeErrorCode,
-    BridgeState, BridgeTarget, CommandInvokeInput, ConnectionConfigLike, NotifyInput,
-    StorageInput, TimeoutDisposition, WappBridge, WappBridgeHost, WappErrEnvelope,
-    WappOkEnvelope, WappRequestEnvelope, WappResponseEnvelope, API_ROUTES, BRIDGE_CHANNEL,
-    BRIDGE_ERROR_CODES, ERROR_MESSAGE_LIMIT_CHARS, MAX_INFLIGHT_REQUESTS, MAX_REQUEST_ID_CHARS,
-    NOTIFY_MIN_INTERVAL_MS, REQUEST_TIMEOUT_MS, SESSION_REQUEST_LIMIT, WAPP_BRIDGE_DOM_GAP,
-    WAPP_BRIDGE_EVENT_GAP, WAPP_BRIDGE_HANDLER_GAP, WAPP_BRIDGE_IPC_GAP, WAPP_BRIDGE_SURFACE,
-    WAPP_COMMAND_DENYLIST,
+    err_envelope, host_ready_envelope, is_request_envelope, is_wapp_command_allowed, ok_envelope, parse_command_invoke, parse_i18n_key, parse_notify, parse_request, parse_storage, response_type_of, route_for, theme_apply_envelope, theme_snapshot_value, timeout_disposition, to_public_connection, as_nonempty_string, looks_like_not_found, AttachBridgeOptions, BridgeApiError, BridgeConnectionSummary, BridgeEffect, BridgeErrorPayload, BridgeErrorCode, BridgeState, BridgeTarget, CommandInvokeInput, ConnectionConfigLike, NotifyInput, StorageInput, TimeoutDisposition, WappBridge, WappBridgeHost, WappErrEnvelope, WappOkEnvelope, WappRequestEnvelope, WappResponseEnvelope, API_ROUTES, BRIDGE_CHANNEL, BRIDGE_ERROR_CODES, ERROR_MESSAGE_LIMIT_CHARS, MAX_INFLIGHT_REQUESTS, MAX_REQUEST_ID_CHARS, NOTIFY_MIN_INTERVAL_MS, REQUEST_TIMEOUT_MS, SESSION_REQUEST_LIMIT, WAPP_BRIDGE_DOM_GAP, WAPP_BRIDGE_EVENT_GAP, WAPP_BRIDGE_HANDLER_GAP, WAPP_BRIDGE_IPC_GAP, WAPP_BRIDGE_SURFACE, WAPP_COMMAND_DENYLIST,
 };
 pub use wapp_i18n::{
-    is_wapp_i18n_key_valid, is_wapp_i18n_locale_valid, resolve_wapp_string,
-    wapp_i18n_candidates, wapp_i18n_dictionary_path, WappDictionary, WappI18n, WappI18nDeps,
-    WAPP_I18N_GAP, WAPP_I18N_SURFACE,
+    is_wapp_i18n_key_valid, is_wapp_i18n_locale_valid, resolve_wapp_string, wapp_i18n_candidates, wapp_i18n_dictionary_path, WappDictionary, WappI18n, WappI18nDeps, WAPP_I18N_GAP, WAPP_I18N_SURFACE,
 };
 pub use workflow_draft_yaml::{
-    draft_to_yaml_object, draft_to_yaml_value, yaml_object_to_draft, yaml_value_to_draft,
-    WorkflowDraft, WorkflowDraftVariable, WorkflowStepDraft, WORKFLOW_DRAFT_YAML_GAP,
-    WORKFLOW_DRAFT_YAML_SURFACE,
+    draft_to_yaml_object, draft_to_yaml_value, yaml_object_to_draft, yaml_value_to_draft, WorkflowDraft, WorkflowDraftVariable, WorkflowStepDraft, WORKFLOW_DRAFT_YAML_GAP, WORKFLOW_DRAFT_YAML_SURFACE,
 };
 pub use workflow_list_context_menu::{
-    build_workflow_history_context_menu_items, build_workflow_list_context_menu_items,
-    BuildWorkflowHistoryContextMenuArgs, BuildWorkflowListContextMenuArgs,
-    WorkflowHistoryContextMenuHandlers, WorkflowHistoryContextMenuLabels, WorkflowMenuItem,
-    WorkflowListContextMenuHandlers, WorkflowListContextMenuLabels, WORKFLOW_LIST_MENU_GAP,
-    WORKFLOW_LIST_MENU_SURFACE,
+    build_workflow_history_context_menu_items, build_workflow_list_context_menu_items, BuildWorkflowHistoryContextMenuArgs, BuildWorkflowListContextMenuArgs, WorkflowHistoryContextMenuHandlers, WorkflowHistoryContextMenuLabels, WorkflowMenuItem, WorkflowListContextMenuHandlers, WorkflowListContextMenuLabels, WORKFLOW_LIST_MENU_GAP, WORKFLOW_LIST_MENU_SURFACE,
 };
 pub use theme_tokens::{
-    build_theme_snapshot, ThemeSnapshot, ThemeSnapshotInput, THEME_SNAPSHOT_VERSION, THEME_TOKENS,
-    THEME_TOKENS_DOM_GAP,
+    build_theme_snapshot, ThemeSnapshot, ThemeSnapshotInput, THEME_SNAPSHOT_VERSION, THEME_TOKENS, THEME_TOKENS_DOM_GAP,
 };
 pub use total_rows_display::{
     can_page_forward, format_row_count, total_rows_view, TotalRowsView,
@@ -1258,22 +872,59 @@ pub use total_rows_display::{
 // only inside `types::client_settings`/`types::value_presentation` — the
 // aggregate surface mirrors React's own import-only reachability.
 pub use types::{
-    AppSettings, ChangedColumnDiff, CheckConstraintDiffEntry, ColumnDiffEntry, ColumnInfo,
-    CommandAccessLevel, CommandCategory, Counter, DefaultTableSort, DriverCommandDefinition,
-    DriverCommandMetadata, DriverSaveDialogSpec, ErrorHandlingConfig, ErrorHandlingStrategy,
-    FavoriteQuery, GridDensity, HistoryEntry, HistoryListItem, Id, KeyDetail, KeyEntry,
-    KeyScanResult, LogLevel, McpApprovalDecision, McpApprovalRequest, McpAuditDecision,
-    McpAuditRecord, McpHttpTransport, McpHttpStatus, McpPermissionMode, MergeSource,
-    MultiQueryResult, OnboardingState, QueryResult, QueryStreamEvent, ResultCompleteness,
-    RuntimeResultBinding, SessionContext, SessionContextConfidence,
-    SortCondition, SqlExecutionStrategy, SqlFormatOptions, StatementResult,
-    SyncObjectKind, TableCompareStatus, TableComparison, TableDataResult, TableOptionsDiff,
-    TableOptionsSnapshot, TableSchemaDiff, Timestamp, TransactionState, TransformColumn,
-    TunnelSource, TunnelUsage, WritableMapping, WorkflowBlock, WorkflowBlockRetry,
-    WorkflowBlockType, WorkflowDefinition, WorkflowExecuteRequest, WorkflowIdRequest,
-    WorkflowOutput, WorkflowRunGetRequest, WorkflowRunListItem, WorkflowRunRecord,
-    WorkflowRunsListRequest, WorkflowSaveRequest, WorkflowSchedule, WorkflowStep,
-    WorkflowStepType, WorkflowVisibility, WorkflowYamlSaveRequest, is_valid_mcp_server_id,
+    AppSettings, ChangedColumnDiff, CheckConstraintDiffEntry, ColumnDiffEntry, ColumnInfo, CommandAccessLevel, CommandCategory, Counter, DefaultTableSort, DriverCommandDefinition, DriverCommandMetadata, DriverSaveDialogSpec, ErrorHandlingConfig, ErrorHandlingStrategy, FavoriteQuery, GridDensity, HistoryEntry, HistoryListItem, Id, KeyDetail, KeyEntry, KeyScanResult, LogLevel, McpApprovalDecision, McpApprovalRequest, McpAuditDecision, McpAuditRecord, McpHttpTransport, McpHttpStatus, McpPermissionMode, MergeSource, MultiQueryResult, OnboardingState, QueryResult, QueryStreamEvent, ResultCompleteness, RuntimeResultBinding, SessionContext, SessionContextConfidence, SortCondition, SqlExecutionStrategy, SqlFormatOptions, StatementResult, SyncObjectKind, TableCompareStatus, TableComparison, TableDataResult, TableOptionsDiff, TableOptionsSnapshot, TableSchemaDiff, Timestamp, TransactionState, TransformColumn, TunnelSource, TunnelUsage, WritableMapping, WorkflowBlock, WorkflowBlockRetry, WorkflowBlockType, WorkflowDefinition, WorkflowExecuteRequest, WorkflowIdRequest, WorkflowOutput, WorkflowRunGetRequest, WorkflowRunListItem, WorkflowRunRecord, WorkflowRunsListRequest, WorkflowSaveRequest, WorkflowSchedule, WorkflowStep, WorkflowStepType, WorkflowVisibility, WorkflowYamlSaveRequest, is_valid_mcp_server_id,
+};
+pub use open_history_query::{
+    open_history_query, ActiveConnection, HistoryQueryEntry, OpenHistoryOutcome, OpenHistoryQueryOptions, OpenHistoryQueryHost, PathHierarchySplit, PendingHistoryQuery, QueryPanelState, SavedConnection, OPEN_HISTORY_QUERY_GAP, OPEN_HISTORY_QUERY_SURFACE,
+};
+pub use query_contracts::{
+    build_query_panel_diagnosis_context, has_suspicious_postgres_double_quoted_literal, read_current_query_panel_retry_validation_input, ActiveConnectionView, ConnectionContext, DiagnosisContext, DiagnosisContextInput, ExecuteKind, PendingExecute, PanelView, QueryContractsHost, QueryDiagnosisExecution, QueryDiagnosisSchemaState, QueryExecutionGateRefs, QueryPanelCallbacks, QueryPanelDiagnosisContextInput, QueryPanelProps, SchemaContext, QUERY_CONTRACTS_GAP, QUERY_CONTRACTS_SURFACE,
+};
+pub use query_drop_handler::{
+    create_query_drop_handler, detect_drop_context, ChartConfigLike, DashboardWidgetRequest, DroppedTable, DropEffect, DropOptions, ExplainResultLike, QueryPanelWorkflows, RetryValidationInputLike, WorkflowEffect, WorkflowHost, WorkflowOptions, WorkflowState, QUERY_DROP_HANDLER_GAP, QUERY_DROP_HANDLER_SURFACE,
+};
+pub use query_execution_target::{
+    estimate_query_result_pane_height, offset_to_line, query_result_pane_sizing, resolve_execution_target, statement_target_info, strategy_as_str, view_is_chart, effective_strategy, ExecutionTargetInput, QueryResultPaneHeightInput, ResolveExecutionTargetResult, ResultPaneSizing, StatementTargetInfo, RESULT_PANE_MIN_HEIGHT, QUERY_EXECUTION_TARGET_GAP, QUERY_EXECUTION_TARGET_SURFACE,
+};
+pub use result_workspace::{
+    can_render_result_chart, get_top_level_sql_verb, infer_field_type, is_chartable_result, is_mutation_execution, resolve_result_workspace_view, strip_leading_sql_comments, ResultColumn, ResultValue, ResultWorkspaceFallbackReason, ResultWorkspaceView, ResultWorkspaceViewResolution, StatementResultView, MUTATION_VERBS, QUERY_VERBS, RESULT_WORKSPACE_GAP, RESULT_WORKSPACE_SURFACE,
+};
+pub use content_view_helpers::{
+    get_panel_icon, get_panel_label, get_panel_short_label, get_panel_tab_label, get_sub_tabs, get_view_sub_tabs, resolve_connection_context, resolve_connection_context_by_connection, resolve_panel_tab_database, ContentViewConnectionContext, ContentViewPanel, PanelIcon, SavedConnection as ContentViewSavedConnection, SubTab, SubTabId, CONTENT_VIEW_HELPERS_GAP, CONTENT_VIEW_HELPERS_SURFACE, ICON_CLASS,
+};
+pub use query_toolbar_width::{
+    path_hierarchy_label_width, query_context_select_width, query_toolbar_expanded_min_width, PathSelectorSegment, SelectorSegmentKind, ToolbarWidthOptions, PATH_HIERARCHY_LABEL_MAX, PATH_HIERARCHY_SELECT_CHROME, PATH_HIERARCHY_SELECT_MAX, PATH_HIERARCHY_SELECT_MIN, PATH_HIERARCHY_SEGMENT_GAP, QUERY_TOOLBAR_ICON_BUTTON_WIDTH, QUERY_TOOLBAR_STATUS_WIDTH, QUERY_TOOLBAR_WIDTH_GAP, QUERY_TOOLBAR_WIDTH_SURFACE, TOOLBAR_GAP, TOOLBAR_HORIZONTAL_PADDING,
+};
+pub use result_workspace_index::{
+    RESULT_WORKSPACE_INDEX_GAP, RESULT_WORKSPACE_INDEX_SURFACE,
+};
+pub use schema_tree::{
+    build_legacy_table_payload, build_schema_object_payload, get_categories_for_driver, leaf_kind_icon, object_kind_category, set_drag_payload, BASE_CATEGORIES, DragMimeEntry, DragMimeValue, DragPayloadOptions, DragPayloadPlan, LEAF_KIND_ICONS, LegacyTableDragPayload, LegacyTableEntry, OBJECT_KIND_CATEGORIES, SCHEMA_OBJECT_MIME, SCHEMA_PAYLOAD_VERSION, SCHEMA_TREE_GAP, SCHEMA_TREE_SURFACE, SchemaObjectDragKind, SchemaObjectDragPayloadV1, SchemaObjectNamespace, LEGACY_TABLE_MIME, TEXT_PLAIN_MIME,
+};
+pub use connection_page_utils::{
+    consume_pending_connection, enrich_open_connection_payload, make_tab_from_payload, pending_open_query_sql, remove_connection_from_stores, sync_stores_active_connection, ConnectionLookup, ConnectionStatus, ConnectionStoreAction, ConnectionTab, ConsumedConnection, MainView, PendingOpenQuery, WorkspaceMode, CONNECTION_PAGE_UTILS_GAP, CONNECTION_PAGE_UTILS_SURFACE, DEFAULT_DATABASE_TYPE,
+};
+pub use expanded_db_cache_refresh::{
+    schema_fingerprint, ConnectionRef, ExpandedDbCacheRefresh, RefreshDeps, RefreshEffect, RefreshInput, SchemaSnapshot, EXPANDED_DB_CACHE_REFRESH_GAP, EXPANDED_DB_CACHE_REFRESH_SURFACE,
+};
+// (all names already rooted above)
+pub use ai_draft_bridge::{
+    AiChatDraftRequest, AiChatDraftSource, ContentViewCallbacks, OpenRelationSubTab, AI_CHAT_DRAFT_FOCUS, AI_DRAFT_BRIDGE_GAP, AI_DRAFT_BRIDGE_SURFACE,
+};
+pub use query_error_chat_prompt::{
+    build_query_error_chat_prompt, send_query_error_chat_draft, QueryErrorChatContext, QueryErrorDraftInput, MAX_PROMPT_ERROR_LENGTH, MAX_PROMPT_SQL_LENGTH, QUERY_ERROR_CHAT_PROMPT_GAP, QUERY_ERROR_CHAT_PROMPT_SURFACE,
+};
+pub use query_execution_risk::{
+    assess_execution_risk, host_guard_would_block, ExecutionRiskDecision, ExecutionRiskMode, HardBlockReason, HostGuardMode, QUERY_EXECUTION_RISK_GAP,
+};
+pub use use_query_builder_contribution::{
+    client_snapshot, get_closed_snapshot, subscribe_falls_back_to_noop, QueryBuilderContribution, QueryBuilderRunState, USE_QUERY_BUILDER_CONTRIBUTION_GAP, USE_QUERY_BUILDER_CONTRIBUTION_SURFACE,
+};
+pub use validate_bind_params::{
+    find_missing_params, MissingParam, VALIDATE_BIND_PARAMS_GAP, VALIDATE_BIND_PARAMS_SURFACE,
+};
+pub use workspace_mode_sidebar::{
+    build_sidebar_view, build_update_view, dispatch_nav_action, progress_label, progress_ring, resolve_confirm_result, resolve_restart_prompt, update_label, NavAction, NavButton, NavButtonId, ProgressRing, RestartPrompt, SidebarView, UpdateAction, UpdateButtonView, UpdateIconKind, UpdateProgressPhase, UpdateState, BUTTON_ACTIVE, BUTTON_BASE, BUTTON_COLLAPSED, BUTTON_EXPANDED, BUTTON_INACTIVE, SIDEBAR_BASE, WORKSPACE_MODE_SIDEBAR_GAP, WORKSPACE_MODE_SIDEBAR_SURFACE,
 };
 
 /// One foreign key: this table's columns (a compound key stays together), the
