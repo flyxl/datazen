@@ -298,6 +298,37 @@ fn quick_look_target_out_of_range_is_none() {
     assert_eq!(quick_look_target(&state, 7, "name"), None, "a missing row has no target");
 }
 
+// Independent lane-C repro probes (original D1/D2/D3), retained as regression guards.
+#[test]
+fn probe_insert_notice_uses_the_react_locale_key() {
+    let (notice, _) = reduce_notice(None, NoticeEvent::CommitNotLocated);
+    assert_eq!(
+        notice.as_deref(),
+        Some(crate::i18n::t("tableData.insertReturningUnavailable")),
+        "React sets the notice from tableData.insertReturningUnavailable"
+    );
+}
+
+#[test]
+fn probe_blob_type_keywords_match_react() {
+    // React BLOB_TYPE_KEYWORDS = ['blob', 'binary', 'bytea', 'image', 'raw'].
+    for kind in ["blob", "binary", "bytea", "image", "raw"] {
+        assert!(
+            is_quick_lookable(&CellValue::Text("short".to_owned()), kind),
+            "type {kind} is a blob in React and must be quick-lookable"
+        );
+    }
+}
+
+#[test]
+fn probe_long_text_uses_js_string_length_not_utf8_bytes() {
+    let text = "中".repeat(60); // 60 JS chars, 180 UTF-8 bytes
+    assert!(
+        !is_quick_lookable(&CellValue::Text(text), "text"),
+        "React uses value.length (UTF-16 units), not byte length"
+    );
+}
+
 // Reverse verification (mutation -> observed failure text -> restored):
 // 1. Mapping the driver subset back to shared operators made `a_declared_subset_is_used_verbatim`
 //    fail on `left: ["eq","ne",…] right: ["eq","contains"]`.
