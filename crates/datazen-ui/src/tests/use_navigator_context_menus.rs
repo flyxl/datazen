@@ -567,6 +567,42 @@ fn view_menu_never_offers_er_or_generate_sql() {
     assert!(menus::find_entry(&items, "new-query").is_none());
 }
 
+// ── D1 / D2 regression repros ──────────────────────────────────────────────
+
+#[test]
+fn d1_preset_group_labels_localize_custom_keys_pass_through() {
+    assert_eq!(menus::format_group_label("preset:production"), "生产环境");
+    assert_eq!(menus::format_group_label("preset:development"), "开发环境");
+    assert_eq!(menus::format_group_label("preset:testing"), "测试环境");
+    assert_eq!(menus::format_group_label(""), "");
+    assert_eq!(menus::format_group_label("My Team"), "My Team");
+
+    // The organize submenu's move-target label uses the same helper.
+    let mut input = connection_input(false);
+    input.move_targets = vec!["preset:production".to_owned()];
+    let items = connection::build_connection_menu(&input);
+    let move_entry = find(&find(&items, "organize-submenu").children, "move-group-preset:production");
+    assert_eq!(move_entry.label, "生产环境");
+    assert_eq!(move_entry.label_key, None);
+}
+
+#[test]
+fn d2_disconnected_query_history_stages_pending_intent() {
+    let disconnected = connection::build_connection_menu(&connection_input(false));
+    let kind = find(&disconnected, "query-history").action.as_ref().map(|a| a.kind);
+    assert_eq!(kind, Some(NavActionKind::PendingQueryHistory));
+    assert_eq!(
+        find(&disconnected, "query-history").action.as_ref().map(|a| a.target.id.as_str()),
+        Some("conn-1")
+    );
+
+    let connected = connection::build_connection_menu(&connection_input(true));
+    assert_eq!(
+        find(&connected, "query-history").action.as_ref().map(|a| a.kind),
+        Some(NavActionKind::OpenQueryHistory)
+    );
+}
+
 // ── cross-cutting invariants ───────────────────────────────────────────────
 
 #[test]

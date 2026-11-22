@@ -293,15 +293,21 @@ pub(crate) struct ProductFeatures {
     pub data_sync: bool,
 }
 
-/// Format a group the way React's `formatGroupLabel(name, t)` does. The empty
-/// group name is the ungrouped bucket and renders as the locale's ungrouped
-/// label; every other name is used verbatim.
+/// React `connectionGroups.ts` `formatGroupLabel(key, t)`: the three preset
+/// storage keys get their localized `newConn.group*` labels; every other key —
+/// including the empty / ungrouped one — is passed through verbatim. The
+/// caller decides how to render the ungrouped bucket, not this helper.
 #[allow(dead_code)] // deps mirror; remove when the groups lib is ported.
 pub(crate) fn format_group_label(name: &str) -> String {
-    if name.is_empty() {
-        t("main.ungrouped").to_owned()
-    } else {
-        name.to_owned()
+    let preset_key = match name {
+        "preset:production" => Some("newConn.groupProd"),
+        "preset:development" => Some("newConn.groupDev"),
+        "preset:testing" => Some("newConn.groupTest"),
+        _ => None,
+    };
+    match preset_key {
+        Some(key) => t(key).to_owned(),
+        None => name.to_owned(),
     }
 }
 

@@ -299,13 +299,19 @@ pub(crate) fn build_connection_menu(input: &ConnectionMenuInput) -> Vec<MenuEntr
             },
         ),
     ));
-    // The hook always supplies onQueryHistory: connected views open history,
-    // disconnected ones stage a pending intent and connect first.
+    // The hook always supplies onQueryHistory, but its intent differs: a
+    // connected view opens history; a disconnected one stages a pending
+    // intent (the host then connects before opening it).
+    let history_kind = if input.is_connected {
+        NavActionKind::OpenQueryHistory
+    } else {
+        NavActionKind::PendingQueryHistory
+    };
     items.push(item(
         "query-history",
         "main.ctx.queryHistory",
         at(
-            NavActionKind::OpenQueryHistory,
+            history_kind,
             NavTarget {
                 id: input.id.clone(),
                 ..NavTarget::default()
