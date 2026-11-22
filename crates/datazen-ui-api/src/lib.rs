@@ -6,8 +6,11 @@
 mod ai_draft_bridge;
 mod query_contracts;
 mod result_workspace;
+mod query_toolbar_width;
+mod result_workspace_index;
 mod tabs;
 mod use_query_builder_contribution;
+mod validate_bind_params;
 
 use std::collections::HashMap;
 
@@ -30,6 +33,17 @@ pub use result_workspace::{
     ResultWorkspaceViewResolution, StatementResultView, MUTATION_VERBS, QUERY_VERBS,
     RESULT_WORKSPACE_GAP, RESULT_WORKSPACE_SURFACE,
 };
+pub use query_toolbar_width::{
+    path_hierarchy_label_width, query_context_select_width, query_toolbar_expanded_min_width,
+    PathSelectorSegment, SelectorSegmentKind, ToolbarWidthOptions, PATH_HIERARCHY_LABEL_MAX,
+    PATH_HIERARCHY_SELECT_CHROME, PATH_HIERARCHY_SELECT_MAX, PATH_HIERARCHY_SELECT_MIN,
+    PATH_HIERARCHY_SEGMENT_GAP, QUERY_TOOLBAR_ICON_BUTTON_WIDTH, QUERY_TOOLBAR_STATUS_WIDTH,
+    QUERY_TOOLBAR_WIDTH_GAP, QUERY_TOOLBAR_WIDTH_SURFACE, TOOLBAR_GAP,
+    TOOLBAR_HORIZONTAL_PADDING,
+};
+pub use result_workspace_index::{
+    RESULT_WORKSPACE_INDEX_GAP, RESULT_WORKSPACE_INDEX_SURFACE,
+};
 pub use tabs::{Tab, TabKind, Tabs};
 pub use ai_draft_bridge::{
     AiChatDraftRequest, AiChatDraftSource, ContentViewCallbacks, OpenRelationSubTab,
@@ -40,6 +54,11 @@ pub use use_query_builder_contribution::{
     client_snapshot, get_closed_snapshot, subscribe_falls_back_to_noop, QueryBuilderContribution,
     QueryBuilderRunState, USE_QUERY_BUILDER_CONTRIBUTION_GAP,
     USE_QUERY_BUILDER_CONTRIBUTION_SURFACE,
+};
+pub use validate_bind_params::{
+    find_missing_params, get_param_label, parse_sql_params, MissingParam, ParamValue, SqlParam,
+    SqlParamDialectPolicy, SqlParamKind, SqlParamSyntax, VALIDATE_BIND_PARAMS_GAP,
+    VALIDATE_BIND_PARAMS_SURFACE,
 };
 
 /// One foreign key: this table's columns (a compound key stays together), the
