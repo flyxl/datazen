@@ -39,6 +39,14 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+### Wave36 seg1-only 合流 push（2026-11-22，seg3 解决后首次正常合流）
+
+- 触发：可合积压 seg1=42 > 30（seg2/3/4=0，seg3 阻塞已于 Wave34 解决）。
+- 1 个真 merge commit `ef469553c`(parents 55b448168+4fdc0be79)，父分支 `55b448168 → ef469553c`（43 commits，fast-forward）。
+- **零冲突自动合并**（34 个文件含 navigator context-menu / table-view / kv modules / docs 全部干净合入），三 crate check 全 PASS，icons 0 重复，零断言弱化。
+- gate 又是 test rustc U 态（25:18，内存压力/磁盘 95%），按规则 kill，环境性非代码，按授权接受风险 push。
+- push 后全段 ahead=0（seg1/2/3/4 全部对齐）。清理 merge-w36seg1 worktree。
+
 ### Wave34 全段合流收口（2026-11-22，seg3 逐项解冲突 + 全段 ahead=0）
 
 - 前置：父分支 E0308 修复（测试夹具类型对齐，生产零改动）审计 PASS → 合流 `4d9a12d3d`；seg1 6 个 ahead（SavedConnection 统一 + T576/T578/T580/T582 navigator 簇）合流 `7befdd7fd`，lib.rs/tests/mod.rs 冲突按保留父分支权威导出 + seg1 新 mod 解法。
