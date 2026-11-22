@@ -216,3 +216,40 @@ fn long_unbroken_insert_notice_wraps_inside_the_window() {
         .collect();
     assert!(outside.is_empty(), "a long unbroken notice must wrap: {outside:?}");
 }
+
+// Independent lane-C repro probes (original D1/D2), retained as regression guards.
+#[test]
+fn probe_empty_insert_notice_does_not_render_a_banner() {
+    let vm = TableStatusBannersVm {
+        insert_notice: Some(String::new()),
+        ..Default::default()
+    };
+    let rt = runtime(scene(vm, true), (1440.0, 816.0));
+    assert!(
+        !has_key(&rt, "table-insert-degraded"),
+        "React's insertNotice && (...) treats an empty string as falsy"
+    );
+}
+
+#[test]
+fn probe_long_error_and_notice_stay_inside_both_windows() {
+    let long = "verylongunbrokenerrortoken".repeat(24);
+    for size in [(960.0, 640.0), (1440.0, 816.0)] {
+        for dark in [true, false] {
+            let vm = TableStatusBannersVm {
+                error: Some(long.clone()),
+                has_work: true,
+                insert_notice: Some(long.clone()),
+            };
+            let rt = runtime(scene(vm, dark), size);
+            let outside: Vec<String> = rt.elements().iter()
+                .filter(|e| {
+                    let r = e.rect;
+                    r[0] < -0.5 || r[1] < -0.5 || r[0] + r[2] > size.0 + 0.5 || r[1] + r[3] > size.1 + 0.5
+                })
+                .map(|e| format!("{} {:?}", e.key.as_deref().unwrap_or(&e.path), e.rect))
+                .collect();
+            assert!(outside.is_empty(), "{size:?} dark={dark}: outside {outside:?}");
+        }
+    }
+}
