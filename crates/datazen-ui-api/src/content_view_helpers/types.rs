@@ -194,18 +194,11 @@ pub struct ContentViewConnectionContext {
     pub connection_id: String,
     pub db_session_id: String,
     pub connection_name: String,
-    pub database_type: Option<String>,
+    pub database_type: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActiveConnectionEntry {
     pub connection_id: String,
     pub db_session_id: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SavedConnection {
-    pub id: String,
-    pub name: String,
-    pub database_type: Option<String>,
 }
