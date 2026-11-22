@@ -7,6 +7,7 @@ mod ai_draft_bridge;
 mod query_contracts;
 mod query_drop_handler;
 mod query_error_chat_prompt;
+mod content_view_helpers;
 mod query_execution_risk;
 mod query_execution_target;
 mod result_workspace;
@@ -49,6 +50,13 @@ pub use result_workspace::{
     InferredFieldType, ResultColumn, ResultValue, ResultWorkspaceFallbackReason, ResultWorkspaceView,
     ResultWorkspaceViewResolution, StatementResultView, MUTATION_VERBS, QUERY_VERBS,
     RESULT_WORKSPACE_GAP, RESULT_WORKSPACE_SURFACE,
+};
+pub use content_view_helpers::{
+    get_panel_icon, get_panel_label, get_panel_short_label, get_panel_tab_label, get_sub_tabs,
+    get_view_sub_tabs, resolve_connection_context, resolve_connection_context_by_connection,
+    resolve_panel_tab_database, ActiveConnectionEntry, ContentViewConnectionContext,
+    ContentViewPanel, PanelIcon, PanelKind, SavedConnection, SubTab, SubTabId,
+    CONTENT_VIEW_HELPERS_GAP, CONTENT_VIEW_HELPERS_SURFACE, ICON_CLASS,
 };
 pub use query_toolbar_width::{
     path_hierarchy_label_width, query_context_select_width, query_toolbar_expanded_min_width,
