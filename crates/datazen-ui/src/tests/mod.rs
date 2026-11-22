@@ -103,6 +103,9 @@ mod structure_plan_preview;
 mod structure_index_audit;
 // T536: the one-line table clipboard status (paste summary, problems, deadline).
 mod table_clipboard_status;
+// T630: the TableView clipboard adapter decisions (intent, formatting, mapping,
+// gating and host-clock feedback state).
+mod table_view_clipboard;
 // T544: FK error banner, load-error state and no-primary-key tip ports.
 mod table_fk_error_banner;
 mod table_load_error_state;
