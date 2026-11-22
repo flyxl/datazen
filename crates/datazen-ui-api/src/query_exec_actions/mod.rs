@@ -16,8 +16,8 @@ pub use transitions::{
 
 use crate::{ChartConfig, StatementResult};
 
-pub type ExecTable = BTreeMap<String, QueryExecState>;
-pub type BindParams = BTreeMap<String, Value>;
+pub type QueryExecTable = BTreeMap<String, QueryExecState>;
+pub use crate::BindParams;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QueryCancelState {
@@ -75,6 +75,14 @@ pub struct QueryExecState {
 }
 
 impl QueryExecState {
+    pub fn running(execution_id: impl Into<String>) -> Self {
+        Self {
+            running: true,
+            execution_id: Some(execution_id.into()),
+            ..Self::empty()
+        }
+    }
+
     pub fn empty() -> Self {
         Self {
             sql: String::new(),
