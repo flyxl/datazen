@@ -628,7 +628,7 @@ T001–T252 是非测试 `.tsx`（页面与组件），T253 起是它们依赖�
 - [ ] T609 · lib · 2.00d · lib/sqlCompletions.ts · split
 - [x] T610 · windows/connection · 0.90d · windows/connection/useConnectionTabs.ts
 - [ ] T611 · lib · 0.50d · lib/sqlEditorDefaults.ts
-- [ ] T612 · windows/connection · 0.90d · windows/connection/useConnectionWorkspaceMeta.ts
+- [x] T612 · windows/connection · 0.90d · windows/connection/useConnectionWorkspaceMeta.ts
 - [ ] T613 · lib · 0.90d · lib/sqlFileExecution.ts
 - [x] T614 · windows/connection · 0.90d · windows/connection/useDirtyIndex.ts
 - [ ] T615 · lib · 0.80d · lib/sqlFormat.ts lib/sqlFunctionRegistry.ts

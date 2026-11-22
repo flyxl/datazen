@@ -147,7 +147,7 @@
 - [x] T606 · windows/connection · 1.30d · windows/connection/tableEditing.ts · split
 - [x] T608 · windows/connection · 1.30d · windows/connection/useConnectionContextMenu.ts · split
 - [x] T610 · windows/connection · 0.90d · windows/connection/useConnectionTabs.ts
-- [ ] T612 · windows/connection · 0.90d · windows/connection/useConnectionWorkspaceMeta.ts
+- [x] T612 · windows/connection · 0.90d · windows/connection/useConnectionWorkspaceMeta.ts
 - [x] T614 · windows/connection · 0.90d · windows/connection/useDirtyIndex.ts
 - [x] T616 · windows/connection · 0.90d · windows/connection/useKvSlotActions.ts
 - [x] T618 · windows/connection · 0.90d · windows/connection/useKvWorkspaceSlots.ts
