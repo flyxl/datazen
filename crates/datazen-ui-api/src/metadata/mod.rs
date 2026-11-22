@@ -4,9 +4,9 @@
 //! `lib/metadata/identity.ts`, tasklist T080). `lib/metadata/batch.ts`
 //! (tasklist T031) lands beside it as `batch.rs` and consumes the same
 //! derivations instead of forking them. `lib/metadata/temporaryResults.ts`
-//! (tasklist T118) lands as `temporary_results.rs` and reuses `identity.rs`'s
-//! target mirrors while adding the `SessionHandle`/`ResultProvenance`
-//! mirrors of its own.
+//! (tasklist T118) lands as `temporary_results.rs` and reuses the canonical
+//! `types::query` target, handle and provenance families — the identity/target
+//! mirrors were unified there so every name has one definition.
 
 mod batch;
 mod identity;
@@ -14,12 +14,13 @@ mod temporary_results;
 
 pub use batch::{BatchFlush, MetadataBatcher, MetadataBatcherOptions, MetadataClock};
 pub use identity::{
-    ExecutionTarget, MetadataIdentityInput, MetadataSessionIdentity, MetadataTarget,
-    NamespaceTarget, ObjectTarget, metadata_batch_bucket, metadata_cache_key,
-    metadata_config_bucket, metadata_session_key,
+    MetadataIdentityInput, MetadataSessionIdentity, MetadataTarget, metadata_batch_bucket,
+    metadata_cache_key, metadata_config_bucket, metadata_session_key,
 };
 pub use temporary_results::{
     CurrentCallContext, CurrentProvenanceContext, InvalidationDecision, InvalidationReason,
-    ResultProvenance, SessionHandle, TemporaryResult, check_temporary_result,
-    is_provenance_current, read_temporary_result,
+    TemporaryResult, check_temporary_result, is_provenance_current, read_temporary_result,
+};
+pub use crate::types::{
+    ExecutionTarget, NamespaceTarget, ObjectTarget, ResultProvenance, SessionHandle,
 };

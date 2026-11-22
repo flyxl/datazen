@@ -39,7 +39,7 @@
 //! | `Dashboard`, `DashboardWidget` | native `datazen::dashboard::domain::types` (wasm-out) | display overrides declared here with the display `ChartConfig` — the module's only `DashboardWidget`/`Dashboard`, matching the facade's own local `Omit` overrides; the wire twins stay native |
 //! | `DashboardLayout`, `WidgetLayout`, `ViewMode`, `RefreshMode`, `RefreshPolicy`, `AlertMetricKind`, `AlertMetricAgg`, `AlertMetric`, `AlertOperator`, `AlertChannel`, `AlertRule`, `DashboardWorkflowRef`, `WidgetRunStatus`, `RunIndexEntry`, `WidgetRun`, `CreateWidgetFromSqlParams`, `CreateWidgetFromWorkflowParams`, `UpdateHiddenWidgetSqlParams` | same native module (wasm-out) | thin mirrors — same wire, same field widths (`u32` grid cells and seconds, `f64` thresholds, `u32` run row counts) |
 //! | `MonitorGrant`, `MonitorScope` | native `datazen::monitor::domain::grant` (wasm-out) | thin mirrors (`u64` revisions; `expiresAt` a `String` — the native twin's `DateTime<Utc>` is already an RFC 3339 string on the wire) |
-//! | `MonitorScope.target`'s `ExecutionTarget` (backend-client `types/session.ts`, with `NamespaceTarget`/`ObjectTarget`) | the crate root already exports a `metadata` mirror family of the same three names — but serde-less (the metadata identity keys preclude serde) | module-local serde mirrors under the `dashboard_types::` path; the root names stay with `metadata` |
+//! | `MonitorScope.target`'s `ExecutionTarget` (backend-client `types/session.ts`, with `NamespaceTarget`/`ObjectTarget`) | `types::query`'s canonical serde family (the wire-faithful projection) | re-exported here under the `dashboard_types::` path; one definition, also reached at the crate root |
 //! | `ChartConfig` re-export from `./chart` | `crate::chart_types::ChartConfig` (T090 display version), root-exported | not re-declared — one home (the `context_items` dedupe move of T128); the facade's consumers reach it at the crate root |
 //!
 //! ## Mounting note (the root name `DashboardWidget`)
@@ -457,59 +457,12 @@ pub struct UpdateHiddenWidgetSqlParams {
 }
 
 // ---------------------------------------------------------------------------
-// Wire vocabulary: the monitor schedule grant (backend-client
-// `types/session.ts`'s ExecutionTarget family mirrors first — see the
-// module docs' mounting note for why they are module-local).
+// Wire vocabulary: the monitor schedule grant. The ExecutionTarget family is
+// the canonical `types::query` definition, re-exported here so the module
+// path keeps working for the grant wire and its tests.
 // ---------------------------------------------------------------------------
 
-/// Mirror of backend-client `NamespaceTarget` (`types/session.ts`): the
-/// database / catalog / schema layers an execution runs in. Each layer is
-/// required-but-nullable (`string | null`): `None` serializes as an
-/// explicit `null`, key present — absent layers are `null`, only layers
-/// the driver declares `optional` may carry values. `path` holds driver
-/// namespace ids, **not** a filesystem path.
-///
-/// The crate root already exports a serde-less `metadata::NamespaceTarget`
-/// identity twin; this module-local mirror exists because `MonitorScope`'s
-/// wire is serde-bound. Thin mirror of the native
-/// `datazen::connection::domain::NamespaceTarget` (camelCase serde, same
-/// widths).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NamespaceTarget {
-    pub database: Option<String>,
-    pub catalog: Option<String>,
-    pub schema: Option<String>,
-    pub path: Vec<String>,
-}
-
-/// Mirror of backend-client `ObjectTarget` — one addressable object
-/// inside a namespace (table, view, …). `signature` is
-/// required-but-nullable: `null` when it cannot be determined.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ObjectTarget {
-    pub kind: String,
-    pub name: String,
-    pub signature: Option<String>,
-}
-
-/// Mirror of backend-client `ExecutionTarget` — what an execution runs
-/// *against*: connection, namespace, optional object. `object` is
-/// required-but-nullable (`ObjectTarget | null`): `None` serializes as an
-/// explicit `null`. Note what is absent: `backendId` — the backend only
-/// selects which facade you hold, it is never part of an execution
-/// target.
-///
-/// The root name belongs to `metadata`'s serde-less identity mirror (see
-/// module docs); this serde mirror is the one the grant wire carries.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ExecutionTarget {
-    pub connection_id: String,
-    pub namespace: NamespaceTarget,
-    pub object: Option<ObjectTarget>,
-}
+pub use crate::types::{ExecutionTarget, NamespaceTarget, ObjectTarget};
 
 /// React `MonitorScope` — one frozen execution permission inside a
 /// [`MonitorGrant`]: the target it may execute against, the config

@@ -265,8 +265,9 @@ pub use crate::types::workflow::WorkflowRunRecord as HistoryEntry;
 // surface's own types are nameable, the `FilterConnector` precedent.
 
 pub use crate::types::query::{
-    Counter, Id, RuntimeResultBinding, ResultProvenance, SessionContext, SessionContextConfidence,
-    SessionHandle, Timestamp, TransactionState, WritableMapping,
+    Counter, ExecutionTarget, Id, NamespaceTarget, ObjectTarget, RuntimeResultBinding,
+    ResultProvenance, SessionContext, SessionContextConfidence, SessionHandle, Timestamp,
+    TransactionState, WritableMapping,
 };
 
 #[cfg(test)]
