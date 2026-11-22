@@ -39,6 +39,14 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+## ✅ 迁移全局完成收口（2026-11-23）
+
+- **四段全部 100% done**：seg1 153/153、seg2 168/168、seg3 166/166、seg4 165/165，合计 **652/652 tasks** 全部迁移 + 独立审计通过。coordinator 会话正式 COMPLETED 收口（Wave 37 末批 + Wave 38 T612 最终 task）。
+- **最终合流** `7b0e03540`(parents 0eec5cfa8+768e53a0b，29 commits) push 父分支，**全段 ahead=0**，父分支与所有 segment 完全对齐。
+- 零文本冲突；`cargo check` 抓到并修复 1 个语义类型冲突（T612 `ActiveConnectionEntry` — 两结构体字段相同，加 `ContentViewActiveConnectionEntry` 别名消歧，零行为变更）。三 crate check 全 PASS，icons 0 重复，零断言弱化。
+- gate 全程受本机工具链/环境限制（ld arm64 分支范围 / panic unwinding / 磁盘满 / rustc U 态内存卡顿），始终无法给出可信全量结果；各段 tester 在自己 worktree 的 gate 全绿（含 seg3 专轨 2934 passed / 0 failed），按用户历次授权接受风险 push。环境恢复后应补跑全量 gate。
+- 阈值合流规则全程自动执行（每个 seg1 wave 后检查合计 ahead >30 则合），期间 seg3 曾出现深度语义阻塞，由用户裁决专轨逐项解冲突解决（Wave34）。
+
 ### Wave36 seg1-only 合流 push（2026-11-22，seg3 解决后首次正常合流）
 
 - 触发：可合积压 seg1=42 > 30（seg2/3/4=0，seg3 阻塞已于 Wave34 解决）。
