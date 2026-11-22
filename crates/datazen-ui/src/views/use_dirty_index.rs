@@ -127,6 +127,28 @@ pub(crate) fn values_equal(left: Option<&Value>, right: Option<&Value>) -> bool 
     serde_json::to_string(&left).unwrap_or_default() == serde_json::to_string(&right).unwrap_or_default()
 }
 
+/// `JSON.stringify` for a string: escape quotes, backslashes and control
+/// characters. Mirrors `query_editor_section/context.rs::json_string`.
+fn json_string(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 2);
+    out.push('"');
+    for ch in value.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{8}' => out.push_str("\\b"),
+            '\u{c}' => out.push_str("\\f"),
+            other if (other as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", other as u32)),
+            other => out.push(other),
+        }
+    }
+    out.push('"');
+    out
+}
+
 /// React `stableSerialize`: scalars are stable, NULL / non-finite numbers are
 /// not; objects and arrays are stable when all their leaves are stable.
 fn stable_serialize(value: &Value) -> Option<String> {
@@ -135,7 +157,7 @@ fn stable_serialize(value: &Value) -> Option<String> {
         Value::Bool(value) => Some(value.to_string()),
         Value::Number(value) if value.is_f64() && !value.as_f64().is_some_and(f64::is_finite) => None,
         Value::Number(value) => Some(value.to_string()),
-        Value::String(value) => Some(format!("\"{value}\"")),
+        Value::String(value) => Some(json_string(value)),
         Value::Array(values) => {
             let parts: Option<Vec<String>> = values.iter().map(stable_serialize).collect();
             parts.map(|parts| format!("[{}]", parts.join(",")))
@@ -247,7 +269,6 @@ fn same_cells(left: &[DirtyCellVm], right: &[DirtyCellVm]) -> bool {
             a.column_name == b.column_name
                 && values_equal(Some(&a.original), Some(&b.original))
                 && values_equal(Some(&a.next), Some(&b.next))
-                && a.expression == b.expression
         })
 }
 
