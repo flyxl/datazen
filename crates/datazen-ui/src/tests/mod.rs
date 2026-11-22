@@ -19,9 +19,6 @@ mod navigator_build_flat_rows;
 mod navigator_tree_row_aria;
 // T574: the connection reorder/regroup drag state machine.
 mod navigator_connection_drag;
-// T578: the navigator context-menu decision module (item sets, separators,
-// exact keys, capability gating and emitted actions for every menu family).
-mod use_navigator_context_menus;
 // T576: the per-session KV db-counts cache (shared/deduped, best-effort).
 mod navigator_kv_db_counts;
 // T578: the navigator's seven context menus (gates, order, action payloads).
