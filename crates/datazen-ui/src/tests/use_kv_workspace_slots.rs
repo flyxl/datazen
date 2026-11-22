@@ -436,3 +436,44 @@ fn d2_monitor_section_is_forwarded_defaulting_only_when_absent() {
     };
     assert_eq!(pending.expect("pending action").monitor_sub_page, "info");
 }
+
+// Independent lane-C repro probes (original D1/D2), retained as regression guards.
+#[test]
+fn probe_empty_initial_database_is_kept_by_the_jump_bridge() {
+    // React `initialDatabase ?? 'db0'`: an empty string is a value, not a miss.
+    let target = KvJumpTarget {
+        kind: KvJumpKind::Console,
+        ..KvJumpTarget::default()
+    };
+    assert_eq!(
+        plan_overview_jump(&target, Some("")),
+        KvJumpAction::Open {
+            database: String::new(),
+            pending: Some(KvPendingAction {
+                tab: Some("console".to_owned()),
+                ..KvPendingAction::default()
+            }),
+        },
+        "React keeps an empty initialDatabase with ??"
+    );
+}
+
+#[test]
+fn probe_monitor_section_is_passed_through_like_react() {
+    // React casts the section and only defaults when it is nullish: an unknown
+    // section string reaches onSelectKvDb verbatim.
+    let target = KvJumpTarget {
+        kind: KvJumpKind::Monitor,
+        section: Some("custom".to_owned()),
+        ..KvJumpTarget::default()
+    };
+    match plan_overview_jump(&target, Some("db3")) {
+        KvJumpAction::Open { pending: Some(pending), .. } => {
+            assert_eq!(
+                pending.monitor_sub_page, "custom",
+                "React forwards any non-null section to the host"
+            );
+        }
+        other => panic!("expected an Open jump, got {other:?}"),
+    }
+}
