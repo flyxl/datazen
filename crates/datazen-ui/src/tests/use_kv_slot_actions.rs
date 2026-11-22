@@ -126,3 +126,70 @@ fn consent_only_reaches_the_warning_and_a_decline_does_nothing() {
     assert_eq!(flush_db_result(&blocked, true), KvSlotDecision::None);
     assert_eq!(flush_db_result(&blocked, false), KvSlotDecision::None);
 }
+
+// ── T616 independent audit (appended; reuses this module's imports) ──────
+
+/// React's `warnUnwired` text is fully pinned (action name + the wired set in
+/// declaration order). The coder suite only checks `contains`; pin the exact
+/// string and an unknown union member's name.
+#[test]
+fn audit_unwired_warning_text_is_exact() {
+    assert_eq!(
+        warn_unwired_text("compactKeys"),
+        "[kv-slot-actions] no host handler for \"compactKeys\" (wired: refresh, openSettings, selectDatabase); ignored. A driver slot may offer it, but nothing will happen until the host wires it."
+    );
+}
+
+/// React's switch handles `refresh` / `openSettings` / `selectDatabase` before
+/// the dangerous branch and the unwired default; the flags for a *different*
+/// branch (safe mode, select sink) must never leak into those decisions.
+#[test]
+fn audit_wired_branches_ignore_unrelated_flags() {
+    assert_eq!(
+        dispatch(&KvSlotAction::Refresh, false, true),
+        KvSlotDecision::Refresh,
+        "safe mode must not gate a refresh"
+    );
+    assert_eq!(
+        dispatch(&KvSlotAction::OpenSettings, false, true),
+        KvSlotDecision::OpenSettings { section: "extensions".to_owned() },
+        "safe mode must not gate openSettings"
+    );
+    assert_eq!(
+        dispatch(&KvSlotAction::SelectDatabase { database: String::new() }, true, true),
+        KvSlotDecision::SelectDatabase { database: String::new() },
+        "an empty db label is still forwarded verbatim, safe mode independent"
+    );
+}
+
+/// Every unwired action degrades the same way regardless of the unrelated host
+/// flags — the guard order in React's `request` puts them in the default branch.
+#[test]
+fn audit_unwired_branch_is_flag_independent() {
+    let action = KvSlotAction::NewKey;
+    for (has_select, safe) in [(false, false), (true, false), (false, true), (true, true)] {
+        assert_eq!(
+            dispatch(&action, has_select, safe),
+            KvSlotDecision::WarnUnwired { action_type: "newKey".to_owned() }
+        );
+    }
+}
+
+/// The dangerous branch is flag-independent on the way in: `flushDb` always
+/// returns the gate, whether or not a select sink exists. Only safe mode shapes
+/// the gate itself.
+#[test]
+fn audit_flush_gate_is_independent_of_select_sink() {
+    assert_eq!(
+        dispatch(&KvSlotAction::FlushDb, false, false),
+        dispatch(&KvSlotAction::FlushDb, true, false)
+    );
+    assert_eq!(
+        dispatch(&KvSlotAction::FlushDb, false, true),
+        dispatch(&KvSlotAction::FlushDb, true, true)
+    );
+    assert_ne!(
+        dispatch(&KvSlotAction::FlushDb, false, false),
+        dispatch(&KvSlotAction::FlushDb, false, true)
+    );
+}
