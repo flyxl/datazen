@@ -248,6 +248,42 @@ fn geometry_fits_both_sizes_in_both_themes() {
     }
 }
 
+#[test]
+fn cell_values_display_every_variant() {
+    assert_eq!(CellValue::Null.display(), "NULL");
+    assert_eq!(CellValue::Text("hi".to_owned()).display(), "hi");
+    assert_eq!(CellValue::Number("42".to_owned()).display(), "42");
+    assert_eq!(CellValue::Bool(true).display(), "true");
+    assert_eq!(CellValue::Json("{}".to_owned()).display(), "{}");
+    // A blob previews at most eight bytes as lowercase hex.
+    assert_eq!(
+        CellValue::Blob(vec![0x00, 0x01, 0x0f, 0x10, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]).display(),
+        "00 01 0f 10 aa bb cc dd"
+    );
+}
+
+#[test]
+fn displayed_columns_ignores_unknown_and_duplicate_order_names() {
+    let order = vec!["ghost".to_owned(), "name".to_owned(), "name".to_owned(), "id".to_owned()];
+    assert_eq!(
+        displayed_columns(&columns(), None, Some(&order)),
+        vec!["name", "id"],
+        "unknown/duplicate explicit names are ignored"
+    );
+}
+
+#[test]
+fn tip_without_a_deadline_never_expires() {
+    let state = vm();
+    assert!(!tip_expired(&state, 10_000.0), "no recorded deadline: never expires");
+}
+
+#[test]
+fn quick_look_target_out_of_range_is_none() {
+    let state = vm();
+    assert_eq!(quick_look_target(&state, 7, "name"), None, "a missing row has no target");
+}
+
 // Reverse verification (mutation -> observed failure text -> restored):
 // 1. Mapping the driver subset back to shared operators made `a_declared_subset_is_used_verbatim`
 //    fail on `left: ["eq","ne",…] right: ["eq","contains"]`.
