@@ -114,11 +114,35 @@ pub async fn run(journey: &mut Journey<'_>) {
     java_array.extend_from_slice(&2_i32.to_be_bytes());
     java_array.extend_from_slice(&7_i32.to_be_bytes());
     java_array.extend_from_slice(&(-11_i32).to_be_bytes());
+    // MessagePack persisted by other clients may contain unsigned 64-bit integers,
+    // binary and extension values, and floating point values JSON cannot store directly.
+    let mut messagepack = vec![
+        0x86, // map with six entries
+        0x02, 0xcf, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // integer key, u64 max
+        0xc3, 0xc4, 0x02, 0x00, 0xff, // boolean key, binary value
+        0xc0, 0xd4, 0x07, 0x2a, // null key, extension kind 7
+        0xca, 0x3f, 0x80, 0, 0, 0xca, 0x40, 0x20, 0, 0, // float32 key/value
+        0xa4, b'n', b'o', b't', b'e', 0xa1, 0xff, // lossy UTF-8 value
+        0xa5, b'f', b'l', b'o', b'a', b't', 0x93,
+    ];
+    for value in [f64::INFINITY, f64::NEG_INFINITY, f64::NAN] {
+        messagepack.push(0xcb);
+        messagepack.extend_from_slice(&value.to_be_bytes());
+    }
+    messagepack.extend_from_slice(&[0, 0]); // allowed transport padding
     let structured = [
         (
             "msgpack",
             vec![0x82, 0xa1, b'x', 7, 0xa1, b'b', 0x92, 0xc3, 0xc0],
             json!({"x":7,"b":[true,null]}),
+        ),
+        (
+            "msgpack",
+            messagepack,
+            json!({
+                "2": u64::MAX, "true":"AP8=", "null":{"$ext":7,"data":"Kg=="},
+                "1.0":2.5, "note":"�", "float":["Infinity","-Infinity","NaN"]
+            }),
         ),
         (
             "php",
@@ -164,6 +188,8 @@ pub async fn run(journey: &mut Journey<'_>) {
     for (codec, stored) in [
         ("gzip", b"plain text".as_slice()),
         ("msgpack", b"not MessagePack".as_slice()),
+        ("msgpack", [0xdb_u8, 0, 0, 0, 1].as_slice()), // missing string content
+        ("msgpack", [0x91_u8; 130].as_slice()),        // incomplete nested array, parser error
         ("php", b"unrecognized PHP payload".as_slice()),
         ("java", b"not Java".as_slice()),
     ] {
@@ -171,6 +197,11 @@ pub async fn run(journey: &mut Journey<'_>) {
         assert_eq!(refused["ok"], false, "{codec}: {refused}");
         assert_eq!(refused["reason"], "decode-failed");
     }
+
+    let mut deep_messagepack = vec![0x91; 130];
+    deep_messagepack.push(0xc0);
+    let refused = round_trip(journey, "msgpack", &deep_messagepack).await;
+    assert_eq!(refused["reason"], "decode-failed", "{refused}");
 
     for (payload, reason) in [
         (
