@@ -179,3 +179,96 @@ pub async fn json_document(journey: &mut Journey<'_>) {
         .await;
     assert_eq!(absent["value"], Value::Null);
 }
+
+pub async fn tree(j: &mut Journey<'_>) {
+    let prefix = "contract:tree?[literal]*:";
+    let string = format!("{prefix}plain");
+    let expiring = format!("{prefix}temporary");
+    let folder_a = format!("{prefix}folder/a");
+    let folder_b = format!("{prefix}folder/b");
+    let folder_c = format!("{prefix}other|c");
+    let hash = format!("{prefix}hash");
+    for (key, val) in [
+        (&string, "hello"),
+        (&expiring, "expires"),
+        (&folder_a, "A"),
+        (&folder_b, "B"),
+        (&folder_c, "C"),
+    ] {
+        assert_eq!(j.read::<String>("SET", &[key, val]).await, "OK");
+    }
+    assert_eq!(j.read::<u64>("EXPIRE", &[&expiring, "120"]).await, 1);
+    assert_eq!(j.read::<u64>("HSET", &[&hash, "field", "value"]).await, 1);
+
+    let page = j
+        .command(
+            "list_children",
+            json!({
+                "prefix":prefix, "sep":"/|", "count":256, "with_memory":true, "no_ttl_only":true
+            }),
+        )
+        .await;
+    let children = page["children"].as_array().unwrap();
+    assert_eq!(page["cursor"], 0);
+    assert_eq!(page["truncated"], false);
+    assert_eq!(page["dbsize"], j.read::<u64>("DBSIZE", &[]).await);
+    assert_eq!(children.len(), 4, "{page}");
+    assert_eq!(
+        children[0],
+        json!({"kind":"folder","prefix":format!("{prefix}folder/"),"count":2})
+    );
+    assert_eq!(
+        children[1],
+        json!({"kind":"folder","prefix":format!("{prefix}other|"),"count":1})
+    );
+    assert_eq!(children[2]["key"], hash);
+    assert_eq!(children[2]["keyType"], "hash");
+    assert_eq!(children[2]["logicalLen"], 1);
+    assert_eq!(children[3]["key"], string);
+    assert_eq!(children[3]["keyType"], "string");
+    assert_eq!(children[3]["logicalLen"], 5);
+    assert_eq!(children[3]["ttl"], -1);
+    assert_eq!(
+        children[3]["memBytes"],
+        j.read::<u64>("MEMORY", &["USAGE", &string]).await
+    );
+
+    let only_hash = j
+        .command(
+            "list_children",
+            json!({
+                "prefix":prefix,"sep":"/|","key_type":"HASH","count":256,
+            }),
+        )
+        .await;
+    let children = only_hash["children"].as_array().unwrap();
+    assert_eq!(children.len(), 1, "{only_hash}");
+    assert_eq!(children[0]["key"], hash);
+    assert!(children[0]["memBytes"].is_null());
+
+    for i in 0..40 {
+        let key = format!("contract:budget:{i:02}");
+        assert_eq!(j.read::<String>("SET", &[&key, "fixture"]).await, "OK");
+    }
+    let bounded = j
+        .command(
+            "list_children",
+            json!({
+                "prefix":"contract:budget:","count":256,"budget":1
+            }),
+        )
+        .await;
+    assert_eq!(bounded["truncated"], true);
+    assert_ne!(bounded["cursor"], 0);
+    assert_eq!(bounded["consumed"], 10); // minimum Redis SCAN COUNT
+    let complete = j
+        .command(
+            "list_children",
+            json!({
+                "prefix":"contract:budget:","count":256,"budget":256
+            }),
+        )
+        .await;
+    assert_eq!(complete["cursor"], 0);
+    assert_eq!(complete["children"].as_array().unwrap().len(), 40);
+}

@@ -514,6 +514,7 @@ pub async fn run_cli(mut args: impl Iterator<Item = String>) {
     suite.observe().await;
     suite.stream().await;
     extra::archive_and_metadata(&mut suite).await;
+    extra::tree(&mut suite).await;
     if json.is_some() {
         extra::json_document(&mut suite).await;
     }
