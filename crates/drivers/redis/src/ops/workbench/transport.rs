@@ -29,6 +29,11 @@ pub type SlotRoutedBatchFuture<'a> =
 /// A single-node connection has exactly one node, so the slot is vacuous and the
 /// default implementation just sends the command.
 pub trait SlotRoutedConnection: ConnectionLike + Send {
+    /// Run a server-level command on one node, not a cluster-wide broadcast.
+    fn command_on_one_node<'a>(&'a mut self, cmd: &'a redis::Cmd) -> RedisFuture<'a, RValue> {
+        self.req_packed_command(cmd)
+    }
+
     /// Issue `cmd` against the master that owns `slot`.
     fn command_at_slot<'a>(
         &'a mut self,
@@ -63,6 +68,11 @@ impl<C> SlotRoutedConnection for redis::cluster_async::ClusterConnection<C>
 where
     C: ConnectionLike + redis::cluster_async::Connect + Clone + Send + Sync + Unpin + 'static,
 {
+    fn command_on_one_node<'a>(&'a mut self, cmd: &'a redis::Cmd) -> RedisFuture<'a, RValue> {
+        self.route_command(cmd, RoutingInfo::SingleNode(SingleNodeRoutingInfo::Random))
+            .boxed()
+    }
+
     fn command_at_slot<'a>(
         &'a mut self,
         cmd: &'a redis::Cmd,

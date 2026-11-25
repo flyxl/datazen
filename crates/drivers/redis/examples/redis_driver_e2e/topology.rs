@@ -14,7 +14,10 @@ async fn inspect(
 ) {
     let client = redis::Client::open(format!("redis://127.0.0.1:{port}/0")).unwrap();
     let oracle = client.get_multiplexed_async_connection().await.unwrap();
-    driver.test_connection(config).await.unwrap_or_else(|error| panic!("{topology} connection probe failed: {error}"));
+    driver
+        .test_connection(config)
+        .await
+        .unwrap_or_else(|error| panic!("{topology} connection probe failed: {error}"));
     let handle = driver.connect(config).await.unwrap();
     let mut journey = Journey {
         driver,
@@ -38,6 +41,19 @@ async fn inspect(
         )
         .await;
     assert_eq!(filtered["matchedEntries"], 1);
+    let unpinned = journey.command("info", json!({"section":"server"})).await;
+    assert!(unpinned.as_str().unwrap().contains("redis_version:"));
+    let filtered = journey
+        .command(
+            "info_filtered",
+            json!({"section":"server","search":"REDIS_VERSION"}),
+        )
+        .await;
+    assert_eq!(filtered["matchedEntries"], 1);
+    assert!(filtered["sections"][0]["entries"][0]["value"].is_string());
+    let whole = journey.command("info", json!({})).await;
+    assert!(whole.as_str().unwrap().contains("# Server"));
+
     let exec = journey
         .command("exec", json!({"commands":"PING","nodeAddr":addr}))
         .await;

@@ -102,14 +102,15 @@ def main():
         "PYTHONDONTWRITEBYTECODE": "1",
     }
     env.pop("CARGO_ENCODED_RUSTFLAGS", None)
-    with tempfile.TemporaryDirectory(prefix="redis-cov-build-") as temp:
+    with tempfile.TemporaryDirectory(prefix=".redis-cov-build-", dir=output) as temp:
         env["LLVM_PROFILE_FILE"] = str(Path(temp) / "%p-%m.profraw")
         # Every profile comes from this exact executable and function map.
         subprocess.run(["cargo", "build", "--locked", "-p", "datazen-rune-host",
                         "--features", "redis-e2e-fixture", "--bin", "datazen-native"],
                        env=env, cwd=ROOT, check=True)
 
-    with tempfile.TemporaryDirectory(prefix="redis-cov-e2e-") as temp:
+    # Raw GUI profiles can exceed a gigabyte; keep them on the selected output volume.
+    with tempfile.TemporaryDirectory(prefix=".redis-cov-e2e-", dir=output) as temp:
         workspace = Path(temp)
         profiles = workspace / "profiles"
         objects = output / "instrumented" if args.retain_binaries else workspace / "instrumented"
