@@ -17,6 +17,7 @@ redis = { version = "0.27", features = ["tokio-comp", "aio", "cluster-async", "s
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"
+cesu8 = "1.1"
 tracing = "0.1"
 uuid = { version = "1", features = ["v4"] }
 futures-util = "0.3"

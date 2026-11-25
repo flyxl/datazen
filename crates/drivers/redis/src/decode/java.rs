@@ -40,6 +40,14 @@ struct Stream<'a> {
     handles: Vec<Option<JsonValue>>,
 }
 
+fn modified_utf8(bytes: &[u8]) -> Result<String, String> {
+    // The Java serialization wire format uses modified UTF-8 for both
+    // strings and the UTF fields in class descriptors.
+    cesu8::from_java_cesu8(bytes)
+        .map(|text| text.into_owned())
+        .map_err(|error| format!("invalid Java modified UTF-8: {error}"))
+}
+
 impl<'a> Stream<'a> {
     fn byte(&mut self) -> Result<u8, String> {
         let b = *self.data.get(self.pos).ok_or("unexpected EOF")?;
@@ -85,7 +93,7 @@ impl<'a> Stream<'a> {
     fn utf(&mut self) -> Result<String, String> {
         let n = self.u16()? as usize;
         let bytes = self.take(n)?;
-        Ok(String::from_utf8_lossy(bytes).into_owned())
+        modified_utf8(bytes)
     }
     fn peek(&self) -> Option<u8> {
         self.data.get(self.pos).copied()
@@ -147,7 +155,7 @@ impl<'a> Stream<'a> {
                     return Err("invalid Java long-string length".to_string());
                 }
                 let bytes = self.take(n as usize)?;
-                let s = String::from_utf8_lossy(bytes).into_owned();
+                let s = modified_utf8(bytes)?;
                 self.set_handle(idx, JsonValue::String(s.clone()));
                 Ok(JsonValue::String(s))
             }

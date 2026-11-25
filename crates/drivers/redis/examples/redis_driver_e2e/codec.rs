@@ -130,6 +130,15 @@ pub async fn run(journey: &mut Journey<'_>) {
         messagepack.extend_from_slice(&value.to_be_bytes());
     }
     messagepack.extend_from_slice(&[0, 0]); // allowed transport padding
+                                            // U+0000 uses the Java two-byte form; U+1F30D uses its UTF-16 pair.
+    let marked = [b'A', 0xc0, 0x80, 0xed, 0xa0, 0xbc, 0xed, 0xbc, 0x8d];
+    let mut java_short = vec![0xac, 0xed, 0, 5, 0x74, 0, marked.len() as u8];
+    java_short.extend_from_slice(&marked);
+    let mut java_long = vec![0xac, 0xed, 0, 5, 0x7c];
+    let text_len = 65_536_i64;
+    java_long.extend_from_slice(&(text_len + marked.len() as i64).to_be_bytes());
+    java_long.resize(java_long.len() + text_len as usize, b'z');
+    java_long.extend_from_slice(&marked);
     let structured = [
         (
             "msgpack",
@@ -155,6 +164,12 @@ pub async fn run(journey: &mut Journey<'_>) {
             json!([7, "x"]),
         ),
         ("java", java_string, json!("Fixture")),
+        ("java", java_short, json!("A\0🌍")),
+        ("java", java_long, json!(format!("{}A\0🌍", "z".repeat(text_len as usize)))),
+        ("java", vec![0xac, 0xed, 0, 5, 0x70], Value::Null),
+        ("php", b"a:7:{i:0;N;i:1;d:2.25;i:2;d:INF;i:3;d:-INF;i:4;d:NAN;i:5;i:99999999999999999999999;i:6;a:1:{i:0;b:0;}}".to_vec(),
+            json!({"0":null,"1":2.25,"2":"Infinity","3":"-Infinity","4":"NaN","5":"99999999999999999999999","6":{"0":false}})),
+
         ("java", java_object, json!({"$class":"Fixture","x":7})),
         ("java", java_array, json!({"$array":"[I","items":[7,-11]})),
         (
@@ -192,6 +207,20 @@ pub async fn run(journey: &mut Journey<'_>) {
         ("msgpack", [0x91_u8; 130].as_slice()),        // incomplete nested array, parser error
         ("php", b"unrecognized PHP payload".as_slice()),
         ("java", b"not Java".as_slice()),
+        ("java", [0xac, 0xed, 0, 6, 0x70].as_slice()),
+        ("java", [0xac, 0xed, 0, 5, 0x70, 0x70].as_slice()),
+        ("java", [0xac, 0xed, 0, 5, 0x74, 0, 1, 0xff].as_slice()),
+        (
+            "java",
+            [
+                0xac, 0xed, 0, 5, 0x7c, 255, 255, 255, 255, 255, 255, 255, 255,
+            ]
+            .as_slice(),
+        ),
+        ("php", b"i:5;tail".as_slice()),
+        ("php", b"s:4:\"abc\";".as_slice()),
+        ("php", b"s:three:\"word\";".as_slice()),
+        ("php", b"a:nope:{}".as_slice()),
     ] {
         let refused = round_trip(journey, codec, stored).await;
         assert_eq!(refused["ok"], false, "{codec}: {refused}");

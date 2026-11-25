@@ -2567,6 +2567,7 @@ version = "0.0.10"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
+ "cesu8",
  "datazen-driver-api",
  "flate2",
  "futures-util",
