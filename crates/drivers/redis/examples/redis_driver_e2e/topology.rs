@@ -31,6 +31,26 @@ async fn inspect(
     );
     let addr = format!("127.0.0.1:{port}");
     if topology == "cluster" {
+        assert_eq!(driver.get_databases(&handle).await.unwrap(), ["db0"]);
+        let counts = journey.command("db_sizes", json!({})).await;
+        assert_eq!(
+            counts,
+            json!([{"db":0,"keys":journey.read::<u64>("DBSIZE", &[]).await}])
+        );
+        let invalid = driver
+            .execute_command(
+                &handle,
+                "exec",
+                json!({
+                    "dbIndex":1,"commands":"PING","nodeAddr":addr,
+                }),
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            invalid.to_string().contains("only supports DB 0"),
+            "{invalid}"
+        );
         let independent_id: String = journey.read("CLUSTER", &["MYID"]).await;
         let reported = journey.command("cluster_nodes", json!({})).await;
         assert!(

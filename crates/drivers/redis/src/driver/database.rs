@@ -5,25 +5,13 @@ use datazen_driver_api::*;
 use redis::AsyncCommands;
 use std::time::{Duration, Instant};
 
-use crate::connect::{build_connection_plan, open_live_conn, RedisLiveConn};
-use crate::driver::session::{get_tables_on, info_server_on, query_cmd_on};
+use crate::connect::{build_connection_plan, open_live_conn, RedisLiveConn, Topology};
+use crate::driver::session::{
+    configured_database_count_on, get_tables_on, info_server_on, query_cmd_on,
+};
 use crate::driver::{RedisConn, RedisDriver, TEST_CONNECTION_TLS_GRACE};
 use crate::value::{parse_redis_command_args, redis_value_to_rows};
 use crate::with_redis_conn;
-
-fn value_to_string(v: &redis::Value) -> String {
-    match v {
-        redis::Value::BulkString(b) => String::from_utf8_lossy(b).into_owned(),
-        redis::Value::SimpleString(s) => s.clone(),
-        redis::Value::Int(i) => i.to_string(),
-        redis::Value::Array(items) => items
-            .iter()
-            .map(value_to_string)
-            .collect::<Vec<_>>()
-            .join("\n"),
-        _ => String::new(),
-    }
-}
 
 /// `TYPE <key>` on whichever database the given live connection is pinned to.
 async fn key_type_on(live: &mut RedisLiveConn, key: &str) -> Result<String, DriverError> {
@@ -107,19 +95,14 @@ impl DatabaseDriver for RedisDriver {
         let mut conns = self.connections.write().await;
         let rc = Self::get_conn(&mut conns, handle)?;
 
-        let db_count: u32 = match with_redis_conn!(&mut rc.live, |conn| {
-            redis::cmd("CONFIG")
-                .arg("GET")
-                .arg("databases")
-                .query_async::<redis::Value>(conn)
-                .await
-        }) {
-            Ok(val) => value_to_string(&val)
-                .lines()
-                .filter_map(|l| l.trim().parse::<u32>().ok())
-                .next()
-                .unwrap_or(16),
-            Err(_) => 16,
+        let db_count = if rc.live.topology() == Topology::Cluster {
+            1
+        } else {
+            with_redis_conn!(&mut rc.live, |socket| configured_database_count_on(socket)
+                .await)
+            .ok()
+            .flatten()
+            .unwrap_or(16)
         };
 
         Ok((0..db_count).map(|i| format!("db{i}")).collect())
@@ -352,7 +335,9 @@ impl DatabaseDriver for RedisDriver {
     async fn get_server_info(&self, handle: &ConnectionHandle) -> Result<ServerInfo, DriverError> {
         let mut conns = self.connections.write().await;
         let redis_conn = Self::get_conn(&mut conns, handle)?;
-        let info = info_server_on(&mut redis_conn.live).await.map_err(DriverError::QueryFailed)?;
+        let info = info_server_on(&mut redis_conn.live)
+            .await
+            .map_err(DriverError::QueryFailed)?;
         let version = info
             .lines()
             .find(|l| l.starts_with("redis_version:"))

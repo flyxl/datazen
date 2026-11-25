@@ -66,6 +66,14 @@ pub async fn run(journey: &mut Journey<'_>) {
     // Redis itself negotiates RESP3; subsequent commands go through the same
     // public driver connection and carry the real protocol's map responses.
     driver.query(handle, "HELLO 3").await.unwrap();
+    assert_eq!(
+        driver.get_databases(handle).await.unwrap(),
+        (0..8).map(|i| format!("db{i}")).collect::<Vec<_>>()
+    );
+    let counts = journey.command("db_sizes", json!({})).await;
+    assert_eq!(counts.as_array().unwrap().len(), 8);
+    assert_eq!(counts[0]["keys"], journey.read::<u64>("DBSIZE", &[]).await);
+
     let detail = journey.command("get_key", json!({"key":hash})).await;
     assert_eq!(
         detail["value"],

@@ -12,7 +12,7 @@ use crate::types::{KeyDetail, ValueFrame};
 
 use crate::connect::{
     build_connection_plan, looks_like_connection_loss, open_live_conn, open_pinned_node_conn,
-    ConnectionPlan, RedisLiveConn,
+    ConnectionPlan, RedisLiveConn, Topology,
 };
 use crate::with_redis_conn;
 use session::{get_key_detail_on, get_key_raw_on, info_server_on, select_db_on};
@@ -289,30 +289,18 @@ impl RedisDriver {
         &self,
         handle: &ConnectionHandle,
     ) -> Result<Vec<serde_json::Value>, DriverError> {
-        // 1. Determine db_count from CONFIG GET databases on the shared connection.
+        // Cluster exposes only DB 0; a CONFIG reply from all nodes is not
+        // a list of logical databases. Other deployments give the true count.
         let db_count = {
             let mut conns = self.connections.write().await;
             let rc = Self::get_conn(&mut conns, handle)?;
-            with_redis_conn!(&mut rc.live, |conn| {
-                redis::cmd("CONFIG")
-                    .arg("GET")
-                    .arg("databases")
-                    .query_async::<redis::Value>(conn)
-                    .await
-                    .map_err(|e| e.to_string())
-            })
-            .map_err(DriverError::QueryFailed)
-            .and_then(|cfg_val| match cfg_val {
-                redis::Value::Array(ref items) if items.len() >= 2 => {
-                    let s = match &items[1] {
-                        redis::Value::BulkString(b) => String::from_utf8_lossy(b).into_owned(),
-                        redis::Value::Int(i) => i.to_string(),
-                        _ => "16".to_string(),
-                    };
-                    Ok(s.parse::<u32>().unwrap_or(16))
-                }
-                _ => Ok(16),
-            })?
+            if rc.live.topology() == Topology::Cluster {
+                1
+            } else {
+                with_redis_conn!(&mut rc.live, |socket| session::configured_database_count_on(socket).await)
+                    .map_err(DriverError::QueryFailed)?
+                    .unwrap_or(16)
+            }
         };
 
         // 2. Get the connection plan for creating dedicated connections.

@@ -18,6 +18,20 @@ where
         .map_err(|e| e.to_string())
 }
 
+/// Read the configured DB count from both RESP2's flat CONFIG reply and RESP3's map.
+pub(crate) async fn configured_database_count_on<C>(conn: &mut C) -> Result<Option<u32>, String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
+    let settings: std::collections::BTreeMap<String, u32> = redis::cmd("CONFIG")
+        .arg("GET")
+        .arg("databases")
+        .query_async(conn)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(settings.get("databases").copied())
+}
+
 pub(crate) async fn info_server_on(conn: &mut RedisLiveConn) -> Result<String, String> {
     crate::with_redis_conn!(conn, |socket| {
         crate::ops::observe::fetch_info(socket, Some("server")).await

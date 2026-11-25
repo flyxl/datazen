@@ -56,7 +56,10 @@ def main():
         lab = Lab(args, stack, root)
         port = lab.port()
         module = args.redis_json_module
-        lab.start(port, ["--loadmodule", str(module.resolve(strict=True))] if module else [])
+        options = ["--databases", "8"]
+        if module:
+            options.extend(["--loadmodule", str(module.resolve(strict=True))])
+        lab.start(port, options)
         nonce = secrets.token_hex(16)
         assert lab.cli(port, "SET", "contract:fixture", nonce) == "OK"
         if args.test_topology:
