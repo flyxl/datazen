@@ -39,6 +39,14 @@
 
 **Wave 1 收口**：4 轨全部 TEST_PASSED → 合流 → 台账 done（14/647）；4 个 worktree + 分支已清理（`--force` 绕过 submodule 删除限制），磁盘 109Gi → 184Gi 空闲（释放 75Gi）。合流后完整 gate PASS（90/107/92 warnings）。合并 origin/main 引入的 mod 注册加法冲突均手工保留全部行。
 
+## ✅ 全量 gate 本机跑通（2026-11-25，测试拆分）
+
+- 用户选方案 A：把 712 个测试文件 / 7880 个 `#[test]` 从单一 `~2GB lib test` 二进制拆成 **711 个独立 integration test target**（每个 ~4MB），彻底绕开 Apple ld 的 arm64 分支范围（±128MB）与 unwind 编码限制。
+- 改动：pub(crate)→pub + doc-hidden `test_support` 门面；ZH_CN 生成器 pub；2 处 orphan-rule newtype；9 处内联 `#[cfg(test)] mod tests` 暴露；711 文件迁移 + import/include 路径重写 + 源码断言文本适配；gate 脚本 `--lib` → `--tests --no-fail-fast`。
+- 顺带修复 3 个 gate 跑通后暴露的父分支真实缺陷：`ICON_PUZZLE` body 重复（复用 ICON_WAPPS，符合 React 两者同用 Puzzle）；clipboard 断言误扫全 lib.rs（收窄到 DesktopAdapter trait）；workflow yaml 测试 key 错误（改为 React 真相 `workflow-yaml-editor`）。
+- **结果：完整 gate 首次 PASS（3/3 步全绿）**，exit=0。之前未拆分时基线 lib-test 编译卡 U 态 31 分钟无果。
+- commit `824f584e1`（线性单 commit，父 b9936bda5）已 push 父分支，全段 ahead=0。分支 feat/rune-test-split。
+
 ## ✅ 迁移全局完成收口（2026-11-23）
 
 - **四段全部 100% done**：seg1 153/153、seg2 168/168、seg3 166/166、seg4 165/165，合计 **652/652 tasks** 全部迁移 + 独立审计通过。coordinator 会话正式 COMPLETED 收口（Wave 37 末批 + Wave 38 T612 最终 task）。
