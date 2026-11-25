@@ -169,7 +169,10 @@ def main():
                 raise SystemExit("Rejecting mismatched application coverage profiles; verify the retained binary and toolchain.")
 
         export_report("llvm-summary.json", "-summary-only")
-        export_report("redis-e2e.lcov", "-format=lcov", "-include-filename-regex=crates/drivers/redis/src/")
+        # Rust's path-mapped fixture can appear as src/../examples in LLVM.
+        # Include only .rs paths inside src, without any relative parent segment.
+        export_report("redis-e2e.lcov", "-format=lcov",
+                      r"-include-filename-regex=crates/drivers/redis/src/([^./][^/]*/)*[^./][^/]*\.rs$")
     return 0 if summarize(json.loads((output / "llvm-summary.json").read_text()), results, output) else 1
 
 
