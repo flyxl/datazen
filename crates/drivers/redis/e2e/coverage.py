@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Measure driver-crate line coverage from real native Redis journeys only."""
+"""Measure Redis driver-crate line coverage with real-server E2E journeys."""
 import argparse
 import hashlib
 from concurrent.futures import ThreadPoolExecutor
@@ -92,7 +92,6 @@ def main():
     (output / "summary.json").unlink(missing_ok=True)
     target = args.target_dir.resolve()
     binary = target / "debug" / ("datazen-native.exe" if os.name == "nt" else "datazen-native")
-    driver_binary = target / "debug" / "examples" / ("redis_driver_e2e.exe" if os.name == "nt" else "redis_driver_e2e")
     profdata, cov = llvm_tools()
     env = {
         **os.environ,
@@ -105,11 +104,10 @@ def main():
     env.pop("CARGO_ENCODED_RUSTFLAGS", None)
     with tempfile.TemporaryDirectory(prefix="redis-cov-build-") as temp:
         env["LLVM_PROFILE_FILE"] = str(Path(temp) / "%p-%m.profraw")
-        # One Cargo invocation keeps the two Rust programs on the same
-        # resolved feature graph before LLVM profiles are combined.
+        # Every profile comes from this exact executable and function map.
         subprocess.run(["cargo", "build", "--locked", "-p", "datazen-rune-host",
-                        "-p", "datazen-driver-redis", "--bin", "datazen-native",
-                        "--example", "redis_driver_e2e"], env=env, cwd=ROOT, check=True)
+                        "--features", "redis-e2e-fixture", "--bin", "datazen-native"],
+                       env=env, cwd=ROOT, check=True)
 
     with tempfile.TemporaryDirectory(prefix="redis-cov-e2e-") as temp:
         workspace = Path(temp)
@@ -117,15 +115,12 @@ def main():
         objects = output / "instrumented" if args.retain_binaries else workspace / "instrumented"
         objects.mkdir(exist_ok=True)
         binary = Path(shutil.copy2(binary, objects / binary.name))
-        driver_binary = Path(shutil.copy2(driver_binary, objects / driver_binary.name))
-        digests = {}
-        for obj in (binary, driver_binary):
-            digest = hashlib.sha256()
-            with obj.open("rb") as handle:
-                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-                    digest.update(chunk)
-            digests[obj.name] = digest.hexdigest()
-        (output / "binaries.sha256.json").write_text(json.dumps(digests, indent=2) + "\n", encoding="utf-8")
+        digest = hashlib.sha256()
+        with binary.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        (output / "binaries.sha256.json").write_text(
+            json.dumps({binary.name: digest.hexdigest()}, indent=2) + "\n", encoding="utf-8")
 
         def replay(suite):
             snapshots = output / "trees" / suite
@@ -133,8 +128,8 @@ def main():
             suite_profiles.mkdir(parents=True)
             suite_env = {**env, "LLVM_PROFILE_FILE": str(suite_profiles / "%p-%m.profraw")}
             if suite == "driver-contract":
-                argv = [sys.executable, str(HERE / "rune_driver_check.py"), str(driver_binary),
-                        "--server", args.json_server or args.server, "--cli", args.cli, "--test-json"]
+                argv = [sys.executable, str(HERE / "rune_driver_check.py"), str(binary), "--native-harness",
+                        "--server", args.json_server or args.server, "--cli", args.cli, "--test-json", "--test-topology"]
                 if args.redis_json_module:
                     argv.extend(["--redis-json-module", str(args.redis_json_module.resolve())])
             elif suite == "standalone":
@@ -165,13 +160,12 @@ def main():
         subprocess.run([profdata, "merge", "-sparse", "-o", merged, *raw], check=True)
         def export_report(name, *options):
             with (output / name).open("w", encoding="utf-8") as report:
-                process = subprocess.run([cov, "export", *options, f"-instr-profile={merged}", binary,
-                                          "-object", driver_binary],
+                process = subprocess.run([cov, "export", *options, f"-instr-profile={merged}", binary],
                                          stdout=report, stderr=subprocess.PIPE, check=True, text=True)
             if process.stderr:
                 print(process.stderr, file=sys.stderr, end="")
             if "mismatched data" in process.stderr or "profile data may be out of date" in process.stderr:
-                raise SystemExit("Rejecting mismatched application coverage profiles; rebuild both programs together.")
+                raise SystemExit("Rejecting mismatched application coverage profiles; verify the retained binary and toolchain.")
 
         export_report("llvm-summary.json", "-summary-only")
         export_report("redis-e2e.lcov", "-format=lcov", "-include-filename-regex=crates/drivers/redis/src/")

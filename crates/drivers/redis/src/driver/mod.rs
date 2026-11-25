@@ -483,8 +483,7 @@ impl RedisDriver {
                 .map_err(DriverError::QueryFailed)?;
         }
 
-        let info: String = with_redis_conn!(&mut live, |conn| info_server_on(conn).await)
-            .map_err(DriverError::QueryFailed)?;
+        let info = info_server_on(&mut live).await.map_err(DriverError::QueryFailed)?;
 
         let version = info
             .lines()
@@ -622,9 +621,15 @@ impl RedisDriver {
         if let Some(addr) = node_addr.filter(|s| !s.trim().is_empty()) {
             let plan = self.connection_plan(connection_id).await?;
             let mut conn = open_pinned_node_conn(&plan, addr.trim()).await?;
-            select_db_on(&mut conn, db_index)
-                .await
-                .map_err(DriverError::QueryFailed)?;
+            if matches!(plan, ConnectionPlan::Cluster(_)) {
+                if db_index != 0 {
+                    return Err(DriverError::InvalidConfig("Redis Cluster only supports DB 0".into()));
+                }
+            } else {
+                select_db_on(&mut conn, db_index)
+                    .await
+                    .map_err(DriverError::QueryFailed)?;
+            }
             return crate::ops::exec::exec_commands(&mut conn, &commands)
                 .await
                 .map_err(DriverError::QueryFailed);

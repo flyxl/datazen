@@ -4,6 +4,7 @@ use base64::Engine;
 use datazen_driver_api::*;
 use redis::AsyncCommands;
 
+use crate::connect::RedisLiveConn;
 use crate::types::{KeyDetail, ValueFrame};
 
 pub(crate) async fn select_db_on<C>(conn: &mut C, db_index: u32) -> Result<(), String>
@@ -17,15 +18,27 @@ where
         .map_err(|e| e.to_string())
 }
 
-pub(crate) async fn info_server_on<C>(conn: &mut C) -> Result<String, String>
-where
-    C: AsyncCommands + redis::aio::ConnectionLike + Send,
-{
-    redis::cmd("INFO")
-        .arg("server")
-        .query_async(conn)
-        .await
-        .map_err(|e| e.to_string())
+pub(crate) async fn info_server_on(conn: &mut RedisLiveConn) -> Result<String, String> {
+    if let RedisLiveConn::Cluster(cluster) = conn {
+        use redis::cluster_routing::{RoutingInfo, SingleNodeRoutingInfo};
+        // The normal cluster routing table broadcasts INFO and returns an
+        // address-to-reply map. Here the public contract needs one version.
+        let response = cluster
+            .route_command(
+                redis::cmd("INFO").arg("server"),
+                RoutingInfo::SingleNode(SingleNodeRoutingInfo::Random),
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        return redis::from_redis_value(&response).map_err(|error| error.to_string());
+    }
+    crate::with_redis_conn!(conn, |socket| {
+        redis::cmd("INFO")
+            .arg("server")
+            .query_async(socket)
+            .await
+            .map_err(|error| error.to_string())
+    })
 }
 
 pub(crate) async fn query_cmd_on<C>(

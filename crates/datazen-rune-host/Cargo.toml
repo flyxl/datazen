@@ -13,6 +13,9 @@ path = "src/lib.rs"
 name = "datazen-native"
 path = "src/main.rs"
 
+[features]
+redis-e2e-fixture = ["datazen-driver-redis/e2e-fixture"]
+
 [dependencies]
 datazen-ui = { path = "../datazen-ui" }
 datazen-ui-api = { path = "../datazen-ui-api" }

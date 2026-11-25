@@ -73,8 +73,10 @@ rustup component add llvm-tools-preview
 python3 crates/drivers/redis/e2e/coverage.py --output target/redis-e2e-report --jobs 3
 ```
 
-This gate instruments the native application and the public driver-boundary
-example. Each journey uses its own disposable Redis instance. It merges
+This gate instruments one native executable. A fixture-only Cargo feature
+links the public driver-boundary journeys into that executable, so every LLVM
+profile uses the same function map. Normal builds omit the fixture. Each
+journey uses its own disposable Redis instance. It merges
 only their execution profiles, counts production lines in
 `crates/drivers/redis/src`, and exits nonzero unless all journeys pass and
 line coverage is strictly greater than 90%. A passing suite must emit its

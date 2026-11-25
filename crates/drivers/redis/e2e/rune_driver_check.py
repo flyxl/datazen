@@ -11,6 +11,7 @@ import secrets
 import shutil
 import subprocess
 import tempfile
+import time
 
 from rune_tools_common import Lab
 
@@ -37,7 +38,9 @@ def main():
     parser.add_argument("binary", type=Path)
     parser.add_argument("--server", default=shutil.which("redis-server"))
     parser.add_argument("--cli", default=shutil.which("redis-cli"))
+    parser.add_argument("--native-harness", action="store_true")
     parser.add_argument("--test-json", action="store_true")
+    parser.add_argument("--test-topology", action="store_true")
     parser.add_argument("--redis-json-module", type=Path)
     args = parser.parse_args()
     if not args.server or not args.cli:
@@ -52,7 +55,21 @@ def main():
         lab.start(port, ["--loadmodule", str(module.resolve(strict=True))] if module else [])
         nonce = secrets.token_hex(16)
         assert lab.cli(port, "SET", "contract:fixture", nonce) == "OK"
-        subprocess.run([str(args.binary.resolve(strict=True)), str(port), nonce, *(["json"] if args.test_json else [])],
+        if args.test_topology:
+            sentinel = lab.port()
+            lab.start(sentinel, sentinel=port)
+            cluster = lab.port(cluster=True)
+            lab.start(cluster, ["--cluster-enabled", "yes", "--cluster-config-file", "nodes.conf",
+                                "--cluster-node-timeout", "1000"])
+            assert lab.cli(cluster, "CLUSTER", "ADDSLOTSRANGE", "0", "16383") == "OK"
+            deadline = time.monotonic() + 8
+            while "cluster_state:ok" not in lab.cli(cluster, "CLUSTER", "INFO"):
+                assert time.monotonic() < deadline, "fixture cluster did not converge"
+                time.sleep(.15)
+            assert lab.cli(cluster, "SET", "contract:fixture", nonce) == "OK"
+            lab.env.update(REDIS_E2E_SENTINEL_PORT=str(sentinel), REDIS_E2E_CLUSTER_PORT=str(cluster))
+        fixture_args = ["--redis-driver-fixture"] if args.native_harness else []
+        subprocess.run([str(args.binary.resolve(strict=True)), *fixture_args, str(port), nonce, *(["json"] if args.test_json else [])],
                        cwd=root, env=lab.env, timeout=60, check=True)
 
 
