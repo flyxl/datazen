@@ -189,6 +189,37 @@ pub async fn run(journey: &mut Journey<'_>) {
         let parsed: Value = serde_json::from_str(result["json"].as_str().unwrap()).unwrap();
         assert_eq!(parsed, expected, "{codec}");
     }
+    // Captured from Java ObjectOutputStream: a Class and an inherited
+    // serializable value with a 3-byte and a 300-byte custom data block.
+    let class_object = STANDARD
+        .decode("rO0ABXZyABBqYXZhLmxhbmcuU3RyaW5noPCkOHo7s0ICAAB4cA==")
+        .unwrap();
+    let annotated_object = STANDARD
+        .decode(concat!(
+            "rO0ABXNyABRTdHJlYW1GaXh0dXJlcyRDaGlsZAAAAAAAAAABAwABSQAFY2hpbGR4cgATU3RyZWFtRml4",
+            "dHVyZXMkQmFzZQAAAAAAAAABAgABSQAEYmFzZXhwAAAADwAAABZ3AwECA3oAAAEsAAAAAAAAAAAAAAAA",
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeA==",
+        ))
+        .unwrap();
+    for (stored, expected) in [
+        (class_object, json!({"$class":"java.lang.Class"})),
+        (
+            annotated_object,
+            json!({
+                "$class":"StreamFixtures$Child","base":15,"child":22,
+                "$writeObject:StreamFixtures$Child":303
+            }),
+        ),
+    ] {
+        let decoded = round_trip(journey, "java", &stored).await;
+        assert_eq!(decoded["ok"], true, "{decoded}");
+        let data: Value = serde_json::from_str(decoded["json"].as_str().unwrap()).unwrap();
+        assert_eq!(data, expected);
+    }
     let fixtures: Vec<Value> =
         serde_json::from_slice(&std::fs::read("pickle-fixtures.json").unwrap()).unwrap();
     assert!(!fixtures.is_empty());
@@ -225,6 +256,28 @@ pub async fn run(journey: &mut Journey<'_>) {
         let refused = round_trip(journey, codec, stored).await;
         assert_eq!(refused["ok"], false, "{codec}: {refused}");
         assert_eq!(refused["reason"], "decode-failed");
+    }
+
+    // Real gzip streams may contain multiple consecutive members, which
+    // together contain the text the viewer should show.
+    let mut members = Vec::new();
+    for part in ["first ", "second"] {
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(part.as_bytes()).unwrap();
+        members.extend(encoder.finish().unwrap());
+    }
+    let joined = round_trip(journey, "gzip", &members).await;
+    assert_eq!(joined["text"], "first second");
+    members.pop();
+    assert_eq!(
+        round_trip(journey, "gzip", &members).await["reason"],
+        "decode-failed"
+    );
+    for (codec, bytes) in [("deflate", &[1_u8][..]), ("zlib", b"not-zlib".as_slice())] {
+        assert_eq!(
+            round_trip(journey, codec, bytes).await["reason"],
+            "decode-failed"
+        );
     }
 
     let mut deep_messagepack = vec![0x91; 130];
