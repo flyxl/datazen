@@ -120,6 +120,72 @@ pub async fn run(journey: &mut Journey<'_>) {
             "{denied}"
         );
     }
+    for (name, input, message) in [
+        (
+            "xadd",
+            json!({"key":" ","fields":{"k":"v"}}),
+            "key is required",
+        ),
+        (
+            "xadd",
+            json!({"key":"contract:stream","fields":{}}),
+            "at least one field",
+        ),
+        (
+            "xrange",
+            json!({"key":" ","start":"-","end":"+"}),
+            "key is required",
+        ),
+        (
+            "xgroup_create",
+            json!({"key":" ","group":"temporary"}),
+            "key is required",
+        ),
+        (
+            "xgroup_destroy",
+            json!({"key":" ","group":"temporary"}),
+            "key is required",
+        ),
+        (
+            "stream_lag",
+            json!({"key":" ","group":"temporary"}),
+            "key is required",
+        ),
+        ("xinfo_groups", json!({"key":" "}), "key is required"),
+        (
+            "xinfo_consumers",
+            json!({"key":" ","group":"temporary"}),
+            "key is required",
+        ),
+        (
+            "xinfo_consumers",
+            json!({"key":"contract:stream","group":" "}),
+            "consumer group name",
+        ),
+        (
+            "xpending",
+            json!({"key":" ","group":"temporary"}),
+            "key is required",
+        ),
+        (
+            "xack",
+            json!({"key":" ","group":"temporary","ids":["1-0"]}),
+            "key is required",
+        ),
+        (
+            "xack",
+            json!({"key":"contract:stream","group":"temporary","ids":[" "]}),
+            "at least one entry id",
+        ),
+    ] {
+        let error = journey
+            .driver
+            .execute_command(journey.handle, name, input)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains(message), "{name}: {error}");
+    }
+    assert!(journey.read::<u64>("XLEN", &["contract:stream"]).await > 0);
     let empty = journey
         .command(
             "list_index",
