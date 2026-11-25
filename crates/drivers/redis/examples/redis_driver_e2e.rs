@@ -249,6 +249,45 @@ impl Journey<'_> {
             )
             .await;
         assert!(info.to_string().contains("redis_version"));
+        let unknown = self
+            .command(
+                "info_filtered",
+                json!({"section":"nonexistent","search":"fixture"}),
+            )
+            .await;
+        assert_eq!(unknown["sections"], json!([]));
+        let missing = self
+            .command("key_object_info", json!({"key":"contract:does-not-exist"}))
+            .await;
+        assert_eq!(missing["missing"], true);
+        assert_eq!(missing["ttlMs"], -2);
+        let memory = self
+            .command("memory_usage_key", json!({"key":"contract:does-not-exist"}))
+            .await;
+        assert_eq!(memory["bytes"], 0);
+        assert_eq!(memory["error"], "key does not exist");
+
+        assert_eq!(
+            self.read::<String>("CONFIG", &["SET", "maxmemory-policy", "allkeys-lfu"])
+                .await,
+            "OK"
+        );
+        let lfu = self
+            .command("key_object_info", json!({"key":"contract:catalog"}))
+            .await;
+        assert_eq!(lfu["type"], "string");
+        assert_eq!(lfu["idleSeconds"], Value::Null);
+        assert_eq!(
+            lfu["freq"],
+            self.read::<u64>("OBJECT", &["FREQ", "contract:catalog"])
+                .await
+        );
+        assert_eq!(
+            self.read::<String>("CONFIG", &["SET", "maxmemory-policy", "noeviction"])
+                .await,
+            "OK"
+        );
+
         let distribution = self
             .command("type_distribution", json!({"sampleLimit":64}))
             .await;

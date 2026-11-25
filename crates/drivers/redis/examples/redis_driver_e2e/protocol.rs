@@ -1,3 +1,4 @@
+use datazen_driver_api::Value;
 use serde_json::json;
 
 use super::Journey;
@@ -50,6 +51,29 @@ pub async fn run(journey: &mut Journey<'_>) {
     // Redis itself negotiates RESP3; subsequent commands go through the same
     // public driver connection and carry the real protocol's map responses.
     driver.query(handle, "HELLO 3").await.unwrap();
+    let info_text = driver.query(handle, "INFO server").await.unwrap();
+    assert!(
+        matches!(&info_text.rows[0][0], Some(Value::String(info)) if info.contains("redis_version"))
+    );
+    let read_many = driver
+        .query(
+            handle,
+            "MGET contract:catalog contract:absent contract:resource",
+        )
+        .await
+        .unwrap();
+    assert_eq!(read_many.rows.len(), 3);
+    assert_eq!(read_many.rows[0][1], Some(Value::String("written".into())));
+    assert_eq!(read_many.rows[1][1], Some(Value::Null));
+    let quoted = driver
+        .query(handle, r#"ECHO "引号 \"here\"""#)
+        .await
+        .unwrap();
+    assert_eq!(
+        quoted.rows[0][0],
+        Some(Value::String("引号 \"here\"".into()))
+    );
+
     let groups = journey.command("xinfo_groups", json!({"key":stream})).await;
     assert_eq!(groups[0]["name"], "g");
     let readers = journey
@@ -82,6 +106,14 @@ pub async fn run(journey: &mut Journey<'_>) {
         .unwrap()
         .iter()
         .any(|row| row["key"] == hash));
+    let acknowledged = journey
+        .command("xack", json!({"key":stream,"group":"g","ids":[id["id"]]}))
+        .await;
+    assert_eq!(acknowledged, 1);
+    let empty = journey
+        .command("xpending", json!({"key":stream,"group":"g","count":3}))
+        .await;
+    assert_eq!(empty["entries"], json!([]));
     driver.query(handle, "HELLO 2").await.unwrap();
     let verify: Vec<String> = journey.read("HMGET", &[hash, "one", "two", "three"]).await;
     assert_eq!(verify, ["un", "deux", "trois"]);
