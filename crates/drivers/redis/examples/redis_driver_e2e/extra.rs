@@ -120,6 +120,37 @@ pub async fn archive_and_metadata(journey: &mut Journey<'_>) {
     assert_eq!(journey.read::<String>("GET", &[key]).await, "snapshot");
     let restored_ttl = journey.read::<i64>("TTL", &[key]).await;
     assert!((archived_ttl - 1..=archived_ttl).contains(&restored_ttl));
+    let target = "contract:archive:cross-db";
+    let cross_db = journey
+        .command(
+            "restore_keys",
+            json!({
+                "dbIndex":4, "replace":false, "entries":[
+                    {"key":target,"dumpBase64":entries[0]["dumpBase64"],"ttlSeconds":-1},
+                    {"key":"contract:archive:invalid","dumpBase64":"not base64","ttlSeconds":-1},
+                    {"key":"contract:archive:empty","dumpBase64":"","ttlSeconds":-1},
+                ]
+            }),
+        )
+        .await;
+    assert_eq!(cross_db["restored"], 1);
+    let errors = cross_db["errors"].as_array().unwrap();
+    assert_eq!(errors.len(), 2);
+    assert!(errors[0]["error"]
+        .as_str()
+        .unwrap()
+        .contains("invalid dump base64"));
+    assert!(errors[1]["error"]
+        .as_str()
+        .unwrap()
+        .contains("dump payload is empty"));
+    let received = journey
+        .command("get_key", json!({"key":target,"dbIndex":4}))
+        .await;
+    assert_eq!(received["value"]["value"], "snapshot");
+    assert_eq!(received["ttl"], -1);
+    assert_eq!(journey.read::<u64>("EXISTS", &[target]).await, 0);
+
     assert_eq!(
         journey.command("delete_keys", json!({"keys":[key]})).await,
         1
@@ -130,6 +161,19 @@ pub async fn json_document(journey: &mut Journey<'_>) {
     let key = "contract:json";
     let modules = journey.command("modules_list", json!({})).await;
     assert!(modules.to_string().to_ascii_lowercase().contains("rejson"));
+    journey
+        .driver
+        .query(journey.handle, "HELLO 3")
+        .await
+        .unwrap();
+    let modern_modules = journey.command("modules_list", json!({})).await;
+    assert_eq!(modern_modules, modules);
+    journey
+        .driver
+        .query(journey.handle, "HELLO 2")
+        .await
+        .unwrap();
+
     let created = json!({"first":{"name":"fixture"},"second":[1,2]});
     journey
         .command(

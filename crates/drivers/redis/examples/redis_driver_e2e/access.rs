@@ -59,6 +59,31 @@ pub async fn authenticated(journey: &mut Journey<'_>, config: &ConnectionConfig,
     // still reject writes and denied commands without mutating the fixture.
     restricted.read_only = false;
     let handle = driver.connect(&restricted).await.unwrap();
+    let dump = driver
+        .execute_command(&handle, "dump_keys", json!({"keys":["contract:catalog"]}))
+        .await
+        .unwrap()
+        .data;
+    assert!(dump["errors"][0]["error"]
+        .as_str()
+        .unwrap()
+        .contains("NOPERM"));
+    assert_eq!(
+        journey
+            .read::<String>("ACL", &["SETUSER", "read-fixture", "+dump"])
+            .await,
+        "OK"
+    );
+    let expiry = driver
+        .execute_command(&handle, "dump_keys", json!({"keys":["contract:catalog"]}))
+        .await
+        .unwrap()
+        .data;
+    assert_eq!(expiry["entries"], json!([]));
+    assert!(expiry["errors"][0]["error"]
+        .as_str()
+        .unwrap()
+        .contains("pttl"));
     let denied_commands = [
         ("modules_list", json!({})),
         ("slowlog_get", json!({"count":2})),
