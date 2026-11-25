@@ -93,6 +93,33 @@ pub async fn run(journey: &mut Journey<'_>) {
         .await;
     assert_eq!(raw["keyType"], "string");
     assert!(raw["memoryBytes"].is_number() || raw["memBytes"].is_number());
+    for name in ["get_key", "get_key_raw"] {
+        let missing = "contract:validation:missing";
+        let error = journey
+            .driver
+            .execute_command(journey.handle, name, json!({"key":missing}))
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("key not found: {missing}")),
+            "{error}"
+        );
+        let denied = journey
+            .driver
+            .execute_command(
+                journey.handle,
+                name,
+                json!({"key":"contract:catalog","dbIndex":99_999}),
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            denied.to_string().contains("DB index is out of range"),
+            "{denied}"
+        );
+    }
     let empty = journey
         .command(
             "list_index",

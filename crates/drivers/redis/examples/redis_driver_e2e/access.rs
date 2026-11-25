@@ -121,6 +121,57 @@ pub async fn authenticated(journey: &mut Journey<'_>, config: &ConnectionConfig,
         .await
         .unwrap_err();
     assert!(type_denial.to_string().contains("NOPERM"), "{type_denial}");
+    assert_eq!(
+        journey
+            .read::<String>("ACL", &["SETUSER", "read-fixture", "+type", "-get"])
+            .await,
+        "OK"
+    );
+    // Metadata permission is not value permission, for either string or a
+    // collection. A refusal must not be reported as an empty result.
+    for key in [
+        "contract:catalog",
+        "contract:detail:hash",
+        "contract:list",
+        "contract:set",
+        "contract:zset",
+        "contract:stream",
+    ] {
+        let error = driver
+            .execute_command(&handle, "get_key", json!({"key":key}))
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("NOPERM"), "{key}: {error}");
+    }
+    let raw = driver
+        .execute_command(&handle, "get_key_raw", json!({"key":"contract:catalog"}))
+        .await
+        .unwrap_err();
+    assert!(raw.to_string().contains("NOPERM"), "{raw}");
+    assert_eq!(
+        journey
+            .read::<String>("ACL", &["SETUSER", "read-fixture", "+get", "-ttl"])
+            .await,
+        "OK"
+    );
+    for op in ["get_key", "get_key_raw"] {
+        let error = driver
+            .execute_command(&handle, op, json!({"key":"contract:catalog"}))
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("NOPERM"), "{op}: {error}");
+    }
+    assert_eq!(
+        journey
+            .read::<String>("ACL", &["SETUSER", "read-fixture", "+ttl", "-strlen"])
+            .await,
+        "OK"
+    );
+    let refused = driver
+        .execute_command(&handle, "get_key_raw", json!({"key":"contract:catalog"}))
+        .await
+        .unwrap_err();
+    assert!(refused.to_string().contains("NOPERM"), "{refused}");
     let value: String = journey.read("GET", &["contract:catalog"]).await;
     assert_eq!(value, "written");
     driver.disconnect(handle).await.unwrap();
