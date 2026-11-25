@@ -75,6 +75,11 @@ def main():
                 time.sleep(.15)
             assert lab.cli(cluster, "SET", "contract:fixture", nonce) == "OK"
             lab.env.update(REDIS_E2E_SENTINEL_PORT=str(sentinel), REDIS_E2E_CLUSTER_PORT=str(cluster))
+            protected_sentinel = lab.port()
+            sentinel_password = f"{nonce}:@%/sentinel"
+            lab.start(protected_sentinel, sentinel=port, sentinel_password=sentinel_password)
+            lab.env.update(REDIS_E2E_AUTH_SENTINEL_PORT=str(protected_sentinel),
+                           REDIS_E2E_AUTH_SENTINEL_PASSWORD=sentinel_password)
         if args.legacy_server:
             legacy_args = copy.copy(args)
             legacy_args.server = str(args.legacy_server.resolve(strict=True))

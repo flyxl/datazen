@@ -203,6 +203,12 @@ pub async fn run(
     .cloned();
     inspect(driver, &routed, master_port, "sentinel", proof).await;
     plaintext_negotiation(driver, &routed, master_port, "sentinel").await;
+    if let (Ok(auth_port), Ok(password)) = (
+        std::env::var("REDIS_E2E_AUTH_SENTINEL_PORT"),
+        std::env::var("REDIS_E2E_AUTH_SENTINEL_PASSWORD"),
+    ) {
+        authenticated_sentinel(driver, &routed, &auth_port, &password).await;
+    }
 
     let mut routed = base.clone();
     routed.port = Some(cluster);
@@ -376,5 +382,35 @@ async fn metadata_acl(
         "{error}"
     );
     assert_eq!(j.read::<u64>("ACL", &["DELUSER", user]).await, 1);
+    driver.disconnect(handle).await.unwrap();
+}
+
+async fn authenticated_sentinel(
+    driver: &dyn DatabaseDriver,
+    config: &ConnectionConfig,
+    auth_port: &str,
+    password: &str,
+) {
+    let mut test = config.clone();
+    test.options.as_mut().unwrap().insert(
+        "sentinelNodes".into(),
+        json!([format!("127.0.0.1:{auth_port}")]),
+    );
+    assert!(
+        driver.test_connection(&test).await.is_err(),
+        "unauthenticated access to protected fixture must fail"
+    );
+    test.options
+        .as_mut()
+        .unwrap()
+        .insert("sentinelNodePassword".into(), json!(password));
+    let info = driver.test_connection(&test).await.unwrap();
+    assert!(!info.server_version.is_empty());
+    let handle = driver.connect(&test).await.unwrap();
+    let result = driver
+        .query(&handle, "GET contract:topology")
+        .await
+        .unwrap();
+    assert_eq!(result.rows[0][0], Some(Value::String("sentinel".into())));
     driver.disconnect(handle).await.unwrap();
 }

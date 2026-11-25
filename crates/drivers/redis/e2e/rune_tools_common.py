@@ -22,12 +22,13 @@ class Lab:
                     "DATAZEN_NATIVE_KEYRING": "file", "XDG_DATA_HOME": str(root / "data"),
                     "XDG_CONFIG_HOME": str(root / "config"), "XDG_CACHE_HOME": str(root / "cache")}
 
-    def cli(self, port, *command, db=0, ca=None, client_identity=None):
+    def cli(self, port, *command, db=0, ca=None, client_identity=None, password=None):
         identity = ["--cert", str(client_identity[0]), "--key", str(client_identity[1])] if client_identity else []
         return subprocess.check_output(
             [self.args.cli, "-h", "127.0.0.1", "-p", str(port), "-n", str(db),
              *(["--tls", "--cacert", str(ca)] if ca is not None else []), *identity, "--raw", *command],
             text=True, stderr=subprocess.STDOUT, timeout=8,
+            env={**os.environ, "REDISCLI_AUTH": password} if password else None,
         ).strip()
 
     def port(self, cluster=False):
@@ -46,7 +47,8 @@ class Lab:
                 return port
         raise RuntimeError("No local Redis cluster port pair available")
 
-    def start(self, port, extra=(), sentinel=None, ca=None, client_identity=None):
+    def start(self, port, extra=(), sentinel=None, ca=None, client_identity=None,
+              sentinel_password=None):
         directory = self.root / f"redis-{port}"
         directory.mkdir()
         argv = [self.args.server]
@@ -54,7 +56,8 @@ class Lab:
             config = directory / "sentinel.conf"
             config.write_text(
                 f"port {port}\nbind 127.0.0.1\nprotected-mode yes\n"
-                f"sentinel monitor native-test 127.0.0.1 {sentinel} 1\n",
+                f"sentinel monitor native-test 127.0.0.1 {sentinel} 1\n" +
+                (f"requirepass {sentinel_password}\n" if sentinel_password else ""),
                 encoding="utf-8",
             )
             argv.extend([str(config), "--sentinel"])
@@ -77,7 +80,7 @@ class Lab:
         deadline = time.monotonic() + 8
         while proc.poll() is None and time.monotonic() <= deadline:
             try:
-                if self.cli(port, "PING", ca=ca, client_identity=client_identity) == "PONG":
+                if self.cli(port, "PING", ca=ca, client_identity=client_identity, password=sentinel_password) == "PONG":
                     return
             except subprocess.CalledProcessError:
                 pass
