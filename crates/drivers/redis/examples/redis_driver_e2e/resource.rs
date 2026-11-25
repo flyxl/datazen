@@ -89,6 +89,12 @@ pub async fn run(provider: &dyn ResourceProvider, config: &ConnectionConfig, por
     };
     let description = provider.describe_resource(&request).await.unwrap();
     assert_eq!(description.provider_id, "redis");
+    assert_eq!(provider.provider_id(), description.provider_id);
+    assert_eq!(provider.capabilities().provider_id, description.provider_id);
+    assert_eq!(
+        provider.namespace_shape().path_segments.len(),
+        description.namespace_shape.path_segments.len()
+    );
     assert_eq!(description.namespace_shape.path_segments.len(), 1);
     let ledger = Arc::new(Budget::default());
     let budget: Arc<dyn BudgetPort> = ledger.clone();
@@ -172,6 +178,15 @@ pub async fn run(provider: &dyn ResourceProvider, config: &ConnectionConfig, por
             .unwrap();
         assert_eq!(value.as_deref(), expected);
     }
+    let malformed = NamespaceTarget::empty().with_database("dbbad");
+    let refused_target = provider
+        .change_context(&resource, &malformed)
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        refused_target,
+        ResourceError::NamespaceTargetRejected { .. }
+    ));
     let db2 = NamespaceTarget::empty().with_database("db2");
     assert_eq!(
         provider.change_context(&resource, &db2).await.unwrap(),
@@ -369,4 +384,32 @@ pub async fn run(provider: &dyn ResourceProvider, config: &ConnectionConfig, por
     assert!(provider.close_handle(&resource, &unissued).await.is_ok());
     assert!(provider.observe_session(&resource).await.is_err());
     assert_eq!(ledger.released.load(Ordering::SeqCst), 3);
+    let mut default = request;
+    default.target = NamespaceTarget::empty();
+    let resource = provider.acquire_resource(&default, &budget).await.unwrap();
+    let sink = Sink::default();
+    provider
+        .execute_on_resource(
+            &resource,
+            &execution,
+            &CommandCall::new("query", json!({"sql":"GET contract:catalog"})),
+            &sink,
+        )
+        .await
+        .unwrap();
+    {
+        let chunks = sink.chunks.lock().unwrap();
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(
+            chunks[0].rows,
+            vec![vec![Some(datazen_driver_api::Value::String(
+                "written".into()
+            ))]]
+        );
+    }
+    assert_eq!(
+        provider.close_resource(&resource).await.unwrap(),
+        CloseDisposition::Closed
+    );
+    assert_eq!(ledger.released.load(Ordering::SeqCst), 4);
 }

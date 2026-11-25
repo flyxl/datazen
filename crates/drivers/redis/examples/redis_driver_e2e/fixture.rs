@@ -729,7 +729,24 @@ pub async fn run_cli(mut args: impl Iterator<Item = String>) {
         connections::legacy(driver.as_ref(), &cfg, port.parse().unwrap(), &proof).await;
     }
     access::flush_guard(&mut suite, &proof).await;
-    driver.disconnect(handle).await.unwrap();
+    driver.disconnect(handle.clone()).await.unwrap();
+    for (operation, args) in [
+        ("get_key", json!({"key":"contract:fixture"})),
+        ("monitor_start", json!({})),
+        (
+            "pubsub_subscribe",
+            json!({"channels":["contract:disconnected"]}),
+        ),
+    ] {
+        let closed = driver
+            .execute_command(&handle, operation, args)
+            .await
+            .unwrap_err();
+        assert!(
+            closed.to_string().contains("connection not found"),
+            "{operation}: {closed}"
+        );
+    }
     println!(
         "PASS: real Redis driver catalog, exact/binary keys, aggregates, observations, Streams, real resource sessions, codecs, ACL and disposal guards"
     );
