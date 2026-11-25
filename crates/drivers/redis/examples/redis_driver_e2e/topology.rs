@@ -30,6 +30,17 @@ async fn inspect(
         "refuse to edit any Redis node other than the disposable fixture"
     );
     let addr = format!("127.0.0.1:{port}");
+    if topology == "cluster" {
+        let independent_id: String = journey.read("CLUSTER", &["MYID"]).await;
+        let reported = journey.command("cluster_nodes", json!({})).await;
+        assert!(
+            reported["nodes"].as_array().unwrap().iter().any(|node| {
+                node["id"] == independent_id && node["addr"] == addr && node["role"] == "master"
+            }),
+            "{reported}"
+        );
+    }
+
     let info = journey
         .command("info", json!({"section":"server","nodeAddr":addr}))
         .await;

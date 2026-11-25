@@ -368,6 +368,101 @@ impl Journey<'_> {
             .await;
         let groups = self.command("xinfo_groups", json!({"key":key})).await;
         assert_eq!(groups, json!([]));
+
+        let pending_key = "contract:stream:pending";
+        for (id, payload) in [("100-1", "first"), ("100-2", "second")] {
+            let created = self
+                .command(
+                    "xadd",
+                    json!({
+                        "key":pending_key,"id":id,"fields":{"": "ignored", "payload":payload}
+                    }),
+                )
+                .await;
+            assert_eq!(created["id"], id);
+        }
+        let view = self
+            .command(
+                "xrange",
+                json!({"key":pending_key,"start":" ","end":" ","count":1}),
+            )
+            .await;
+        assert_eq!(
+            view["entries"],
+            json!([{"id":"100-1","fields":{"payload":"first"}}])
+        );
+        let view = self
+            .command(
+                "xrange",
+                json!({"key":pending_key,"start":"100-2","end":"+"}),
+            )
+            .await;
+        assert_eq!(
+            view["entries"],
+            json!([{"id":"100-2","fields":{"payload":"second"}}])
+        );
+        self.command(
+            "xgroup_create",
+            json!({"key":pending_key,"group":"pending","start_id":"0"}),
+        )
+        .await;
+        let input = json!({"key":pending_key,"group":"pending"});
+        assert_eq!(self.command("stream_lag", input.clone()).await["lag"], 2);
+        let empty = self.command("xpending", input.clone()).await;
+        assert_eq!(empty["total"], 0);
+        let delivered: redis::Value = self
+            .read(
+                "XREADGROUP",
+                &[
+                    "GROUP",
+                    "pending",
+                    "reader",
+                    "COUNT",
+                    "1",
+                    "STREAMS",
+                    pending_key,
+                    ">",
+                ],
+            )
+            .await;
+        assert_ne!(delivered, redis::Value::Nil);
+        assert_eq!(self.command("stream_lag", input.clone()).await["lag"], 1);
+        let groups = self
+            .command("xinfo_groups", json!({"key":pending_key}))
+            .await;
+        assert_eq!(groups[0]["lastDeliveredId"], "100-1");
+        assert_eq!(groups[0]["pending"], 1);
+        let consumers = self.command("xinfo_consumers", input.clone()).await;
+        assert_eq!(consumers[0]["name"], "reader");
+        assert_eq!(consumers[0]["pending"], 1);
+        let summary = self.command("xpending", input.clone()).await;
+        assert_eq!(summary["total"], 1);
+        let details = self.command("xpending", json!({
+            "key":pending_key,"group":"pending","start":"-","end":"+","count":1,"consumer":"reader"
+        })).await;
+        assert_eq!(details["entries"][0]["id"], "100-1");
+        assert_eq!(details["entries"][0]["consumer"], "reader");
+        assert_eq!(details["entries"][0]["deliveryCount"], 1);
+        let acked = self
+            .command(
+                "xack",
+                json!({"key":pending_key,"group":"pending","ids":["100-1"]}),
+            )
+            .await;
+        assert_eq!(acked, 1);
+        assert_eq!(self.command("xpending", input).await["total"], 0);
+        let missing = self
+            .driver
+            .execute_command(
+                self.handle,
+                "stream_lag",
+                json!({
+                    "key":pending_key,"group":"not-a-group"
+                }),
+            )
+            .await
+            .unwrap_err();
+        assert!(missing.to_string().contains("not found"));
     }
 }
 

@@ -60,7 +60,7 @@ def main():
             lab.start(sentinel, sentinel=port)
             cluster = lab.port(cluster=True)
             lab.start(cluster, ["--cluster-enabled", "yes", "--cluster-config-file", "nodes.conf",
-                                "--cluster-node-timeout", "1000"])
+                                "--cluster-node-timeout", "1000", "--cluster-announce-ip", "127.0.0.1"])
             assert lab.cli(cluster, "CLUSTER", "ADDSLOTSRANGE", "0", "16383") == "OK"
             deadline = time.monotonic() + 8
             while "cluster_state:ok" not in lab.cli(cluster, "CLUSTER", "INFO"):
