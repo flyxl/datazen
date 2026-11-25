@@ -8,6 +8,8 @@ mod codec;
 mod connections;
 #[path = "extra.rs"]
 mod extra;
+#[path = "guarded.rs"]
+mod guarded;
 #[path = "protocol.rs"]
 mod protocol;
 #[path = "resource.rs"]
@@ -423,6 +425,7 @@ pub async fn run_cli(mut args: impl Iterator<Item = String>) {
     codec::run(&mut suite).await;
     search::run(&mut suite).await;
     protocol::run(&mut suite).await;
+    guarded::run(&mut suite, json.is_some()).await;
     validation::run(&mut suite).await;
     connections::run(&mut suite, &cfg).await;
     access::authenticated(&mut suite, &cfg, &proof).await;
