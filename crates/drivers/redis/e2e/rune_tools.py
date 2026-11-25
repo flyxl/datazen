@@ -337,7 +337,12 @@ def cluster_multishard(lab):
         *OPEN, *enter(3.3, "native-kv-pattern", literal), tap(5, "native-kv-exact"),
     ], 6.7)
     assert element(opened, "native-kv-value")["text"] == "literal-name"
-    print("PASS: two Cluster primaries, anchored pagination and slot-routed exact lookup")
+    topology_result = json.loads(output(lab.replay("cluster-topology-tool", [
+        *TOOLS, tap(4.3, "native-kv-cluster-nodes"),
+    ], 6.2)))
+    primary_addresses = {node["addr"] for node in topology_result["nodes"] if node["role"] == "master"}
+    assert primary_addresses == {f"127.0.0.1:{port}" for port in ports}, topology_result
+    print("PASS: two Cluster primaries, anchored pagination, slot-routed exact lookup and discovered primaries")
 
 
 def batch_delete(lab):

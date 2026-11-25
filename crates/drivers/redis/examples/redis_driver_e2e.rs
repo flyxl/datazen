@@ -6,6 +6,8 @@ mod access;
 mod codec;
 #[path = "redis_driver_e2e/extra.rs"]
 mod extra;
+#[path = "redis_driver_e2e/protocol.rs"]
+mod protocol;
 #[path = "redis_driver_e2e/resource.rs"]
 mod resource;
 #[path = "redis_driver_e2e/search.rs"]
@@ -344,6 +346,7 @@ async fn main() {
     }
     codec::run(&mut suite).await;
     search::run(&mut suite).await;
+    protocol::run(&mut suite).await;
     access::authenticated(&mut suite, &cfg, &proof).await;
     resource::run(provider.as_ref(), &cfg, port).await;
     access::flush_guard(&mut suite, &proof).await;
