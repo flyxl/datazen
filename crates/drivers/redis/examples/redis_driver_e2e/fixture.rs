@@ -632,6 +632,9 @@ pub async fn run_cli(mut args: impl Iterator<Item = String>) {
         )
         .await;
     }
+    if let Ok(port) = std::env::var("REDIS_E2E_LEGACY_PORT") {
+        connections::legacy(driver.as_ref(), &cfg, port.parse().unwrap(), &proof).await;
+    }
     access::flush_guard(&mut suite, &proof).await;
     driver.disconnect(handle).await.unwrap();
     println!(

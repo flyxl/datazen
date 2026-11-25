@@ -3,6 +3,7 @@
 import argparse
 import base64
 import contextlib
+import copy
 import json
 import os
 import pickle
@@ -43,6 +44,7 @@ def main():
     parser.add_argument("--native-harness", action="store_true")
     parser.add_argument("--test-json", action="store_true")
     parser.add_argument("--test-topology", action="store_true")
+    parser.add_argument("--legacy-server", type=Path, help="optional Redis 5 executable for KEEPTTL compatibility")
     parser.add_argument("--redis-json-module", type=Path)
     args = parser.parse_args()
     if not args.server or not args.cli:
@@ -70,6 +72,14 @@ def main():
                 time.sleep(.15)
             assert lab.cli(cluster, "SET", "contract:fixture", nonce) == "OK"
             lab.env.update(REDIS_E2E_SENTINEL_PORT=str(sentinel), REDIS_E2E_CLUSTER_PORT=str(cluster))
+        if args.legacy_server:
+            legacy_args = copy.copy(args)
+            legacy_args.server = str(args.legacy_server.resolve(strict=True))
+            legacy = Lab(legacy_args, stack, root)
+            legacy_port = legacy.port()
+            legacy.start(legacy_port)
+            assert legacy.cli(legacy_port, "SET", "contract:fixture", nonce) == "OK"
+            lab.env["REDIS_E2E_LEGACY_PORT"] = str(legacy_port)
         fixture_args = ["--redis-driver-fixture"] if args.native_harness else []
         subprocess.run([str(args.binary.resolve(strict=True)), *fixture_args, str(port), nonce, *(["json"] if args.test_json else [])],
                        cwd=root, env=lab.env, timeout=60, check=True)

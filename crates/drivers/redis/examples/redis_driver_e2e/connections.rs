@@ -74,3 +74,57 @@ pub async fn run(journey: &mut Journey<'_>, base: &ConnectionConfig) {
         .unwrap();
     driver.disconnect(handle).await.unwrap();
 }
+
+pub async fn legacy(
+    driver: &dyn datazen_driver_api::DatabaseDriver,
+    config: &ConnectionConfig,
+    port: u16,
+    proof: &str,
+) {
+    let client = redis::Client::open(format!("redis://127.0.0.1:{port}/0")).unwrap();
+    let mut oracle = client.get_multiplexed_async_connection().await.unwrap();
+    let witness: String = redis::cmd("GET")
+        .arg("contract:fixture")
+        .query_async(&mut oracle)
+        .await
+        .unwrap();
+    assert_eq!(witness, proof);
+    let mut config = config.clone();
+    config.port = Some(port);
+    let info = driver.test_connection(&config).await.unwrap();
+    assert!(
+        info.server_version.starts_with("5."),
+        "Expected an isolated Redis 5 fixture: {info:?}"
+    );
+    let handle = driver.connect(&config).await.unwrap();
+    let mut j = Journey {
+        driver,
+        handle: &handle,
+        oracle,
+    };
+    let expiring = "contract:legacy:expiring";
+    assert_eq!(
+        j.read::<String>("SET", &[expiring, "before", "PX", "120000"])
+            .await,
+        "OK"
+    );
+    let before = j.read::<i64>("PTTL", &[expiring]).await;
+    let updated = j
+        .command("set_string", json!({"key":expiring,"value":"after"}))
+        .await;
+    assert_eq!(
+        updated,
+        json!({"ok":true,"keepTtl":true,"keepTtlFallback":true})
+    );
+    assert_eq!(j.read::<String>("GET", &[expiring]).await, "after");
+    let after = j.read::<i64>("PTTL", &[expiring]).await;
+    assert!((1..=before).contains(&after), "{before} -> {after}");
+    let persistent = "contract:legacy:persistent";
+    let written = j
+        .command("set_string_raw", json!({"key":persistent,"dataB64":"AP8="}))
+        .await;
+    assert_eq!(written["keepTtlFallback"], true);
+    assert_eq!(j.read::<i64>("PTTL", &[persistent]).await, -1);
+    assert_eq!(j.read::<Vec<u8>>("GET", &[persistent]).await, [0, 255]);
+    driver.disconnect(handle).await.unwrap();
+}

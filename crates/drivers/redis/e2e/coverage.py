@@ -78,6 +78,7 @@ def main():
     parser.add_argument("--cli", default=shutil.which("redis-cli"))
     parser.add_argument("--redis-json-module", type=Path)
     parser.add_argument("--json-server", help="optional separate Redis server matching the JSON module")
+    parser.add_argument("--legacy-server", type=Path, help="optional Redis 5 executable for KEEPTTL compatibility")
     parser.add_argument("--jobs", default=1, type=int)
     parser.add_argument("--retain-binaries", action="store_true",
                         help="retain the exact instrumented executables for later LLVM analysis")
@@ -144,6 +145,8 @@ def main():
                         "--server", args.json_server or args.server, "--cli", args.cli, "--test-json", "--test-topology"]
                 if args.redis_json_module:
                     argv.extend(["--redis-json-module", str(args.redis_json_module.resolve())])
+                if args.legacy_server:
+                    argv.extend(["--legacy-server", str(args.legacy_server.resolve())])
             elif suite == "standalone":
                 argv = [sys.executable, str(scripts / "rune_standalone.py"), str(binary),
                         "--redis-server", args.server, "--redis-cli", args.cli]

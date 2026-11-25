@@ -88,3 +88,8 @@ render trees where applicable, and a machine-readable `summary.json`.
 The suite requires TLS and JSON support. Use `--server`, `--cli`,
 `--json-server`, and `--redis-json-module` to select suitable binaries
 and matching modules when the installed Redis build does not include JSON.
+
+To include the legacy KEEPTTL recovery journey, pass
+`--legacy-server /path/to/redis-5/redis-server`. The runner starts this
+executable as a separate loopback-only, disposable fixture and verifies the
+version and fixture identity before the driver writes to it.
